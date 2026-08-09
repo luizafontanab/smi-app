@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SMI Website Rebuild — Phase 1 (local build)
 
-## Getting Started
+Custom rebuild of sheetmetalindustries.com: public site, member area, operator console, advert engine, and platform layer. Requirements live in [`../requirements/`](../requirements/); Next.js 16 conventions and local quirks in [`docs/nextjs16-notes.md`](docs/nextjs16-notes.md).
 
-First, run the development server:
+## Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+supabase start                 # Postgres/Auth/Storage on ports 563xx (see supabase/config.toml)
+pnpm dev                       # app on http://127.0.0.1:3100
+pnpm exec tsx scripts/job-runner.ts   # optional: background jobs (publishing, notifications)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+First-time / reset seed (real stories fetched from the live site + synthetic everything else):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+supabase db reset && docker restart supabase_kong_app && sleep 5 \
+  && set -a && source .env.local && set +a && pnpm exec tsx scripts/seed.ts
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Logins** (password `local-dev-password`): `jas@smi.local` (super admin) · `media@smi.local` (input-only) · `member1..3@smi.local` (members).
 
-## Learn More
+## Tests
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+pnpm lint && pnpm test        # eslint + vitest (rotation fairness, unsubscribe permanence)
+pnpm test:e2e                 # playwright (approval-gate loop, member-first search, roles)
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architecture notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Advert neutrality is structural**: selection is an unbiased shuffle in `src/lib/adverts.ts`; the schema has no weight/priority column and must never gain one.
+- **Approval gate**: no code path publishes content without editor action; RLS keeps non-published rows invisible to the public role.
+- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer), CRM (Bigin), newsletter (undecided — deliverability gate), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
+- **Jobs**: Postgres queue (`jobs` table) driven by `/api/cron` (Vercel Cron in prod, `scripts/job-runner.ts` locally). Dead-lettered jobs surface in the console's "Needs You Today".
+- **Analytics**: first-party, partitioned `analytics_events` + nightly rollups. Numbers shown to members are real — no padding, by requirement.
 
-## Deploy on Vercel
+## Still parked (needs approval / external accounts)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+GitHub org + repo transfer to SMI ownership · Supabase cloud (EU) + Vercel projects · Resend/Buffer/MaxMind keys · Stripe test wiring · real WP export import at cutover · newsletter deliverability test · Content OS (module 6, priced separately).

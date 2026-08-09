@@ -1,4 +1,5 @@
 import { serviceDb } from "./db/server";
+import type { Json } from "./db/types";
 
 /**
  * Postgres-backed job queue (TECH-DECISIONS #13).
@@ -16,7 +17,7 @@ export type JobKind =
   | "newsletter_send";       // payload: { issue_id }
 
 export async function enqueue(kind: JobKind, payload: Record<string, unknown> = {}, dueAt?: Date) {
-  await serviceDb().from("jobs").insert({ kind, payload, due_at: (dueAt ?? new Date()).toISOString() });
+  await serviceDb().from("jobs").insert({ kind, payload: payload as Json, due_at: (dueAt ?? new Date()).toISOString() });
 }
 
 export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
@@ -127,7 +128,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
       await db.from("notifications").insert({
         member_id: member.id,
         kind: String(payload.kind ?? "generic"),
-        payload,
+        payload: payload as Json,
       });
       const { getEmailSender } = await import("./adapters/email");
       await getEmailSender().send({

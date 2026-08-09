@@ -80,7 +80,10 @@ export async function submitProfileEdit(formData: FormData) {
       instagram: String(formData.get("instagram") ?? ""),
     },
   };
-  await serviceDb().from("member_revisions").insert({ member_id: user.memberId, payload });
+  await serviceDb().from("member_revisions").insert({
+    member_id: user.memberId,
+    payload: payload as import("@/lib/db/types").Json,
+  });
   revalidatePath("/member");
   redirect("/member?submitted=profile");
 }

@@ -46,7 +46,7 @@ export default async function MemberDashboard(props: PageProps<"/member">) {
       <h1 className="text-2xl font-bold text-navy">Welcome back</h1>
       {monthsSince !== null && monthsSince >= 3 && (
         <p className="mt-2 rounded-lg border-2 border-amber bg-amber/10 p-3 text-sm">
-          The last time you posted a story was <b>{monthsSince} months ago</b> — your page works harder when it's fresh.{" "}
+          The last time you posted a story was <b>{monthsSince} months ago</b> — your page works harder when it&apos;s fresh.{" "}
           <Link href="/member/story/new" className="font-semibold text-steel underline">Add one now →</Link>
         </p>
       )}

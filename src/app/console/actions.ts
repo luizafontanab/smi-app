@@ -136,7 +136,8 @@ export async function decideRevision(formData: FormData) {
   const { data: rev } = await db.from("member_revisions").select("id, member_id, payload, status").eq("id", id).single();
   if (!rev || rev.status !== "awaiting_approval") return;
   if (approve) {
-    await db.from("members").update(rev.payload as Record<string, unknown>).eq("id", rev.member_id);
+    type MemberUpdate = import("@/lib/db/types").Database["public"]["Tables"]["members"]["Update"];
+    await db.from("members").update(rev.payload as MemberUpdate).eq("id", rev.member_id);
     await db.from("member_revisions").update({ status: "published", decided_at: new Date().toISOString() }).eq("id", id);
   } else {
     await db.from("member_revisions").update({ status: "rejected", rejected_reason: reason, decided_at: new Date().toISOString() }).eq("id", id);

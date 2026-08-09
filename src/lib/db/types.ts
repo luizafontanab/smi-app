@@ -1471,6 +1471,7 @@ export type Database = {
         Args: { p_month: string }
         Returns: undefined
       }
+      run_daily_rollup: { Args: never; Returns: undefined }
     }
     Enums: {
       category_kind: "story" | "member"
