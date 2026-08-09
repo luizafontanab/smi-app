@@ -1,26 +1,37 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --smi-navy: #16283f;
+  --smi-steel: #2d4a6b;
+  --smi-amber: #e8a020;
+  --smi-paper: #f7f8fa;
+  --smi-ink: #1a2230;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-navy: var(--smi-navy);
+  --color-steel: var(--smi-steel);
+  --color-amber: var(--smi-amber);
+  --color-paper: var(--smi-paper);
+  --color-ink: var(--smi-ink);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--smi-paper);
+  color: var(--smi-ink);
 }
+
+.story-body {
+  line-height: 1.75;
+}
+.story-body p { margin: 1em 0; }
+.story-body h2, .story-body h3 { font-weight: 700; margin: 1.4em 0 0.5em; }
+.story-body img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 1em 0; }
+.story-body a { color: var(--smi-steel); text-decoration: underline; }
+
+.carousel {
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+}
+.carousel > * { scroll-snap-align: start; }
