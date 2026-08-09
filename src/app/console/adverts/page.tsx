@@ -8,7 +8,10 @@ export const dynamic = "force-dynamic";
 export default async function AdvertsPage() {
   await requireConsole();
   const db = serviceDb();
-  const today = new Date().toISOString().slice(0, 10);
+  // eslint-disable-next-line react-hooks/purity -- server component, per-request render is the point
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
 
   const [{ data: adverts }, { data: bookings }, { data: slots }, { data: placements }] = await Promise.all([
     db.from("adverts").select("id, name, format, desktop_path, advertiser:advertisers(name, member:members(name))").order("created_at"),
@@ -43,7 +46,7 @@ export default async function AdvertsPage() {
           <tbody>
             {(bookings ?? []).map((b) => {
               const isLive = b.starts_on <= today && b.ends_on >= today;
-              const expiring = isLive && b.ends_on <= new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+              const expiring = isLive && b.ends_on <= weekOut;
               return (
                 <tr key={b.id} className="border-t">
                   <td className="py-2">{b.advert?.name}</td>

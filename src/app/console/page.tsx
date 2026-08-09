@@ -6,8 +6,10 @@ export const dynamic = "force-dynamic";
 
 export default async function CommandCentre() {
   const db = serviceDb();
-  const today = new Date().toISOString().slice(0, 10);
-  const weekOut = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  // eslint-disable-next-line react-hooks/purity -- server component, per-request render is the point
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
 
   const [members, advertBookings, pendingStories, pendingEvents, pendingRevisions, expiring, graceMembers, deadJobs, inbox, draftIssue, subscribers] = await Promise.all([
     db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"),
