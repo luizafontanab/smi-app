@@ -99,8 +99,13 @@ async function main() {
   }
 
   console.log("— real stories from WP API");
-  const posts: any[] = await fetch(`${WP}/posts?per_page=25&_embed`).then((r) => r.json());
-  const storyRows: any[] = [];
+  type WpPost = {
+    slug: string; date: string; categories?: number[];
+    title: { rendered: string }; excerpt?: { rendered: string }; content?: { rendered: string };
+    _embedded?: { "wp:featuredmedia"?: { source_url?: string }[] };
+  };
+  const posts: WpPost[] = await fetch(`${WP}/posts?per_page=25&_embed`).then((r) => r.json());
+  const storyRows: Record<string, unknown>[] = [];
   for (const [i, p] of posts.entries()) {
     let cover_path: string | null = null;
     const mediaUrl = p._embedded?.["wp:featuredmedia"]?.[0]?.source_url;
@@ -130,7 +135,7 @@ async function main() {
     });
   }
   for (const row of storyRows) {
-    const { wp_cats, ...insert } = row;
+    const { wp_cats, ...insert } = row as { wp_cats: number[] } & Record<string, unknown>;
     const { data: story, error } = await db.from("stories").insert(insert).select("id").single();
     if (error) throw error;
     const mapped = wp_cats.map((c: number) => wpCatMap.get(c)).filter(Boolean);
@@ -241,7 +246,7 @@ async function main() {
   const { data: allPub } = await db.from("stories").select("id, member_id").eq("status", "published");
   const { data: allAds } = await db.from("adverts").select("id").eq("format", "banner");
   const fakeCompanies = ["Midlands Aero Components", "Precision Weld UK", "Northern Laser Services", "Clyde Fabrication", "Thames Estuary Marine", null, null, null, null, null];
-  const events: any[] = [];
+  const events: Record<string, unknown>[] = [];
   for (let d = 90; d >= 0; d--) {
     const day = new Date(today.getTime() - d * 864e5);
     const views = faker.number.int({ min: 40, max: 110 });

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 export function CookieConsent() {
   const [show, setShow] = useState(false);
   useEffect(() => {
-    setShow(!document.cookie.includes("smi-consent="));
+    const t = setTimeout(() => setShow(!document.cookie.includes("smi-consent=")), 0);
+    return () => clearTimeout(t);
   }, []);
   if (!show) return null;
   const choose = (v: "all" | "essential") => {
