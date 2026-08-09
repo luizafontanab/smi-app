@@ -218,6 +218,19 @@ export async function addContact(formData: FormData) {
   revalidatePath("/console/members");
 }
 
+/* ---------- members ---------- */
+
+export async function setMemberStatus(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  if (!["active", "grace", "lapsed", "draft"].includes(status)) return;
+  await serviceDb().from("members").update({ status }).eq("id", id);
+  revalidatePath("/console/members");
+  revalidatePath("/console");
+}
+
 /* ---------- inbox ---------- */
 
 export async function markInboxRead(formData: FormData) {

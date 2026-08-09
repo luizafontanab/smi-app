@@ -1,23 +1,26 @@
+import { CheckoutForm } from "./CheckoutForm";
+
 export const metadata = { title: "Checkout" };
 
 /**
- * Stripe checkout is stubbed locally (Payments adapter, TECH-DECISIONS).
- * In production this redirects to a Stripe Checkout session; promo codes
- * (1 month / 12 months free) apply at this step.
+ * Stripe Checkout hand-off in production; locally the payment step is
+ * simulated so the full join flow works end-to-end. Promo codes work in both.
  */
 export default function CheckoutPage() {
+  const isLocalStub = !process.env.STRIPE_SECRET_KEY;
   return (
-    <div className="mx-auto max-w-md px-4 text-center">
-      <div className="mt-12 rounded-xl bg-white p-8 shadow-sm">
-        <p className="text-4xl">🔒</p>
-        <h1 className="mt-3 text-xl font-bold text-navy">Checkout (local stub)</h1>
-        <p className="mt-2 text-sm text-gray-600">
-          In production this hands off to Stripe Checkout — £40/month subscription,
-          promo-code field included. No payment details ever touch SMI&apos;s servers.
+    <div className="mx-auto max-w-md px-4">
+      <div className="mt-10 rounded-xl bg-white p-8 shadow-sm">
+        <h1 className="text-xl font-bold text-navy">Join — £40/month</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Create your account and company page. Payment is handled by Stripe — card details never touch SMI&apos;s servers.
         </p>
-        <p className="mt-4 rounded bg-paper p-3 text-xs text-gray-500">
-          Local dev: accounts are created via the seed script or the admin console.
-        </p>
+        {isLocalStub && (
+          <p className="mt-3 rounded bg-amber/10 p-2 text-xs text-gray-600">
+            Local dev: payment is simulated. Promo codes <code>SMI-FREE-MONTH</code> / <code>SMI-FREE-YEAR</code> also work.
+          </p>
+        )}
+        <CheckoutForm />
       </div>
     </div>
   );

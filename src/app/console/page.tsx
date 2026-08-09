@@ -11,7 +11,7 @@ export default async function CommandCentre() {
   const today = new Date(now).toISOString().slice(0, 10);
   const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
 
-  const [members, advertBookings, pendingStories, pendingEvents, pendingRevisions, expiring, graceMembers, deadJobs, inbox, draftIssue, subscribers] = await Promise.all([
+  const [members, advertBookings, pendingStories, pendingEvents, pendingRevisions, expiring, graceMembers, draftMembers, deadJobs, inbox, draftIssue, subscribers] = await Promise.all([
     db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"),
     db.from("advert_bookings").select("*", { count: "exact", head: true }).lte("starts_on", today).gte("ends_on", today),
     db.from("stories").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
@@ -19,6 +19,7 @@ export default async function CommandCentre() {
     db.from("member_revisions").select("id, member:members(name)").eq("status", "awaiting_approval"),
     db.from("advert_bookings").select("id, ends_on, advert:adverts(name)").gte("ends_on", today).lte("ends_on", weekOut),
     db.from("members").select("id, name").eq("status", "grace"),
+    db.from("members").select("id, name").eq("status", "draft"),
     db.from("jobs").select("id, kind, last_error").eq("status", "dead"),
     db.from("inbox_messages").select("id, kind, name, email, message").eq("read", false).limit(5),
     db.from("newsletter_issues").select("id, number").eq("status", "draft").limit(1),
@@ -36,6 +37,7 @@ export default async function CommandCentre() {
   if (pendingRevisions.data?.length) needs.push({ label: `${pendingRevisions.data.length} member page edits awaiting approval`, href: "#approvals" });
   if (expiring.data?.length) needs.push({ label: `${expiring.data.length} adverts expire within 7 days`, href: "/console/adverts" });
   if (graceMembers.data?.length) needs.push({ label: `${graceMembers.data.length} memberships lapsing (grace period)`, href: "/console/members" });
+  if (draftMembers.data?.length) needs.push({ label: `${draftMembers.data.length} new member pages awaiting activation`, href: "/console/members" });
   if (draftIssue.data?.length) needs.push({ label: `Newsletter issue ${draftIssue.data[0].number} is drafted but unsent`, href: "/console/newsletter" });
   if (deadJobs.data?.length) needs.push({ label: `⚠ ${deadJobs.data.length} background jobs failed and need attention`, href: "#jobs", urgent: true });
 

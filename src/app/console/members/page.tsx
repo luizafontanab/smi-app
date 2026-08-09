@@ -1,6 +1,6 @@
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
-import { addContact } from "../actions";
+import { addContact, setMemberStatus } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -57,11 +57,20 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                       <p className="text-xs text-gray-400">{m.category?.name} · joined {m.joined_at} · {m.billing_mode}</p>
                     </td>
                     <td className="text-right">
-                      <span className={`rounded px-2 py-0.5 text-xs ${
-                        m.status === "active" ? "bg-green-100 text-green-700" :
-                        m.status === "grace" ? "bg-amber/20 text-amber" :
-                        m.status === "lapsed" ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-500"}`}>
-                        {m.status}
+                      <span className="flex items-center justify-end gap-2">
+                        <span className={`rounded px-2 py-0.5 text-xs ${
+                          m.status === "active" ? "bg-green-100 text-green-700" :
+                          m.status === "grace" ? "bg-amber/20 text-amber" :
+                          m.status === "lapsed" ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-500"}`}>
+                          {m.status}
+                        </span>
+                        {m.status !== "active" && (
+                          <form action={setMemberStatus}>
+                            <input type="hidden" name="id" value={m.id} />
+                            <input type="hidden" name="status" value="active" />
+                            <button className="rounded bg-green-600 px-2 py-0.5 text-xs text-white">Activate</button>
+                          </form>
+                        )}
                       </span>
                     </td>
                   </tr>

@@ -36,6 +36,7 @@ export default async function MemberDashboard(props: PageProps<"/member">) {
     <div>
       {submitted && (
         <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+          {submitted === "welcome" && "Welcome to SMI! Complete your company page below — it goes live in the directory once the editor approves it."}
           {submitted === "story" && "Story submitted — it goes live once the editor approves it, and we'll email you."}
           {submitted === "event" && "Event submitted for approval."}
           {submitted === "profile" && "Page changes submitted — they appear once approved."}

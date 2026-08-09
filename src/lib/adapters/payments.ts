@@ -5,17 +5,27 @@
  */
 
 export type CheckoutRequest = { email: string; companyName: string; promoCode?: string };
-export type CheckoutResult = { url: string } | { comped: true } | { error: string };
+export type CheckoutResult =
+  | { kind: "redirect"; url: string }   // Stripe-hosted checkout (production)
+  | { kind: "paid" }                    // payment settled (stub simulates success)
+  | { kind: "comped"; months: number }  // valid promo code
+  | { kind: "error"; message: string };
 
 export interface Payments {
   /** Create a £40/mo subscription checkout; promo codes (1mo/12mo free) apply here. */
   createCheckout(req: CheckoutRequest): Promise<CheckoutResult>;
 }
 
+const LOCAL_PROMO_CODES: Record<string, number> = { "SMI-FREE-MONTH": 1, "SMI-FREE-YEAR": 12 };
+
 class LocalStubPayments implements Payments {
   async createCheckout(req: CheckoutRequest): Promise<CheckoutResult> {
-    if (req.promoCode) return { comped: true };
-    return { url: "/join/checkout" }; // local stub page
+    if (req.promoCode) {
+      const months = LOCAL_PROMO_CODES[req.promoCode.trim().toUpperCase()];
+      if (!months) return { kind: "error", message: "Unknown promo code." };
+      return { kind: "comped", months };
+    }
+    return { kind: "paid" }; // local dev: card payment simulated as successful
   }
 }
 
