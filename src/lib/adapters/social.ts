@@ -4,6 +4,8 @@
  * Tags come from CRM-stored handles only — never hand-typed at post time.
  */
 
+import { socialHandle, socialHref } from "@/lib/social";
+
 export type SocialPost = {
   text: string;
   imagePath: string | null;
@@ -16,7 +18,13 @@ export interface SocialPublisher {
 
 class LoggingSocialStub implements SocialPublisher {
   async publish(post: SocialPost): Promise<void> {
-    const tags = Object.entries(post.tagHandles).map(([ch, h]) => `${ch}:@${h}`).join(" ");
+    // stored values are URLs as often as handles — reduce both to a readable tag
+    const tags = Object.entries(post.tagHandles)
+      .map(([ch, h]) => {
+        const href = socialHref(ch, h);
+        return `${ch}:${(href && socialHandle(ch, href)) ?? h}`;
+      })
+      .join(" ");
     console.log(`[social] would post (${tags || "no tags"}): ${post.text.split("\n")[0].slice(0, 80)}`);
   }
 }

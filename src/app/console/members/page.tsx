@@ -12,7 +12,7 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
   const db = serviceDb();
 
   const [{ data: members }, { data: contacts }] = await Promise.all([
-    db.from("members").select("id, name, status, joined_at, billing_mode, category:categories(name)").order("name"),
+    db.from("members").select("id, name, status, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, category:categories(name)").order("name"),
     db.from("contacts").select("id, email, name, company, subscribed, unsubscribed_at, member:members(name), last_synced_at").order("created_at", { ascending: false }).limit(200),
   ]);
 
@@ -54,10 +54,23 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                   <tr key={m.id} className="border-t">
                     <td className="py-1.5">
                       <a href={`?member=${m.id}${q ? `&q=${q}` : ""}`} className="font-medium hover:text-steel">{m.name}</a>
-                      <p className="text-xs text-gray-400">{m.category?.name} · joined {m.joined_at} · {m.billing_mode}</p>
+                      <p className="text-xs text-gray-400">
+                        {m.category?.name} · joined {m.joined_at} · {m.billing_mode} ·{" "}
+                        <a href={`/console/pages?type=member_profile&entity=${m.id}`} className="underline hover:text-steel">page layout</a>
+                      </p>
                     </td>
                     <td className="text-right">
                       <span className="flex items-center justify-end gap-2">
+                        {m.status === "draft" && (
+                          <>
+                            <span className={`rounded px-2 py-0.5 text-xs ${m.paid_at || m.comped_until ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
+                              {m.paid_at ? "paid ✓" : m.comped_until ? `comped → ${m.comped_until}` : "unpaid"}
+                            </span>
+                            <span className={`rounded px-2 py-0.5 text-xs ${m.draft_submitted_at ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
+                              {m.draft_submitted_at ? "page ✓" : "no page"}
+                            </span>
+                          </>
+                        )}
                         <span className={`rounded px-2 py-0.5 text-xs ${
                           m.status === "active" ? "bg-green-100 text-green-700" :
                           m.status === "grace" ? "bg-amber/20 text-amber" :
@@ -65,11 +78,17 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                           {m.status}
                         </span>
                         {m.status !== "active" && (
-                          <form action={setMemberStatus}>
-                            <input type="hidden" name="id" value={m.id} />
-                            <input type="hidden" name="status" value="active" />
-                            <button className="rounded bg-green-600 px-2 py-0.5 text-xs text-white">Activate</button>
-                          </form>
+                          m.status === "draft" && !m.paid_at && !m.comped_until ? (
+                            <span className="text-xs text-gray-400">awaiting payment</span>
+                          ) : m.status === "draft" && !m.draft_submitted_at ? (
+                            <span className="text-xs text-gray-400">awaiting page</span>
+                          ) : (
+                            <form action={setMemberStatus}>
+                              <input type="hidden" name="id" value={m.id} />
+                              <input type="hidden" name="status" value="active" />
+                              <button className="rounded bg-green-600 px-2 py-0.5 text-xs text-white">Activate</button>
+                            </form>
+                          )
                         )}
                       </span>
                     </td>

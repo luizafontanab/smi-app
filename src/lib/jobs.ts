@@ -14,7 +14,8 @@ export type JobKind =
   | "notify_member"          // payload: { member_id, kind, ... }
   | "crm_sync"               // periodic Bigin poll
   | "rollup_daily"           // nightly analytics rollup + partition upkeep
-  | "newsletter_send";       // payload: { issue_id }
+  | "newsletter_send"        // payload: { issue_id }
+  | "comp_expiry";           // daily sweep: expired promo comps → grace + console note
 
 export async function enqueue(kind: JobKind, payload: Record<string, unknown> = {}, dueAt?: Date) {
   await serviceDb().from("jobs").insert({ kind, payload: payload as Json, due_at: (dueAt ?? new Date()).toISOString() });
@@ -28,6 +29,7 @@ export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   await ensurePeriodic("publish_scheduled", 60);
   await ensurePeriodic("crm_sync", 15 * 60);
   await ensurePeriodic("rollup_daily", 24 * 60 * 60);
+  await ensurePeriodic("comp_expiry", 24 * 60 * 60);
 
   const { data: due } = await db
     .from("jobs")
@@ -123,19 +125,23 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
       break;
     }
     case "notify_member": {
-      const { data: member } = await db.from("members").select("id, name").eq("id", String(payload.member_id)).single();
+      const { data: member } = await db.from("members").select("id, name, contact_email").eq("id", String(payload.member_id)).single();
       if (!member) return;
       await db.from("notifications").insert({
         member_id: member.id,
         kind: String(payload.kind ?? "generic"),
         payload: payload as Json,
       });
+      if (!member.contact_email) return; // pre-funnel members may have no address; in-app notification still lands
       const { getEmailSender } = await import("./adapters/email");
       await getEmailSender().send({
-        to: `member@${member.id}.local`,
+        to: member.contact_email,
         subject: payload.kind === "story_live" ? "Your story is live on SMI" :
-                 payload.kind === "story_rejected" ? "About your submitted story" : "Update from SMI",
-        text: String(payload.reason ?? "Log in to your member area for details."),
+                 payload.kind === "story_rejected" ? "About your submitted story" :
+                 payload.kind === "page_live" ? "Your SMI member page is live" : "Update from SMI",
+        text: payload.kind === "page_live"
+          ? "Your company page has been approved and is now live in the SMI member directory."
+          : String(payload.reason ?? "Log in to your member area for details."),
       });
       break;
     }
@@ -147,6 +153,29 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
     case "rollup_daily": {
       const { error } = await db.rpc("run_daily_rollup");
       if (error) throw new Error(error.message);
+      break;
+    }
+    case "comp_expiry": {
+      // promo comp ran out with no card payment → grace (Jas decides from there;
+      // grace members already surface in "Needs You Today")
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: expired } = await db
+        .from("members")
+        .select("id, name, contact_email, comped_until")
+        .eq("status", "active")
+        .is("paid_at", null)
+        .lt("comped_until", today);
+      for (const m of expired ?? []) {
+        const graceUntil = new Date(`${m.comped_until}T12:00:00Z`);
+        graceUntil.setUTCDate(graceUntil.getUTCDate() + 30);
+        await db.from("members").update({ status: "grace", grace_until: graceUntil.toISOString().slice(0, 10) }).eq("id", m.id);
+        await db.from("inbox_messages").insert({
+          kind: "membership",
+          name: m.name,
+          email: m.contact_email ?? "",
+          message: `Promo comp expired on ${m.comped_until} — moved to grace until ${graceUntil.toISOString().slice(0, 10)}.`,
+        });
+      }
       break;
     }
     case "newsletter_send": {

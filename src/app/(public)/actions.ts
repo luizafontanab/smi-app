@@ -1,6 +1,7 @@
 "use server";
 
 import { serviceDb } from "@/lib/db/server";
+import { ADMIN_EMAIL } from "@/lib/notify-admin";
 
 export async function subscribeNewsletter(_prev: { message: string }, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -29,7 +30,7 @@ export async function sendContactMessage(_prev: { message: string }, formData: F
   await db.from("inbox_messages").insert({ kind, name, email, message });
   const { getEmailSender } = await import("@/lib/adapters/email");
   await getEmailSender().send({
-    to: "jas@smi.local",
+    to: ADMIN_EMAIL,
     subject: `New ${kind} enquiry from ${name}`,
     text: `${name} <${email}>\n\n${message}`,
   });

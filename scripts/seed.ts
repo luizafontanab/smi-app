@@ -6,6 +6,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { faker } from "@faker-js/faker";
+import { svgBanner } from "./lib/placeholder-art";
 
 faker.seed(42);
 
@@ -23,16 +24,6 @@ const slugify = (s: string) =>
 const decode = (s: string) =>
   s.replace(/&#8217;/g, "'").replace(/&#8216;/g, "'").replace(/&#8220;|&#8221;/g, '"').replace(/&amp;/g, "&").replace(/&#8211;/g, "–").replace(/&hellip;/g, "…");
 const stripTags = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-
-function svgBanner(text: string, w: number, h: number, bg: string): Buffer {
-  return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-      <rect width="${w}" height="${h}" fill="${bg}"/>
-      <text x="50%" y="50%" font-family="Arial" font-size="${Math.min(h / 3, 40)}" fill="#fff" text-anchor="middle" dominant-baseline="middle">${text}</text>
-      <text x="50%" y="82%" font-family="Arial" font-size="${Math.min(h / 6, 16)}" fill="#ffffffaa" text-anchor="middle">${w}×${h} · seed placeholder</text>
-    </svg>`
-  );
-}
 
 async function upload(path: string, body: Buffer | Blob, contentType: string) {
   const { error } = await db.storage.from("media").upload(path, body, { contentType, upsert: true });
@@ -66,6 +57,10 @@ async function main() {
       slug: slugify(name) + "-" + i,
       name,
       status: i < 78 ? "active" : i < 81 ? "grace" : i < 83 ? "lapsed" : "draft",
+      contact_email: faker.internet.email().toLowerCase(),
+      // join funnel: one draft ready to activate (paid + page submitted), one mid-funnel (neither)
+      paid_at: i === 83 ? faker.date.recent({ days: 3 }).toISOString() : null,
+      draft_submitted_at: i === 83 ? faker.date.recent({ days: 2 }).toISOString() : null,
       category_id: faker.helpers.arrayElement(memberCatIds),
       description: faker.lorem.paragraphs(2),
       address: `${faker.location.streetAddress()}, ${faker.helpers.arrayElement(UK_REGIONS)}`,
@@ -95,6 +90,7 @@ async function main() {
   for (let i = 0; i < 3; i++) {
     const m = activeMembers[i];
     await mkUser(`member${i + 1}@smi.local`, "member", m.id, m.name);
+    await db.from("members").update({ contact_email: `member${i + 1}@smi.local` }).eq("id", m.id);
     memberLogins.push(m.id);
   }
 
@@ -169,7 +165,8 @@ async function main() {
     { key: "news_mid", label: "News mid-page", cap: 3 },
     { key: "footer", label: "Footer banner", cap: 3 },
     { key: "supplier_logos", label: "Supplier logos", cap: 8 },
-  ]);
+  ]); // story_ad_* / member_ad_* / machine_ad_* come from migration 20260810000002;
+  // videos_mid / events_mid / directory_mid from 20260811000002
   const palette = ["#1e3a5f", "#7c2d12", "#14532d", "#581c87", "#7f1d1d", "#0c4a6e", "#3f6212", "#701a75"];
   const today = new Date();
   const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -179,15 +176,15 @@ async function main() {
   for (let i = 0; i < 8; i++) {
     const m = activeMembers[i + 3];
     const { data: adv } = await db.from("advertisers").insert({ name: m.name, member_id: m.id, contact_email: `sales@${slugify(m.name)}.co.uk` }).select("id").single();
-    const dPath = await upload(`adverts/banner-${i}-desktop.svg`, svgBanner(m.name, 1280, 170, palette[i]), "image/svg+xml");
-    const mPath = await upload(`adverts/banner-${i}-mobile.svg`, svgBanner(m.name, 370, 280, palette[i]), "image/svg+xml");
+    const dPath = await upload(`panels/panel-${i}-wide.svg`, svgBanner(m.name, 1280, 170, palette[i]), "image/svg+xml");
+    const mPath = await upload(`panels/panel-${i}-narrow.svg`, svgBanner(m.name, 370, 280, palette[i]), "image/svg+xml");
     const { data: ad } = await db.from("adverts").insert({ advertiser_id: adv!.id, name: `${m.name} banner`, desktop_path: dPath, mobile_path: mPath, format: "banner" }).select("id").single();
     await db.from("advert_bookings").insert({ advert_id: ad!.id, starts_on: iso(monthsAgo), ends_on: i < 6 ? iso(monthsAhead) : iso(new Date(today.getTime() + 5 * 864e5)) }); // 2 expire within a week
   }
   for (let i = 0; i < 5; i++) {
     const m = activeMembers[i + 12];
     const { data: adv } = await db.from("advertisers").insert({ name: m.name, member_id: m.id }).select("id").single();
-    const p = await upload(`adverts/logo-${i}.svg`, svgBanner(m.name.split(" ")[0], 240, 120, palette[(i + 3) % 8]), "image/svg+xml");
+    const p = await upload(`panels/mark-${i}.svg`, svgBanner(m.name.split(" ")[0], 240, 120, palette[(i + 3) % 8]), "image/svg+xml");
     const { data: ad } = await db.from("adverts").insert({ advertiser_id: adv!.id, name: `${m.name} supplier logo`, desktop_path: p, mobile_path: p, format: "supplier_logo" }).select("id").single();
     await db.from("advert_bookings").insert({ advert_id: ad!.id, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
@@ -295,6 +292,10 @@ async function main() {
     { key: "grid", value: { blocks: 12, mix: { news: 6, video: 2, member_news: 2, featured_member: 1, featured_machine: 1 } } },
     { key: "social_caps", value: { per_day: 3, delay_minutes: 30 } },
   ]);
+  const { DEFAULT_LAYOUTS } = await import("../src/lib/blocks/defaults");
+  await db.from("page_layouts").insert(
+    Object.entries(DEFAULT_LAYOUTS).map(([page_type, layout]) => ({ page_type, entity_id: null, layout })),
+  );
   await db.from("jobs").insert({ kind: "newsletter_draft_reminder", payload: { month: iso(today).slice(0, 7) }, due_at: new Date().toISOString() });
 
   console.log("Seed complete.");

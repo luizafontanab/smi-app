@@ -669,6 +669,10 @@ export type Database = {
           image_path: string | null
           member_id: string
           name: string
+          rejected_reason: string | null
+          source: string
+          status: string
+          submitted_by: string | null
         }
         Insert: {
           created_at?: string
@@ -678,6 +682,10 @@ export type Database = {
           image_path?: string | null
           member_id: string
           name: string
+          rejected_reason?: string | null
+          source?: string
+          status?: string
+          submitted_by?: string | null
         }
         Update: {
           created_at?: string
@@ -687,6 +695,10 @@ export type Database = {
           image_path?: string | null
           member_id?: string
           name?: string
+          rejected_reason?: string | null
+          source?: string
+          status?: string
+          submitted_by?: string | null
         }
         Relationships: [
           {
@@ -695,6 +707,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "members"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "featured_machines_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -851,8 +870,11 @@ export type Database = {
           address: string | null
           billing_mode: string
           category_id: number | null
+          comped_until: string | null
+          contact_email: string | null
           created_at: string
           description: string | null
+          draft_submitted_at: string | null
           grace_until: string | null
           hero_path: string | null
           id: string
@@ -861,6 +883,7 @@ export type Database = {
           lng: number | null
           logo_path: string | null
           name: string
+          paid_at: string | null
           phone: string | null
           search_tsv: unknown
           slug: string
@@ -875,8 +898,11 @@ export type Database = {
           address?: string | null
           billing_mode?: string
           category_id?: number | null
+          comped_until?: string | null
+          contact_email?: string | null
           created_at?: string
           description?: string | null
+          draft_submitted_at?: string | null
           grace_until?: string | null
           hero_path?: string | null
           id?: string
@@ -885,6 +911,7 @@ export type Database = {
           lng?: number | null
           logo_path?: string | null
           name: string
+          paid_at?: string | null
           phone?: string | null
           search_tsv?: unknown
           slug: string
@@ -899,8 +926,11 @@ export type Database = {
           address?: string | null
           billing_mode?: string
           category_id?: number | null
+          comped_until?: string | null
+          contact_email?: string | null
           created_at?: string
           description?: string | null
+          draft_submitted_at?: string | null
           grace_until?: string | null
           hero_path?: string | null
           id?: string
@@ -909,6 +939,7 @@ export type Database = {
           lng?: number | null
           logo_path?: string | null
           name?: string
+          paid_at?: string | null
           phone?: string | null
           search_tsv?: unknown
           slug?: string
@@ -1106,6 +1137,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      page_layouts: {
+        Row: {
+          entity_id: string | null
+          id: string
+          layout: Json
+          page_type: string
+          updated_at: string
+        }
+        Insert: {
+          entity_id?: string | null
+          id?: string
+          layout: Json
+          page_type: string
+          updated_at?: string
+        }
+        Update: {
+          entity_id?: string | null
+          id?: string
+          layout?: Json
+          page_type?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       placements: {
         Row: {
@@ -1472,6 +1527,7 @@ export type Database = {
         Returns: undefined
       }
       run_daily_rollup: { Args: never; Returns: undefined }
+      site_sessions_last_year: { Args: never; Returns: number }
     }
     Enums: {
       category_kind: "story" | "member"

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CurrentUser } from "@/lib/auth";
 
 const MEDIA_ITEMS = [
   { href: "/news", label: "News" },
@@ -7,35 +8,50 @@ const MEDIA_ITEMS = [
   { href: "/pages/mach-publication", label: "Magazine" },
 ];
 
-export function SiteHeader() {
+/** Session comes from the public layout — this stays presentational. */
+export function SiteHeader({ user }: { user: CurrentUser | null }) {
+  const dashboard = user?.role === "member" ? "/member" : "/console";
+  const name = user ? user.displayName ?? user.email : "";
   return (
-    <header className="border-b bg-navy text-white">
+    <header className="site-chrome-top border-b bg-chrome text-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
         <Link href="/" className="text-lg font-bold tracking-tight">
           Sheet Metal <span className="text-amber">Industries</span>
         </Link>
         <nav className="flex items-center gap-1 text-sm">
           <div className="group relative">
-            <button className="rounded px-3 py-2 hover:bg-steel" aria-haspopup="true">
+            <button className="rounded px-3 py-2 hover:bg-chrome-hover" aria-haspopup="true">
               Media ▾
             </button>
-            <div className="invisible absolute left-0 z-20 w-44 rounded-b bg-navy py-1 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+            <div className="invisible absolute left-0 z-20 w-44 rounded-b bg-chrome py-1 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
               {MEDIA_ITEMS.map((i) => (
-                <Link key={i.href} href={i.href} className="block px-4 py-2 hover:bg-steel">
+                <Link key={i.href} href={i.href} className="block px-4 py-2 hover:bg-chrome-hover">
                   {i.label}
                 </Link>
               ))}
             </div>
           </div>
-          <Link href="/members" className="hidden rounded px-3 py-2 hover:bg-steel sm:block">Members</Link>
-          <Link href="/featured-machine" className="hidden rounded px-3 py-2 hover:bg-steel md:block">Featured Machine</Link>
-          <Link href="/events" className="hidden rounded px-3 py-2 hover:bg-steel md:block">Events</Link>
-          <Link href="/advertising" className="hidden rounded px-3 py-2 hover:bg-steel lg:block">Advertising</Link>
-          <Link href="/search" className="rounded px-3 py-2 hover:bg-steel" aria-label="Search">🔍</Link>
-          <Link href="/join" className="rounded bg-amber px-3 py-2 font-semibold text-navy hover:brightness-110">
-            Become a Member
-          </Link>
-          <Link href="/member" className="rounded border border-white/30 px-3 py-2 hover:bg-steel">Login</Link>
+          <Link href="/members" className="hidden rounded px-3 py-2 hover:bg-chrome-hover sm:block">Members</Link>
+          <Link href="/featured-machine" className="hidden rounded px-3 py-2 hover:bg-chrome-hover md:block">Featured Machine</Link>
+          <Link href="/events" className="hidden rounded px-3 py-2 hover:bg-chrome-hover md:block">Events</Link>
+          <Link href="/advertising" className="hidden rounded px-3 py-2 hover:bg-chrome-hover lg:block">Advertising</Link>
+          <Link href="/search" className="rounded px-3 py-2 hover:bg-chrome-hover" aria-label="Search">🔍</Link>
+          {user ? (
+            <Link
+              href={dashboard}
+              title={name}
+              className="inline-block max-w-[12rem] truncate rounded bg-amber px-3 py-2 align-middle font-semibold text-navy hover:brightness-110"
+            >
+              {name}
+            </Link>
+          ) : (
+            <>
+              <Link href="/join" className="rounded bg-amber px-3 py-2 font-semibold text-navy hover:brightness-110">
+                Become a Member
+              </Link>
+              <Link href="/member" className="rounded border border-white/30 px-3 py-2 hover:bg-chrome-hover">Login</Link>
+            </>
+          )}
         </nav>
       </div>
     </header>

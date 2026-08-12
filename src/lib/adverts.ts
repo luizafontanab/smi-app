@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { serviceDb } from "./db/server";
 
 /**
@@ -19,7 +20,32 @@ export type LiveAdvert = {
   memberId: string | null;
 };
 
+/**
+ * Preview switch for the unsold state, set from /console/adverts. Empties the
+ * inventory for this browser only, so every slot falls back to its placeholder
+ * and you can check slot footprints without wiping the seeded adverts.
+ */
+export const AD_PREVIEW_COOKIE = "smi-ads";
+
+export async function adPreview(): Promise<boolean> {
+  const store = await cookies();
+  return store.get(AD_PREVIEW_COOKIE)?.value === "empty";
+}
+
+/**
+ * Whether empty slots draw their dashed footprint. On in dev, and anywhere the
+ * preview cookie is set — the cookie is the real gate, and only /console/adverts
+ * (auth-gated) sets it, so no reader ever sees a hollow box. Deliberately not
+ * NODE_ENV alone: that made the placeholders unreachable in a `next start`
+ * demo build, and an empty state you cannot reach is an empty state you cannot
+ * trust.
+ */
+export async function showAdPlaceholders(): Promise<boolean> {
+  return process.env.NODE_ENV !== "production" || (await adPreview());
+}
+
 export async function liveAdverts(format: "banner" | "supplier_logo"): Promise<LiveAdvert[]> {
+  if (await adPreview()) return [];
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
@@ -72,9 +98,13 @@ export function dealSlots(adverts: LiveAdvert[], slotKeys: string[], perSlot = 3
   return out;
 }
 
-/** Advert click target: explicit link_url, else the advertiser's member page. */
+/**
+ * Advert click target: explicit link_url, else the advertiser's member page.
+ * Deliberately /visit/ — see the note in src/app/visit/[id]/route.ts before
+ * changing it to anything containing "ad", "click" or "out".
+ */
 export function advertHref(ad: LiveAdvert): string {
-  return `/out/${ad.advertId}`;
+  return `/visit/${ad.advertId}`;
 }
 
 export function resolveAdvertTarget(linkUrl: string | null, memberSlug: string | null): string {

@@ -1,4 +1,5 @@
 import { publicDb, serviceDb } from "./db/server";
+import { displayLocation } from "./location";
 
 export type StoryCard = {
   id: string;
@@ -67,7 +68,7 @@ export async function activePlacements() {
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
     .from("placements")
-    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, category:categories(name)), machine:featured_machines(id, name, description, image_path, external_url, member:members(slug, name))")
+    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, category:categories(name)), machine:featured_machines(id, name, description, image_path, external_url, status, member:members(slug, name))")
     .lte("starts_on", today)
     .gte("ends_on", today);
   return data ?? [];
@@ -93,20 +94,45 @@ export async function upcomingEvents(limit = 6) {
     .gte("starts_on", new Date().toISOString().slice(0, 10))
     .order("starts_on")
     .limit(limit);
-  return data ?? [];
+  // the only events read path — repair legacy ACF map blobs once, here
+  return (data ?? []).map((e) => ({ ...e, location: displayLocation(e.location) }));
 }
 
-export async function memberDirectory(category?: string) {
+/**
+ * Reduce a user term to a literal ILIKE substring. PostgREST parses `or=(…)` as a
+ * comma/paren-delimited logic tree and ILIKE treats %, _ and * as wildcards, so a raw
+ * term can silently widen the filter (`a,id.not.is.null` ORs in a match-everything leaf
+ * and returns the whole directory; a stray `)` closes the group early) or corrupt it
+ * (a trailing \ escapes our own closing wildcard). Same strip-then-collapse shape as
+ * searchSite's tsquery escaping. Dots, colons, apostrophes and ampersands are safe and
+ * deliberately kept — member names need them ("O'Brien & Sons Ltd.", "co.uk").
+ */
+export function ilikeTerm(raw: string): string {
+  return raw
+    .slice(0, 80)
+    .replace(/[,()%_*\\"\x00]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export async function memberDirectory(opts: { category?: string; q?: string } = {}) {
+  const term = ilikeTerm(opts.q ?? "");
+  // A term that sanitises away to nothing ("%%%") is unusable, not "match all" —
+  // same stance as searchSite, which returns nothing for an empty tsquery.
+  if (opts.q?.trim() && !term) return [];
+
   const db = publicDb();
   let q = db
     .from("members")
     .select("slug, name, logo_path, description, address, website, phone, category:categories(slug, name)")
     .eq("status", "active")
     .order("name");
-  if (category) {
-    const { data: cat } = await db.from("categories").select("id").eq("kind", "member").eq("slug", category).single();
+  if (opts.category) {
+    const { data: cat } = await db.from("categories").select("id").eq("kind", "member").eq("slug", opts.category).single();
     if (cat) q = q.eq("category_id", cat.id);
   }
+  // Separate PostgREST params are ANDed, so this is category AND (name OR description).
+  if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data } = await q;
   return data ?? [];
 }

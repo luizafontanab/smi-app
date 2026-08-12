@@ -3,11 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { canApprove, canWrite, requireConsole } from "@/lib/auth";
-import { serviceDb } from "@/lib/db/server";
+import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { enqueue } from "@/lib/jobs";
+import { uploadImage } from "@/lib/media";
+import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+
+/** Editor image upload — returns the public URL for insertion as <img src>. */
+export async function consoleUploadImage(formData: FormData): Promise<string | null> {
+  await requireConsole();
+  const path = await uploadImage(formData.get("file") as File | null, "stories/console");
+  return mediaUrl(path);
+}
 
 /* ---------- stories ---------- */
 
@@ -21,7 +30,7 @@ export async function saveStory(formData: FormData) {
   const values = {
     title,
     excerpt: String(formData.get("excerpt") ?? ""),
-    body: String(formData.get("body") ?? ""),
+    body: sanitizeRichText(String(formData.get("body") ?? "")),
     member_id: String(formData.get("member_id") ?? "") || null,
     is_member_news: formData.get("is_member_news") === "on",
     cover_focus: formData.get("focus_x")
@@ -137,13 +146,131 @@ export async function decideRevision(formData: FormData) {
   if (!rev || rev.status !== "awaiting_approval") return;
   if (approve) {
     type MemberUpdate = import("@/lib/db/types").Database["public"]["Tables"]["members"]["Update"];
-    await db.from("members").update(rev.payload as MemberUpdate).eq("id", rev.member_id);
+    const payload = { ...(rev.payload as MemberUpdate) };
+    // revisions are member-authored and POST-reachable — never apply unsanitised markup
+    if (typeof payload.description === "string") payload.description = renderableHtml(payload.description);
+    await db.from("members").update(payload).eq("id", rev.member_id);
     await db.from("member_revisions").update({ status: "published", decided_at: new Date().toISOString() }).eq("id", id);
   } else {
     await db.from("member_revisions").update({ status: "rejected", rejected_reason: reason, decided_at: new Date().toISOString() }).eq("id", id);
   }
   await db.from("approvals").insert({ kind: "member_revision", subject_id: id, decision: approve ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
   revalidatePath("/console");
+}
+
+/* ---------- page layouts ---------- */
+
+const PAGE_TYPES = ["story", "member_profile", "featured_machine"] as const;
+
+export async function saveLayout(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const pageType = String(formData.get("page_type")) as (typeof PAGE_TYPES)[number];
+  if (!PAGE_TYPES.includes(pageType)) return;
+  const entityId = String(formData.get("entity_id") ?? "") || null;
+  let layout: unknown;
+  try {
+    layout = JSON.parse(String(formData.get("layout") ?? ""));
+  } catch {
+    return;
+  }
+  const { validateLayout } = await import("@/lib/blocks/schema");
+  const qs = `type=${pageType}${entityId ? `&entity=${entityId}` : ""}`;
+  const error = validateLayout(pageType, layout);
+  if (error) redirect(`/console/pages?${qs}&error=${encodeURIComponent(error)}`);
+  await serviceDb().from("page_layouts").upsert({
+    page_type: pageType,
+    entity_id: entityId,
+    layout: layout as import("@/lib/db/types").Json,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "page_type,entity_id" });
+  revalidatePath("/console/pages");
+  redirect(`/console/pages?${qs}&saved=1`);
+}
+
+export async function resetLayout(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const pageType = String(formData.get("page_type")) as (typeof PAGE_TYPES)[number];
+  if (!PAGE_TYPES.includes(pageType)) return;
+  const entityId = String(formData.get("entity_id") ?? "") || null;
+  let q = serviceDb().from("page_layouts").delete().eq("page_type", pageType);
+  q = entityId ? q.eq("entity_id", entityId) : q.is("entity_id", null);
+  await q;
+  revalidatePath("/console/pages");
+  redirect(`/console/pages?type=${pageType}${entityId ? `&entity=${entityId}` : ""}`);
+}
+
+/* ---------- featured machines ---------- */
+
+export async function saveMachine(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const memberId = String(formData.get("member_id") ?? "");
+  if (!name || !memberId) return; // seller attribution is required on the public page
+  const db = serviceDb();
+  const image = await uploadImage(formData.get("image") as File | null, "machines");
+  const values = {
+    name,
+    member_id: memberId,
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    external_url: String(formData.get("external_url") ?? "") || null,
+    ...(image ? { image_path: image } : {}),
+  };
+  let machineId = id;
+  if (id) {
+    await db.from("featured_machines").update(values).eq("id", id);
+  } else {
+    const { data } = await db.from("featured_machines").insert({
+      ...values,
+      status: "published",
+      source: "admin",
+      submitted_by: user.userId,
+    }).select("id").single();
+    machineId = data!.id;
+  }
+  revalidatePath("/console/machines");
+  redirect(`/console/machines/${machineId}`);
+}
+
+export async function decideMachine(formData: FormData) {
+  const user = await requireConsole();
+  if (!canApprove(user)) return;
+  const id = String(formData.get("id"));
+  const approve = formData.get("decision") === "approve";
+  const reason = String(formData.get("reason") ?? "");
+  const db = serviceDb();
+  const { data: machine } = await db.from("featured_machines").select("id, member_id, status").eq("id", id).single();
+  if (!machine || machine.status !== "awaiting_approval") return;
+  await db.from("featured_machines").update(
+    approve ? { status: "published" } : { status: "rejected", rejected_reason: reason },
+  ).eq("id", id);
+  await db.from("approvals").insert({ kind: "machine", subject_id: id, decision: approve ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
+  if (machine.member_id) {
+    await enqueue("notify_member", { member_id: machine.member_id, kind: approve ? "machine_live" : "machine_rejected", machine_id: id, ...(approve ? {} : { reason }) });
+  }
+  revalidatePath("/console/machines");
+  revalidatePath("/console");
+}
+
+export async function saveMachinePlacement(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const machineId = String(formData.get("machine_id"));
+  const db = serviceDb();
+  const { data: machine } = await db.from("featured_machines").select("member_id, status").eq("id", machineId).single();
+  if (!machine || machine.status !== "published") return;
+  await db.from("placements").insert({
+    kind: "featured_machine",
+    featured_machine_id: machineId,
+    member_id: machine.member_id,
+    starts_on: String(formData.get("starts_on")),
+    ends_on: String(formData.get("ends_on")),
+  });
+  revalidatePath("/console/machines");
+  revalidatePath("/featured-machine");
 }
 
 /* ---------- adverts ---------- */
@@ -224,9 +351,21 @@ export async function setMemberStatus(formData: FormData) {
   const user = await requireConsole();
   if (!canWrite(user)) return;
   const id = String(formData.get("id"));
-  const status = String(formData.get("status"));
+  const status = String(formData.get("status")) as "active" | "grace" | "lapsed" | "draft";
   if (!["active", "grace", "lapsed", "draft"].includes(status)) return;
-  await serviceDb().from("members").update({ status }).eq("id", id);
+  const db = serviceDb();
+  const { data: member } = await db.from("members").select("status, paid_at, comped_until").eq("id", id).single();
+  if (!member) return;
+
+  // V13 step 4 — activating a new member requires payment first (form is POSTable directly)
+  const activatingDraft = member.status === "draft" && status === "active";
+  if (activatingDraft && !member.paid_at && !member.comped_until) return;
+
+  await db.from("members").update({ status }).eq("id", id);
+  if (activatingDraft) {
+    await db.from("approvals").insert({ kind: "member_activation", subject_id: id, decision: "approved", decided_by: user.userId });
+    await enqueue("notify_member", { member_id: id, kind: "page_live" });
+  }
   revalidatePath("/console/members");
   revalidatePath("/console");
 }

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { sessionDb, serviceDb } from "./db/server";
 
@@ -11,7 +12,8 @@ export type CurrentUser = {
   displayName: string | null;
 };
 
-export async function currentUser(): Promise<CurrentUser | null> {
+/** Request-scoped cache: the public layout and JoinCta both call this per render. */
+export const currentUser = cache(async (): Promise<CurrentUser | null> => {
   const db = await sessionDb();
   const { data: { user } } = await db.auth.getUser();
   if (!user) return null;
@@ -28,7 +30,7 @@ export async function currentUser(): Promise<CurrentUser | null> {
     memberId: profile.member_id,
     displayName: profile.display_name,
   };
-}
+});
 
 const CONSOLE_ROLES: Role[] = ["super_admin", "approver", "viewer", "input_only"];
 

@@ -3,20 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
-import { serviceDb } from "@/lib/db/server";
+import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { uploadImage } from "@/lib/media";
+import { sanitizeRichText } from "@/lib/sanitize";
+import { mergeSocial } from "@/lib/social";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 
-async function uploadCover(file: File | null, prefix: string): Promise<string | null> {
-  if (!file || file.size === 0) return null;
-  if (file.size > 8 * 1024 * 1024) throw new Error("Image too large (8MB max)");
-  const db = serviceDb();
-  const ext = (file.name.split(".").pop() ?? "jpg").toLowerCase().slice(0, 4);
-  const path = `${prefix}/${Date.now().toString(36)}.${ext}`;
-  const { error } = await db.storage.from("media").upload(path, file, { contentType: file.type });
-  if (error) throw new Error(error.message);
-  return path;
+/** Editor image upload — returns the public URL for insertion as <img src>. */
+export async function memberUploadImage(formData: FormData): Promise<string | null> {
+  const user = await requireMember();
+  const path = await uploadImage(formData.get("file") as File | null, `stories/${user.memberId}`);
+  return mediaUrl(path);
 }
 
 /** M3 — member self-post: lands awaiting approval, never live directly. */
@@ -24,13 +23,13 @@ export async function submitStory(formData: FormData) {
   const user = await requireMember();
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
-  const cover = await uploadCover(formData.get("cover") as File | null, "stories");
+  const cover = await uploadImage(formData.get("cover") as File | null, "stories");
   const db = serviceDb();
   const { data } = await db.from("stories").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
     title,
     excerpt: String(formData.get("excerpt") ?? ""),
-    body: `<p>${String(formData.get("body") ?? "").replace(/\n\n/g, "</p><p>")}</p>`,
+    body: sanitizeRichText(String(formData.get("body") ?? "")),
     status: "awaiting_approval",
     source: "member",
     is_member_news: true,
@@ -64,28 +63,78 @@ export async function submitEvent(formData: FormData) {
   redirect("/member?submitted=event");
 }
 
-/** M5 — profile edits are approval-gated (working assumption #2): stored as a revision. */
+/**
+ * M5 — profile edits are approval-gated (working assumption #2): stored as a revision.
+ * Draft members (V13 step 3 of 4) write their page directly instead — it's not public
+ * yet, and Jas's Activate is the one approval; a revision would mean approving twice.
+ */
 export async function submitProfileEdit(formData: FormData) {
   const user = await requireMember();
-  const payload: Record<string, unknown> = {
-    description: String(formData.get("description") ?? ""),
+  const [logoPath, heroPath] = await Promise.all([
+    uploadImage(formData.get("logo") as File | null, `members/${user.memberId}`),
+    uploadImage(formData.get("hero") as File | null, `members/${user.memberId}`),
+  ]);
+  const db = serviceDb();
+  const { data: member } = await db.from("members")
+    .select("name, status, draft_submitted_at, social").eq("id", user.memberId).single();
+
+  const social = mergeSocial(member?.social, (key) => String(formData.get(key) ?? ""));
+
+  const payload = {
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    ...(logoPath ? { logo_path: logoPath } : {}),
+    ...(heroPath ? { hero_path: heroPath } : {}),
     address: String(formData.get("address") ?? ""),
     phone: String(formData.get("phone") ?? ""),
     website: String(formData.get("website") ?? ""),
     video_url: String(formData.get("video_url") ?? "") || null,
-    social: {
-      linkedin: String(formData.get("linkedin") ?? ""),
-      x: String(formData.get("x") ?? ""),
-      facebook: String(formData.get("facebook") ?? ""),
-      instagram: String(formData.get("instagram") ?? ""),
-    },
+    social,
   };
-  await serviceDb().from("member_revisions").insert({
+
+  if (member?.status === "draft") {
+    const firstSubmit = !member.draft_submitted_at;
+    await db.from("members").update({
+      ...payload, // description already sanitised above; page stays hidden until Activate
+      draft_submitted_at: member.draft_submitted_at ?? new Date().toISOString(),
+    }).eq("id", user.memberId);
+    if (firstSubmit) {
+      const { notifyAdminFunnel } = await import("@/lib/notify-admin");
+      await notifyAdminFunnel({
+        name: member.name,
+        email: user.email,
+        message: "Submitted their draft company page for review — ready for your verification and approval.",
+      });
+    }
+    revalidatePath("/member");
+    redirect("/member?submitted=page");
+  }
+
+  await db.from("member_revisions").insert({
     member_id: user.memberId,
     payload: payload as import("@/lib/db/types").Json,
   });
   revalidatePath("/member");
   redirect("/member?submitted=profile");
+}
+
+/** Member equipment submission — approval-gated like stories, never live directly. */
+export async function submitMachine(formData: FormData) {
+  const user = await requireMember();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  const image = await uploadImage(formData.get("image") as File | null, `machines/${user.memberId}`);
+  await serviceDb().from("featured_machines").insert({
+    name,
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    external_url: String(formData.get("external_url") ?? "") || null,
+    image_path: image,
+    member_id: user.memberId,
+    status: "awaiting_approval",
+    source: "member",
+    submitted_by: user.userId,
+  });
+  revalidatePath("/member");
+  redirect("/member?submitted=machine");
 }
 
 /** M11 — "Buy" request: no online payment; Jas confirms and invoices. */

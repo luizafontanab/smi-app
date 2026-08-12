@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { decideStory, saveStory, scheduleStory } from "../../actions";
+import { consoleUploadImage, decideStory, saveStory, scheduleStory } from "../../actions";
 import { FocusPicker } from "@/components/FocusPicker";
+import { RichTextEditor } from "@/components/RichTextEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,14 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   return (
     <div className="mx-auto max-w-4xl">
       <Link href="/console/stories" className="text-sm text-gray-400 hover:text-navy">← Story Engine</Link>
-      <h1 className="mt-1 text-xl font-bold text-navy">{isNew ? "New story" : "Edit story"}</h1>
+      <div className="flex items-baseline justify-between">
+        <h1 className="mt-1 text-xl font-bold text-navy">{isNew ? "New story" : "Edit story"}</h1>
+        {!isNew && (
+          <Link href={`/console/pages?type=story&entity=${id}`} className="text-sm text-steel underline">
+            Page layout for this story
+          </Link>
+        )}
+      </div>
       {story?.status === "rejected" && (
         <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">Rejected: {story.rejected_reason}</p>
       )}
@@ -48,8 +56,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           <textarea name="excerpt" defaultValue={story?.excerpt ?? ""} rows={2} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
-          <label className="text-sm font-medium">Body (HTML)</label>
-          <textarea name="body" defaultValue={story?.body ?? ""} rows={14} className="mt-1 w-full rounded border px-3 py-2 font-mono text-xs" />
+          <label className="text-sm font-medium">Body</label>
+          <RichTextEditor name="body" initialHtml={story?.body ?? ""} uploadImage={consoleUploadImage} minHeightClass="min-h-80" />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>

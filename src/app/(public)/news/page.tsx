@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { dealSlots, liveAdverts } from "@/lib/adverts";
+import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { publishedStories, storyCategories } from "@/lib/queries";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
@@ -17,20 +17,19 @@ export default async function NewsPage(props: PageProps<"/news">) {
   const memberOnly = sp.filter === "members";
   const order = sp.sort === "oldest" ? "asc" : "desc";
 
-  const [{ stories, total }, cats, banners, logos, ctx] = await Promise.all([
+  const [{ stories, total }, cats, banners, logos, showPlaceholders, ctx] = await Promise.all([
     publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly, order }),
     storyCategories(),
     liveAdverts("banner"),
     liveAdverts("supplier_logo"),
+    showAdPlaceholders(),
     requestContext(),
   ]);
   const slots = dealSlots(banners, ["news_mid", "footer"]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  record([
-    { kind: "page_view", path: "/news", ...ctx },
-    ...[...slots.values()].flatMap((ads) => (ads[0] ? [{ kind: "ad_impression" as const, advert_id: ads[0].advertId, ...ctx }] : [])),
-  ]);
+  // impressions come from the browser once seen — see AdCreative / /api/seen
+  record([{ kind: "page_view", path: "/news", ...ctx }]);
 
   const qs = (over: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams();
@@ -65,7 +64,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
       </div>
       {stories.length > 6 && (
         <>
-          <div className="my-6"><AdSlot adverts={slots.get("news_mid") ?? []} /></div>
+          <div className="my-6"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {stories.slice(6).map((s) => <StoryCard key={s.id} story={s} />)}
           </div>
@@ -79,8 +78,8 @@ export default async function NewsPage(props: PageProps<"/news">) {
         {page < pages && <Link href={qs({ page: page + 1 })} className="rounded border bg-white px-3 py-1.5">Next →</Link>}
       </nav>
 
-      <div className="-mx-4"><SupplierLogos adverts={logos} /></div>
-      <div className="my-6"><AdSlot adverts={slots.get("footer") ?? []} /></div>
+      <div className="-mx-4"><SupplierLogos adverts={logos} showPlaceholders={showPlaceholders} /></div>
+      <div className="my-6"><AdSlot slotKey="footer" adverts={slots.get("footer") ?? []} showPlaceholders={showPlaceholders} /></div>
     </div>
   );
 }

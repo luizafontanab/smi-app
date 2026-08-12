@@ -9,6 +9,13 @@ const BENEFITS = [
   ["Community", "Part of the UK's sheet metal trade network — events, the golf day, and the monthly newsletter."],
 ];
 
+const STEPS = [
+  ["Create your account", "Company name, email, password — two minutes."],
+  ["Pay £40/month", "Card via Stripe, or redeem a promo code."],
+  ["Build your draft page", "Describe your company; we auto-fill what we know."],
+  ["We verify and approve", "The editor checks your page — then you're live in the directory."],
+];
+
 export default function JoinPage() {
   return (
     <div className="mx-auto max-w-4xl px-4">
@@ -17,6 +24,9 @@ export default function JoinPage() {
         <p className="mx-auto mt-3 max-w-xl text-gray-600">
           <span className="text-2xl font-bold text-navy">£40/month</span> — no tiers, no seat licences, cancel anytime.
           The price is the price, stated up front.
+        </p>
+        <p className="mx-auto mt-2 max-w-xl text-sm text-gray-500">
+          Join 85+ UK sheet metal companies reaching thousands of trade readers every month.
         </p>
       </div>
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -28,13 +38,16 @@ export default function JoinPage() {
         ))}
       </div>
       <div className="mt-8 rounded-xl bg-navy p-8 text-center text-white">
-        <h2 className="text-xl font-bold">Ready to join?</h2>
-        <ol className="mx-auto mt-3 max-w-md space-y-1 text-left text-sm text-white/80">
-          <li>1. Create your account and company page</li>
-          <li>2. Pay by card (or redeem a promo code)</li>
-          <li>3. We approve your page and you&apos;re live</li>
+        <h2 className="text-xl font-bold">How joining works</h2>
+        <ol className="mx-auto mt-4 max-w-md space-y-3 text-left text-sm">
+          {STEPS.map(([title, detail], i) => (
+            <li key={title} className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber text-xs font-bold text-navy">{i + 1}</span>
+              <span><b>{title}</b> <span className="text-white/70">— {detail}</span></span>
+            </li>
+          ))}
         </ol>
-        <Link href="/join/checkout" className="mt-5 inline-block rounded bg-amber px-6 py-3 font-semibold text-navy">
+        <Link href="/join/account" className="mt-6 inline-block rounded bg-amber px-6 py-3 font-semibold text-navy">
           Join now — £40/month
         </Link>
         <p className="mt-3 text-xs text-white/50">Payments handled securely by Stripe.</p>

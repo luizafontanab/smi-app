@@ -1,6 +1,8 @@
 import Image from "next/image";
+import { adPreview } from "@/lib/adverts";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { AdPreviewToggle } from "@/components/console/AdPreviewToggle";
 import { endBooking, saveBooking } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -13,11 +15,12 @@ export default async function AdvertsPage() {
   const today = new Date(now).toISOString().slice(0, 10);
   const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
 
-  const [{ data: adverts }, { data: bookings }, { data: slots }, { data: placements }] = await Promise.all([
+  const [{ data: adverts }, { data: bookings }, { data: slots }, { data: placements }, previewOn] = await Promise.all([
     db.from("adverts").select("id, name, format, desktop_path, advertiser:advertisers(name, member:members(name))").order("created_at"),
     db.from("advert_bookings").select("id, advert_id, starts_on, ends_on, advert:adverts(name, format)").order("ends_on"),
     db.from("advert_slots").select("*").order("key"),
     db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on"),
+    adPreview(),
   ]);
 
   const live = (bookings ?? []).filter((b) => b.starts_on <= today && b.ends_on >= today);
@@ -38,6 +41,8 @@ export default async function AdvertsPage() {
           <p className="text-xs text-gray-500">{(slots ?? []).map((s) => `${s.key}:${s.cap}`).join(" · ")}</p>
         </div>
       </div>
+
+      <div className="mt-4"><AdPreviewToggle initialOn={previewOn} /></div>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-navy">Bookings</h2>

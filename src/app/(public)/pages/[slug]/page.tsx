@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { record, requestContext } from "@/lib/analytics";
 import { staticPage } from "@/lib/queries";
+import { RichText } from "@/components/RichText";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
   return (
     <div className="mx-auto max-w-3xl px-4">
       <h1 className="mt-6 text-2xl font-bold text-navy">{page.title}</h1>
-      <div className="story-body mt-4 rounded-lg bg-white p-6 shadow-sm" dangerouslySetInnerHTML={{ __html: page.body }} />
+      <RichText html={page.body} className="mt-4 rounded-lg bg-white p-6 shadow-sm" />
       <div className="my-10" />
     </div>
   );

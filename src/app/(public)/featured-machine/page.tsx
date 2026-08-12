@@ -1,19 +1,34 @@
 import Image from "next/image";
 import Link from "next/link";
+import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
+import { getLayout } from "@/lib/blocks/layouts";
+import { adSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
-import { activePlacements } from "@/lib/queries";
+import { activePlacements, publishedStories } from "@/lib/queries";
+import { BlockRenderer } from "@/components/blocks/BlockRenderer";
+import { RichText } from "@/components/RichText";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Featured Machine" };
 
 export default async function FeaturedMachinePage() {
-  const [placements, ctx] = await Promise.all([activePlacements(), requestContext()]);
-  record([{ kind: "page_view", path: "/featured-machine", ...ctx }]);
-  const machines = placements.filter((p) => p.kind === "featured_machine" && p.machine);
+  const [placements, layout, ctx] = await Promise.all([activePlacements(), getLayout("featured_machine"), requestContext()]);
+  const [banners, { stories: latest }, logos, showPlaceholders] = await Promise.all([
+    liveAdverts("banner"),
+    layout.blocks.some((b) => b.type === "latest_news") ? publishedStories({ limit: 4 }) : Promise.resolve({ stories: [] }),
+    layout.blocks.some((b) => b.type === "supplier_logos") ? liveAdverts("supplier_logo") : Promise.resolve([]),
+    showAdPlaceholders(),
+  ]);
+  const slots = dealSlots(banners, adSlotKeys("featured_machine", layout));
 
-  return (
-    <div className="mx-auto max-w-4xl px-4">
+  // impressions come from the browser once seen — see AdCreative / /api/seen
+  record([{ kind: "page_view", path: "/featured-machine", ...ctx }]);
+
+  const machines = placements.filter((p) => p.kind === "featured_machine" && p.machine?.status === "published");
+
+  const machineMain = (
+    <>
       <h1 className="mt-6 text-2xl font-bold text-navy">Featured Machine</h1>
       {machines.length === 0 && <p className="mt-6 text-gray-500">No featured machine this month.</p>}
       {machines.map(({ machine }) => machine && (
@@ -31,7 +46,7 @@ export default async function FeaturedMachinePage() {
                 Offered by <Link href={`/members/${machine.member.slug}`} className="text-steel underline">{machine.member.name}</Link>
               </p>
             )}
-            <p className="mt-4 text-gray-700">{machine.description}</p>
+            <RichText html={machine.description} className="mt-4 text-gray-700" />
             <div className="mt-6 flex flex-wrap gap-3">
               {machine.external_url && (
                 <a href={machine.external_url} target="_blank" rel="noopener" className="rounded bg-navy px-5 py-2.5 text-white">
@@ -45,6 +60,20 @@ export default async function FeaturedMachinePage() {
           </div>
         </article>
       ))}
+    </>
+  );
+
+  return (
+    <div className="mx-auto max-w-4xl px-4">
+      <BlockRenderer
+        pageType="featured_machine"
+        layout={layout}
+        slots={slots}
+        latestStories={latest}
+        supplierLogos={logos}
+        showPlaceholders={showPlaceholders}
+        anchors={{ machine_main: machineMain }}
+      />
       <div className="my-10" />
     </div>
   );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { OnboardingChecklist } from "./OnboardingChecklist";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,7 @@ const CARDS = [
   { href: "/member/profile", icon: "🏢", title: "Update your page", sub: "Description, images, video, socials" },
   { href: "/member/story/new", icon: "📰", title: "Add a story", sub: "Your news on SMI's channels" },
   { href: "/member/event/new", icon: "📅", title: "Add an event", sub: "Open days, shows, launches" },
+  { href: "/member/equipment/new", icon: "⚙️", title: "Add equipment", sub: "Machines for sale, linked to your site" },
   { href: "/member/stats", icon: "📈", title: "View statistics", sub: "Who's engaging with you" },
   { href: "/member/buy", icon: "⭐", title: "Buy visibility", sub: "Featured slots & newsletter" },
   { href: "/member/billing", icon: "🧾", title: "Billing", sub: "Invoices & membership" },
@@ -18,10 +20,11 @@ export default async function MemberDashboard(props: PageProps<"/member">) {
   const sp = await props.searchParams;
   const db = serviceDb();
 
-  const [{ data: lastStory }, { data: pending }, { data: notifications }] = await Promise.all([
+  const [{ data: lastStory }, { data: pending }, { data: notifications }, { data: member }] = await Promise.all([
     db.from("stories").select("published_at").eq("member_id", user.memberId).eq("status", "published").order("published_at", { ascending: false }).limit(1).maybeSingle(),
     db.from("stories").select("id, title, status, rejected_reason").eq("member_id", user.memberId).in("status", ["awaiting_approval", "rejected"]).order("created_at", { ascending: false }).limit(3),
     db.from("notifications").select("kind, payload, created_at").eq("member_id", user.memberId).order("created_at", { ascending: false }).limit(4),
+    db.from("members").select("status, paid_at, comped_until, draft_submitted_at").eq("id", user.memberId).single(),
   ]);
 
   // nudge: "the last time you posted a story was six months ago"
@@ -36,12 +39,21 @@ export default async function MemberDashboard(props: PageProps<"/member">) {
     <div>
       {submitted && (
         <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">
-          {submitted === "welcome" && "Welcome to SMI! Complete your company page below — it goes live in the directory once the editor approves it."}
+          {submitted === "paid" && "Payment sorted — now build your company page and submit it for approval."}
+          {submitted === "page" && "Page submitted — Jas reviews it and you'll be live in the directory once approved."}
           {submitted === "story" && "Story submitted — it goes live once the editor approves it, and we'll email you."}
           {submitted === "event" && "Event submitted for approval."}
+          {submitted === "machine" && "Equipment submitted — it appears once the editor approves it."}
           {submitted === "profile" && "Page changes submitted — they appear once approved."}
           {submitted === "buy" && "Request received — Jas will confirm and invoice you."}
         </p>
+      )}
+
+      {member?.status === "draft" && (
+        <OnboardingChecklist
+          paid={Boolean(member.paid_at || member.comped_until)}
+          pageSubmitted={Boolean(member.draft_submitted_at)}
+        />
       )}
 
       <h1 className="text-2xl font-bold text-navy">Welcome back</h1>

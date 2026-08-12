@@ -1,18 +1,17 @@
 import Link from "next/link";
+import { SMI_SOCIAL_URLS, SOCIAL_CHANNELS } from "@/lib/social";
 import { NewsletterSignup } from "./NewsletterSignup";
-
-const SOCIALS = ["LinkedIn", "X", "Facebook", "Instagram", "YouTube", "TikTok"];
 
 export function SiteFooter() {
   return (
-    <footer className="mt-12 bg-navy text-white">
+    <footer className="mt-12 bg-chrome text-white">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-3">
         <div>
           <p className="text-lg font-bold">Sheet Metal <span className="text-amber">Industries</span></p>
           <p className="mt-2 text-sm text-white/70">The voice of the UK sheet metal, fabrication and welding trade.</p>
           <div className="mt-4 flex gap-3 text-xs text-white/70">
-            {SOCIALS.map((s) => (
-              <a key={s} href="#" aria-label={s} className="hover:text-amber">{s}</a>
+            {SOCIAL_CHANNELS.map((c) => (
+              <a key={c.key} href={SMI_SOCIAL_URLS[c.key]} target="_blank" rel="noopener" aria-label={c.label} className="hover:text-amber">{c.label}</a>
             ))}
           </div>
         </div>

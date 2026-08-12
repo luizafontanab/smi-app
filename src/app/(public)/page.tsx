@@ -1,16 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
-import { dealSlots, liveAdverts } from "@/lib/adverts";
+import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
 import { activePlacements, headlineStory, publishedStories, publishedVideos, upcomingEvents } from "@/lib/queries";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
+import { JoinCta } from "@/components/JoinCta";
 import { Carousel, StoryCard } from "@/components/StoryCard";
 
 export const dynamic = "force-dynamic"; // adverts re-roll on every page load
 
 export default async function HomePage() {
-  const [headline, { stories }, { stories: memberNews }, videos, events, placements, banners, logos, ctx] = await Promise.all([
+  const [headline, { stories }, { stories: memberNews }, videos, events, placements, banners, logos, showPlaceholders, ctx] = await Promise.all([
     headlineStory(),
     publishedStories({ limit: 14 }),
     publishedStories({ limit: 4, memberOnly: true }),
@@ -19,6 +20,7 @@ export default async function HomePage() {
     activePlacements(),
     liveAdverts("banner"),
     liveAdverts("supplier_logo"),
+    showAdPlaceholders(),
     requestContext(),
   ]);
 
@@ -27,10 +29,9 @@ export default async function HomePage() {
   const featuredMachine = placements.find((p) => p.kind === "featured_machine");
   const rest = stories.filter((s) => s.id !== headline?.id);
 
-  record([
-    { kind: "page_view", path: "/", ...ctx },
-    ...[...slots.values()].flatMap((ads) => (ads[0] ? [{ kind: "ad_impression" as const, advert_id: ads[0].advertId, ...ctx }] : [])),
-  ]);
+  // Advert impressions are NOT recorded here — the browser reports them once the
+  // artwork has loaded and been on screen (components/AdCreative.tsx → /api/seen).
+  record([{ kind: "page_view", path: "/", ...ctx }]);
 
   return (
     <div className="mx-auto max-w-6xl px-4">
@@ -39,7 +40,7 @@ export default async function HomePage() {
         <div className="lg:col-span-2">{headline && <StoryCard story={headline} size="lg" />}</div>
         <aside className="flex flex-col gap-4">
           {featuredMembers[0]?.member && <FeaturedMemberCard member={featuredMembers[0].member} />}
-          <AdSlot adverts={slots.get("siderail_a") ?? []} shape="rail" />
+          <AdSlot slotKey="siderail_a" adverts={slots.get("siderail_a") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
         </aside>
       </div>
 
@@ -49,7 +50,7 @@ export default async function HomePage() {
         ))}
       </Carousel>
 
-      <div className="mt-8"><AdSlot adverts={slots.get("home_1") ?? []} /></div>
+      <div className="mt-8"><AdSlot slotKey="home_1" adverts={slots.get("home_1") ?? []} showPlaceholders={showPlaceholders} /></div>
 
       {/* Rotating mixed grid — a bought block keeps its position for the paid period */}
       <section className="mt-8">
@@ -72,36 +73,31 @@ export default async function HomePage() {
           </Carousel>
         </div>
         <aside className="mt-8 flex flex-col gap-4">
-          <AdSlot adverts={slots.get("siderail_b") ?? []} shape="rail" />
+          <AdSlot slotKey="siderail_b" adverts={slots.get("siderail_b") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
         </aside>
       </div>
 
-      <div className="mt-8"><AdSlot adverts={slots.get("home_2") ?? []} /></div>
+      <div className="mt-8"><AdSlot slotKey="home_2" adverts={slots.get("home_2") ?? []} showPlaceholders={showPlaceholders} /></div>
 
       <section className="mt-8">
         <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-navy">Events</h2>
         <div className="grid gap-4 md:grid-cols-3">
           {events.map((e) => (
-            <Link key={e.slug} href="/events" className="rounded-lg bg-white p-4 shadow-sm hover:shadow-md">
-              <p className="text-xs uppercase text-amber">{new Date(e.starts_on).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}</p>
-              <p className="mt-1 font-semibold">{e.title}</p>
-              <p className="text-sm text-gray-500">{e.location}</p>
+            <Link key={e.slug} href="/events" className="block h-full overflow-hidden rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
+              {/* starts_on is a date column — format in UTC or it shifts a day back west of Greenwich */}
+              <p className="text-xs uppercase text-amber">{new Date(e.starts_on).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" })}</p>
+              <p className="mt-1 font-semibold line-clamp-2">{e.title}</p>
+              {e.location && <p className="mt-1 text-sm text-gray-500 line-clamp-2 break-words">{e.location}</p>}
             </Link>
           ))}
         </div>
       </section>
 
-      <div className="my-8"><AdSlot adverts={slots.get("home_3") ?? []} /></div>
+      <div className="my-8"><AdSlot slotKey="home_3" adverts={slots.get("home_3") ?? []} showPlaceholders={showPlaceholders} /></div>
 
-      <div className="-mx-4"><SupplierLogos adverts={logos} /></div>
+      <div className="-mx-4"><SupplierLogos adverts={logos} showPlaceholders={showPlaceholders} /></div>
 
-      <section className="my-10 rounded-xl bg-navy p-8 text-center text-white">
-        <h2 className="text-2xl font-bold">Join the UK&apos;s sheet metal community</h2>
-        <p className="mx-auto mt-2 max-w-xl text-white/80">
-          A member page, your news on our channels, and analytics showing which companies are looking at you — £40/month.
-        </p>
-        <Link href="/join" className="mt-4 inline-block rounded bg-amber px-6 py-3 font-semibold text-navy">Become a Member</Link>
-      </section>
+      <JoinCta />
     </div>
   );
 }

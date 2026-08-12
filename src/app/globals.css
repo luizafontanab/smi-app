@@ -6,6 +6,44 @@
   --smi-amber: #e8a020;
   --smi-paper: #f7f8fa;
   --smi-ink: #1a2230;
+  --smi-chrome: #10151d;
+  --smi-chrome-hover: #233247;
+  --smi-font-sans: var(--font-geist-sans);
+  --smi-font-heading: var(--font-geist-sans);
+}
+
+/*
+ * Temporary demo themes — switched from the Console sidebar (sets html[data-theme]
+ * + smi-theme cookie). Default (no attribute) is the "Forge" theme above.
+ */
+html[data-theme="live"] {
+  /* sheetmetalindustries.com — tokens from Sprout theme _vars.scss */
+  --smi-navy: #3100ff;
+  --smi-steel: #3100ff;
+  --smi-amber: #ff8200;
+  --smi-paper: #e2e2e2;
+  --smi-ink: #000000;
+  --smi-chrome: #000000;
+  --smi-chrome-hover: #313131;
+  --smi-font-sans: var(--font-league-spartan);
+  --smi-font-heading: var(--font-league-spartan);
+}
+
+html[data-theme="demo"] {
+  /* smi-journal-hub.lovable.app — tokens from its compiled :root */
+  --smi-navy: oklch(37.3% 0.078 255.5);
+  --smi-steel: oklch(37.3% 0.078 255.5);
+  --smi-amber: oklch(63% 0.115 55);
+  --smi-paper: #ffffff;
+  --smi-ink: oklch(21% 0.03 258);
+  --smi-chrome: oklch(28% 0.062 255.5);
+  --smi-chrome-hover: oklch(37.3% 0.078 255.5);
+  --smi-font-sans: var(--font-inter-tight);
+  --smi-font-heading: var(--font-source-serif);
+}
+
+html[data-theme="live"] .site-chrome-top {
+  border-top: 4px solid var(--smi-amber);
 }
 
 @theme inline {
@@ -14,12 +52,18 @@
   --color-amber: var(--smi-amber);
   --color-paper: var(--smi-paper);
   --color-ink: var(--smi-ink);
-  --font-sans: var(--font-geist-sans);
+  --color-chrome: var(--smi-chrome);
+  --color-chrome-hover: var(--smi-chrome-hover);
+  --font-sans: var(--smi-font-sans);
 }
 
 body {
   background: var(--smi-paper);
   color: var(--smi-ink);
+}
+
+h1, h2, h3 {
+  font-family: var(--smi-font-heading);
 }
 
 .story-body {

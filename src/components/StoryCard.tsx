@@ -3,11 +3,15 @@ import Link from "next/link";
 import { mediaUrl } from "@/lib/db/server";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
 
-export function MemberBadge() {
-  return (
-    <span className="absolute left-2 top-2 rounded bg-amber px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-navy">
-      Member news
-    </span>
+// Navy/white rather than amber/navy: the theme tokens make amber+navy fail
+// contrast in the "live" and "demo" themes. "inline" drops the overlay
+// positioning so the badge can sit in a row of pills (story page header).
+export function MemberBadge({ variant = "overlay" }: { variant?: "overlay" | "inline" }) {
+  const base = "bg-navy text-[11px] font-bold uppercase tracking-wide text-white";
+  return variant === "inline" ? (
+    <span className={`rounded-full px-3 py-1 ${base}`}>Member news</span>
+  ) : (
+    <span className={`absolute left-2 top-2 z-10 rounded px-2 py-0.5 ${base}`}>Member news</span>
   );
 }
 
