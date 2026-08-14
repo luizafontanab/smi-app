@@ -6,6 +6,14 @@ import { test, expect } from "@playwright/test";
  * on a global row count, so other workers cannot skew it.
  */
 test("impressions count only adverts that loaded and were actually on screen", async ({ page }) => {
+  // The longest test in the suite by construction: it reads down the whole home
+  // page with a 1.6s dwell per screen (5 screens) plus a 2.5s park — 12s of
+  // deliberate waiting before the page has even loaded. The default 30s leaves
+  // too little for a networkidle load of a 28-image page when a second worker is
+  // compiling routes on the same dev server. Nothing here is weakened; it is the
+  // wall-clock budget that was too tight.
+  test.setTimeout(60_000);
+
   // Playwright cannot read sendBeacon's Blob body, so record the calls in the
   // page itself and still forward them, keeping the real write path intact.
   await page.addInitScript(() => {
@@ -37,10 +45,14 @@ test("impressions count only adverts that loaded and were actually on screen", a
     expect(widths.some((w) => w > 0), `advert ${i} artwork actually loaded`).toBe(true);
   }
 
-  // Parked above the fold: only what is on screen may count.
+  // The homepage opens on a full-bleed hero and carries no advert beside it, so
+  // nothing is on screen at rest — scroll the first banner into view and park
+  // there. The rule under test is "only what is on screen counts", not "an
+  // advert sits above the fold".
+  await links.first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(2500);
   const top = await seen();
-  expect(top.length, "some adverts counted while parked at the top").toBeGreaterThan(0);
+  expect(top.length, "the advert parked on screen was counted").toBeGreaterThan(0);
   expect(top.length, "but not the ones still below the fold").toBeLessThan(onPage);
 
   // Read down the page the way a person does. A teleport to the bottom would

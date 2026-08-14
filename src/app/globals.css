@@ -79,3 +79,365 @@ h1, h2, h3 {
   scrollbar-width: thin;
 }
 .carousel > * { scroll-snap-align: start; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Home hero — full-bleed stage + hover rail (components/HomeHero.tsx)
+ *
+ * CASCADE NOTE: everything after `@import "tailwindcss"` is UNLAYERED, and
+ * unlayered CSS outranks @layer utilities. So `.hero-card { opacity: .62 }`
+ * beats a Tailwind `opacity-100` class. The rule for this block: state lives
+ * here, layout lives in className — never both for the same property.
+ * (.story-body a already depends on this behaviour.)
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Theme-independent on purpose — these must not move with data-theme. */
+  /* Adaptive: full 48rem on a big monitor, but never so tall on a laptop that
+     the section below loses its peek above the fold — that peek is the only
+     scroll cue the page has. */
+  --hero-h: min(84vh, 48rem);
+  --hero-ease: cubic-bezier(0.22, 1, 0.36, 1);      /* easeOutQuint: quick start, long settle */
+  --hero-ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --hero-fade: 520ms;   /* stage media crossfade — slow on purpose; 200ms reads as a flicker */
+  --hero-copy: 400ms;
+  --hero-card: 260ms;
+}
+@media (max-width: 640px) { :root { --hero-h: min(76vh, 34rem); } }
+
+.hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--hero-h);
+  overflow: hidden;
+  background: #06090f;
+  color: #fff;
+}
+
+/* ── stage media ────────────────────────────────────────────────────────── */
+
+/* `isolation` is load-bearing: the active layer below sets z-index:1, which
+   without a stacking context here would paint it above the scrim AND above the
+   copy column (both positioned, z-index auto). Isolating keeps that z-index
+   local to the stack. */
+.hero-media-stack {
+  isolation: isolate;
+  z-index: 0;
+}
+
+.hero-media-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(1.06);
+  transition: opacity var(--hero-fade) var(--hero-ease-soft),
+              transform var(--hero-fade) var(--hero-ease);
+  will-change: opacity, transform;
+}
+.hero-media-layer[data-active="true"] { opacity: 1; transform: scale(1); z-index: 1; }
+
+/* Ken Burns rides the inner <img> so it composes with the layer's own scale
+   rather than fighting it. Scoping to [data-active] restarts the drift from
+   frame 0 on every promotion, so each item gets the same entrance. */
+@keyframes hero-kenburns {
+  0%   { transform: scale(1.04) translate3d(0, 0, 0); }
+  50%  { transform: scale(1.13) translate3d(-1.6%, -1.2%, 0); }
+  100% { transform: scale(1.04) translate3d(0, 0, 0); }
+}
+.hero-media-layer[data-active="true"] .hero-media {
+  animation: hero-kenburns 26s var(--hero-ease-soft) infinite;
+}
+
+.hero-media--empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(140deg, var(--smi-steel), var(--smi-chrome));
+  color: rgb(255 255 255 / 0.22);
+  font-size: 3rem;
+}
+
+/* Fixed near-black, deliberately NOT a theme token: `live` collapses navy and
+   steel to #3100ff and `demo` uses oklch, so a token-derived scrim would need
+   re-checking in three themes every time a token moves. White text on this is
+   ≥12:1 everywhere. */
+.hero-scrim {
+  z-index: 2;   /* above the active media layer's z-index:1, inside the isolated stack */
+  /* The bottom band has to carry the rail, which sits over the photo — on a
+     bright cover an under-strength fade leaves the cards looking translucent.
+     Strong to ~55% up, photographic above that. */
+  background:
+    linear-gradient(to top,   rgb(6 9 15 / 0.96) 0%,  rgb(6 9 15 / 0.90) 26%,
+                              rgb(6 9 15 / 0.52) 55%, rgb(6 9 15 / 0.08) 100%),
+    linear-gradient(to right, rgb(6 9 15 / 0.80) 0%,  rgb(6 9 15 / 0.30) 46%,
+                              rgb(6 9 15 / 0)    76%);
+}
+
+/* ── stage copy ─────────────────────────────────────────────────────────── */
+
+.hero-copy-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  opacity: 0;
+  pointer-events: none;          /* inactive layers are transparent but still stacked */
+  transform: translate3d(0, 14px, 0);
+  transition: opacity var(--hero-copy) var(--hero-ease-soft),
+              transform var(--hero-copy) var(--hero-ease);
+}
+.hero-copy-layer[data-active="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  z-index: 2;
+}
+
+/* Per-child stagger. The transition-delay lives INSIDE [data-active="true"],
+   so entering staggers and leaving is instant — you never wait for the old
+   copy to finish before the new one arrives. */
+.hero-copy-layer > * {
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+  transition: opacity 300ms var(--hero-ease-soft), transform 380ms var(--hero-ease);
+}
+.hero-copy-layer[data-active="true"] > * { opacity: 1; transform: none; }
+.hero-copy-layer[data-active="true"] > :nth-child(1) { transition-delay:  60ms; }
+.hero-copy-layer[data-active="true"] > :nth-child(2) { transition-delay: 120ms; }
+.hero-copy-layer[data-active="true"] > :nth-child(3) { transition-delay: 180ms; }
+.hero-copy-layer[data-active="true"] > :nth-child(4) { transition-delay: 240ms; }
+
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fff;
+}
+.hero-eyebrow::before {
+  content: "";
+  width: 1.75rem;
+  height: 2px;
+  background: var(--smi-amber);   /* amber only ever as a non-text accent */
+}
+
+.hero-title {
+  max-width: 22ch;
+  font-family: var(--smi-font-heading);
+  font-weight: 800;
+  font-size: clamp(1.75rem, 3.6vw, 3rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  text-shadow: 0 2px 24px rgb(0 0 0 / 0.45);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  /* Clamped, so a long title can never grow the hero. Three lines because the
+     real content is all-caps headlines, which two lines cut mid-word. */
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.hero-intro {
+  max-width: 54ch;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: rgb(255 255 255 / 0.8);
+  text-shadow: 0 1px 12px rgb(0 0 0 / 0.5);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;   /* clamped, so a long opening can't push the rail down */
+  overflow: hidden;
+}
+
+.hero-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+
+/* White on near-black is 21:1 in all three themes, and it's the play-button
+   look. bg-amber/text-navy would be 3.3:1 in the `live` theme. */
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  background: #fff;
+  color: #000;
+  padding: 0.6rem 1.4rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: transform 200ms var(--hero-ease), background-color 200ms linear;
+}
+.hero-copy-layer:hover .hero-cta { transform: translateY(-1px); background: rgb(255 255 255 / 0.88); }
+
+.hero-meta {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.62);
+}
+
+.hero-rail-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.55);
+}
+
+/* ── rail ───────────────────────────────────────────────────────────────── */
+
+.hero-rail {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;  /* a horizontal swipe must not navigate back */
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  /* NOT decoration: overflow-x:auto forces overflow-y to auto, so without this
+     the active card's -10px lift and its 34px shadow get clipped (or spawn a
+     vertical scrollbar inside the rail). Do not "tidy" this away. */
+  padding: 1rem 0 1.5rem;
+}
+.hero-rail::-webkit-scrollbar { display: none; }
+.hero-rail > li {
+  flex: 0 0 auto;
+  width: clamp(9.5rem, 18vw, 13rem);
+  scroll-snap-align: start;
+  list-style: none;
+}
+@media (max-width: 1151px) {
+  .hero-rail {
+    mask-image: linear-gradient(to right, #000 0 90%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, #000 0 90%, transparent 100%);
+  }
+}
+
+.hero-card {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 0.06);
+  opacity: 0.62;
+  transition: transform var(--hero-card) var(--hero-ease),
+              box-shadow var(--hero-card) var(--hero-ease-soft),
+              opacity 200ms linear;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hero-rail:hover .hero-card { opacity: 0.42; }   /* dim the field… */
+}
+/* …but never the active one. Both selectors are required: the :hover rule
+   above is (0,3,0) and would otherwise outrank a bare (0,2,0). */
+.hero-card[data-active="true"],
+.hero-rail:hover .hero-card[data-active="true"] {
+  opacity: 1;
+  transform: translate3d(0, -10px, 0) scale(1.045);
+  box-shadow: 0 18px 34px -12px rgb(0 0 0 / 0.7);
+}
+.hero-card:focus-visible { outline: 3px solid var(--smi-amber); outline-offset: 3px; }
+
+.hero-card-media { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: rgb(0 0 0 / 0.35); }
+.hero-card-img { transition: transform 460ms var(--hero-ease); }
+.hero-card[data-active="true"] .hero-card-img { transform: scale(1.07); }
+
+.hero-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  color: #fff;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 0.6);
+}
+
+.hero-card-body { padding: 0.6rem 0.7rem 0.85rem; }
+.hero-card-eyebrow {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.5);
+}
+.hero-card-title {
+  margin-top: 0.2rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #fff;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* active indicator: an amber bar wiping in from the left */
+.hero-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: var(--smi-amber);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 320ms var(--hero-ease);
+}
+.hero-card[data-active="true"]::after { transform: scaleX(1); }
+
+/* ── page-load entrance (transitions don't fire on first paint) ─────────── */
+
+@keyframes hero-rise    { from { opacity: 0; transform: translate3d(0, 20px, 0); } to { opacity: 1; transform: none; } }
+@keyframes hero-card-in { from { opacity: 0; transform: translate3d(0, 24px, 0); } to { opacity: 1; transform: none; } }
+@keyframes hero-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-media-stack { animation: hero-fade-in 800ms var(--hero-ease-soft) both; }
+
+  /* fill-mode MUST be `backwards`, never `both`. A forwards-filling animation
+     outranks transitions on the same property, which would silently kill every
+     later crossfade on layer 0. `backwards` holds the from-state during the
+     delay, then releases to the declarative [data-active] values. */
+  .hero-copy-layer[data-initial="true"] > * { animation: hero-rise 640ms var(--hero-ease) backwards; }
+  .hero-copy-layer[data-initial="true"] > :nth-child(1) { animation-delay: 120ms; }
+  .hero-copy-layer[data-initial="true"] > :nth-child(2) { animation-delay: 200ms; }
+  .hero-copy-layer[data-initial="true"] > :nth-child(3) { animation-delay: 280ms; }
+  .hero-copy-layer[data-initial="true"] > :nth-child(4) { animation-delay: 360ms; }
+
+  .hero-rail > li {
+    animation: hero-card-in 520ms var(--hero-ease) backwards;
+    animation-delay: calc(var(--i, 0) * 70ms + 260ms);
+  }
+}
+
+/* Crossfades are kept (shortened); motion is removed. Opacity is tolerated
+   under reduced-motion — translation, scaling and an infinite pan are not. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-media-stack,
+  .hero-copy-layer[data-initial="true"] > *,
+  .hero-rail > li,
+  .hero-media-layer[data-active="true"] .hero-media { animation: none !important; }
+
+  .hero-media-layer,
+  .hero-media-layer[data-active="true"] {
+    transform: none !important;
+    transition: opacity 150ms linear !important;
+  }
+  .hero-copy-layer,
+  .hero-copy-layer > * {
+    transform: none !important;
+    transition: opacity 150ms linear !important;
+    transition-delay: 0s !important;
+  }
+  .hero-card,
+  .hero-card[data-active="true"] { transform: none !important; }
+  .hero-card-img { transition: none !important; transform: none !important; }
+  .hero-card::after { transition: none !important; }
+  .hero-cta { transition: none !important; }
+}

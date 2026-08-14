@@ -13,11 +13,12 @@ async function login(page: import("@playwright/test").Page, email: string) {
 test.describe("reader (V1/V2)", () => {
   test("homepage renders news-first with rotating adverts", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("h3").first()).toBeVisible(); // headline story
+    // the headline story is card 1 of the hero rail, and the hero stage opens on it
+    const headline = page.getByTestId("hero-card").first().locator("h3");
+    await expect(headline).toBeVisible();
     expect(await page.locator('a[aria-label^="Advert:"]').count()).toBeGreaterThan(0);
     // no advert above the headline: first section is the story grid
     const firstAd = page.locator('a[aria-label^="Advert:"]').first();
-    const headline = page.locator("h3").first();
     const adBox = await firstAd.boundingBox();
     const headBox = await headline.boundingBox();
     expect(headBox!.y).toBeLessThan(adBox!.y + adBox!.height);

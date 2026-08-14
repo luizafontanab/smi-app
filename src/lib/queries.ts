@@ -57,6 +57,22 @@ export async function storyBySlug(slug: string) {
   return data;
 }
 
+/**
+ * Bodies for the handful of stories the home hero puts on the stage.
+ *
+ * Deliberately a separate round trip rather than adding `body` to STORY_CARD:
+ * that projection is shared with the news list, search and member pages, and a
+ * body averages ~4.8KB of HTML — carrying it on every card would cost ~86KB a
+ * page to render titles and dates. Only ~10% of stories have an excerpt, so the
+ * hero needs this fallback; it asks for at most three rows.
+ */
+export async function storyIntros(ids: string[]): Promise<Map<string, string | null>> {
+  if (ids.length === 0) return new Map();
+  const db = publicDb();
+  const { data } = await db.from("stories").select("id, body").eq("status", "published").in("id", ids);
+  return new Map((data ?? []).map((r) => [r.id, r.body]));
+}
+
 export async function storyCategories() {
   const db = publicDb();
   const { data } = await db.from("categories").select("slug, name").eq("kind", "story").order("name");
