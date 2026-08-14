@@ -2,17 +2,20 @@
  * SMI local seed: ~25 real stories from the live site's public WP REST API
  * plus synthetic members, adverts, events, newsletters, contacts, analytics.
  *
- * Local dev only. Run: pnpm exec tsx scripts/seed.ts
+ * Expects a fresh DB. Defaults to local; a hosted project needs --remote.
+ * Run: pnpm exec tsx scripts/seed.ts [--remote]
  */
 import { createClient } from "@supabase/supabase-js";
 import { faker } from "@faker-js/faker";
 import { svgBanner } from "./lib/placeholder-art";
+import { assertSeedTarget } from "./lib/target-guard";
 
 faker.seed(42);
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SERVICE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY not set (load .env.local)");
+assertSeedTarget(SUPABASE_URL);
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
 const WP = "https://sheetmetalindustries.com/wp-json/wp/v2";

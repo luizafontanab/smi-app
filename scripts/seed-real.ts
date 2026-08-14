@@ -7,10 +7,12 @@
  * skips them). Other synthetic operational data (analytics, newsletters,
  * contacts) is NOT seeded — run seed.ts instead when demoing those consoles.
  *
- * Local dev only, expects a fresh DB (supabase db reset).
+ * Expects a fresh DB (supabase db reset). Defaults to local; seeding a hosted
+ * project needs --remote (see `pnpm seed:prod`).
  * Run: pnpm exec tsx scripts/seed-real.ts [--stories-limit N] [--skip-media]
  *        [--no-adverts]    seed everything except the sample adverts
  *        [--adverts-only]  add sample adverts to an already-seeded DB, nothing else
+ *        [--remote]        allow a non-localhost target
  */
 import { createClient } from "@supabase/supabase-js";
 import { readFile } from "node:fs/promises";
@@ -18,6 +20,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { svgBanner } from "./lib/placeholder-art";
+import { assertSeedTarget } from "./lib/target-guard";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACT_DIR = process.env.EXTRACT_DIR ?? path.resolve(HERE, "../../handover-extract");
@@ -36,6 +39,7 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SERVICE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY not set (load .env.local)");
+assertSeedTarget(SUPABASE_URL);
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
 const arg = (name: string) => {

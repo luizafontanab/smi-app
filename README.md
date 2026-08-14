@@ -19,6 +19,32 @@ supabase db reset && docker restart supabase_kong_app && sleep 5 \
 
 **Logins** (password `local-dev-password`): `jas@smi.local` (super admin) · `media@smi.local` (input-only) · `member1..3@smi.local` (members).
 
+## Deploy to hosted Supabase
+
+Current project: `smi-app`, ref `kgjnwyojgajcvsberods`, region `ca-central-1`. ⚠ Interim — [TECH-DECISIONS](../requirements/TECH-DECISIONS.md) #6 requires an EU/UK region and a project's region is fixed at creation, so a London project replaces this one before launch. That re-run is why the steps below are scripted.
+
+Credentials live in `.env.production.local` (gitignored). Create it from the dashboard's API keys:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon>
+SUPABASE_SERVICE_ROLE_KEY=<service_role>
+```
+
+```bash
+supabase link --project-ref <ref>   # no DB password needed; the CLI provisions a temp login role
+pnpm db:push:prod                   # applies supabase/migrations in order
+pnpm seed:prod --stories-limit 300  # real WP content; --remote guard is baked into the script
+```
+
+Then in the dashboard: **Authentication → URL Configuration** → set Site URL + redirect URLs to the deployed app.
+
+- **Never run `supabase config push`.** It would overwrite hosted auth settings with the local values in `config.toml` — `site_url = 127.0.0.1:3000`, `enable_confirmations = false`, and a 2-emails/hour rate limit.
+- The seed expects a **fresh database** — it uses plain `.insert()`, so a second run collides. Re-deploy by resetting the remote schema, not by re-seeding.
+- `--stories-limit N` bounds the media upload too (only media referenced by seeded rows is uploaded). All 1,992 stories = 1.00 GiB, exactly the free-tier storage cap; 300 stories ≈ 306 MiB. Members/videos/events contribute a fixed 164 MiB regardless.
+- The `media` bucket is created by the seed script, not by a migration — a schema-only deploy leaves prod with no bucket and every image 404ing.
+- `seed-real.ts` leaves analytics, newsletters, and contacts empty by design; those console panels render as real-but-empty. Run `seed.ts` instead when demoing them.
+
 ## Tests
 
 ```bash
@@ -36,4 +62,4 @@ pnpm test:e2e                 # playwright (approval-gate loop, member-first sea
 
 ## Still parked (needs approval / external accounts)
 
-GitHub org + repo transfer to SMI ownership · Supabase cloud (EU) + Vercel projects · Resend/Buffer/MaxMind keys · Stripe test wiring · real WP export import at cutover · newsletter deliverability test · Content OS (module 6, priced separately).
+GitHub org + repo transfer to SMI ownership · **Supabase EU/UK project** (deployed to `ca-central-1` for the demo — see above) · Vercel project + Cron (`/api/cron` is unauthenticated unless `CRON_SECRET` is set) · Resend/Buffer/MaxMind keys · Stripe test wiring · real WP export import at cutover · newsletter deliverability test · Content OS (module 6, priced separately).
