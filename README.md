@@ -27,9 +27,13 @@ Credentials live in `.env.production.local` (gitignored). Create it from the das
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon>
-SUPABASE_SERVICE_ROLE_KEY=<service_role>
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_…
+SUPABASE_SECRET_KEY=sb_secret_…
 ```
+
+The same three names must be set in Vercel — `NEXT_PUBLIC_*` are inlined at build time, so adding them requires a redeploy before they take effect.
+
+A project also carries a deprecated `anon`/`service_role` JWT pair (dashboard → **Legacy API keys**) that maps to the same two roles: `publishable` = `anon`, `secret` = `service_role`. supabase-js accepts either format, but the new keys revoke independently — rotating a leaked `service_role` key means rotating the project JWT secret, which signs out every user at once.
 
 ```bash
 supabase link --project-ref <ref>   # no DB password needed; the CLI provisions a temp login role

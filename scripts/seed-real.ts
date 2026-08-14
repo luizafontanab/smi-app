@@ -26,7 +26,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACT_DIR = process.env.EXTRACT_DIR ?? path.resolve(HERE, "../../handover-extract");
 
 // load .env.local when run bare
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+if (!process.env.SUPABASE_SECRET_KEY) {
   const envFile = path.resolve(HERE, "../.env.local");
   if (existsSync(envFile)) {
     for (const line of readFileSync(envFile, "utf8").split("\n")) {
@@ -37,10 +37,10 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!SERVICE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY not set (load .env.local)");
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+if (!SECRET_KEY) throw new Error("SUPABASE_SECRET_KEY not set (load .env.local)");
 assertSeedTarget(SUPABASE_URL);
-const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+const db = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
 
 const arg = (name: string) => {
   const i = process.argv.indexOf(name);

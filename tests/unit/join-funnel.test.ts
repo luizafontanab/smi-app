@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
  * console/inbox trail for Jas. Runs against the local Supabase stack.
  */
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
-const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const KEY = process.env.SUPABASE_SECRET_KEY;
 
 const ts = Date.now();
 

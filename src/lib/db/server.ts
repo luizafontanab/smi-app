@@ -4,8 +4,10 @@ import { cookies } from "next/headers";
 import type { Database } from "./types";
 
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+/** Browser-safe; grants the `anon` Postgres role, so RLS decides what it sees. */
+const PUBLISHABLE = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+/** Bypasses RLS entirely. Server-side only. */
+const SECRET = process.env.SUPABASE_SECRET_KEY!;
 
 /**
  * The `!` above is a type assertion only — nothing checks these at runtime, so a
@@ -20,19 +22,19 @@ function required(value: string | undefined, name: string): string {
   return value;
 }
 
-/** Anonymous client — public-site reads, restricted by RLS. */
+/** Publishable client — public-site reads as the `anon` role, restricted by RLS. */
 export function publicDb() {
-  return createClient<Database>(required(URL_, "NEXT_PUBLIC_SUPABASE_URL"), required(ANON, "NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+  return createClient<Database>(required(URL_, "NEXT_PUBLIC_SUPABASE_URL"), required(PUBLISHABLE, "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
     auth: { persistSession: false },
   });
 }
 
 /**
- * Service-role client — bypasses RLS. Server-side only: console operations,
+ * Secret-key client — bypasses RLS. Server-side only: console operations,
  * analytics writes, job runner. Never import from a client component.
  */
 export function serviceDb() {
-  return createClient<Database>(required(URL_, "NEXT_PUBLIC_SUPABASE_URL"), required(SERVICE, "SUPABASE_SERVICE_ROLE_KEY"), {
+  return createClient<Database>(required(URL_, "NEXT_PUBLIC_SUPABASE_URL"), required(SECRET, "SUPABASE_SECRET_KEY"), {
     auth: { persistSession: false },
   });
 }
@@ -40,7 +42,7 @@ export function serviceDb() {
 /** Session-aware client for the logged-in member/admin (RLS applies). */
 export async function sessionDb() {
   const store = await cookies();
-  return createServerClient<Database>(URL_, ANON, {
+  return createServerClient<Database>(URL_, required(PUBLISHABLE, "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
     cookies: {
       getAll: () => store.getAll(),
       setAll: (all) => {

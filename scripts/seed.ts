@@ -13,10 +13,10 @@ import { assertSeedTarget } from "./lib/target-guard";
 faker.seed(42);
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!SERVICE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY not set (load .env.local)");
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+if (!SECRET_KEY) throw new Error("SUPABASE_SECRET_KEY not set (load .env.local)");
 assertSeedTarget(SUPABASE_URL);
-const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+const db = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
 
 const WP = "https://sheetmetalindustries.com/wp-json/wp/v2";
 const UK_REGIONS = ["West Midlands", "South Yorkshire", "Greater Manchester", "East Midlands", "South East", "North West", "Scotland", "Wales", "North East", "East of England"];
