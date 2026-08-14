@@ -6,12 +6,20 @@ import { test, expect } from "@playwright/test";
  * on a global row count, so other workers cannot skew it.
  */
 test("impressions count only adverts that loaded and were actually on screen", async ({ page }) => {
-  const reported: string[] = [];
-  page.on("request", (r) => {
-    if (r.url().includes("/api/seen")) {
-      reported.push(...(JSON.parse(r.postData() ?? "{}").ids ?? []));
-    }
+  // Playwright cannot read sendBeacon's Blob body, so record the calls in the
+  // page itself and still forward them, keeping the real write path intact.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __seen: string[] };
+    w.__seen = [];
+    const original = navigator.sendBeacon?.bind(navigator);
+    navigator.sendBeacon = (url: string | URL, data?: BodyInit | null) => {
+      if (String(url).includes("/api/seen") && data instanceof Blob) {
+        void data.text().then((t) => w.__seen.push(...(JSON.parse(t).ids ?? [])));
+      }
+      return original ? original(url, data) : true;
+    };
   });
+  const seen = () => page.evaluate(() => (window as unknown as { __seen: string[] }).__seen);
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "networkidle" });
@@ -31,8 +39,9 @@ test("impressions count only adverts that loaded and were actually on screen", a
 
   // Parked above the fold: only what is on screen may count.
   await page.waitForTimeout(2500);
-  expect(reported.length, "some adverts counted while parked at the top").toBeGreaterThan(0);
-  expect(reported.length, "but not the ones still below the fold").toBeLessThan(onPage);
+  const top = await seen();
+  expect(top.length, "some adverts counted while parked at the top").toBeGreaterThan(0);
+  expect(top.length, "but not the ones still below the fold").toBeLessThan(onPage);
 
   // Read down the page the way a person does. A teleport to the bottom would
   // legitimately count nothing — an advert that flew past was not seen.
@@ -43,5 +52,6 @@ test("impressions count only adverts that loaded and were actually on screen", a
   }
   await page.waitForTimeout(1500);
 
-  expect([...reported].sort(), "every advert counted exactly once after reading past it").toEqual([...ids].sort());
+  const all = await seen();
+  expect([...all].sort(), "every advert counted exactly once after reading past it").toEqual([...ids].sort());
 });
