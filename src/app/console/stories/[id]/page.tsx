@@ -11,9 +11,15 @@ export const dynamic = "force-dynamic";
 
 export default async function StoryEditor(props: PageProps<"/console/stories/[id]">) {
   const { id } = await props.params;
+  const sp = await props.searchParams;
   await requireConsole();
   const db = serviceDb();
   const isNew = id === "new";
+
+  // arrived from the calendar view — go back there after scheduling, not to the board
+  const backTo = sp.from === "calendar"
+    ? `/console/stories?view=calendar${/^\d{4}-\d{2}$/.test(String(sp.month ?? "")) ? `&month=${sp.month}` : ""}`
+    : "/console/stories";
 
   const [{ data: story }, { data: cats }, { data: members }] = await Promise.all([
     isNew
@@ -32,7 +38,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/stories" className="text-sm text-gray-400 hover:text-navy">← Story Engine</Link>
+      <Link href={backTo} className="text-sm text-gray-400 hover:text-navy">← Story Engine</Link>
       <div className="flex items-baseline justify-between">
         <h1 className="mt-1 text-xl font-bold text-navy">{isNew ? "New story" : "Edit story"}</h1>
         {!isNew && (
@@ -118,6 +124,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <h2 className="font-bold text-navy">Schedule</h2>
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="return_to" value={backTo} />
                 <input type="datetime-local" name="scheduled_at" defaultValue={story.scheduled_at?.slice(0, 16) ?? ""} className="rounded border px-3 py-1.5 text-sm" />
                 <button className="rounded bg-navy px-4 py-2 text-sm text-white">Schedule</button>
                 <button name="mode" value="now" className="rounded bg-amber px-4 py-2 text-sm font-semibold text-navy">Publish now (urgent)</button>

@@ -94,7 +94,10 @@ export async function scheduleStory(formData: FormData) {
     await db.from("stories").update({ status: "scheduled", scheduled_at: new Date(when).toISOString() }).eq("id", id);
   }
   revalidatePath("/console/stories");
-  redirect("/console/stories");
+  // come back to whichever Story Engine view the operator came from (board or
+  // calendar). Validated, not trusted — this is POST-reachable like every action.
+  const back = String(formData.get("return_to") ?? "");
+  redirect(/^\/console\/stories(\?[\w=&-]*)?$/.test(back) ? back : "/console/stories");
 }
 
 export async function decideStory(formData: FormData) {
