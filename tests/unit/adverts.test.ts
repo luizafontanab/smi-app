@@ -64,6 +64,16 @@ describe("dealSlots", () => {
     const slots = dealSlots([], ["a", "b"]);
     expect([...slots.values()].every((v) => v.length === 0)).toBe(true);
   });
+
+  it("covers a story's layout slots and in-body breaks in ONE deal", () => {
+    // The story page combines adSlotKeys() and bodyAdSlotKeys() into a single
+    // call precisely so this holds. Dealing the in-body keys separately would
+    // let one advert take two positions on the page — a de-facto weighting.
+    const pool = Array.from({ length: 4 }, (_, i) => ad(i));
+    const slots = dealSlots(pool, ["story_ad_1", "story_ad_2", "story_body_ad_1"]);
+    const primaries = [...slots.values()].map((v) => v[0].advertId);
+    expect(new Set(primaries).size).toBe(primaries.length);
+  });
 });
 
 describe("advert click target", () => {

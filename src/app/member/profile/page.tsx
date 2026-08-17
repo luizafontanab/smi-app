@@ -33,26 +33,26 @@ export default async function MemberProfilePage() {
       )}
       <form action={submitProfileEdit} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
         <div>
-          <label className="text-sm font-medium">About your company</label>
-          <RichTextEditor name="description" initialHtml={renderableHtml(m?.description)} uploadImage={memberUploadImage} minHeightClass="min-h-36" />
+          <span className="block text-sm font-medium">About your company</span>
+          <RichTextEditor name="description" ariaLabel="About your company" initialHtml={renderableHtml(m?.description)} uploadImage={memberUploadImage} minHeightClass="min-h-36" />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-sm font-medium">Company logo</label>
-            <input type="file" name="logo" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
+            <label htmlFor="logo" className="text-sm font-medium">Company logo</label>
+            <input id="logo" type="file" name="logo" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
             <p className="mt-1 text-xs text-gray-400">Square works best, min 200×200px. Leave empty to keep the current one.</p>
           </div>
           <div>
-            <label className="text-sm font-medium">Cover photo</label>
-            <input type="file" name="hero" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
+            <label htmlFor="hero" className="text-sm font-medium">Cover photo</label>
+            <input id="hero" type="file" name="hero" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
             <p className="mt-1 text-xs text-gray-400">Landscape, around 800×400px. Leave empty to keep the current one.</p>
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div><label className="text-sm font-medium">Address</label><input name="address" defaultValue={m?.address ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
-          <div><label className="text-sm font-medium">Phone</label><input name="phone" defaultValue={m?.phone ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
-          <div><label className="text-sm font-medium">Website</label><input name="website" defaultValue={m?.website ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
-          <div><label className="text-sm font-medium">YouTube video URL</label><input name="video_url" defaultValue={m?.video_url ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
+          <div><label htmlFor="address" className="text-sm font-medium">Address</label><input id="address" name="address" defaultValue={m?.address ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
+          <div><label htmlFor="phone" className="text-sm font-medium">Phone</label><input id="phone" name="phone" defaultValue={m?.phone ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
+          <div><label htmlFor="website" className="text-sm font-medium">Website</label><input id="website" name="website" defaultValue={m?.website ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
+          <div><label htmlFor="video_url" className="text-sm font-medium">YouTube video URL</label><input id="video_url" name="video_url" defaultValue={m?.video_url ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
         </div>
         <fieldset>
           <legend className="text-sm font-medium">Social profiles</legend>

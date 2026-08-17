@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { sessionDb } from "@/lib/db/server";
 import { provisionMember } from "@/lib/membership";
 import { notifyAdminFunnel } from "@/lib/notify-admin";
+import { allowRequest, HOUR } from "@/lib/rate-limit";
 
 /**
  * V13 step 1 of 4 — account + draft company page. Payment is step 2
@@ -18,6 +19,11 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { message: "Please enter a valid email." };
   if (password.length < 8) return { message: "Password needs at least 8 characters." };
   if (!company) return { message: "Company name is required." };
+  // This creates a real auth user and a draft member row; unthrottled it is a
+  // free account-and-record generator for anyone who finds the page.
+  if (!(await allowRequest("join", 3, HOUR))) {
+    return { message: "Too many attempts just now — please try again shortly." };
+  }
 
   const result = await provisionMember({ email, password, company });
   if ("error" in result) return { message: result.error };

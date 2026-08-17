@@ -33,6 +33,27 @@ SUPABASE_SECRET_KEY=sb_secret_…
 
 The same three names must be set in Vercel — `NEXT_PUBLIC_*` are inlined at build time, so adding them requires a redeploy before they take effect.
 
+### Other environment variables
+
+| Variable | Required? | Effect if unset |
+|---|---|---|
+| `CRON_SECRET` | **Yes in production** | `/api/cron` fails closed and returns 503 — **no background job runs at all** (scheduled publishing, comp expiry, daily rollups, and the analytics partition top-up that rides on them). Vercel injects `Authorization: Bearer $CRON_SECRET` on its own cron requests once this is set on the project. Set it locally too, or `scripts/job-runner.ts` refuses to start. |
+| `ADMIN_EMAIL` | Recommended | Admin notification emails are skipped with a logged warning. Enquiries and funnel events still land in the console inbox, so nothing is lost — but nobody is told. Has no fallback on purpose: the old `jas@smi.local` default bounced silently. |
+| `SITE_URL` | Optional | Falls back to the deployment's own origin (`VERCEL_PROJECT_PRODUCTION_URL`, then `VERCEL_URL`, then localhost). Set it once there is a real domain, so `sitemap.xml`, `robots.txt` and canonical/OG tags use it. Read at request time — no rebuild needed. |
+| `RESEND_API_KEY`, `BUFFER_ACCESS_TOKEN` | Optional | Adapters fall back to logging stubs (`src/lib/adapters/`). |
+
+### ⚠ Cron runs once a day — revisit before launch
+
+The schedule in [`vercel.json`](vercel.json) is `0 3 * * *` (03:00 daily). **Vercel's Hobby plan only permits once-daily crons**, and the plan for this project is unconfirmed, so the safe schedule was chosen deliberately for the demo rather than the one the code wants.
+
+What that costs, until it changes:
+
+- **Scheduled stories publish up to 24h late.** `ensurePeriodic` queues `publish_scheduled` every 60s (`src/lib/jobs.ts`), but nothing drains the queue between nightly runs. An editor scheduling a story for 09:00 sees it go live at 03:00 the following morning.
+- `social_push` and `notify_member` are equally delayed; `crm_sync` (15m) and `comp_expiry`/`rollup_daily` (24h) are fine on a daily tick.
+- Analytics partitions are still topped up nightly by `run_daily_rollup`, so the ~1-month partition cliff is covered.
+
+**Before launch:** confirm the Vercel plan. On Pro, set `*/5 * * * *` (or `* * * * *` to match what the code assumes) and scheduled publishing becomes near-real-time. On Hobby, either upgrade or accept daily publishing and say so to Jas — "schedule a story for Tuesday 9am" is a stated editorial expectation.
+
 A project also carries a deprecated `anon`/`service_role` JWT pair (dashboard → **Legacy API keys**) that maps to the same two roles: `publishable` = `anon`, `secret` = `service_role`. supabase-js accepts either format, but the new keys revoke independently — rotating a leaked `service_role` key means rotating the project JWT secret, which signs out every user at once.
 
 ```bash

@@ -1,3 +1,9 @@
+// Build-time guard, not a runtime one: SUPABASE_SECRET_KEY is read at module
+// scope below, so a `"use client"` anywhere in this module's import graph would
+// otherwise inline it into a browser bundle with no error at all. This turns
+// that into a failed build. Do not remove to "fix" an import error — fix the
+// import.
+import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
@@ -42,7 +48,7 @@ export function serviceDb() {
 /** Session-aware client for the logged-in member/admin (RLS applies). */
 export async function sessionDb() {
   const store = await cookies();
-  return createServerClient<Database>(URL_, required(PUBLISHABLE, "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
+  return createServerClient<Database>(required(URL_, "NEXT_PUBLIC_SUPABASE_URL"), required(PUBLISHABLE, "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
     cookies: {
       getAll: () => store.getAll(),
       setAll: (all) => {

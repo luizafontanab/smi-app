@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
 import { publicDb } from "@/lib/db/server";
+import { siteUrl } from "@/lib/site-url";
 
-const BASE = process.env.SITE_URL ?? "https://sheetmetalindustries.com";
+const BASE = siteUrl();
 
 /**
  * Request-time, like every other DB-backed route. Two reasons: the approval

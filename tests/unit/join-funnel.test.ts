@@ -24,6 +24,25 @@ describe("payments stub", () => {
   });
 });
 
+describe("activation gate (A17)", () => {
+  it("blocks a draft going live with nothing on record, and clears once it is", async () => {
+    const { activationBlocked } = await import("@/lib/membership");
+    const draft = { status: "draft" as const };
+    expect(activationBlocked(draft, { status: "active", paid_at: null, comped_until: null }))
+      .toMatch(/payment or comp/);
+    expect(activationBlocked(draft, { status: "active", paid_at: "2026-08-01T09:30:00Z", comped_until: null })).toBeNull();
+    expect(activationBlocked(draft, { status: "active", paid_at: null, comped_until: "2027-08-01" })).toBeNull();
+  });
+
+  it("only gates the draft → active transition", async () => {
+    const { activationBlocked } = await import("@/lib/membership");
+    const bare = { paid_at: null, comped_until: null };
+    expect(activationBlocked({ status: "draft" }, { status: "lapsed", ...bare })).toBeNull();
+    expect(activationBlocked({ status: "grace" }, { status: "active", ...bare })).toBeNull();
+    expect(activationBlocked({ status: "lapsed" }, { status: "active", ...bare })).toBeNull();
+  });
+});
+
 describe.skipIf(!KEY)("join funnel", () => {
   const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
   const email = `join-test-${ts}@test.local`;

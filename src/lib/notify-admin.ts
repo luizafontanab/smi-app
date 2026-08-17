@@ -1,6 +1,13 @@
 import { serviceDb } from "./db/server";
 
-export const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "jas@smi.local";
+/**
+ * Deliberately has no fallback. The old default was `jas@smi.local`, which is
+ * an undeliverable domain: with a real Resend key configured, every admin
+ * notification bounced and the failure was swallowed by the catch below. An
+ * unset variable now skips the send (the console inbox row is still written)
+ * and says so in the logs, which is a visible failure rather than a silent one.
+ */
+export const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 
 /**
  * Join-funnel trail for Jas: every step lands in the console inbox
@@ -21,7 +28,9 @@ export async function notifyAdminFunnel(opts: {
       email: opts.email,
       message: opts.message,
     });
-    if (opts.emailSubject) {
+    if (opts.emailSubject && !ADMIN_EMAIL) {
+      console.warn("[funnel] ADMIN_EMAIL is not set — inbox row written, no email sent.");
+    } else if (opts.emailSubject && ADMIN_EMAIL) {
       const { getEmailSender } = await import("./adapters/email");
       await getEmailSender().send({
         to: ADMIN_EMAIL,

@@ -8,16 +8,16 @@ export function ContactForm({ kind }: { kind: "contact" | "advertising" }) {
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="kind" value={kind} />
       <div>
-        <label className="text-sm font-medium">Name</label>
-        <input name="name" required className="mt-1 w-full rounded border px-3 py-2" />
+        <label htmlFor="name" className="text-sm font-medium">Name</label>
+        <input id="name" name="name" required className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>
-        <label className="text-sm font-medium">Email</label>
-        <input type="email" name="email" required className="mt-1 w-full rounded border px-3 py-2" />
+        <label htmlFor="email" className="text-sm font-medium">Email</label>
+        <input id="email" type="email" name="email" required className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>
-        <label className="text-sm font-medium">{kind === "advertising" ? "What are you interested in?" : "Message"}</label>
-        <textarea name="message" required rows={5} className="mt-1 w-full rounded border px-3 py-2" />
+        <label htmlFor="message" className="text-sm font-medium">{kind === "advertising" ? "What are you interested in?" : "Message"}</label>
+        <textarea id="message" name="message" required rows={5} className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <button disabled={pending} className="rounded bg-navy px-5 py-2.5 text-white disabled:opacity-50">
         {pending ? "Sending…" : "Send"}

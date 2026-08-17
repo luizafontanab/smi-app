@@ -30,27 +30,27 @@ export function StoryForm({ action, uploadImage, categories, member }: Props) {
       {/* Both tabs stay mounted — hidden inputs must remain in the form. */}
       <div className={tab === "write" ? "space-y-4" : "hidden"}>
         <div>
-          <label className="text-sm font-medium">Title</label>
-          <input name="title" required value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full rounded border px-3 py-2" />
+          <label htmlFor="title" className="text-sm font-medium">Title</label>
+          <input id="title" name="title" required value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
-          <label className="text-sm font-medium">Summary (1–2 sentences)</label>
-          <textarea name="excerpt" rows={2} className="mt-1 w-full rounded border px-3 py-2" />
+          <label htmlFor="excerpt" className="text-sm font-medium">Summary (1–2 sentences)</label>
+          <textarea id="excerpt" name="excerpt" rows={2} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
-          <label className="text-sm font-medium">Story</label>
-          <RichTextEditor name="body" uploadImage={uploadImage} />
+          <span className="block text-sm font-medium">Story</span>
+          <RichTextEditor name="body" ariaLabel="Story" uploadImage={uploadImage} />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-sm font-medium">Category</label>
-            <select name="category" className="mt-1 w-full rounded border px-3 py-2">
+            <label htmlFor="category" className="text-sm font-medium">Category</label>
+            <select id="category" name="category" className="mt-1 w-full rounded border px-3 py-2">
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium">Cover image</label>
-            <input
+            <label htmlFor="cover" className="text-sm font-medium">Cover image</label>
+            <input id="cover"
               type="file"
               name="cover"
               accept="image/jpeg,image/png,image/webp"

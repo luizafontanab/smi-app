@@ -48,21 +48,21 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
       <form action={saveStory} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         {!isNew && <input type="hidden" name="id" value={id} />}
         <div>
-          <label className="text-sm font-medium">Title</label>
-          <input name="title" defaultValue={story?.title ?? ""} required className="mt-1 w-full rounded border px-3 py-2" />
+          <label htmlFor="title" className="text-sm font-medium">Title</label>
+          <input id="title" name="title" defaultValue={story?.title ?? ""} required className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
-          <label className="text-sm font-medium">Excerpt</label>
-          <textarea name="excerpt" defaultValue={story?.excerpt ?? ""} rows={2} className="mt-1 w-full rounded border px-3 py-2" />
+          <label htmlFor="excerpt" className="text-sm font-medium">Excerpt</label>
+          <textarea id="excerpt" name="excerpt" defaultValue={story?.excerpt ?? ""} rows={2} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
-          <label className="text-sm font-medium">Body</label>
-          <RichTextEditor name="body" initialHtml={story?.body ?? ""} uploadImage={consoleUploadImage} minHeightClass="min-h-80" />
+          <span className="block text-sm font-medium">Body</span>
+          <RichTextEditor name="body" ariaLabel="Body" initialHtml={story?.body ?? ""} uploadImage={consoleUploadImage} allowAdBreak minHeightClass="min-h-80" />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-sm font-medium">Subject member (adds backlink + branding)</label>
-            <select name="member_id" defaultValue={story?.member_id ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+            <label htmlFor="member_id" className="text-sm font-medium">Subject member (adds backlink + branding)</label>
+            <select id="member_id" name="member_id" defaultValue={story?.member_id ?? ""} className="mt-1 w-full rounded border px-3 py-2">
               <option value="">— none —</option>
               {(members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
@@ -72,8 +72,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
             Member news (badged on the site)
           </label>
         </div>
-        <div>
-          <label className="text-sm font-medium">Categories</label>
+        <fieldset>
+          <legend className="text-sm font-medium">Categories</legend>
           <div className="mt-1 flex max-h-36 flex-wrap gap-2 overflow-y-auto rounded border p-2 text-sm">
             {(cats ?? []).map((c) => (
               <label key={c.id} className="flex items-center gap-1.5">
@@ -82,10 +82,10 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               </label>
             ))}
           </div>
-        </div>
+        </fieldset>
         {cover && (
           <div>
-            <label className="text-sm font-medium">Cover crop focus (pan/zoom — fixes lost heads)</label>
+            <span className="block text-sm font-medium" id="focus-picker-label">Cover crop focus (pan/zoom — fixes lost heads)</span>
             <FocusPicker src={cover} initial={focus} />
           </div>
         )}

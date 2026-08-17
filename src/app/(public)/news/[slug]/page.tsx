@@ -4,13 +4,15 @@ import { notFound } from "next/navigation";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { getLayout } from "@/lib/blocks/layouts";
-import { adSlotKeys } from "@/lib/blocks/schema";
+import { adSlotKeys, bodyAdSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
 import { storyBySlug, publishedStories } from "@/lib/queries";
+import { splitAtAdBreaks } from "@/lib/sanitize";
+import { AdSlot } from "@/components/AdSlot";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { MemberBacklink } from "@/components/MemberBacklink";
-import { RichText } from "@/components/RichText";
 import { ShareButtons } from "@/components/ShareButtons";
+import { StoryBody } from "@/components/StoryBody";
 import { MemberBadge } from "@/components/StoryCard";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +20,26 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(props: PageProps<"/news/[slug]">) {
   const { slug } = await props.params;
   const story = await storyBySlug(slug);
-  return { title: story?.title ?? "Story", description: story?.excerpt ?? undefined };
+  const title = story?.title ?? "Story";
+  const description = story?.excerpt ?? undefined;
+  const cover = mediaUrl(story?.cover_path);
+  // Stories are distributed by sharing (see ShareButtons), so the card a
+  // scraper renders is the story's shop window — without these it fell back to
+  // the site-wide description and no image at all.
+  return {
+    title,
+    description,
+    alternates: { canonical: `/news/${slug}` },
+    openGraph: {
+      type: "article",
+      url: `/news/${slug}`,
+      title,
+      description,
+      publishedTime: story?.published_at ?? undefined,
+      images: cover ? [cover] : undefined,
+    },
+    twitter: { card: "summary_large_image", title, description, images: cover ? [cover] : undefined },
+  };
 }
 
 export default async function StoryPage(props: PageProps<"/news/[slug]">) {
@@ -35,7 +56,12 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
     showAdPlaceholders(),
   ]);
 
-  const slots = dealSlots(banners, adSlotKeys("story", layout));
+  // Split once: the segments render the body and their count is what derives the
+  // in-body slot keys. Both key sets feed ONE deal, so the "no advert twice on a
+  // page" guarantee spans the layout's slots and the author's breaks alike.
+  const segments = splitAtAdBreaks(story.body);
+  const bodyKeys = bodyAdSlotKeys(segments.length - 1);
+  const slots = dealSlots(banners, [...adSlotKeys("story", layout), ...bodyKeys]);
   // impressions come from the browser once seen — see AdCreative / /api/seen
   record([{ kind: "story_view", story_id: story.id, member_id: story.member_id, path: `/news/${slug}`, ...ctx }]);
 
@@ -77,7 +103,18 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
           ),
           story_body: (
             <article>
-              <RichText html={story.body} className="mt-6" />
+              <StoryBody
+                segments={segments}
+                className="mt-6"
+                breaks={bodyKeys.map((key) => {
+                  const ads = slots.get(key) ?? [];
+                  // same rule as BlockRenderer's ad_banner: the margin-carrying
+                  // wrapper must not render around an empty slot
+                  return ads.length || showPlaceholders
+                    ? <div className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} /></div>
+                    : null;
+                })}
+              />
               <ShareButtons />
               {/* Member backlink + footer branding — the fixed "minor tweak" (req 02/07) */}
               {story.member && (

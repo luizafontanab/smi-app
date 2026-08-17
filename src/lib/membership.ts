@@ -6,6 +6,29 @@ export const slugify = (s: string) =>
 
 export type ProvisionResult = { memberId: string } | { error: string };
 
+export type MemberStatus = "draft" | "active" | "grace" | "lapsed";
+
+export const MEMBER_STATUSES: readonly MemberStatus[] = ["draft", "active", "grace", "lapsed"];
+export const BILLING_MODES: readonly string[] = ["card", "invoice"];
+
+/**
+ * V13 step 4 (A17) — a draft member only goes live once a payment or comp is on
+ * record. Both the list-page Activate button and the console edit form POST
+ * directly, so this is a guard, not a UI nicety: it is evaluated against the
+ * values about to be written, which lets "mark paid and activate" happen in one
+ * save while still refusing a bare activation.
+ *
+ * Returns the message to show, or null when the transition is allowed.
+ */
+export function activationBlocked(
+  current: { status: MemberStatus },
+  next: { status: MemberStatus; paid_at: string | null; comped_until: string | null },
+): string | null {
+  if (current.status !== "draft" || next.status !== "active") return null;
+  if (next.paid_at || next.comped_until) return null;
+  return "Activating a draft member needs a payment or comp on record — use “Record payment” or set a comped-until date first.";
+}
+
 /**
  * V13 step 1 — account + draft company page (payment comes after, approval last).
  * Kept out of the server action so it's testable without request context.

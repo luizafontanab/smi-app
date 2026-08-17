@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { SkipLink } from "@/components/SkipLink";
 import { requireMember } from "@/lib/auth";
 import { serviceDb, sessionDb } from "@/lib/db/server";
 
@@ -18,6 +19,7 @@ export default async function MemberLayout({ children }: { children: React.React
 
   return (
     <div className="min-h-screen bg-paper">
+      <SkipLink />
       <header className="site-chrome-top bg-chrome text-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <Link href="/member" className="font-bold">SMI <span className="text-amber">Member Area</span></Link>
@@ -35,7 +37,7 @@ export default async function MemberLayout({ children }: { children: React.React
           </div>
         )}
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+      <main id="main" className="mx-auto max-w-5xl px-4 py-6">{children}</main>
     </div>
   );
 }

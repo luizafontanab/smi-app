@@ -28,6 +28,31 @@ describe.skipIf(!KEY)("unsubscribe permanence", () => {
     expect(contact?.unsubscribed_at).not.toBeNull();
   });
 
+  it("the console contact editor cannot re-subscribe without an explicit re-opt-in", async () => {
+    // saveContact itself ends in redirect(), so exercise the rule it applies
+    const { applyOptIn } = await import("@/lib/contacts");
+    const { data: before } = await db.from("contacts").select("subscribed, unsubscribed_at").eq("email", email).single();
+
+    const attempted = applyOptIn(before!, { newsletter: "subscribed", reOptIn: false });
+    await db.from("contacts").update(attempted).eq("email", email);
+
+    const { data: after } = await db.from("contacts").select("subscribed, unsubscribed_at").eq("email", email).single();
+    expect(after?.subscribed).toBe(false);
+    expect(after?.unsubscribed_at).toBe(before?.unsubscribed_at);
+  });
+
+  it("an explicit re-opt-in is the one route back onto the list", async () => {
+    const { applyOptIn } = await import("@/lib/contacts");
+    const { data: before } = await db.from("contacts").select("subscribed, unsubscribed_at").eq("email", email).single();
+
+    await db.from("contacts").update(applyOptIn(before!, { newsletter: "subscribed", reOptIn: true })).eq("email", email);
+    const { data: after } = await db.from("contacts").select("subscribed, unsubscribed_at").eq("email", email).single();
+    expect(after).toMatchObject({ subscribed: true, unsubscribed_at: null });
+
+    // put it back so the count assertion below still has an unsubscribed row
+    await db.from("contacts").update({ subscribed: false, unsubscribed_at: new Date().toISOString() }).eq("email", email);
+  });
+
   it("newsletter recipient count excludes unsubscribed contacts", async () => {
     const { count: subscribed } = await db
       .from("contacts").select("*", { count: "exact", head: true })

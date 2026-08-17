@@ -9,6 +9,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      // lib/db/server.ts imports "server-only" as a build-time guard; under
+      // Vitest's resolution that module throws on import. See the stub.
+      "server-only": path.resolve(__dirname, "tests/stubs/server-only.ts"),
     },
   },
 });

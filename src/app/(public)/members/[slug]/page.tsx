@@ -1,11 +1,13 @@
 import Image from "next/image";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
 import { memberBySlug, publishedStories } from "@/lib/queries";
+import { resolveRedirect } from "@/lib/redirects";
+import { excerptFromHtml } from "@/lib/sanitize";
 import { socialLinks } from "@/lib/social";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { RichText } from "@/components/RichText";
@@ -15,13 +17,36 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(props: PageProps<"/members/[slug]">) {
   const { slug } = await props.params;
   const m = await memberBySlug(slug);
-  return { title: m?.name ?? "Member" };
+  const title = m?.name ?? "Member";
+  const description = m?.description ? excerptFromHtml(m.description, 200) ?? undefined : undefined;
+  const image = mediaUrl(m?.hero_path) ?? mediaUrl(m?.logo_path);
+  return {
+    title,
+    description,
+    alternates: { canonical: `/members/${slug}` },
+    openGraph: {
+      type: "profile",
+      url: `/members/${slug}`,
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
+    twitter: { card: "summary_large_image", title, description, images: image ? [image] : undefined },
+  };
 }
 
 export default async function MemberPage(props: PageProps<"/members/[slug]">) {
   const { slug } = await props.params;
   const [member, ctx] = await Promise.all([memberBySlug(slug), requestContext()]);
-  if (!member) notFound();
+  // renamed in the console? honour the recorded 301 before 404ing. serviceDb
+  // because `redirects` has RLS on with no public policy; the extra query only
+  // ever runs on a miss, never on the hot path.
+  if (!member) {
+    const moved = await resolveRedirect(`/members/${slug}`);
+    if (moved?.permanent) permanentRedirect(moved.to);
+    if (moved) redirect(moved.to);
+    notFound();
+  }
 
   const layout = await getLayout("member_profile", member.id);
   const [banners, { stories: latest }, logos, showPlaceholders] = await Promise.all([

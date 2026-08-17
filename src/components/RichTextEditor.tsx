@@ -1,16 +1,35 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, Node, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Image as TiptapImage } from "@tiptap/extension-image";
+
+/**
+ * The advert break: a marker splitting the published article so a rotating slot
+ * can sit in the gap (lib/sanitize splitAtAdBreaks). It deliberately carries no
+ * attributes — which advert lands here is the rotation's business, and giving
+ * the marker settings would be the positional-value mechanism the advert engine
+ * forbids. StarterKit's own horizontalRule stays off so a bare <hr>, which the
+ * sanitiser drops, can never be authored by accident.
+ */
+const AdBreak = Node.create({
+  name: "adBreak",
+  group: "block",
+  parseHTML: () => [{ tag: "hr[data-ad-break]" }],
+  renderHTML: () => ["hr", { "data-ad-break": "" }],
+});
 
 type Props = {
   name: string;
   initialHtml?: string;
   /** Server action: takes FormData with "file", returns the public URL (or null). */
   uploadImage?: (formData: FormData) => Promise<string | null>;
+  /** Console-only: members self-posting should not be placing advert inventory. */
+  allowAdBreak?: boolean;
   minHeightClass?: string;
+  /** Accessible name for the editing surface — pass the visible caption text. */
+  ariaLabel: string;
 };
 
 function ToolbarButton({ label, title, active, onRun, disabled }: {
@@ -35,7 +54,7 @@ function ToolbarButton({ label, title, active, onRun, disabled }: {
  * Serialises into a hidden input so plain server-action forms keep working
  * (same pattern as FocusPicker).
  */
-export function RichTextEditor({ name, initialHtml = "", uploadImage, minHeightClass = "min-h-48" }: Props) {
+export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBreak = false, minHeightClass = "min-h-48", ariaLabel }: Props) {
   const [html, setHtml] = useState(initialHtml);
   const fileRef = useRef<HTMLInputElement>(null);
   const editor = useEditor({
@@ -49,10 +68,17 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, minHeightC
         link: { openOnClick: false },
       }),
       ...(uploadImage ? [TiptapImage] : []),
+      ...(allowAdBreak ? [AdBreak] : []),
     ],
     content: initialHtml,
     editorProps: {
-      attributes: { class: `story-body ${minHeightClass} w-full rounded-b border border-t-0 px-3 py-2 focus:outline-none` },
+      attributes: {
+        class: `story-body ${minHeightClass} w-full rounded-b border border-t-0 px-3 py-2 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-navy`,
+        // The editing surface is a contenteditable, not a form control, so a
+        // <label htmlFor> cannot reach it — callers pass their visible caption
+        // here so it still has an accessible name.
+        "aria-label": ariaLabel,
+      },
     },
     onUpdate: ({ editor }) => setHtml(editor.isEmpty ? "" : editor.getHTML()),
   });
@@ -91,6 +117,13 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, minHeightC
         <ToolbarButton label="Link" title="Add link" active={editor.isActive("link")} onRun={setLink} />
         {uploadImage && (
           <ToolbarButton label="Image" title="Insert image" onRun={() => fileRef.current?.click()} />
+        )}
+        {allowAdBreak && (
+          <ToolbarButton
+            label="⊞ Ad break"
+            title="Split the article here for a rotating advert"
+            onRun={() => editor.chain().focus().insertContent({ type: "adBreak" }).run()}
+          />
         )}
         <ToolbarButton label="↺" title="Undo" disabled={!editor.can().undo()} onRun={() => editor.chain().focus().undo().run()} />
       </div>

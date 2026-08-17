@@ -18,21 +18,21 @@ export default async function NewMemberMachine() {
       </p>
       <form action={submitMachine} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
         <div>
-          <label className="text-sm font-medium">Machine name</label>
-          <input name="name" required className="mt-1 w-full rounded border px-3 py-2" placeholder="e.g. 2024 Durma HD-F 3015 fibre laser" />
+          <label htmlFor="name" className="text-sm font-medium">Machine name</label>
+          <input id="name" name="name" required className="mt-1 w-full rounded border px-3 py-2" placeholder="e.g. 2024 Durma HD-F 3015 fibre laser" />
         </div>
         <div>
-          <label className="text-sm font-medium">Description (specs, condition, price guide)</label>
-          <RichTextEditor name="description" uploadImage={memberUploadImage} />
+          <span className="block text-sm font-medium">Description (specs, condition, price guide)</span>
+          <RichTextEditor name="description" ariaLabel="Description" uploadImage={memberUploadImage} />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-sm font-medium">Link to full details on your site</label>
-            <input name="external_url" type="url" className="mt-1 w-full rounded border px-3 py-2" placeholder="https://…" />
+            <label htmlFor="external_url" className="text-sm font-medium">Link to full details on your site</label>
+            <input id="external_url" name="external_url" type="url" className="mt-1 w-full rounded border px-3 py-2" placeholder="https://…" />
           </div>
           <div>
-            <label className="text-sm font-medium">Photo</label>
-            <input type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
+            <label htmlFor="image" className="text-sm font-medium">Photo</label>
+            <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
             <p className="mt-1 text-xs text-gray-400">Landscape, JPG/PNG, max 8MB.</p>
           </div>
         </div>

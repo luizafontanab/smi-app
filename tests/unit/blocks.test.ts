@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_LAYOUTS } from "@/lib/blocks/defaults";
-import { adSlotKeys, validateLayout, type PageLayout } from "@/lib/blocks/schema";
+import { adSlotKeys, bodyAdSlotKeys, validateLayout, type PageLayout } from "@/lib/blocks/schema";
 
 const story = (): PageLayout => structuredClone(DEFAULT_LAYOUTS.story);
 
@@ -92,5 +92,22 @@ describe("adSlotKeys", () => {
     const l = story();
     l.blocks.forEach((b) => (b.id = `renamed-${b.id}`));
     expect(adSlotKeys("story", l)).toEqual(["story_ad_1", "story_ad_2"]);
+  });
+});
+
+describe("bodyAdSlotKeys", () => {
+  it("derives position-indexed keys from the break count", () => {
+    expect(bodyAdSlotKeys(0)).toEqual([]);
+    expect(bodyAdSlotKeys(2)).toEqual(["story_body_ad_1", "story_body_ad_2"]);
+  });
+
+  it("clamps a negative count — an empty body splits to no segments", () => {
+    expect(bodyAdSlotKeys(-1)).toEqual([]);
+  });
+
+  it("never collides with the layout's own slot keys", () => {
+    const layoutKeys = adSlotKeys("story", DEFAULT_LAYOUTS.story);
+    // BlockRenderer walks its keys by index; an overlap would mis-assign adverts
+    expect(layoutKeys.filter((k) => bodyAdSlotKeys(3).includes(k))).toEqual([]);
   });
 });

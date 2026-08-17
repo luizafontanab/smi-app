@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Inter_Tight, League_Spartan, Source_Serif_4 } from "next/font/google";
 import { cookies } from "next/headers";
+import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,13 +26,28 @@ const sourceSerif = Source_Serif_4({
   subsets: ["latin"],
 });
 
+const SITE_NAME = "Sheet Metal Industries";
+const DESCRIPTION =
+  "The voice of the UK sheet metal, fabrication and welding trade: industry news, member companies, machinery and events.";
+
 export const metadata: Metadata = {
+  // Without metadataBase, Next resolves relative OG/Twitter image URLs against
+  // localhost and warns at build. Every page-level openGraph.url below is
+  // relative and resolved from here.
+  metadataBase: new URL(siteUrl()),
   title: {
-    default: "Sheet Metal Industries — UK sheet metal, fabrication & welding news",
-    template: "%s | Sheet Metal Industries",
+    default: `${SITE_NAME} — UK sheet metal, fabrication & welding news`,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "The voice of the UK sheet metal, fabrication and welding trade: industry news, member companies, machinery and events.",
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    locale: "en_GB",
+    title: `${SITE_NAME} — UK sheet metal, fabrication & welding news`,
+    description: DESCRIPTION,
+  },
+  twitter: { card: "summary_large_image", title: SITE_NAME, description: DESCRIPTION },
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

@@ -7,10 +7,11 @@ const MEDIA_PREFIX = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/
  * Applied on every write AND every render — old rows are cleaned at render time.
  */
 export const RICH_TEXT_ALLOWLIST: sanitizeHtml.IOptions = {
-  allowedTags: ["p", "h2", "h3", "strong", "em", "u", "s", "a", "ul", "ol", "li", "br", "blockquote", "img"],
+  allowedTags: ["p", "h2", "h3", "strong", "em", "u", "s", "a", "ul", "ol", "li", "br", "blockquote", "img", "hr"],
   allowedAttributes: {
     a: ["href", "rel"],
     img: ["src", "alt", "width", "height"],
+    hr: ["data-ad-break"],
   },
   allowedSchemes: ["http", "https", "mailto"],
   transformTags: {
@@ -18,7 +19,10 @@ export const RICH_TEXT_ALLOWLIST: sanitizeHtml.IOptions = {
   },
   exclusiveFilter: (frame) =>
     // images may only come from our own public media bucket
-    frame.tag === "img" && !String(frame.attribs.src ?? "").startsWith(MEDIA_PREFIX),
+    (frame.tag === "img" && !String(frame.attribs.src ?? "").startsWith(MEDIA_PREFIX)) ||
+    // `hr` exists solely to carry the advert break; a bare rule is not content.
+    // Without this, any <hr> in an imported body would quietly become ad inventory.
+    (frame.tag === "hr" && frame.attribs["data-ad-break"] === undefined),
 };
 
 export function sanitizeRichText(html: string): string {
@@ -39,9 +43,44 @@ export function richTextFromPlain(text: string): string {
  * plain text. HTML-looking values are sanitised; anything else is escaped
  * and paragraph-wrapped. Converges to pure HTML as content is re-saved.
  */
-export function renderableHtml(text: string | null | undefined): string {
+function sanitisedOrWrapped(text: string | null | undefined): string {
   if (!text) return "";
   return /^\s*</.test(text) ? sanitizeRichText(text) : richTextFromPlain(text);
+}
+
+/**
+ * The author-placed advert break, as it survives the sanitiser. Matching the
+ * sanitised form (never raw input) keeps this deterministic: the allowlist
+ * permits exactly one attribute on `hr`, so there is no ordering to guess.
+ */
+const AD_BREAK = /<hr\b[^>]*\bdata-ad-break\b[^>]*>/gi;
+
+/** Breaks a single body may honour — readers must not be drowned in adverts. */
+export const MAX_AD_BREAKS = 2;
+
+/**
+ * Legacy-tolerant renderer input for everything that is NOT a split story body.
+ * Advert breaks are meaningless outside one (member profiles, machine listings,
+ * static pages all render through here), so they are dropped rather than left
+ * to show as a stray rule.
+ */
+export function renderableHtml(text: string | null | undefined): string {
+  return sanitisedOrWrapped(text).replace(AD_BREAK, "").trim();
+}
+
+/**
+ * Story body → the segments to render between advert breaks; one entry means
+ * no break. Empty segments are dropped, which is what collapses a leading
+ * break (no page may open with an advert), a trailing one (the layout already
+ * ends with a footer advert) and two adjacent markers.
+ *
+ * Enforced at render, not on write, so the rules hold whatever is in the row —
+ * the same reason the sanitiser itself runs on both paths.
+ */
+export function splitAtAdBreaks(text: string | null | undefined, max = MAX_AD_BREAKS): string[] {
+  const segments = sanitisedOrWrapped(text).split(AD_BREAK).map((s) => s.trim()).filter(Boolean);
+  // surplus markers fold back into the tail rather than dropping the copy after them
+  return segments.length - 1 > max ? [...segments.slice(0, max), segments.slice(max).join("")] : segments;
 }
 
 /** The entities WordPress bodies actually carry; anything else becomes a space. */

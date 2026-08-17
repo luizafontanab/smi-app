@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { sessionDb } from "@/lib/db/server";
 import { currentUser } from "@/lib/auth";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const metadata = { title: "Login" };
 
@@ -33,11 +34,13 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <p className="mt-1 text-center text-sm text-gray-500">Member &amp; editor login</p>
         {failed && <p className="mt-3 rounded bg-red-50 p-2 text-center text-sm text-red-600">Wrong email or password.</p>}
         <input type="hidden" name="next" value={next} />
-        <label className="mt-5 block text-sm font-medium">Email</label>
-        <input name="email" type="email" required className="mt-1 w-full rounded border px-3 py-2" />
-        <label className="mt-3 block text-sm font-medium">Password</label>
-        <input name="password" type="password" required className="mt-1 w-full rounded border px-3 py-2" />
-        <button className="mt-5 w-full rounded bg-navy py-2.5 font-semibold text-white">Sign in</button>
+        <label htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
+        <input id="email" name="email" type="email" required className="mt-1 w-full rounded border px-3 py-2" />
+        <label htmlFor="password" className="mt-3 block text-sm font-medium">Password</label>
+        <input id="password" name="password" type="password" required className="mt-1 w-full rounded border px-3 py-2" />
+        <div className="mt-5">
+          <SubmitButton pendingLabel="Signing in…">Sign in</SubmitButton>
+        </div>
         <p className="mt-3 text-center text-xs text-gray-400">Forgotten password? Use the reset link (coming with email adapter).</p>
       </form>
     </div>

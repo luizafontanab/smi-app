@@ -32,30 +32,30 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
       <form action={saveMachine} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         {!isNew && <input type="hidden" name="id" value={id} />}
         <div>
-          <label className="text-sm font-medium">Machine name</label>
-          <input name="name" defaultValue={machine?.name ?? ""} required className="mt-1 w-full rounded border px-3 py-2" />
+          <label htmlFor="name" className="text-sm font-medium">Machine name</label>
+          <input id="name" name="name" defaultValue={machine?.name ?? ""} required className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
-          <label className="text-sm font-medium">Description (specs, condition, pricing)</label>
-          <RichTextEditor name="description" initialHtml={machine?.description ?? ""} uploadImage={consoleUploadImage} minHeightClass="min-h-56" />
+          <span className="block text-sm font-medium">Description (specs, condition, pricing)</span>
+          <RichTextEditor name="description" ariaLabel="Description" initialHtml={machine?.description ?? ""} uploadImage={consoleUploadImage} minHeightClass="min-h-56" />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-sm font-medium">Seller (member page it links to)</label>
-            <select name="member_id" defaultValue={machine?.member_id ?? ""} required className="mt-1 w-full rounded border px-3 py-2">
+            <label htmlFor="member_id" className="text-sm font-medium">Seller (member page it links to)</label>
+            <select id="member_id" name="member_id" defaultValue={machine?.member_id ?? ""} required className="mt-1 w-full rounded border px-3 py-2">
               <option value="">— choose —</option>
               {(members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium">Link to full details (seller&apos;s site)</label>
-            <input name="external_url" type="url" defaultValue={machine?.external_url ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
+            <label htmlFor="external_url" className="text-sm font-medium">Link to full details (seller&apos;s site)</label>
+            <input id="external_url" name="external_url" type="url" defaultValue={machine?.external_url ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
         </div>
         <div>
-          <label className="text-sm font-medium">Photo</label>
+          <label htmlFor="image" className="text-sm font-medium">Photo</label>
           {image && <Image src={image} alt="" width={240} height={140} className="mt-1 rounded object-cover" unoptimized />}
-          <input type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
+          <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
         </div>
         <button className="rounded bg-navy px-5 py-2.5 text-white">Save</button>
       </form>

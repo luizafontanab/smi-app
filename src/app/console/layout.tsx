@@ -5,6 +5,7 @@ import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { ConsoleNav, type NavItem } from "@/components/console/ConsoleNav";
 import { requireConsole } from "@/lib/auth";
 import { sessionDb } from "@/lib/db/server";
+import { SkipLink } from "@/components/SkipLink";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
   if (theme === "demo") {
     return (
       <div className="flex min-h-screen flex-col">
+        <SkipLink />
         <header className="bg-chrome text-white">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
             <Link href="/console" className="font-bold">SMI <span className="text-amber">Console</span></Link>
@@ -68,13 +70,14 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           </div>
           <ConsoleNav items={DEMO_NAV} orientation="horizontal" />
         </header>
-        <main className="min-w-0 flex-1 bg-paper p-6">{children}</main>
+        <main id="main" className="min-w-0 flex-1 bg-paper p-6">{children}</main>
       </div>
     );
   }
 
   return (
     <div className="flex min-h-screen">
+      <SkipLink />
       <aside className="w-56 shrink-0 bg-chrome text-white">
         <div className="p-4">
           <Link href="/console" className="font-bold">SMI <span className="text-amber">Console</span></Link>
@@ -91,7 +94,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           </div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 bg-paper p-6">{children}</main>
+      <main id="main" className="min-w-0 flex-1 bg-paper p-6">{children}</main>
     </div>
   );
 }

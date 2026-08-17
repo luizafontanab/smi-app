@@ -2,10 +2,14 @@
 
 import { serviceDb } from "@/lib/db/server";
 import { ADMIN_EMAIL } from "@/lib/notify-admin";
+import { allowRequest, HOUR } from "@/lib/rate-limit";
+
+const TOO_MANY = "Too many attempts just now — please try again shortly.";
 
 export async function subscribeNewsletter(_prev: { message: string }, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { message: "Please enter a valid email." };
+  if (!(await allowRequest("newsletter", 5, HOUR))) return { message: TOO_MANY };
   const db = serviceDb();
 
   // opt-outs are permanent: never re-subscribe an unsubscribed contact silently
@@ -26,8 +30,15 @@ export async function sendContactMessage(_prev: { message: string }, formData: F
   const message = String(formData.get("message") ?? "").trim();
   const kind = formData.get("kind") === "advertising" ? "advertising" : "contact";
   if (!name || !email || !message) return { message: "All fields are required." };
+  if (!(await allowRequest("contact", 5, HOUR))) return { message: TOO_MANY };
   const db = serviceDb();
   await db.from("inbox_messages").insert({ kind, name, email, message });
+  // ADMIN_EMAIL has no fallback by design (see lib/notify-admin) — the enquiry
+  // is already safe in the console inbox, so a missing address must not throw.
+  if (!ADMIN_EMAIL) {
+    console.warn("[contact] ADMIN_EMAIL is not set — inbox row written, no email sent.");
+    return { message: "Thanks — we'll come back to you shortly." };
+  }
   const { getEmailSender } = await import("@/lib/adapters/email");
   await getEmailSender().send({
     to: ADMIN_EMAIL,

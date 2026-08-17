@@ -19,16 +19,16 @@ export default async function SettingsPage(props: PageProps<"/member/settings">)
       <p className="mt-1 text-sm text-gray-500">We&apos;d rather email you too little than too much — you choose the cadence.</p>
       <form action={savePrefs} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm text-sm">
         <div>
-          <label className="font-medium">Statistics summaries</label>
-          <select name="stats_frequency" defaultValue={prefs?.stats_frequency ?? "quarterly"} className="mt-1 w-full rounded border px-3 py-2">
+          <label htmlFor="stats_frequency" className="font-medium">Statistics summaries</label>
+          <select id="stats_frequency" name="stats_frequency" defaultValue={prefs?.stats_frequency ?? "quarterly"} className="mt-1 w-full rounded border px-3 py-2">
             <option value="monthly">Monthly</option>
             <option value="quarterly">Quarterly (recommended)</option>
             <option value="never">Never — I&apos;ll check the dashboard</option>
           </select>
         </div>
         <div>
-          <label className="font-medium">Sales-lead alerts (companies engaging with you)</label>
-          <select name="leads_frequency" defaultValue={prefs?.leads_frequency ?? "weekly"} className="mt-1 w-full rounded border px-3 py-2">
+          <label htmlFor="leads_frequency" className="font-medium">Sales-lead alerts (companies engaging with you)</label>
+          <select id="leads_frequency" name="leads_frequency" defaultValue={prefs?.leads_frequency ?? "weekly"} className="mt-1 w-full rounded border px-3 py-2">
             <option value="daily">Daily</option>
             <option value="weekly">Weekly (recommended — leads go cold)</option>
             <option value="never">Never</option>

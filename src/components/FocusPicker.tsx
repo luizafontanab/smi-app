@@ -6,7 +6,7 @@ import { useState } from "react";
 export function FocusPicker({ src, initial }: { src: string; initial: { x: number; y: number; scale: number } }) {
   const [focus, setFocus] = useState(initial);
   return (
-    <div className="mt-1">
+    <div className="mt-1" role="group" aria-labelledby="focus-picker-label">
       <div
         className="relative h-48 w-80 cursor-crosshair overflow-hidden rounded border"
         onClick={(e) => {

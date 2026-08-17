@@ -61,6 +61,17 @@ export function adSlotKeys(pageType: PageType, layout: PageLayout): string[] {
   return Array.from({ length: n }, (_, i) => `${SLOT_PREFIX[pageType]}_ad_${i + 1}`);
 }
 
+/**
+ * Slots for advert breaks the author placed inside a story body (see
+ * splitAtAdBreaks). Same contract as adSlotKeys — position only, never an
+ * advertiser — but a separate namespace on purpose: BlockRenderer walks the
+ * layout's ad_banner keys by index, so appending these to that list would
+ * desync the counter and mis-assign every advert on the page.
+ */
+export function bodyAdSlotKeys(count: number): string[] {
+  return Array.from({ length: Math.max(0, count) }, (_, i) => `story_body_ad_${i + 1}`);
+}
+
 export function isAnchor(pageType: PageType, type: BlockType): boolean {
   return (ANCHORS[pageType] as string[]).includes(type);
 }

@@ -74,6 +74,31 @@ h1, h2, h3 {
 .story-body img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 1em 0; }
 .story-body a { color: var(--smi-steel); text-decoration: underline; }
 
+/* Advert break — only ever seen while authoring. The public page splits the
+ * body on this marker and renders a real slot in the gap, and renderableHtml
+ * strips it everywhere else, so it never reaches a reader as a rule. */
+.story-body hr[data-ad-break] {
+  border: 0;
+  height: 3.5rem;
+  margin: 1.5em 0;
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--smi-steel) 6%, transparent);
+  outline: 2px dashed color-mix(in srgb, var(--smi-steel) 40%, transparent);
+  outline-offset: -2px;
+}
+.story-body hr[data-ad-break]::after {
+  content: "Advert break";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--smi-steel);
+}
+
 .carousel {
   scroll-snap-type: x mandatory;
   scrollbar-width: thin;
