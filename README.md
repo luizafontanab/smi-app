@@ -64,6 +64,7 @@ pnpm seed:prod --stories-limit 300  # real WP content; --remote guard is baked i
 
 Then in the dashboard: **Authentication → URL Configuration** → set Site URL + redirect URLs to the deployed app.
 
+- **New Postgres functions are callable by `anon` unless you revoke from `PUBLIC`.** Two things grant it: migration 0006's `alter default privileges … grant execute on functions to anon, authenticated`, and Postgres's own default of granting `EXECUTE` to `PUBLIC` at creation. `revoke … from anon, authenticated` alone does **not** work — the roles still inherit through `PUBLIC`. Any maintenance or `security definer` function needs `revoke execute on function f() from public;` plus an explicit `grant … to service_role;` (see `20260816000002`).
 - **Never run `supabase config push`.** It would overwrite hosted auth settings with the local values in `config.toml` — `site_url = 127.0.0.1:3000`, `enable_confirmations = false`, and a 2-emails/hour rate limit.
 - The seed expects a **fresh database** — it uses plain `.insert()`, so a second run collides. Re-deploy by resetting the remote schema, not by re-seeding.
 - `--stories-limit N` bounds the media upload too (only media referenced by seeded rows is uploaded). All 1,992 stories = 1.00 GiB, exactly the free-tier storage cap; 300 stories ≈ 306 MiB. Members/videos/events contribute a fixed 164 MiB regardless.
