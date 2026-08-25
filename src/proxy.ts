@@ -16,6 +16,14 @@ function toLogin(request: NextRequest, next: string) {
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Holding page: this branch is not live yet, so every URL renders
+  // /under-construction. Placed above the auth work so no request builds a
+  // Supabase client. Delete this block to bring the real site back.
+  if (pathname !== "/under-construction") {
+    return NextResponse.rewrite(new URL("/under-construction", request.url));
+  }
+
   // The member area lives at /dashboard precisely so this can be a plain prefix
   // test: /member is now the PUBLIC directory, and gating it would send every
   // anonymous visitor to /login.
