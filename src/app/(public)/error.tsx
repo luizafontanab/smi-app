@@ -19,7 +19,7 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-      <h1 className="text-3xl font-bold text-navy">Something went wrong at our end</h1>
+      <h1 className="text-3xl font-bold text-ink">Something went wrong at our end</h1>
       <p className="mt-4 text-gray-600">
         This one is on us, not on you. Trying again often clears it — the page may have hit a
         temporary problem loading its content.
@@ -27,11 +27,11 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
       <div className="mt-8 flex flex-wrap justify-center gap-3">
         <button
           onClick={() => retry()}
-          className="rounded bg-navy px-4 py-2 font-semibold text-white hover:brightness-110"
+          className="rounded bg-ink px-4 py-2 font-semibold text-white hover:brightness-110"
         >
           Try again
         </button>
-        <Link href="/" className="rounded border border-navy px-4 py-2 font-semibold text-navy hover:bg-navy/5">
+        <Link href="/" className="rounded border border-ink px-4 py-2 font-semibold text-ink hover:bg-ink/5">
           Back to the homepage
         </Link>
       </div>

@@ -15,14 +15,14 @@ export default async function NewsletterIssuePage(props: PageProps<"/newsletters
 
   return (
     <div className="mx-auto max-w-3xl px-4">
-      <header className="mt-6 rounded-t-xl bg-navy p-6 text-white">
-        <p className="text-xs uppercase tracking-widest text-amber">SMI Monthly · Issue {issue.number}</p>
+      <header className="mt-6 rounded-t-xl bg-ink p-6 text-white">
+        <p className="text-xs uppercase tracking-widest text-brand">SMI Monthly · Issue {issue.number}</p>
         <h1 className="mt-1 text-2xl font-bold">{issue.subject}</h1>
         {issue.intro && <p className="mt-2 text-white/80">{issue.intro}</p>}
       </header>
       <div className="space-y-4 rounded-b-xl bg-white p-6 shadow-sm">
         {issue.items.map(({ story, position }) => story && (
-          <Link key={position} href={`/news/${story.slug}`} className="flex gap-4 rounded-lg border p-3 hover:border-navy">
+          <Link key={position} href={`/news/${story.slug}`} className="flex gap-4 rounded-lg border p-3 hover:border-ink">
             {story.cover_path && (
               <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded">
                 <Image src={mediaUrl(story.cover_path)!} alt="" fill sizes="112px" className="object-cover" unoptimized />

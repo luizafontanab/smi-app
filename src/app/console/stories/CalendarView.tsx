@@ -53,7 +53,7 @@ const shiftMonth = (month: Date, by: number) => new Date(month.getFullYear(), mo
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_PER_DAY = 3;
 
-const navLink = "rounded border px-2.5 py-1 text-sm text-gray-500 hover:border-navy hover:text-navy";
+const navLink = "rounded border px-2.5 py-1 text-sm text-gray-500 hover:border-ink hover:text-ink";
 
 export function CalendarView({ month, stories }: { month: Date; stories: CalendarStory[] }) {
   const { days } = monthGrid(month);
@@ -75,17 +75,17 @@ export function CalendarView({ month, stories }: { month: Date; stories: Calenda
     <div className="mt-5">
       <div className="flex items-center gap-2">
         <Link href={`/console/stories?view=calendar&month=${monthKey(shiftMonth(month, -1))}`} className={navLink} aria-label="Previous month">‹</Link>
-        <h2 className="min-w-40 text-center text-lg font-bold text-navy">
+        <h2 className="min-w-40 text-center text-lg font-bold text-ink">
           {month.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
         </h2>
         <Link href={`/console/stories?view=calendar&month=${monthKey(shiftMonth(month, 1))}`} className={navLink} aria-label="Next month">›</Link>
         <Link href="/console/stories?view=calendar" className={`${navLink} ml-1`}>Today</Link>
         <p className="ml-auto flex items-center gap-3 text-xs text-gray-400">
           <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-navy" /> Published
+            <span className="h-2 w-2 rounded-full bg-ink" /> Published
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full border border-steel" /> Scheduled
+            <span className="h-2 w-2 rounded-full border border-graphite" /> Scheduled
           </span>
         </p>
       </div>
@@ -105,9 +105,9 @@ export function CalendarView({ month, stories }: { month: Date; stories: Calenda
               return (
                 <div
                   key={key}
-                  className={`min-h-24 p-1.5 ${outside ? "bg-gray-50/70" : "bg-white"} ${key === today ? "ring-2 ring-inset ring-amber" : ""}`}
+                  className={`min-h-24 p-1.5 ${outside ? "bg-gray-50/70" : "bg-white"} ${key === today ? "ring-2 ring-inset ring-brand" : ""}`}
                 >
-                  <div className={`px-0.5 text-xs ${key === today ? "font-bold text-navy" : outside ? "text-gray-300" : "text-gray-400"}`}>
+                  <div className={`px-0.5 text-xs ${key === today ? "font-bold text-ink" : outside ? "text-gray-300" : "text-gray-400"}`}>
                     {day.getDate()}
                   </div>
                   <div className={`mt-1 space-y-1 ${outside ? "opacity-55" : ""}`}>
@@ -118,8 +118,8 @@ export function CalendarView({ month, stories }: { month: Date; stories: Calenda
                         title={`${story.title}${story.member?.name ? ` — ${story.member.name}` : ""}`}
                         className={`block truncate rounded px-1.5 py-1 text-xs leading-tight ${
                           story.status === "published"
-                            ? "bg-navy/10 text-navy hover:bg-navy/20"
-                            : "border border-dashed border-steel/50 text-steel hover:bg-steel/10"
+                            ? "bg-ink/10 text-ink hover:bg-ink/20"
+                            : "border border-dashed border-graphite/50 text-graphite hover:bg-graphite/10"
                         }`}
                       >
                         <span className="tabular-nums opacity-70">

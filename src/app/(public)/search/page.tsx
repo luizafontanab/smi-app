@@ -19,7 +19,7 @@ export default async function SearchPage(props: PageProps<"/search">) {
 
   return (
     <div className="mx-auto max-w-6xl px-4">
-      <h1 className="mt-6 text-2xl font-bold text-navy">Search</h1>
+      <h1 className="mt-6 text-2xl font-bold text-ink">Search</h1>
       <form className="mt-4 flex max-w-xl gap-2">
         <input
           name="q"
@@ -28,19 +28,19 @@ export default async function SearchPage(props: PageProps<"/search">) {
           className="w-full rounded border bg-white px-4 py-2.5"
           autoFocus
         />
-        <button className="rounded bg-navy px-5 py-2.5 text-white">Search</button>
+        <button className="rounded bg-ink px-5 py-2.5 text-white">Search</button>
       </form>
 
       {/* Members always rank first — the hierarchy rule */}
       {members.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-amber">Members</h2>
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-brand">Members</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {members.map((m) => (
-              <Link key={m.slug} href={`/members/${m.slug}`} className="flex items-center gap-3 rounded-lg border-2 border-amber/40 bg-white p-3 shadow-sm hover:border-amber">
+              <Link key={m.slug} href={`/member/${m.slug}`} className="flex items-center gap-3 rounded-lg border-2 border-brand/40 bg-white p-3 shadow-sm hover:border-brand">
                 {m.logo_path && <Image src={mediaUrl(m.logo_path)!} alt="" width={40} height={40} className="rounded" unoptimized />}
                 <div>
-                  <p className="font-semibold text-navy">{m.name}</p>
+                  <p className="font-semibold text-ink">{m.name}</p>
                   <p className="text-xs text-gray-500 line-clamp-1">{m.description}</p>
                 </div>
               </Link>
@@ -51,7 +51,7 @@ export default async function SearchPage(props: PageProps<"/search">) {
 
       {stories.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-navy">Stories</h2>
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink">Stories</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {stories.map((s) => <StoryCard key={s.id} story={s} />)}
           </div>

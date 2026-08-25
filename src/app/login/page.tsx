@@ -8,7 +8,7 @@ export const metadata = { title: "Login" };
 export default async function LoginPage(props: PageProps<"/login">) {
   const sp = await props.searchParams;
   const user = await currentUser();
-  if (user) redirect(user.role === "member" ? "/member" : "/console");
+  if (user) redirect(user.role === "member" ? "/dashboard" : "/console");
   const next = typeof sp.next === "string" ? sp.next : "";
   const failed = sp.error === "1";
 
@@ -24,13 +24,13 @@ export default async function LoginPage(props: PageProps<"/login">) {
     if (dest) redirect(dest);
     const { currentUser } = await import("@/lib/auth");
     const user = await currentUser();
-    redirect(user?.role === "member" ? "/member" : "/console");
+    redirect(user?.role === "member" ? "/dashboard" : "/console");
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-4">
       <form action={signIn} className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
-        <p className="text-center text-lg font-bold text-navy">Sheet Metal <span className="text-amber">Industries</span></p>
+        <p className="text-center text-lg font-bold text-ink">Sheet Metal <span className="text-brand">Industries</span></p>
         <p className="mt-1 text-center text-sm text-gray-500">Member &amp; editor login</p>
         {failed && <p className="mt-3 rounded bg-red-50 p-2 text-center text-sm text-red-600">Wrong email or password.</p>}
         <input type="hidden" name="next" value={next} />

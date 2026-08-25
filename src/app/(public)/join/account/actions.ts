@@ -8,7 +8,7 @@ import { allowRequest, HOUR } from "@/lib/rate-limit";
 
 /**
  * V13 step 1 of 4 — account + draft company page. Payment is step 2
- * (/member/pay); the page goes public only once Jas activates it.
+ * (/dashboard/pay); the page goes public only once Jas activates it.
  * The one funnel step that emails Jas as well as the console inbox.
  */
 export async function createAccount(_prev: { message: string }, formData: FormData) {
@@ -37,5 +37,5 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
 
   const session = await sessionDb();
   await session.auth.signInWithPassword({ email, password });
-  redirect("/member/pay");
+  redirect("/dashboard/pay");
 }

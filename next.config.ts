@@ -41,7 +41,8 @@ const csp = [
   "font-src 'self' data:",
   `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}`,
   "media-src 'self' https:",
-  "frame-src 'self' https://www.youtube.com https://player.vimeo.com",
+  // nocookie is what /video/[slug] embeds — same player, no ad cookies before consent
+  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",
@@ -59,6 +60,69 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
 ];
 
+/**
+ * WordPress URLs that map to a new home by pattern alone.
+ *
+ * Anything resolvable without a database lookup belongs here rather than in the
+ * root-slug catch-all: these are matched before routing and before proxy.ts, so
+ * they never touch Supabase and never hit the auth gate. The one shape that
+ * CANNOT live here is the old site's root-level article (`/{slug}/`) — no
+ * pattern matches it without swallowing every other page — so that one is
+ * resolved by src/app/(public)/[slug]/page.tsx instead.
+ *
+ * `permanent: true` emits 308. Vercel caps this list at 1,024 entries; we are
+ * two orders of magnitude under, and it must stay that way — a per-article map
+ * would blow the cap, which is exactly why the catch-all exists.
+ */
+const legacyRedirects = [
+  // sections we renamed to match the old site's singular paths
+  { source: "/find-a-member", destination: "/member", permanent: true },
+  { source: "/members", destination: "/member", permanent: true },
+  { source: "/members/:slug", destination: "/member/:slug", permanent: true },
+  { source: "/videos", destination: "/video", permanent: true },
+  { source: "/videos/:slug", destination: "/video/:slug", permanent: true },
+  { source: "/events", destination: "/event", permanent: true },
+  { source: "/events/:slug", destination: "/event/:slug", permanent: true },
+
+  // entry points that changed name
+  { source: "/become-a-member", destination: "/join", permanent: true },
+  { source: "/members-login", destination: "/login", permanent: true },
+
+  // standalone pages now served from the static_pages CMS. Slugs there are flat,
+  // so the old nesting under /contact and /advertising is flattened too.
+  { source: "/about", destination: "/pages/about", permanent: true },
+  { source: "/policies", destination: "/pages/policies", permanent: true },
+  { source: "/mach-publication", destination: "/pages/mach-publication", permanent: true },
+  { source: "/what-is-a-member-microsite", destination: "/pages/what-is-a-member-microsite", permanent: true },
+  {
+    source: "/contact/press-release-submissions-guide",
+    destination: "/pages/press-release-submissions-guide",
+    permanent: true,
+  },
+  {
+    source: "/advertising/require-banner-design-help",
+    destination: "/pages/require-banner-design-help",
+    permanent: true,
+  },
+
+  // the year archives were WordPress pages; issues now hang off /newsletters itself
+  { source: "/newsletters/2022-newsletters", destination: "/newsletters", permanent: true },
+  { source: "/newsletters/2023-2", destination: "/newsletters", permanent: true },
+  { source: "/newsletters/2024-newsletters", destination: "/newsletters", permanent: true },
+
+  // Taxonomy archives we have not rebuilt (54 services, 4 levels, 58 tags, …).
+  // Pointing them at the nearest section keeps their inbound links alive; when
+  // the member taxonomy lands, the first four of these become real pages and
+  // these rules come out.
+  { source: "/best-service/:slug", destination: "/member", permanent: true },
+  { source: "/best-level/:slug", destination: "/member", permanent: true },
+  { source: "/event-type/:slug", destination: "/event", permanent: true },
+  { source: "/tag/:slug", destination: "/news", permanent: true },
+  { source: "/category/:slug", destination: "/news", permanent: true },
+  { source: "/author/:slug", destination: "/news", permanent: true },
+  { source: "/team-member/:slug", destination: "/pages/about", permanent: true },
+];
+
 const nextConfig: NextConfig = {
   // Playwright drives the app via 127.0.0.1; without this the dev server 403s
   // client chunks/HMR for that origin (only `localhost` is allowed by default)
@@ -70,6 +134,7 @@ const nextConfig: NextConfig = {
     return [
       // join flow became multi-step; the old single-form checkout URL retires
       { source: "/join/checkout", destination: "/join/account", permanent: true },
+      ...legacyRedirects,
     ];
   },
 };

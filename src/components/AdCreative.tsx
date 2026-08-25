@@ -6,6 +6,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { reportAdSeen } from "@/lib/ad-impressions";
 
 /**
+ * Slot footprints. Declared here rather than in AdSlot because AdSlot reaches
+ * into server-only modules, and this is the client leaf both sides can share.
+ *
+ *   banner      1280×170 desktop / 370×280 mobile — the only two-creative shape
+ *   rail        370×280 in a sidebar column
+ *   skyscraper  300×600, desktop only
+ *   mpu         300×250 box
+ *   in_feed     native card, sized to StoryCard size="sm"
+ */
+export type AdShape = "banner" | "rail" | "skyscraper" | "mpu" | "in_feed";
+
+/**
  * The visible half of an advert slot, and the only place an impression is
  * counted. Two conditions must both hold, because either alone lies:
  *
@@ -28,7 +40,7 @@ type Props = {
   href: string;
   desktop: string;
   mobile: string;
-  shape: "banner" | "rail";
+  shape: AdShape;
 };
 
 export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Props) {
@@ -95,11 +107,19 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
   return (
     <Link ref={ref} href={href} className="block" aria-label={`Advert: ${name}`}>
       {shape === "banner" ? (
+        // The only shape with two creatives: a 1280×170 strip cannot survive a
+        // phone, so the mobile artwork is a different shape, not a resize.
         <>
           <Image src={desktop} alt={name} width={1280} height={170} className="hidden w-full rounded md:block" onLoad={checkLoaded} unoptimized />
           <Image src={mobile} alt={name} width={370} height={280} className="w-full rounded md:hidden" onLoad={checkLoaded} unoptimized />
         </>
+      ) : shape === "skyscraper" ? (
+        // Desktop artwork at its own aspect; no mobile creative is booked for it.
+        <Image src={desktop} alt={name} width={300} height={600} className="w-full rounded" onLoad={checkLoaded} unoptimized />
+      ) : shape === "mpu" ? (
+        <Image src={desktop} alt={name} width={300} height={250} className="w-full rounded" onLoad={checkLoaded} unoptimized />
       ) : (
+        // rail and in_feed both take the squarer mobile creative.
         <Image src={mobile} alt={name} width={370} height={280} className="w-full rounded" onLoad={checkLoaded} unoptimized />
       )}
     </Link>

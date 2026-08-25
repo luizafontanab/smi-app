@@ -49,8 +49,8 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-navy">Story Engine</h1>
-        <Link href="/console/stories/new" className="rounded bg-navy px-4 py-2 text-sm text-white">+ New story</Link>
+        <h1 className="text-2xl font-bold text-ink">Story Engine</h1>
+        <Link href="/console/stories/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New story</Link>
       </div>
       <p className="mt-1 text-sm text-gray-500">
         Nothing publishes without approval. The &quot;suggested&quot; column arrives with the Content OS (module 6).
@@ -61,7 +61,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
           <Link
             key={t.view}
             href={t.view === "board" ? "/console/stories" : "/console/stories?view=calendar"}
-            className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-navy" : "text-gray-500 hover:text-navy"}`}
+            className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-ink" : "text-gray-500 hover:text-ink"}`}
           >
             {t.label}
           </Link>
@@ -82,7 +82,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
                 <div className="mt-2 space-y-2">
                   {items.map((s) => (
                     <div key={s.id} className="rounded border p-2.5 text-sm">
-                      <Link href={`/console/stories/${s.id}`} className="font-medium leading-snug hover:text-steel">{s.title}</Link>
+                      <Link href={`/console/stories/${s.id}`} className="font-medium leading-snug hover:text-graphite">{s.title}</Link>
                       <p className="mt-1 text-xs text-gray-400">
                         {s.member?.name && <>{s.member.name} · </>}{s.source}
                         {s.scheduled_at && s.status === "scheduled" && <> · {new Date(s.scheduled_at).toLocaleString("en-GB")}</>}
@@ -102,7 +102,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
                         <form action={pinStory} className="mt-1.5 flex items-center gap-1 text-xs">
                           <input type="hidden" name="id" value={s.id} />
                           <input type="hidden" name="days" value={s.pinned_until && new Date(s.pinned_until) > new Date() ? "0" : "2"} />
-                          <button className="text-gray-400 hover:text-navy">
+                          <button className="text-gray-400 hover:text-ink">
                             {s.pinned_until && new Date(s.pinned_until) > new Date() ? "Unpin" : "📌 Pin 2 days"}
                           </button>
                         </form>

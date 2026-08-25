@@ -34,9 +34,31 @@ async function upload(path: string, body: Buffer | Blob, contentType: string) {
   return path;
 }
 
+/**
+ * `supabase db reset` clears Postgres (including storage.objects) but never
+ * touches the Storage volume's files on disk — without this, every reseed
+ * leaves the previous run's blobs behind and the local volume only grows.
+ */
+async function emptyBucket(prefix = "") {
+  const { data, error } = await db.storage.from("media").list(prefix, { limit: 1000 });
+  if (error) throw error;
+  const files: string[] = [];
+  for (const entry of data ?? []) {
+    const full = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.id === null) await emptyBucket(full);
+    else files.push(full);
+  }
+  for (let i = 0; i < files.length; i += 100) {
+    const { error: rmErr } = await db.storage.from("media").remove(files.slice(i, i + 100));
+    if (rmErr) throw rmErr;
+  }
+}
+
 async function main() {
   console.log("— buckets");
   await db.storage.createBucket("media", { public: true }).catch(() => {});
+  console.log("— media: clearing stale files from previous seeds");
+  await emptyBucket();
 
   console.log("— categories (real story cats from WP + member cats)");
   const wpCats: { id: number; name: string; slug: string; count: number }[] = await fetch(
@@ -168,6 +190,11 @@ async function main() {
     { key: "news_mid", label: "News mid-page", cap: 3 },
     { key: "footer", label: "Footer banner", cap: 3 },
     { key: "supplier_logos", label: "Supplier logos", cap: 8 },
+    // Grid-design inventory (migration 20260825000001 adds the formats)
+    { key: "home_sky", label: "Homepage skyscraper", cap: 3 },
+    { key: "home_mpu_1", label: "Homepage box 1", cap: 3 },
+    { key: "home_mpu_2", label: "Homepage box 2", cap: 3 },
+    { key: "home_infeed", label: "Homepage in-feed", cap: 3 },
   ]); // story_ad_* / member_ad_* / machine_ad_* come from migration 20260810000002;
   // videos_mid / events_mid / directory_mid from 20260811000002
   const palette = ["#1e3a5f", "#7c2d12", "#14532d", "#581c87", "#7f1d1d", "#0c4a6e", "#3f6212", "#701a75"];
@@ -192,6 +219,17 @@ async function main() {
     await db.from("advert_bookings").insert({ advert_id: ad!.id, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
 
+  // One booked creative per new format, so the grid design's slots can be
+  // reviewed filled as well as empty.
+  for (const [i, fmt] of (["skyscraper", "mpu", "in_feed"] as const).entries()) {
+    const [w, h] = fmt === "skyscraper" ? [300, 600] : fmt === "mpu" ? [300, 250] : [370, 280];
+    const m = activeMembers[i + 17];
+    const { data: adv } = await db.from("advertisers").insert({ name: m.name, member_id: m.id }).select("id").single();
+    const p = await upload(`panels/${fmt}-${i}.svg`, svgBanner(m.name, w, h, palette[(i + 5) % 8]), "image/svg+xml");
+    const { data: ad } = await db.from("adverts").insert({ advertiser_id: adv!.id, name: `${m.name} ${fmt}`, desktop_path: p, mobile_path: p, format: fmt }).select("id").single();
+    await db.from("advert_bookings").insert({ advert_id: ad!.id, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+  }
+
   console.log("— placements: featured members, featured machine, grid blocks");
   const { data: fm } = await db.from("featured_machines").insert({
     member_id: activeMembers[5].id, name: "2026 Durma HD-F 3015 12kW Fibre Laser",
@@ -211,13 +249,23 @@ async function main() {
     { slug: "smi-golf-challenge-2026", title: "SMI Golf Challenge 2026", location: "Belfry, West Midlands", starts_on: "2026-09-17", status: "published", description: "The annual SMI golf day." },
     { slug: "euroblech-2026", title: "EuroBLECH 2026", location: "Hanover, Germany", starts_on: "2026-10-20", ends_on: "2026-10-23", status: "published", link: "https://www.euroblech.com" },
     { slug: "open-house-bending-demo", title: "Open house: bending cell demo", location: faker.location.city(), starts_on: iso(new Date(today.getTime() + 30 * 864e5)), status: "awaiting_approval", member_id: memberLogins[0] },
+    // past and published — the archive on /event and the "already taken place"
+    // notice on /event/[slug] are otherwise unreachable from seed data
+    { slug: "smi-golf-challenge-2025", title: "SMI Golf Challenge 2025", location: "Belfry, West Midlands", starts_on: iso(new Date(today.getTime() - 340 * 864e5)), status: "published", description: "<p>Last year's golf day.</p>" },
   ]);
   const ytIds = ["fLcEcOuZTBs", "kXYiU_JCYtU", "hTWKbfoikeg", "9bZkp7q19f0", "dQw4w9WgXcQ", "L_jWHffIx5E"];
-  await db.from("videos").insert(ytIds.map((v, i) => ({
-    title: `${faker.company.buzzPhrase()} — shop floor tour`, url: `https://www.youtube.com/watch?v=${v}`,
-    member_id: i < 3 ? activeMembers[i + 6].id : null, status: "published", source: i < 2 ? "manual" : "curated",
-    published_at: faker.date.recent({ days: 60 }).toISOString(),
-  })));
+  await db.from("videos").insert(ytIds.map((v, i) => {
+    const title = `${faker.company.buzzPhrase()} — shop floor tour`;
+    return {
+      // buzzPhrase can repeat across six rows, and videos.slug is unique — the
+      // index suffix is what keeps a reseed from failing on a coincidence
+      slug: `${slugify(title)}-${i}`,
+      title, url: `https://www.youtube.com/watch?v=${v}`,
+      description: `<p>${faker.lorem.paragraph()}</p>`,
+      member_id: i < 3 ? activeMembers[i + 6].id : null, status: "published", source: i < 2 ? "manual" : "curated",
+      published_at: faker.date.recent({ days: 60 }).toISOString(),
+    };
+  }));
 
   console.log("— newsletter issues");
   const { data: pubStories } = await db.from("stories").select("id").eq("status", "published").limit(16);
@@ -290,6 +338,17 @@ async function main() {
     { slug: "policies", title: "Policies", body: "<p>Privacy and cookie policy.</p>" },
     { slug: "advertising", title: "Advertise with SMI", body: "<p>Formats A–F, media pack available on request.</p>" },
     { slug: "mach-publication", title: "MACH Publication", body: "<p>Our MACH show magazine.</p>" },
+    // The standalone pages the live site has and we did not. Slugs are flat, so
+    // the old nesting (/contact/press-release-submissions-guide) is flattened
+    // and redirected in next.config.ts — keep the two lists in step.
+    { slug: "what-is-a-member-microsite", title: "What is a member microsite?", body: "<p>What your SMI page gives you.</p>" },
+    { slug: "press-release-submissions-guide", title: "Press release submissions guide", body: "<p>How to send us your news.</p>" },
+    { slug: "require-banner-design-help", title: "Need help designing a banner?", body: "<p>Our studio can build your artwork.</p>" },
+    { slug: "smi-golf-challenge-2024", title: "SMI Golf Challenge 2024 — a swinging success", body: "<p>How the 2024 golf day went.</p>" },
+    { slug: "smi-golf-day-2025", title: "SMI Golf Day 2025", body: "<p>The 2025 golf day.</p>" },
+    { slug: "welcome-to-the-smi-golf-challenge", title: "Welcome to the SMI Golf Challenge", body: "<p>About the annual golf challenge.</p>" },
+    { slug: "plans-in-place-for-future-growth", title: "Plans in place for future growth", body: "<p>Where SMI is heading.</p>" },
+    { slug: "newsletter-archive", title: "Newsletter archive", body: "<p>Every issue we have sent.</p>" },
   ]);
   await db.from("settings").insert([
     { key: "grid", value: { blocks: 12, mix: { news: 6, video: 2, member_news: 2, featured_member: 1, featured_machine: 1 } } },

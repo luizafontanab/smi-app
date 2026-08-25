@@ -44,8 +44,18 @@ export async function showAdPlaceholders(): Promise<boolean> {
   return process.env.NODE_ENV !== "production" || (await adPreview());
 }
 
-export async function liveAdverts(format: "banner" | "supplier_logo"): Promise<LiveAdvert[]> {
-  if (await adPreview()) return [];
+/** Mirrors the adverts.format check constraint. Mobile is a creative, not a format. */
+export type AdvertFormat =
+  | "banner"
+  | "supplier_logo"
+  | "newsletter_banner"
+  | "association_logo"
+  | "skyscraper"
+  | "mpu"
+  | "in_feed";
+
+/** One query for today's live bookings, tagged with format. */
+async function liveBookings(): Promise<(LiveAdvert & { format: string })[]> {
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
@@ -55,7 +65,7 @@ export async function liveAdverts(format: "banner" | "supplier_logo"): Promise<L
     .gte("ends_on", today);
   return (data ?? [])
     .map((b) => b.advert)
-    .filter((a): a is NonNullable<typeof a> => !!a && a.format === format)
+    .filter((a): a is NonNullable<typeof a> => !!a)
     .map((a) => ({
       advertId: a.id,
       name: a.name,
@@ -64,7 +74,28 @@ export async function liveAdverts(format: "banner" | "supplier_logo"): Promise<L
       linkUrl: a.link_url,
       memberSlug: a.advertiser?.member?.slug ?? null,
       memberId: a.advertiser?.member?.id ?? null,
+      format: a.format,
     }));
+}
+
+export async function liveAdverts(format: AdvertFormat): Promise<LiveAdvert[]> {
+  if (await adPreview()) return [];
+  return (await liveBookings()).filter((a) => a.format === format);
+}
+
+/**
+ * Every requested format from a single round trip. A page that carries banners,
+ * logos, a skyscraper and two boxes wants one query, not five — the bookings
+ * table is the same for all of them.
+ */
+export async function liveAdvertsByFormat<F extends AdvertFormat>(formats: readonly F[]): Promise<Record<F, LiveAdvert[]>> {
+  const out = Object.fromEntries(formats.map((f) => [f, [] as LiveAdvert[]])) as Record<F, LiveAdvert[]>;
+  if (await adPreview()) return out;
+  const wanted = new Set<string>(formats);
+  for (const a of await liveBookings()) {
+    if (wanted.has(a.format)) out[a.format as F].push(a);
+  }
+  return out;
 }
 
 /** Fisher–Yates on a uniform PRNG; slots pick the first N of an unbiased shuffle. */
@@ -109,6 +140,6 @@ export function advertHref(ad: LiveAdvert): string {
 
 export function resolveAdvertTarget(linkUrl: string | null, memberSlug: string | null): string {
   if (linkUrl) return linkUrl;
-  if (memberSlug) return `/members/${memberSlug}`;
+  if (memberSlug) return `/member/${memberSlug}`;
   return "/";
 }

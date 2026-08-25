@@ -50,7 +50,7 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
             const { label, href } = block.props as { label: string; href: string };
             return (
               <div key={block.id} className="mt-6">
-                <Link href={href} className="text-sm text-gray-400 hover:text-navy">← {label}</Link>
+                <Link href={href} className="text-sm text-gray-400 hover:text-ink">← {label}</Link>
               </div>
             );
           }
@@ -62,7 +62,7 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
             if (!stories?.length) return null;
             return (
               <section key={block.id} className="mt-10">
-                <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-navy">{title}</h2>
+                <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">{title}</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {stories.slice(0, limit).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
                 </div>
@@ -73,8 +73,8 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
             return <JoinCta key={block.id} />;
           case "newsletter_signup":
             return (
-              <section key={block.id} className="my-10 rounded-xl bg-steel/10 p-6">
-                <h2 className="font-bold text-navy">The monthly round-up, straight to your inbox</h2>
+              <section key={block.id} className="my-10 rounded-xl bg-graphite/10 p-6">
+                <h2 className="font-bold text-ink">The monthly round-up, straight to your inbox</h2>
                 <div className="mt-3 max-w-md"><NewsletterSignup /></div>
               </section>
             );

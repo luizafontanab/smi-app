@@ -14,13 +14,13 @@ export default function ConsoleError({ error, retry }: { error: Error & { digest
 
   return (
     <div className="mx-auto max-w-xl py-20 text-center">
-      <h1 className="text-xl font-bold text-navy">This screen failed to load</h1>
+      <h1 className="text-xl font-bold text-ink">This screen failed to load</h1>
       <p className="mt-3 text-sm text-gray-600">
         Nothing has been saved or lost — the page just couldn&apos;t finish loading its data.
       </p>
       <button
         onClick={() => retry()}
-        className="mt-6 rounded bg-navy px-4 py-2 text-sm font-semibold text-white hover:brightness-110"
+        className="mt-6 rounded bg-ink px-4 py-2 text-sm font-semibold text-white hover:brightness-110"
       >
         Try again
       </button>

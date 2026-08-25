@@ -94,24 +94,71 @@ export async function publishedVideos(limit = 8) {
   const db = publicDb();
   const { data } = await db
     .from("videos")
-    .select("id, title, url, thumbnail_path, member:members(slug, name)")
+    .select("id, slug, title, url, thumbnail_path, member:members(slug, name)")
     .eq("status", "published")
     .order("published_at", { ascending: false })
     .limit(limit);
   return data ?? [];
 }
 
+export async function videoBySlug(slug: string) {
+  const db = publicDb();
+  const { data } = await db
+    .from("videos")
+    .select("id, slug, title, url, description, thumbnail_path, published_at, member:members(slug, name, logo_path)")
+    .eq("status", "published")
+    .eq("slug", slug)
+    .maybeSingle();
+  return data;
+}
+
+const EVENT_FIELDS = "slug, title, location, starts_on, ends_on, link, description, cover_path, member:members(slug, name)";
+
+/** Shared by all three event reads: repair legacy ACF map blobs in one place. */
+function withDisplayLocation<T extends { location: string | null }>(rows: T[] | null) {
+  return (rows ?? []).map((e) => ({ ...e, location: displayLocation(e.location) }));
+}
+
 export async function upcomingEvents(limit = 6) {
   const db = publicDb();
   const { data } = await db
     .from("events")
-    .select("slug, title, location, starts_on, ends_on, link, description, member:members(slug, name)")
+    .select(EVENT_FIELDS)
     .eq("status", "published")
     .gte("starts_on", new Date().toISOString().slice(0, 10))
     .order("starts_on")
     .limit(limit);
-  // the only events read path — repair legacy ACF map blobs once, here
-  return (data ?? []).map((e) => ({ ...e, location: displayLocation(e.location) }));
+  return withDisplayLocation(data);
+}
+
+/**
+ * Everything already finished, newest first.
+ *
+ * The old site kept its event pages up indefinitely — 56 of them, most long
+ * past. Listing only what is upcoming silently retired each URL the morning
+ * after its date, which is the one behaviour a redirect map cannot rescue.
+ */
+export async function pastEvents(limit = 40) {
+  const db = publicDb();
+  const { data } = await db
+    .from("events")
+    .select(EVENT_FIELDS)
+    .eq("status", "published")
+    .lt("starts_on", new Date().toISOString().slice(0, 10))
+    .order("starts_on", { ascending: false })
+    .limit(limit);
+  return withDisplayLocation(data);
+}
+
+export async function eventBySlug(slug: string) {
+  const db = publicDb();
+  const { data } = await db
+    .from("events")
+    .select(EVENT_FIELDS)
+    .eq("status", "published")
+    .eq("slug", slug)
+    .maybeSingle();
+  return data ? withDisplayLocation([data])[0] : null;
 }
 
 /**
@@ -212,6 +259,7 @@ export async function newsletterBySlug(slug: string) {
 
 export async function staticPage(slug: string) {
   const db = publicDb();
-  const { data } = await db.from("static_pages").select("slug, title, body").eq("slug", slug).single();
+  // maybeSingle, not single: a miss here is a 404 to render, not an error to log
+  const { data } = await db.from("static_pages").select("id, slug, title, body").eq("slug", slug).maybeSingle();
   return data;
 }

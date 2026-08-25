@@ -38,11 +38,11 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href={backTo} className="text-sm text-gray-400 hover:text-navy">← Story Engine</Link>
+      <Link href={backTo} className="text-sm text-gray-400 hover:text-ink">← Story Engine</Link>
       <div className="flex items-baseline justify-between">
-        <h1 className="mt-1 text-xl font-bold text-navy">{isNew ? "New story" : "Edit story"}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New story" : "Edit story"}</h1>
         {!isNew && (
-          <Link href={`/console/pages?type=story&entity=${id}`} className="text-sm text-steel underline">
+          <Link href={`/console/pages?type=story&entity=${id}`} className="text-sm text-graphite underline">
             Page layout for this story
           </Link>
         )}
@@ -95,14 +95,14 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
             <FocusPicker src={cover} initial={focus} />
           </div>
         )}
-        <button className="rounded bg-navy px-5 py-2.5 text-white">Save</button>
+        <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
       </form>
 
       {!isNew && story && (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           {story.status === "awaiting_approval" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
-              <h2 className="font-bold text-navy">Approval</h2>
+              <h2 className="font-bold text-ink">Approval</h2>
               <p className="mt-1 text-xs text-gray-500">Preview shows backlink + logo exactly as it will publish. Edit above first if needed.</p>
               <div className="mt-3 flex gap-2">
                 <form action={decideStory}>
@@ -121,21 +121,21 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           )}
           {(story.status === "draft" || story.status === "rejected" || story.status === "scheduled") && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
-              <h2 className="font-bold text-navy">Schedule</h2>
+              <h2 className="font-bold text-ink">Schedule</h2>
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="return_to" value={backTo} />
                 <input type="datetime-local" name="scheduled_at" defaultValue={story.scheduled_at?.slice(0, 16) ?? ""} className="rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded bg-navy px-4 py-2 text-sm text-white">Schedule</button>
-                <button name="mode" value="now" className="rounded bg-amber px-4 py-2 text-sm font-semibold text-navy">Publish now (urgent)</button>
+                <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>
+                <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
               </form>
               <p className="mt-2 text-xs text-gray-400">Social push follows publication after the configured delay; daily cap applies.</p>
             </div>
           )}
           {story.member && (
             <div className="rounded-xl bg-white p-5 shadow-sm text-sm">
-              <h2 className="font-bold text-navy">Member preview</h2>
-              <div className="mt-2 flex items-center gap-3 rounded border-2 border-amber bg-amber/5 p-3">
+              <h2 className="font-bold text-ink">Member preview</h2>
+              <div className="mt-2 flex items-center gap-3 rounded border-2 border-brand bg-brand/5 p-3">
                 {story.member.logo_path && <Image src={mediaUrl(story.member.logo_path)!} alt="" width={40} height={40} className="rounded" unoptimized />}
                 <span>Backlink + footer branding → <b>{story.member.name}</b></span>
               </div>

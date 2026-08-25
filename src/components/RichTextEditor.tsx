@@ -42,7 +42,7 @@ function ToolbarButton({ label, title, active, onRun, disabled }: {
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault() /* keep editor selection/focus */}
       onClick={onRun}
-      className={`rounded px-2 py-1 text-sm ${active ? "bg-navy text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"} disabled:opacity-40`}
+      className={`rounded px-2 py-1 text-sm ${active ? "bg-ink text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"} disabled:opacity-40`}
     >
       {label}
     </button>
@@ -73,7 +73,7 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
     content: initialHtml,
     editorProps: {
       attributes: {
-        class: `story-body ${minHeightClass} w-full rounded-b border border-t-0 px-3 py-2 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-navy`,
+        class: `story-body ${minHeightClass} w-full rounded-b border border-t-0 px-3 py-2 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-ink`,
         // The editing surface is a contenteditable, not a form control, so a
         // <label htmlFor> cannot reach it — callers pass their visible caption
         // here so it still has an accessible name.

@@ -20,9 +20,9 @@ export default function JoinPage() {
   return (
     <div className="mx-auto max-w-4xl px-4">
       <div className="mt-8 text-center">
-        <h1 className="text-3xl font-bold text-navy">Become a Member</h1>
+        <h1 className="text-3xl font-bold text-ink">Become a Member</h1>
         <p className="mx-auto mt-3 max-w-xl text-gray-600">
-          <span className="text-2xl font-bold text-navy">£40/month</span> — no tiers, no seat licences, cancel anytime.
+          <span className="text-2xl font-bold text-ink">£40/month</span> — no tiers, no seat licences, cancel anytime.
           The price is the price, stated up front.
         </p>
         <p className="mx-auto mt-2 max-w-xl text-sm text-gray-500">
@@ -32,22 +32,22 @@ export default function JoinPage() {
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {BENEFITS.map(([title, detail]) => (
           <div key={title} className="rounded-lg bg-white p-5 shadow-sm">
-            <h2 className="font-bold text-navy">{title}</h2>
+            <h2 className="font-bold text-ink">{title}</h2>
             <p className="mt-1 text-sm text-gray-600">{detail}</p>
           </div>
         ))}
       </div>
-      <div className="mt-8 rounded-xl bg-navy p-8 text-center text-white">
+      <div className="mt-8 rounded-xl bg-ink p-8 text-center text-white">
         <h2 className="text-xl font-bold">How joining works</h2>
         <ol className="mx-auto mt-4 max-w-md space-y-3 text-left text-sm">
           {STEPS.map(([title, detail], i) => (
             <li key={title} className="flex gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber text-xs font-bold text-navy">{i + 1}</span>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-ink">{i + 1}</span>
               <span><b>{title}</b> <span className="text-white/70">— {detail}</span></span>
             </li>
           ))}
         </ol>
-        <Link href="/join/account" className="mt-6 inline-block rounded bg-amber px-6 py-3 font-semibold text-navy">
+        <Link href="/join/account" className="mt-6 inline-block rounded bg-brand px-6 py-3 font-semibold text-ink">
           Join now — £40/month
         </Link>
         <p className="mt-3 text-xs text-white/50">Payments handled securely by Stripe.</p>

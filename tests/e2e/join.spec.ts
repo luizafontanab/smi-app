@@ -23,7 +23,7 @@ async function createAccount(page: import("@playwright/test").Page, company: str
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', PASSWORD);
   await page.click("button:has-text('Create account')");
-  await page.waitForURL("**/member/pay", { timeout: 20_000 });
+  await page.waitForURL("**/dashboard/pay", { timeout: 20_000 });
 }
 
 test.describe("join funnel (V13 — account → pay → page → approval)", () => {
@@ -46,18 +46,18 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
     // step 2: promo code
     await page.fill('input[name="promo"]', "SMI-FREE-YEAR");
     await page.click("button:has-text('Pay £40/month')");
-    await page.waitForURL("**/member?submitted=paid");
+    await page.waitForURL("**/dashboard?submitted=paid");
 
     // checklist points at step 3
     await expect(page.locator("text=Finish setting up your membership")).toBeVisible();
     await page.click("a:has-text('Build your page')");
-    await page.waitForURL("**/member/profile");
+    await page.waitForURL("**/dashboard/profile");
     await expect(page.locator("text=Step 3 of 4")).toBeVisible();
     // description is a rich-text editor (contenteditable + hidden input)
     await page.locator('[contenteditable="true"]').first().click();
     await page.keyboard.type("We cut, fold and weld sheet metal.");
     await page.click("button:has-text('Submit page for approval')");
-    await page.waitForURL("**/member?submitted=page");
+    await page.waitForURL("**/dashboard?submitted=page");
     await expect(page.locator("text=Jas is reviewing your page")).toBeVisible();
     await signOut(page);
 
@@ -81,21 +81,21 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
     await createAccount(page, `E2E Resume Ltd ${ts}`, email);
 
     // abandon at the pay step
-    await page.goto("/member");
+    await page.goto("/dashboard");
     await signOut(page);
     await login(page, email);
     await expect(page.locator("text=Finish setting up your membership")).toBeVisible();
     await expect(page.locator("a:has-text('Pay now')")).toBeVisible();
     await page.click("a:has-text('Pay now')");
-    await page.waitForURL("**/member/pay");
+    await page.waitForURL("**/dashboard/pay");
   });
 
   test("card-stub path records a paid invoice under billing", async ({ page }) => {
     const ts = Date.now();
     await createAccount(page, `E2E Card Ltd ${ts}`, `e2e-card-${ts}@test.local`);
     await page.click("button:has-text('Pay £40/month')"); // no promo → simulated card payment
-    await page.waitForURL("**/member?submitted=paid");
-    await page.goto("/member/billing");
+    await page.waitForURL("**/dashboard?submitted=paid");
+    await page.goto("/dashboard/billing");
     await expect(page.locator("text=SMI-JOIN-").first()).toBeVisible();
   });
 
@@ -104,7 +104,7 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
     const ts = Date.now();
     const company = `E2E Gate Ltd ${ts}`; // must not contain chip words like "unpaid"
     await createAccount(page, company, `e2e-gate-${ts}@test.local`);
-    await page.goto("/member");
+    await page.goto("/dashboard");
     await signOut(page);
 
     await login(page, "jas@smi.local");

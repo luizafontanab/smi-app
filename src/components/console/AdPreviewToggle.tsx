@@ -42,7 +42,7 @@ export function AdPreviewToggle({ initialOn }: { initialOn: boolean }) {
           onClick={toggle}
           aria-pressed={on}
           className={`shrink-0 rounded px-3 py-1.5 text-sm font-semibold ${
-            on ? "bg-amber text-navy" : "border bg-white text-navy hover:border-navy"
+            on ? "bg-brand text-ink" : "border bg-white text-ink hover:border-ink"
           }`}
         >
           {on ? "Turn off" : "Turn on"}

@@ -1,9 +1,9 @@
-export type PageType = "story" | "member_profile" | "featured_machine";
+export type PageType = "story" | "member_profile" | "featured_machine" | "static_page";
 
 export type BlockType =
   // anchors — the page's main content; admins position them, members write into them
   | "story_header" | "story_hero" | "story_body"
-  | "profile_main" | "machine_main"
+  | "profile_main" | "machine_main" | "page_main"
   // decoration blocks admins may add/remove/reorder
   | "ad_banner"
   | "latest_news"
@@ -21,6 +21,7 @@ export const ANCHORS: Record<PageType, BlockType[]> = {
   story: ["story_header", "story_hero", "story_body"],
   member_profile: ["profile_main"],
   featured_machine: ["machine_main"],
+  static_page: ["page_main"],
 };
 
 /** Decorations allowed per page type (member_news needs a member in context). */
@@ -28,6 +29,8 @@ export const DECORATIONS: Record<PageType, BlockType[]> = {
   story: ["back_link", "ad_banner", "latest_news", "member_news", "join_cta", "newsletter_signup", "supplier_logos"],
   member_profile: ["back_link", "ad_banner", "latest_news", "member_news", "join_cta", "newsletter_signup", "supplier_logos"],
   featured_machine: ["back_link", "ad_banner", "latest_news", "join_cta", "newsletter_signup", "supplier_logos"],
+  // no member_news: a standalone page has no member in context
+  static_page: ["back_link", "ad_banner", "latest_news", "join_cta", "newsletter_signup", "supplier_logos"],
 };
 
 export const BLOCK_LABELS: Record<BlockType, string> = {
@@ -36,6 +39,7 @@ export const BLOCK_LABELS: Record<BlockType, string> = {
   story_body: "Article body (fixed)",
   profile_main: "Member profile (fixed)",
   machine_main: "Machine listing (fixed)",
+  page_main: "Page content (fixed)",
   ad_banner: "Advert slot (rotates)",
   latest_news: "Latest news cards",
   member_news: "This member's news",
@@ -49,6 +53,7 @@ const SLOT_PREFIX: Record<PageType, string> = {
   story: "story",
   member_profile: "member",
   featured_machine: "machine",
+  static_page: "page",
 };
 
 /**

@@ -1,60 +1,50 @@
 @import "tailwindcss";
 
+/*
+ * The client's brand. Orange is Pantone Orange 021, supplied as CMYK(0,58,85,0);
+ * gold is the lighter gradient stop, supplied as C3 M35 Y100 K0. Everything else
+ * is neutral on purpose — orange carries the identity, the greys carry the page.
+ *
+ * Measured contrast, because orange is a brand colour and not a text colour:
+ *   brand on paper   3.3:1  fails AA — large/bold only, NEVER body text
+ *   white on brand   3.3:1  same rule: large/bold only
+ *   ink   on brand   4.7:1  passes AA — this is the CTA pairing
+ *   gold  on ink     7.4:1  use when small text must sit on the accent
+ */
 :root {
-  --smi-navy: #16283f;
-  --smi-steel: #2d4a6b;
-  --smi-amber: #e8a020;
-  --smi-paper: #f7f8fa;
-  --smi-ink: #1a2230;
-  --smi-chrome: #10151d;
-  --smi-chrome-hover: #233247;
-  --smi-font-sans: var(--font-geist-sans);
-  --smi-font-heading: var(--font-geist-sans);
+  --smi-brand: #fe5000;
+  --smi-gold: #f7a600;
+  --smi-ink: #111418;
+  --smi-graphite: #5a6068;
+  --smi-paper: #ffffff;
+  --smi-chrome: #0b0d10;
+  --smi-chrome-hover: #22262c;
+  --smi-line: #e4e6e9;
+  --smi-font-sans: var(--font-league-spartan);
+  --smi-font-heading: var(--font-league-spartan);
+  /* Logo face — the wordmark in SiteHeader only, never as a display font. */
+  --smi-font-logo: var(--font-allerta-stencil);
 }
 
 /*
- * Temporary demo themes — switched from the Console sidebar (sets html[data-theme]
- * + smi-theme cookie). Default (no attribute) is the "Forge" theme above.
+ * Two designs now, not three themes. Both share every token above: "forge" is
+ * this block, "grid" is html[data-theme="grid"] and differs structurally rather
+ * than by colour, so it overrides only what it must. The root layout stamps the
+ * attribute for both from the smi-theme cookie; unknown values resolve to forge,
+ * which is how browsers still holding the retired "live"/"demo" values migrate.
  */
-html[data-theme="live"] {
-  /* sheetmetalindustries.com — tokens from Sprout theme _vars.scss */
-  --smi-navy: #3100ff;
-  --smi-steel: #3100ff;
-  --smi-amber: #ff8200;
-  --smi-paper: #e2e2e2;
-  --smi-ink: #000000;
-  --smi-chrome: #000000;
-  --smi-chrome-hover: #313131;
-  --smi-font-sans: var(--font-league-spartan);
-  --smi-font-heading: var(--font-league-spartan);
-}
-
-html[data-theme="demo"] {
-  /* smi-journal-hub.lovable.app — tokens from its compiled :root */
-  --smi-navy: oklch(37.3% 0.078 255.5);
-  --smi-steel: oklch(37.3% 0.078 255.5);
-  --smi-amber: oklch(63% 0.115 55);
-  --smi-paper: #ffffff;
-  --smi-ink: oklch(21% 0.03 258);
-  --smi-chrome: oklch(28% 0.062 255.5);
-  --smi-chrome-hover: oklch(37.3% 0.078 255.5);
-  --smi-font-sans: var(--font-inter-tight);
-  --smi-font-heading: var(--font-source-serif);
-}
-
-html[data-theme="live"] .site-chrome-top {
-  border-top: 4px solid var(--smi-amber);
-}
 
 @theme inline {
-  --color-navy: var(--smi-navy);
-  --color-steel: var(--smi-steel);
-  --color-amber: var(--smi-amber);
-  --color-paper: var(--smi-paper);
+  --color-brand: var(--smi-brand);
+  --color-gold: var(--smi-gold);
   --color-ink: var(--smi-ink);
+  --color-graphite: var(--smi-graphite);
+  --color-paper: var(--smi-paper);
   --color-chrome: var(--smi-chrome);
   --color-chrome-hover: var(--smi-chrome-hover);
+  --color-line: var(--smi-line);
   --font-sans: var(--smi-font-sans);
+  --font-logo: var(--smi-font-logo);
 }
 
 body {
@@ -72,7 +62,7 @@ h1, h2, h3 {
 .story-body p { margin: 1em 0; }
 .story-body h2, .story-body h3 { font-weight: 700; margin: 1.4em 0 0.5em; }
 .story-body img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 1em 0; }
-.story-body a { color: var(--smi-steel); text-decoration: underline; }
+.story-body a { color: var(--smi-graphite); text-decoration: underline; }
 
 /* Advert break — only ever seen while authoring. The public page splits the
  * body on this marker and renders a real slot in the gap, and renderableHtml
@@ -82,8 +72,8 @@ h1, h2, h3 {
   height: 3.5rem;
   margin: 1.5em 0;
   border-radius: 0.375rem;
-  background: color-mix(in srgb, var(--smi-steel) 6%, transparent);
-  outline: 2px dashed color-mix(in srgb, var(--smi-steel) 40%, transparent);
+  background: color-mix(in srgb, var(--smi-graphite) 6%, transparent);
+  outline: 2px dashed color-mix(in srgb, var(--smi-graphite) 40%, transparent);
   outline-offset: -2px;
 }
 .story-body hr[data-ad-break]::after {
@@ -96,7 +86,7 @@ h1, h2, h3 {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--smi-steel);
+  color: var(--smi-graphite);
 }
 
 .carousel {
@@ -116,7 +106,8 @@ h1, h2, h3 {
  * ───────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* Theme-independent on purpose — these must not move with data-theme. */
+  /* Design-independent on purpose — these must not move with data-theme.
+     Grid overrides only --hero-h, to pull the page up. */
   /* Adaptive: full 48rem on a big monitor, but never so tall on a laptop that
      the section below loses its peek above the fold — that peek is the only
      scroll cue the page has. */
@@ -128,6 +119,12 @@ h1, h2, h3 {
   --hero-card: 260ms;
 }
 @media (max-width: 640px) { :root { --hero-h: min(76vh, 34rem); } }
+
+/* Grid runs a shorter stage so more of the page shows above the fold — Jas:
+   "The main backround image at the top may need to reduce in size to pull the
+   whole page upwards." Only the height moves; the hero component is shared. */
+[data-design="grid"] { --hero-h: min(60vh, 34rem); }
+@media (max-width: 640px) { [data-design="grid"] { --hero-h: min(58vh, 26rem); } }
 
 .hero {
   position: relative;
@@ -179,15 +176,15 @@ h1, h2, h3 {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(140deg, var(--smi-steel), var(--smi-chrome));
+  background: linear-gradient(140deg, var(--smi-graphite), var(--smi-chrome));
   color: rgb(255 255 255 / 0.22);
   font-size: 3rem;
 }
 
-/* Fixed near-black, deliberately NOT a theme token: `live` collapses navy and
-   steel to #3100ff and `demo` uses oklch, so a token-derived scrim would need
-   re-checking in three themes every time a token moves. White text on this is
-   ≥12:1 everywhere. */
+/* Fixed near-black, deliberately NOT a token: a scrim that moves with the
+   palette needs its contrast re-checked in every design each time a token
+   moves, which is how contrast bugs get shipped. White text on this is ≥12:1
+   regardless of what the tokens do. */
 .hero-scrim {
   z-index: 2;   /* above the active media layer's z-index:1, inside the isolated stack */
   /* The bottom band has to carry the rail, which sits over the photo — on a
@@ -251,7 +248,7 @@ h1, h2, h3 {
   content: "";
   width: 1.75rem;
   height: 2px;
-  background: var(--smi-amber);   /* amber only ever as a non-text accent */
+  background: var(--smi-brand);   /* brand only ever as a non-text accent — see the contrast note up top */
 }
 
 .hero-title {
@@ -285,8 +282,9 @@ h1, h2, h3 {
 
 .hero-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 
-/* White on near-black is 21:1 in all three themes, and it's the play-button
-   look. bg-amber/text-navy would be 3.3:1 in the `live` theme. */
+/* White on near-black is 21:1 whatever the tokens do, and it's the play-button
+   look. Deliberately not the accent colour: on the client's orange this pairing
+   would fall to roughly 3:1, below AA for anything but large text. */
 .hero-cta {
   display: inline-flex;
   align-items: center;
@@ -366,7 +364,7 @@ h1, h2, h3 {
   transform: translate3d(0, -10px, 0) scale(1.045);
   box-shadow: 0 18px 34px -12px rgb(0 0 0 / 0.7);
 }
-.hero-card:focus-visible { outline: 3px solid var(--smi-amber); outline-offset: 3px; }
+.hero-card:focus-visible { outline: 3px solid var(--smi-brand); outline-offset: 3px; }
 
 .hero-card-media { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: rgb(0 0 0 / 0.35); }
 .hero-card-img { transition: transform 460ms var(--hero-ease); }
@@ -409,7 +407,7 @@ h1, h2, h3 {
   position: absolute;
   inset: auto 0 0 0;
   height: 3px;
-  background: var(--smi-amber);
+  background: var(--smi-brand);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 320ms var(--hero-ease);

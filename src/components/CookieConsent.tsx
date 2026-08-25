@@ -18,7 +18,7 @@ export function CookieConsent() {
         <p>We use cookies for anonymous readership stats that help our members see who&apos;s engaging.</p>
         <div className="flex gap-2">
           <button onClick={() => choose("essential")} className="rounded border px-3 py-1.5">Essential only</button>
-          <button onClick={() => choose("all")} className="rounded bg-navy px-3 py-1.5 text-white">Accept</button>
+          <button onClick={() => choose("all")} className="rounded bg-ink px-3 py-1.5 text-white">Accept</button>
         </div>
       </div>
     </div>

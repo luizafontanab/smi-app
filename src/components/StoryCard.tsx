@@ -3,11 +3,13 @@ import Link from "next/link";
 import { mediaUrl } from "@/lib/db/server";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
 
-// Navy/white rather than amber/navy: the theme tokens make amber+navy fail
-// contrast in the "live" and "demo" themes. "inline" drops the overlay
-// positioning so the badge can sit in a row of pills (story page header).
+// Dark ground, white text: the badge sits over photography at small sizes, so
+// it needs the highest-contrast pairing available rather than the accent — on
+// the client's orange, white would be ~3.3:1, below AA at this size.
+// "inline" drops the overlay positioning so the badge can sit in a row of
+// pills (story page header).
 export function MemberBadge({ variant = "overlay" }: { variant?: "overlay" | "inline" }) {
-  const base = "bg-navy text-[11px] font-bold uppercase tracking-wide text-white";
+  const base = "bg-ink text-[11px] font-bold uppercase tracking-wide text-white";
   return variant === "inline" ? (
     <span className={`rounded-full px-3 py-1 ${base}`}>Member news</span>
   ) : (
@@ -20,11 +22,11 @@ export function StoryCard({ story, size = "md" }: { story: StoryCardType; size?:
   const heights = { sm: "h-32", md: "h-44", lg: "h-80" };
   return (
     <Link href={`/news/${story.slug}`} className="group block overflow-hidden rounded-lg bg-white shadow-sm transition hover:shadow-md">
-      <div className={`relative ${heights[size]} bg-steel/10`}>
+      <div className={`relative ${heights[size]} bg-graphite/10`}>
         {img ? (
           <Image src={img} alt="" fill sizes={size === "lg" ? "100vw" : "(max-width: 768px) 100vw, 33vw"} className="object-cover transition group-hover:scale-[1.02]" unoptimized />
         ) : (
-          <div className="flex h-full items-center justify-center text-4xl text-steel/30">⚙</div>
+          <div className="flex h-full items-center justify-center text-4xl text-graphite/30">⚙</div>
         )}
         {story.is_member_news && <MemberBadge />}
       </div>
@@ -44,8 +46,8 @@ export function Carousel({ title, children, href }: { title: string; children: R
   return (
     <section className="mt-8">
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-lg font-bold uppercase tracking-wide text-navy">{title}</h2>
-        {href && <Link href={href} className="text-sm text-steel hover:underline">See all →</Link>}
+        <h2 className="text-lg font-bold uppercase tracking-wide text-ink">{title}</h2>
+        {href && <Link href={href} className="text-sm text-graphite hover:underline">See all →</Link>}
       </div>
       <div className="carousel flex gap-4 overflow-x-auto pb-2">{children}</div>
     </section>

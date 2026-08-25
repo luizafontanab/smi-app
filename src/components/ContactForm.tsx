@@ -19,10 +19,10 @@ export function ContactForm({ kind }: { kind: "contact" | "advertising" }) {
         <label htmlFor="message" className="text-sm font-medium">{kind === "advertising" ? "What are you interested in?" : "Message"}</label>
         <textarea id="message" name="message" required rows={5} className="mt-1 w-full rounded border px-3 py-2" />
       </div>
-      <button disabled={pending} className="rounded bg-navy px-5 py-2.5 text-white disabled:opacity-50">
+      <button disabled={pending} className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">
         {pending ? "Sending…" : "Send"}
       </button>
-      {state?.message && <p aria-live="polite" className="text-sm text-steel">{state.message}</p>}
+      {state?.message && <p aria-live="polite" className="text-sm text-graphite">{state.message}</p>}
     </form>
   );
 }

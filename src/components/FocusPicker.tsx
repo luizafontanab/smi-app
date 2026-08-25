@@ -24,7 +24,7 @@ export function FocusPicker({ src, initial }: { src: string; initial: { x: numbe
           style={{ objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${focus.scale})` }}
         />
         <span
-          className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber bg-white/60"
+          className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-brand bg-white/60"
           style={{ left: `${focus.x * 100}%`, top: `${focus.y * 100}%` }}
         />
       </div>

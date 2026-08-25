@@ -76,7 +76,7 @@ export function LayoutEditor({ pageType, initial }: Props) {
 
       {error && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
       <input type="hidden" name="layout" value={JSON.stringify(layout)} />
-      <button disabled={error !== null} className="mt-4 rounded bg-navy px-5 py-2.5 text-white disabled:opacity-40">
+      <button disabled={error !== null} className="mt-4 rounded bg-ink px-5 py-2.5 text-white disabled:opacity-40">
         Save layout
       </button>
     </div>
@@ -96,7 +96,7 @@ function SortableBlock({ block, pinned, adNumber, onRemove, onProps }: {
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex items-center gap-3 rounded-lg border p-3 text-sm ${pinned ? "border-amber/60 bg-amber/5" : "bg-white"} ${isDragging ? "opacity-60 shadow-lg" : ""}`}
+      className={`flex items-center gap-3 rounded-lg border p-3 text-sm ${pinned ? "border-brand/60 bg-brand/5" : "bg-white"} ${isDragging ? "opacity-60 shadow-lg" : ""}`}
     >
       {!pinned && (
         <button
@@ -104,13 +104,13 @@ function SortableBlock({ block, pinned, adNumber, onRemove, onProps }: {
           {...attributes}
           {...listeners}
           aria-label={`Move ${BLOCK_LABELS[block.type]}`}
-          className="cursor-grab rounded px-1.5 py-1 text-gray-400 hover:bg-gray-100 focus:outline focus:outline-2 focus:outline-navy"
+          className="cursor-grab rounded px-1.5 py-1 text-gray-400 hover:bg-gray-100 focus:outline focus:outline-2 focus:outline-ink"
         >
           ⠿
         </button>
       )}
-      {pinned && <span className="px-1.5 text-amber" title="Main content — always present">📌</span>}
-      <span className="font-medium text-navy">
+      {pinned && <span className="px-1.5 text-brand" title="Main content — always present">📌</span>}
+      <span className="font-medium text-ink">
         {BLOCK_LABELS[block.type]}
         {adNumber !== undefined && <span className="ml-1 font-normal text-gray-400">#{adNumber} — rotation decides what shows</span>}
       </span>

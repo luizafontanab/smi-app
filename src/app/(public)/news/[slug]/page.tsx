@@ -86,10 +86,10 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 {story.is_member_news && <MemberBadge variant="inline" />}
                 {cats.map((c) => (
-                  <Link key={c.slug} href={`/news?category=${c.slug}`} className="rounded-full bg-steel/10 px-3 py-1 text-steel hover:bg-steel/20">{c.name}</Link>
+                  <Link key={c.slug} href={`/news?category=${c.slug}`} className="rounded-full bg-graphite/10 px-3 py-1 text-graphite hover:bg-graphite/20">{c.name}</Link>
                 ))}
               </div>
-              <h1 className="mt-3 text-3xl font-bold leading-tight text-navy">{story.title}</h1>
+              <h1 className="mt-3 text-3xl font-bold leading-tight text-ink">{story.title}</h1>
               <p className="mt-2 text-sm text-gray-500">
                 Sheet Metal Industries
                 {story.published_at && ` · ${new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}

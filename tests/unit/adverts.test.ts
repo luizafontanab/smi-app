@@ -79,7 +79,7 @@ describe("dealSlots", () => {
 describe("advert click target", () => {
   it("explicit link wins; falls back to the member page (clicks register on their charts)", () => {
     expect(resolveAdvertTarget("https://x.co.uk", "acme")).toBe("https://x.co.uk");
-    expect(resolveAdvertTarget(null, "acme")).toBe("/members/acme");
+    expect(resolveAdvertTarget(null, "acme")).toBe("/member/acme");
     expect(resolveAdvertTarget(null, null)).toBe("/");
   });
 });

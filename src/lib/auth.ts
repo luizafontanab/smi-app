@@ -38,7 +38,7 @@ const CONSOLE_ROLES: Role[] = ["super_admin", "approver", "viewer", "input_only"
 export async function requireConsole(): Promise<CurrentUser> {
   const user = await currentUser();
   if (!user) redirect("/login?next=/console");
-  if (!CONSOLE_ROLES.includes(user.role)) redirect("/member");
+  if (!CONSOLE_ROLES.includes(user.role)) redirect("/dashboard");
   return user;
 }
 
@@ -52,7 +52,7 @@ export function canApprove(user: CurrentUser): boolean {
 
 export async function requireMember(): Promise<CurrentUser & { memberId: string }> {
   const user = await currentUser();
-  if (!user) redirect("/login?next=/member");
+  if (!user) redirect("/login?next=/dashboard");
   if (user.role !== "member" || !user.memberId) redirect("/console");
   return user as CurrentUser & { memberId: string };
 }

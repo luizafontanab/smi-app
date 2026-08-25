@@ -1308,18 +1308,21 @@ export type Database = {
       static_pages: {
         Row: {
           body: string
+          id: string
           slug: string
           title: string
           updated_at: string
         }
         Insert: {
           body?: string
+          id?: string
           slug: string
           title: string
           updated_at?: string
         }
         Update: {
           body?: string
+          id?: string
           slug?: string
           title?: string
           updated_at?: string
@@ -1440,9 +1443,11 @@ export type Database = {
       videos: {
         Row: {
           created_at: string
+          description: string | null
           id: string
           member_id: string | null
           published_at: string | null
+          slug: string
           source: string
           status: Database["public"]["Enums"]["content_status"]
           thumbnail_path: string | null
@@ -1451,9 +1456,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          description?: string | null
           id?: string
           member_id?: string | null
           published_at?: string | null
+          slug: string
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
           thumbnail_path?: string | null
@@ -1462,9 +1469,11 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          description?: string | null
           id?: string
           member_id?: string | null
           published_at?: string | null
+          slug?: string
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
           thumbnail_path?: string | null

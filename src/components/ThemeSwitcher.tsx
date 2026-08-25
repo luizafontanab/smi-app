@@ -3,30 +3,28 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-// Temporary demo feature: swaps the CSS-variable theme (see globals.css) across
-// public, member and console areas. Persists via the smi-theme cookie, which the
-// root layout reads to stamp data-theme on <html> during SSR — and which the
-// console layout reads to pick its shell (demo = top bar, others = sidebar),
-// hence the router.refresh() below.
+// Switches between the two site designs. Persists via the smi-theme cookie,
+// which the root layout reads to stamp data-theme on <html> during SSR. The two
+// designs differ structurally, not just in colour, so router.refresh() below is
+// what actually swaps the composition — it is not a nicety.
+//
+// This list is duplicated in lib/variant.ts, which is server-only and so cannot
+// be imported here. Two string literals; keep them in step.
 const THEMES = [
   { value: "forge", label: "Forge" },
-  { value: "live", label: "Live" },
-  { value: "demo", label: "Demo v1" },
+  { value: "grid", label: "Grid" },
 ] as const;
 
 type Theme = (typeof THEMES)[number]["value"];
 
 function currentTheme(): Theme {
-  const t = document.documentElement.getAttribute("data-theme");
-  return t === "live" || t === "demo" ? t : "forge";
+  return document.documentElement.getAttribute("data-theme") === "grid" ? "grid" : "forge";
 }
 
 function applyTheme(value: Theme) {
-  if (value === "forge") {
-    document.documentElement.removeAttribute("data-theme");
-  } else {
-    document.documentElement.setAttribute("data-theme", value);
-  }
+  // Set unconditionally, forge included — the server stamps both, so removing
+  // the attribute here would disagree with the next SSR pass.
+  document.documentElement.setAttribute("data-theme", value);
   document.cookie = `smi-theme=${value}; path=/; max-age=2592000`;
 }
 
@@ -54,7 +52,7 @@ export function ThemeSwitcher({ compact = false }: { compact?: boolean }) {
           onClick={() => apply(t.value)}
           className={`flex-1 whitespace-nowrap ${compact ? "px-2 py-1" : "px-1 py-1.5"} ${
             theme === t.value
-              ? "bg-amber font-semibold text-navy"
+              ? "bg-brand font-semibold text-ink"
               : "text-white/70 hover:bg-chrome-hover"
           }`}
         >

@@ -32,8 +32,8 @@ test.describe("reader (V1/V2)", () => {
 
   test("search ranks members before stories", async ({ page }) => {
     // pick a real member name off the directory so the query is guaranteed to match one
-    await page.goto("/members");
-    const name = await page.locator("a[href^='/members/']").filter({ hasText: /\w/ }).first().textContent();
+    await page.goto("/member");
+    const name = await page.locator("a[href^='/member/']").filter({ hasText: /\w/ }).first().textContent();
     const term = name!.trim().split(/\s+/)[0];
     await page.goto(`/search?q=${encodeURIComponent(term)}`);
     const membersHeading = page.locator("h2", { hasText: "Members" });
@@ -50,9 +50,9 @@ test.describe("reader (V1/V2)", () => {
 
 test.describe("member directory — category combobox + text search", () => {
   test("the pill wall is gone; the combobox filters by type-ahead", async ({ page }) => {
-    await page.goto("/members");
+    await page.goto("/member");
     // the old flat list of category links is no longer rendered (noscript is inert)
-    await expect(page.locator('a[href^="/members?category="]')).toHaveCount(0);
+    await expect(page.locator('a[href^="/member?category="]')).toHaveCount(0);
 
     const trigger = page.getByRole("button", { name: /All categories/ });
     await trigger.click();
@@ -69,12 +69,12 @@ test.describe("member directory — category combobox + text search", () => {
     const option = page.getByRole("option").first();
     const label = (await option.textContent())!.trim();
     await option.click();
-    await page.waitForURL(/\/members\?category=/);
+    await page.waitForURL(/\/member\?category=/);
     await expect(page.getByRole("button", { name: new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })).toBeVisible();
   });
 
   test("Escape closes the panel and returns focus to the trigger", async ({ page }) => {
-    await page.goto("/members");
+    await page.goto("/member");
     const trigger = page.getByRole("button", { name: /All categories/ });
     await trigger.click();
     await page.keyboard.press("Escape");
@@ -83,8 +83,8 @@ test.describe("member directory — category combobox + text search", () => {
   });
 
   test("category and search term survive each other", async ({ page }) => {
-    await page.goto("/members");
-    const name = (await page.locator('a[href^="/members/"]').filter({ hasText: /\w/ }).first().textContent())!.trim();
+    await page.goto("/member");
+    const name = (await page.locator('a[href^="/member/"]').filter({ hasText: /\w/ }).first().textContent())!.trim();
     const term = name.split(/\s+/)[0];
 
     // pick a category first — the form's hidden field must carry it through the search
@@ -107,7 +107,7 @@ test.describe("member directory — category combobox + text search", () => {
   test("a term full of PostgREST delimiters cannot widen the filter", async ({ page }) => {
     // unsanitised, the first of these returns every active member
     for (const q of ["zzzz,id.not.is.null", "zzzz)", "%%%"]) {
-      await page.goto(`/members?q=${encodeURIComponent(q)}`);
+      await page.goto(`/member?q=${encodeURIComponent(q)}`);
       await expect(page.getByText("No members found.")).toBeVisible();
     }
   });
@@ -134,13 +134,13 @@ test.describe("public header follows the session", () => {
     await expect(header.getByRole("link", { name: "Login" })).toHaveCount(0);
     const chip = header.getByRole("link", { name: company, exact: true });
     await expect(chip).toBeVisible();
-    await expect(chip).toHaveAttribute("href", "/member");
+    await expect(chip).toHaveAttribute("href", "/dashboard");
 
     // the navy "Become a Member" band is gone for signed-in visitors too
     await expect(page.getByRole("link", { name: "Become a Member", exact: true })).toHaveCount(0);
 
     await chip.click();
-    await page.waitForURL("**/member");
+    await page.waitForURL("**/dashboard");
   });
 
   test("console user gets a console link, not a member one", async ({ page }) => {
@@ -167,7 +167,7 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
   test("WYSIWYG story survives the approval gate; preview shows branding; XSS stays inert", async ({ page }) => {
     // member writes in the WYSIWYG editor
     await login(page, "member2@smi.local");
-    await page.goto("/member/story/new");
+    await page.goto("/dashboard/story/new");
     await page.fill('input[name="title"]', title);
     const editor = page.locator('[contenteditable="true"]');
     await editor.click();
@@ -185,14 +185,14 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
     await page.click("button:has-text('Write')");
 
     await page.click("button:has-text('Submit for approval')");
-    await page.waitForURL("**/member?submitted=story");
+    await page.waitForURL("**/dashboard?submitted=story");
 
     // not on the public site yet — the approval gate
     await page.goto("/news");
     await expect(page.locator(`text=${title}`)).toHaveCount(0);
 
     // sign out (from the member area header), editor approves
-    await page.goto("/member");
+    await page.goto("/dashboard");
     await page.locator("header form button:has-text('Sign out')").click();
     await page.waitForURL("**/login");
     await login(page, "jas@smi.local");
@@ -217,14 +217,14 @@ test.describe("member equipment → approval (equipment write page)", () => {
 
   test("submitted machine reaches the console queue and publishes on approval", async ({ page }) => {
     await login(page, "member2@smi.local");
-    await page.goto("/member/equipment/new");
+    await page.goto("/dashboard/equipment/new");
     await page.fill('input[name="name"]', machine);
     await page.locator('[contenteditable="true"]').click();
     await page.keyboard.type("Nearly new demo unit. £100k depending on spec.");
     await page.click("button:has-text('Submit for approval')");
-    await page.waitForURL("**/member?submitted=machine");
+    await page.waitForURL("**/dashboard?submitted=machine");
 
-    await page.goto("/member");
+    await page.goto("/dashboard");
     await page.locator("header form button:has-text('Sign out')").click();
     await page.waitForURL("**/login");
     await login(page, "jas@smi.local");
@@ -300,7 +300,7 @@ test.describe("admin (A1/A4)", () => {
     await expect(page.locator("text=Needs you today")).toBeVisible();
   });
 
-  test("command centre matches the demo structure", async ({ page }) => {
+  test("command centre matches the wireframe structure", async ({ page }) => {
     await login(page, "jas@smi.local");
     await page.goto("/console");
     // revenue by stream with bars
@@ -311,8 +311,8 @@ test.describe("admin (A1/A4)", () => {
     await expect(page.locator(`text=of 4 sold`)).toBeVisible();
     // pipeline strip links to the story engine
     await expect(page.locator('a[href="/console/stories"]', { hasText: "Story pipeline" })).toBeVisible();
-    // nav: demo module order first, active state on the current page
-    const labels = await page.locator("aside nav a").allTextContents();
+    // nav: wireframe module order first, active state on the current page
+    const labels = await page.locator("header nav a").allTextContents();
     expect(labels.slice(0, 5)).toEqual([
       "Command Centre",
       "Adverts & Inventory",
@@ -320,18 +320,7 @@ test.describe("admin (A1/A4)", () => {
       "Story Engine (CMS)",
       "Newsletter",
     ]);
-    await expect(page.locator('aside nav a[aria-current="page"]')).toHaveText("Command Centre");
-  });
-
-  test("demo theme swaps the console to the top-bar shell", async ({ page }) => {
-    await login(page, "jas@smi.local");
-    await page.goto("/console");
-    await expect(page.locator("aside")).toBeVisible();
-    await page.click("button:has-text('Demo v1')");
-    await expect(page.locator("header a", { hasText: "Command centre" })).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator("aside")).toHaveCount(0);
-    await page.click("button:has-text('Forge')");
-    await expect(page.locator("aside")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('header nav a[aria-current="page"]')).toHaveText("Command Centre");
   });
 
   test("advert inventory lists live bookings with caps", async ({ page }) => {
@@ -346,6 +335,6 @@ test.describe("roles", () => {
   test("member cannot open the console", async ({ page }) => {
     await login(page, "member3@smi.local");
     await page.goto("/console");
-    await page.waitForURL("**/member", { timeout: 15_000 });
+    await page.waitForURL("**/dashboard", { timeout: 15_000 });
   });
 });

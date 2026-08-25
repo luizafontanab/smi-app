@@ -19,7 +19,7 @@ export function AccountForm() {
         <input id="password" type="password" name="password" required minLength={8} className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       {state?.message && <p aria-live="polite" className="rounded bg-red-50 p-2 text-sm text-red-600">{state.message}</p>}
-      <button disabled={pending} className="w-full rounded bg-navy py-2.5 font-semibold text-white disabled:opacity-50">
+      <button disabled={pending} className="w-full rounded bg-ink py-2.5 font-semibold text-white disabled:opacity-50">
         {pending ? "Creating your account…" : "Create account & continue"}
       </button>
     </form>

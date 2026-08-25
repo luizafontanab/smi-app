@@ -11,15 +11,15 @@ function toLogin(request: NextRequest, next: string) {
 /**
  * Session refresh on every route (the public header reads the session too, and
  * an unrefreshed token would render it logged-out) + route gating for /console
- * and /member. Role-level authorization happens again inside layouts/actions —
+ * and /dashboard. Role-level authorization happens again inside layouts/actions —
  * this is only the outer gate.
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  // NB: not startsWith("/member") — that also swallows the public /members
-  // directory and redirects anonymous visitors to /login.
-  const needsAuth =
-    pathname.startsWith("/console") || pathname === "/member" || pathname.startsWith("/member/");
+  // The member area lives at /dashboard precisely so this can be a plain prefix
+  // test: /member is now the PUBLIC directory, and gating it would send every
+  // anonymous visitor to /login.
+  const needsAuth = pathname.startsWith("/console") || pathname.startsWith("/dashboard");
 
   // No Supabase cookie: nothing to refresh, so anonymous traffic — the bulk of
   // the public site — skips the auth round-trip entirely.

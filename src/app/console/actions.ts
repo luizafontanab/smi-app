@@ -466,10 +466,10 @@ export async function saveMember(formData: FormData) {
   }
 
   if (slugChanged && member.status !== "draft") {
-    // keep inbound links and search results working — honoured by /members/[slug].
+    // keep inbound links and search results working — honoured by /member/[slug].
     // recordRename also clears the reverse row, so renaming back doesn't leave
     // two rows pointing at each other (see lib/redirects).
-    await recordRename(`/members/${member.slug}`, `/members/${slug}`);
+    await recordRename(`/member/${member.slug}`, `/member/${slug}`);
   }
   if (activatingDraft) await recordActivation(id, user.userId);
 
@@ -558,4 +558,64 @@ export async function markInboxRead(formData: FormData) {
   await requireConsole();
   await serviceDb().from("inbox_messages").update({ read: true }).eq("id", String(formData.get("id")));
   revalidatePath("/console");
+}
+
+/* ---------- content pages ---------- */
+
+/**
+ * Create or update a standalone page (About, Policies, the MACH magazine page…).
+ *
+ * Until now `static_pages` had no writer anywhere in the app — the four rows in
+ * it came from scripts/seed.ts, so changing a word of the About page meant a
+ * reseed. This is that missing surface. Note it is NOT /console/pages, which
+ * arranges blocks; this one owns the words.
+ */
+export async function saveContentPage(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+
+  const originalSlug = String(formData.get("original_slug") ?? "").trim();
+  const isNew = !originalSlug;
+  const title = String(formData.get("title") ?? "").trim();
+  const slug = slugify(String(formData.get("slug") ?? "") || title);
+  const body = sanitizeRichText(String(formData.get("body") ?? ""));
+
+  const fail = (message: string): never =>
+    redirect(`/console/content-pages/${isNew ? "new" : originalSlug}?error=${encodeURIComponent(message)}`);
+  if (!title) return fail("Give the page a title.");
+  if (!slug) return fail("That title has no letters or numbers in it — add a web address by hand.");
+
+  const db = serviceDb();
+  const { data: clash } = await db.from("static_pages").select("slug").eq("slug", slug).maybeSingle();
+  if (clash && slug !== originalSlug) return fail(`The web address “${slug}” is already used by another page.`);
+
+  if (isNew) {
+    const { error } = await db.from("static_pages").insert({ slug, title, body });
+    if (error) return fail(error.message);
+  } else {
+    const { error } = await db
+      .from("static_pages")
+      .update({ slug, title, body, updated_at: new Date().toISOString() })
+      .eq("slug", originalSlug);
+    if (error) return fail(error.message);
+    if (slug !== originalSlug) {
+      // Same contract as the member rename: keep the old URL working, and let
+      // recordRename clear the reverse row so renaming back cannot build a loop.
+      await recordRename(`/pages/${originalSlug}`, `/pages/${slug}`);
+    }
+  }
+
+  revalidatePath(`/pages/${slug}`);
+  revalidatePath("/console/content-pages");
+  redirect(`/console/content-pages/${slug}?saved=1`);
+}
+
+export async function deleteContentPage(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const slug = String(formData.get("slug") ?? "");
+  if (!slug) return;
+  await serviceDb().from("static_pages").delete().eq("slug", slug);
+  revalidatePath("/console/content-pages");
+  redirect("/console/content-pages?deleted=1");
 }

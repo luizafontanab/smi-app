@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Featured Machine" };
 
 const BADGE: Record<string, string> = {
-  awaiting_approval: "bg-amber/20 text-amber",
+  awaiting_approval: "bg-brand/20 text-brand",
   published: "bg-green-100 text-green-700",
   rejected: "bg-red-100 text-red-600",
   draft: "bg-gray-100 text-gray-500",
@@ -28,17 +28,17 @@ export default async function MachinesPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-navy">Featured Machine</h1>
-        <Link href="/console/machines/new" className="rounded bg-navy px-4 py-2 text-sm text-white">New machine</Link>
+        <h1 className="text-xl font-bold text-ink">Featured Machine</h1>
+        <Link href="/console/machines/new" className="rounded bg-ink px-4 py-2 text-sm text-white">New machine</Link>
       </div>
 
       {queue.length > 0 && (
-        <section className="mt-4 rounded-xl border-2 border-amber bg-amber/5 p-4">
-          <h2 className="font-bold text-navy">Awaiting approval ({queue.length})</h2>
+        <section className="mt-4 rounded-xl border-2 border-brand bg-brand/5 p-4">
+          <h2 className="font-bold text-ink">Awaiting approval ({queue.length})</h2>
           <div className="mt-2 space-y-2">
             {queue.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-3 rounded bg-white p-3 text-sm shadow-sm">
-                <Link href={`/console/machines/${m.id}`} className="font-medium text-navy hover:underline">{m.name}</Link>
+                <Link href={`/console/machines/${m.id}`} className="font-medium text-ink hover:underline">{m.name}</Link>
                 <span className="text-gray-400">{m.member?.name}</span>
                 <div className="ml-auto flex gap-2">
                   <form action={decideMachine}>
@@ -66,7 +66,7 @@ export default async function MachinesPage() {
             <Link key={m.id} href={`/console/machines/${m.id}`} className="flex items-center gap-4 rounded-xl bg-white p-4 shadow-sm hover:shadow">
               {m.image_path && <Image src={mediaUrl(m.image_path)!} alt="" width={64} height={48} className="rounded object-cover" unoptimized />}
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-navy">{m.name}</p>
+                <p className="font-medium text-ink">{m.name}</p>
                 <p className="text-xs text-gray-500">{m.member?.name}{m.source === "member" && " · member submission"}</p>
               </div>
               {p && <span className="text-xs text-gray-500">Featured {p.starts_on} → {p.ends_on}</span>}

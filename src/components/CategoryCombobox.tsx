@@ -102,7 +102,7 @@ export function CategoryCombobox({
 
   return (
     <div ref={rootRef} className="relative w-full sm:w-64">
-      <div className={`flex items-center rounded-full border bg-white ${selected ? "border-navy" : ""}`}>
+      <div className={`flex items-center rounded-full border bg-white ${selected ? "border-ink" : ""}`}>
         <button
           ref={triggerRef}
           type="button"
@@ -120,7 +120,7 @@ export function CategoryCombobox({
             type="button"
             aria-label="Clear category filter"
             onClick={() => choose(all)}
-            className="px-2.5 py-1.5 text-sm text-gray-400 hover:text-navy"
+            className="px-2.5 py-1.5 text-sm text-gray-400 hover:text-ink"
           >
             ×
           </button>
@@ -161,10 +161,10 @@ export function CategoryCombobox({
                     onMouseEnter={() => setActive(i)}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => choose(o)}
-                    className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2.5 py-1.5 text-sm ${i === active ? "bg-paper" : ""} ${isSelected ? "font-semibold text-navy" : ""}`}
+                    className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2.5 py-1.5 text-sm ${i === active ? "bg-paper" : ""} ${isSelected ? "font-semibold text-ink" : ""}`}
                   >
                     <span className="truncate">{o.name}</span>
-                    {isSelected && <span aria-hidden className="text-amber">✓</span>}
+                    {isSelected && <span aria-hidden className="text-brand">✓</span>}
                   </li>
                 );
               })}

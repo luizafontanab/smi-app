@@ -1,29 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Inter_Tight, League_Spartan, Source_Serif_4 } from "next/font/google";
+import { Allerta_Stencil, League_Spartan } from "next/font/google";
 import { cookies } from "next/headers";
 import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-// Demo-theme fonts (see globals.css): "live" uses League Spartan, "demo" uses
-// Inter Tight + Source Serif 4. next/font requires static instantiation here.
+// The client's brand faces, shared by both designs. next/font requires static
+// instantiation here. League Spartan is the body and heading face; the logo
+// face is applied only to the wordmark in components/SiteHeader.tsx.
 const leagueSpartan = League_Spartan({
   variable: "--font-league-spartan",
   subsets: ["latin"],
 });
 
-const interTight = Inter_Tight({
-  variable: "--font-inter-tight",
+const allertaStencil = Allerta_Stencil({
+  variable: "--font-allerta-stencil",
   subsets: ["latin"],
-});
-
-const sourceSerif = Source_Serif_4({
-  variable: "--font-source-serif",
-  subsets: ["latin"],
+  weight: "400", // single-weight family, so next/font requires this explicitly
 });
 
 const SITE_NAME = "Sheet Metal Industries";
@@ -51,12 +43,15 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const theme = (await cookies()).get("smi-theme")?.value;
+  // Stamped for both designs, forge included: a symmetric attribute gives grid a
+  // clean CSS hook and a clean test handle. Anything unrecognised — including the
+  // retired "live"/"demo" still in returning browsers' cookie jars — is forge.
+  const theme = (await cookies()).get("smi-theme")?.value === "grid" ? "grid" : "forge";
   return (
     <html
       lang="en"
-      data-theme={theme === "live" || theme === "demo" ? theme : undefined}
-      className={`${geistSans.variable} ${leagueSpartan.variable} ${interTight.variable} ${sourceSerif.variable} h-full antialiased`}
+      data-theme={theme}
+      className={`${leagueSpartan.variable} ${allertaStencil.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col font-sans">{children}</body>
     </html>

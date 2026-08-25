@@ -37,4 +37,15 @@ export const DEFAULT_LAYOUTS: Record<PageType, PageLayout> = {
       { id: "newsletter", type: "newsletter_signup" },
     ],
   },
+  // Page body → banner → newsletter. Deliberately the quietest default of the
+  // four: About and Policies are read, not browsed on from, so no news grid and
+  // no join CTA until an editor adds one.
+  static_page: {
+    version: 1,
+    blocks: [
+      { id: "main", type: "page_main" },
+      { id: "ad-1", type: "ad_banner" },
+      { id: "newsletter", type: "newsletter_signup" },
+    ],
+  },
 };

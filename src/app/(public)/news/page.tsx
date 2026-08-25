@@ -42,18 +42,18 @@ export default async function NewsPage(props: PageProps<"/news">) {
   return (
     <div className="mx-auto max-w-6xl px-4">
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-navy">Newsroom</h1>
+        <h1 className="text-2xl font-bold text-ink">Newsroom</h1>
         <div className="flex gap-2 text-sm">
-          <Link href={qs({ sort: undefined })} className={`rounded border px-3 py-1.5 ${order === "desc" ? "bg-navy text-white" : "bg-white"}`}>Most recent</Link>
-          <Link href={qs({ sort: "oldest" })} className={`rounded border px-3 py-1.5 ${order === "asc" ? "bg-navy text-white" : "bg-white"}`}>Oldest</Link>
-          <Link href={qs({ filter: memberOnly ? undefined : "members" })} className={`rounded border px-3 py-1.5 ${memberOnly ? "bg-amber text-navy" : "bg-white"}`}>Member news</Link>
+          <Link href={qs({ sort: undefined })} className={`rounded border px-3 py-1.5 ${order === "desc" ? "bg-ink text-white" : "bg-white"}`}>Most recent</Link>
+          <Link href={qs({ sort: "oldest" })} className={`rounded border px-3 py-1.5 ${order === "asc" ? "bg-ink text-white" : "bg-white"}`}>Oldest</Link>
+          <Link href={qs({ filter: memberOnly ? undefined : "members" })} className={`rounded border px-3 py-1.5 ${memberOnly ? "bg-brand text-ink" : "bg-white"}`}>Member news</Link>
         </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-1.5 text-xs">
-        <Link href={qs({ category: undefined })} className={`rounded-full border px-3 py-1 ${!category ? "bg-navy text-white" : "bg-white"}`}>All</Link>
+        <Link href={qs({ category: undefined })} className={`rounded-full border px-3 py-1 ${!category ? "bg-ink text-white" : "bg-white"}`}>All</Link>
         {cats.map((c) => (
-          <Link key={c.slug} href={qs({ category: c.slug })} className={`rounded-full border px-3 py-1 ${category === c.slug ? "bg-navy text-white" : "bg-white hover:border-navy"}`}>
+          <Link key={c.slug} href={qs({ category: c.slug })} className={`rounded-full border px-3 py-1 ${category === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
             {c.name}
           </Link>
         ))}

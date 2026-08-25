@@ -15,7 +15,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const STATUS_TONE = { active: "green", grace: "amber", lapsed: "red", draft: "neutral" } as const;
+const STATUS_TONE = { active: "green", grace: "brand", lapsed: "red", draft: "neutral" } as const;
 
 const field = "mt-1 w-full rounded border px-3 py-2";
 const label = "text-sm font-medium";
@@ -31,8 +31,8 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   if (id === "new") {
     return (
       <div className="mx-auto max-w-lg">
-        <Link href="/console/members" className="text-sm text-gray-400 hover:text-navy">← Members &amp; CRM</Link>
-        <h1 className="mt-1 text-xl font-bold text-navy">New member</h1>
+        <Link href="/console/members" className="text-sm text-gray-400 hover:text-ink">← Members &amp; CRM</Link>
+        <h1 className="mt-1 text-xl font-bold text-ink">New member</h1>
         <p className="mt-1 text-sm text-gray-500">
           Creates their login and a draft company page. Category, page content and billing come next, on the edit screen.
         </p>
@@ -54,7 +54,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 At least 8 characters. Pass it to them yourself — no email is sent from here.
               </p>
             </div>
-            <SubmitButton pendingLabel="Creating…" className="rounded bg-navy px-5 py-2.5 text-white disabled:opacity-50">
+            <SubmitButton pendingLabel="Creating…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">
               Create member
             </SubmitButton>
           </form>
@@ -96,14 +96,14 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/members" className="text-sm text-gray-400 hover:text-navy">← Members &amp; CRM</Link>
+      <Link href="/console/members" className="text-sm text-gray-400 hover:text-ink">← Members &amp; CRM</Link>
       <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="flex items-center gap-2 text-xl font-bold text-navy">
+        <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
           {member.name} <Badge tone={STATUS_TONE[member.status]}>{member.status}</Badge>
         </h1>
         <span className="flex gap-4 text-sm">
-          {isPublic && <a href={`/members/${member.slug}`} className="text-steel underline">View public page</a>}
-          <Link href={`/console/pages?type=member_profile&entity=${id}`} className="text-steel underline">Page layout</Link>
+          {isPublic && <a href={`/member/${member.slug}`} className="text-graphite underline">View public page</a>}
+          <Link href={`/console/pages?type=member_profile&entity=${id}`} className="text-graphite underline">Page layout</Link>
         </span>
       </div>
 
@@ -117,7 +117,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
       )}
 
       {pendingRevision && (
-        <Card className="mt-4 border-amber/40 bg-amber/5">
+        <Card className="mt-4 border-brand/40 bg-brand/5">
           <SectionTitle>Changes awaiting approval</SectionTitle>
           <p className="mt-1 text-sm text-gray-600">
             This member submitted edits on {pendingRevision.created_at.slice(0, 10)}. Approving applies their whole
@@ -161,7 +161,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             <div>
               <label htmlFor="slug" className={label}>Web address</label>
               <div className="mt-1 flex items-center gap-1">
-                <span className="text-sm text-gray-400">/members/</span>
+                <span className="text-sm text-gray-400">/member/</span>
                 <input id="slug" name="slug" defaultValue={member.slug} className="w-full rounded border px-3 py-2" />
               </div>
               {!isDraft && (
@@ -290,7 +290,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         </Card>
 
         {editable && (
-          <SubmitButton pendingLabel="Saving…" className="rounded bg-navy px-5 py-2.5 text-white disabled:opacity-50">
+          <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">
             Save changes
           </SubmitButton>
         )}
@@ -306,13 +306,13 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             <form action={recordMemberPayment}>
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="kind" value="paid" />
-              <button className="rounded bg-navy px-4 py-2 text-sm text-white">Record £40 payment</button>
+              <button className="rounded bg-ink px-4 py-2 text-sm text-white">Record £40 payment</button>
             </form>
             <form action={recordMemberPayment} className="flex items-center gap-2">
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="kind" value="comped" />
               <input type="number" name="months" defaultValue={12} min={1} max={60} className="w-20 rounded border px-3 py-1.5 text-sm" />
-              <button className="rounded border border-navy px-4 py-1.5 text-sm text-navy">Comp for months</button>
+              <button className="rounded border border-ink px-4 py-1.5 text-sm text-ink">Comp for months</button>
             </form>
           </div>
         </Card>

@@ -96,7 +96,7 @@ export default async function CommandCentre() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-2xl font-bold text-navy">Command Centre</h1>
+      <h1 className="text-2xl font-bold text-ink">Command Centre</h1>
       <p className="mt-1 text-sm text-gray-500">{dateLabel}</p>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -111,7 +111,7 @@ export default async function CommandCentre() {
           <SectionTitle>Revenue this month</SectionTitle>
           <p className="text-xs text-gray-400">estimated from live bookings &amp; standard rates</p>
         </div>
-        <p className="mt-3 text-4xl font-bold text-navy">
+        <p className="mt-3 text-4xl font-bold text-ink">
           {pounds(revenue.total)}
           <span className="text-base font-normal text-gray-500"> / month</span>
         </p>
@@ -127,7 +127,7 @@ export default async function CommandCentre() {
           </div>
           <div className="mt-2 flex gap-1.5">
             {Array.from({ length: FEATURED_SLOTS.cap }, (_, i) => (
-              <div key={i} className={`h-2.5 flex-1 rounded-full ${i < slotsSold ? "bg-amber" : "bg-navy/10"}`} />
+              <div key={i} className={`h-2.5 flex-1 rounded-full ${i < slotsSold ? "bg-brand" : "bg-ink/10"}`} />
             ))}
           </div>
         </div>
@@ -137,13 +137,13 @@ export default async function CommandCentre() {
         <Card className="transition group-hover:shadow-md">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <SectionTitle>Story pipeline</SectionTitle>
-            <span className="text-xs text-steel group-hover:underline">Open Story Engine →</span>
+            <span className="text-xs text-graphite group-hover:underline">Open Story Engine →</span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
             {pipeline.map((p) => (
               <div key={p.label} className={p.value === null ? "opacity-60" : ""}>
                 <p className="text-xs uppercase tracking-wide text-gray-400">{p.label}</p>
-                <p className="mt-0.5 text-xl font-bold text-navy">{p.value === null ? "—" : p.value}</p>
+                <p className="mt-0.5 text-xl font-bold text-ink">{p.value === null ? "—" : p.value}</p>
                 {p.value === null && <Badge>module 6</Badge>}
               </div>
             ))}
@@ -157,7 +157,7 @@ export default async function CommandCentre() {
         <ul className="mt-2 space-y-1.5">
           {needs.map((n) => (
             <li key={n.label}>
-              <Link href={n.href} className={`text-sm hover:underline ${n.urgent ? "font-semibold text-red-600" : "text-steel"}`}>→ {n.label}</Link>
+              <Link href={n.href} className={`text-sm hover:underline ${n.urgent ? "font-semibold text-red-600" : "text-graphite"}`}>→ {n.label}</Link>
             </li>
           ))}
         </ul>
@@ -193,8 +193,8 @@ export default async function CommandCentre() {
           {inbox.data.map((m) => (
             <div key={m.id} className="mt-2 rounded border p-3 text-sm">
               <div className="flex items-center justify-between">
-                <p><b>{m.name}</b> <span className="text-gray-400">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-amber">{m.kind}</span></p>
-                <form action={markInboxRead}><input type="hidden" name="id" value={m.id} /><button className="text-xs text-gray-400 hover:text-navy">mark read</button></form>
+                <p><b>{m.name}</b> <span className="text-gray-400">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand">{m.kind}</span></p>
+                <form action={markInboxRead}><input type="hidden" name="id" value={m.id} /><button className="text-xs text-gray-400 hover:text-ink">mark read</button></form>
               </div>
               <p className="mt-1 text-gray-600">{m.message}</p>
             </div>
@@ -215,17 +215,16 @@ export default async function CommandCentre() {
 }
 
 function RevenueBar({ label, sub, pennies, max }: { label: string; sub: string; pennies: number; max: number }) {
-  // Single hue on purpose: three direct-labelled bars need no colour identity,
-  // and navy==steel under the "live" theme would collapse a multi-hue scheme.
+  // Single hue on purpose: three direct-labelled bars need no colour identity.
   const pct = max > 0 && pennies > 0 ? Math.max(2, Math.round((pennies / max) * 100)) : 0;
   return (
     <div>
       <div className="flex items-baseline justify-between text-sm">
         <span className="text-ink">{label}</span>
-        <span className="font-semibold text-navy">{pounds(pennies)}</span>
+        <span className="font-semibold text-ink">{pounds(pennies)}</span>
       </div>
-      <div className="mt-1 h-2.5 rounded-full bg-navy/10">
-        <div className="h-2.5 rounded-full bg-navy/80" style={{ width: `${pct}%` }} />
+      <div className="mt-1 h-2.5 rounded-full bg-ink/10">
+        <div className="h-2.5 rounded-full bg-ink/80" style={{ width: `${pct}%` }} />
       </div>
       <p className="mt-0.5 text-xs text-gray-500">{sub}</p>
     </div>

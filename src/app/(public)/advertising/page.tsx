@@ -14,21 +14,21 @@ const FORMATS = [
 export default function AdvertisingPage() {
   return (
     <div className="mx-auto max-w-4xl px-4">
-      <h1 className="mt-6 text-2xl font-bold text-navy">Advertise with SMI</h1>
+      <h1 className="mt-6 text-2xl font-bold text-ink">Advertise with SMI</h1>
       <p className="mt-2 max-w-2xl text-sm text-gray-600">
         Reach the UK sheet metal, fabrication and welding trade. Rotation is deliberate: no one can buy position, so every advertiser gets equal visibility.
       </p>
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         {FORMATS.map((f) => (
           <div key={f.key} className="rounded-lg bg-white p-5 shadow-sm">
-            <p className="text-xs font-bold uppercase text-amber">Format {f.key}</p>
+            <p className="text-xs font-bold uppercase text-brand">Format {f.key}</p>
             <h2 className="mt-1 font-bold">{f.name}</h2>
             <p className="mt-1 text-sm text-gray-600">{f.detail}</p>
           </div>
         ))}
       </div>
       <div className="mt-8 rounded-lg bg-white p-6 shadow-sm">
-        <h2 className="font-bold text-navy">Request the media pack</h2>
+        <h2 className="font-bold text-ink">Request the media pack</h2>
         <p className="mb-4 mt-1 text-sm text-gray-600">Rates and audience stats — we&apos;ll send the current pack.</p>
         <ContactForm kind="advertising" />
       </div>

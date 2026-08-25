@@ -1,7 +1,7 @@
 /**
  * Seed local Supabase with REAL content extracted from the old WordPress site
  * (see /Users/zafontana/SMI/handover-extract — run its extract + shape-seed
- * scripts first). Alternative to seed.ts: real members/stories/videos/events
+ * scripts first). Alternative to seed.ts: real members/stories/video/event
  * plus the minimal infra rows (auth users, advert slots, settings, layouts) and
  * SAMPLE-stamped adverts so the slots have something to rotate (--no-adverts
  * skips them). Other synthetic operational data (analytics, newsletters,
@@ -9,10 +9,16 @@
  *
  * Expects a fresh DB (supabase db reset). Defaults to local; seeding a hosted
  * project needs --remote (see `pnpm seed:prod`).
+ *
+ * Local runs default to a representative subset (150 newest stories) so the
+ * local DB/Storage volume doesn't balloon to the full real dataset; --remote
+ * runs (the actual hosted site) default to everything. --stories-limit N
+ * overrides either default explicitly.
+ *
  * Run: pnpm exec tsx scripts/seed-real.ts [--stories-limit N] [--skip-media]
  *        [--no-adverts]    seed everything except the sample adverts
  *        [--adverts-only]  add sample adverts to an already-seeded DB, nothing else
- *        [--remote]        allow a non-localhost target
+ *        [--remote]        allow a non-localhost target; also lifts the story cap
  */
 import { createClient } from "@supabase/supabase-js";
 import { readFile } from "node:fs/promises";
@@ -46,7 +52,8 @@ const arg = (name: string) => {
   const i = process.argv.indexOf(name);
   return i > -1 ? process.argv[i + 1] : undefined;
 };
-const STORIES_LIMIT = arg("--stories-limit") ? parseInt(arg("--stories-limit")!, 10) : Infinity;
+const REMOTE = process.argv.includes("--remote");
+const STORIES_LIMIT = arg("--stories-limit") ? parseInt(arg("--stories-limit")!, 10) : REMOTE ? Infinity : 150;
 const SKIP_MEDIA = process.argv.includes("--skip-media");
 // --no-adverts: leave the advert inventory empty, to check the unsold state
 const NO_ADVERTS = process.argv.includes("--no-adverts");
@@ -58,6 +65,10 @@ const MEDIA_ONLY = process.argv.includes("--media-only");
 
 const seed = async <T>(name: string): Promise<T> =>
   JSON.parse(await readFile(path.join(EXTRACT_DIR, "seed", name), "utf8"));
+
+/** Same shape as scripts/seed.ts and the videos.slug backfill migration. */
+const slugify = (s: string) =>
+  s.toLowerCase().replace(/&[a-z0-9#]+;/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 
 const MIME: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
@@ -134,6 +145,26 @@ const chunk = <T>(arr: T[], size: number): T[][] => {
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 };
+
+/**
+ * `supabase db reset` clears Postgres (including storage.objects) but never
+ * touches the Storage volume's files on disk — without this, every reseed
+ * leaves the previous run's blobs behind and the local volume only grows.
+ */
+async function emptyBucket(prefix = "") {
+  const { data, error } = await db.storage.from("media").list(prefix, { limit: 1000 });
+  if (error) throw error;
+  const files: string[] = [];
+  for (const entry of data ?? []) {
+    const full = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.id === null) await emptyBucket(full);
+    else files.push(full);
+  }
+  for (const batch of chunk(files, 100)) {
+    const { error: rmErr } = await db.storage.from("media").remove(batch);
+    if (rmErr) throw rmErr;
+  }
+}
 
 async function uploadMedia(
   // Record<string, unknown> so MemberRow assigns — an all-optional literal trips
@@ -220,6 +251,9 @@ async function main() {
     return;
   }
 
+  console.log("— media: clearing stale files from previous seeds");
+  await emptyBucket();
+
   console.log(`— categories (${catRows.length})`);
   const { data: cats, error: catErr } = await db.from("categories").upsert(catRows, { onConflict: "kind,slug" }).select();
   if (catErr) throw catErr;
@@ -279,8 +313,25 @@ async function main() {
   }
 
   console.log(`— videos (${videoRows.length}) + events (${eventRows.length})`);
+  // videos.slug is unique and not null, and the export carries no slug — the old
+  // site addressed videos by WP post id. Derive it from the title, the same
+  // shape the backfill migration uses, and de-duplicate across the WHOLE set
+  // rather than per chunk: repeated titles are real ("What's your angle" runs as
+  // a series), and a per-chunk counter would let two chunks both emit "-2".
+  const usedVideoSlugs = new Set<string>();
+  const videoSlug = (title: string) => {
+    const base = slugify(title) || "video";
+    let slug = base;
+    for (let n = 2; usedVideoSlugs.has(slug); n++) slug = `${base}-${n}`;
+    usedVideoSlugs.add(slug);
+    return slug;
+  };
   for (const rows of chunk(videoRows, 200)) {
-    const insert = rows.map(({ wp_member_id, ...r }) => ({ ...r, member_id: memberId(wp_member_id as number | null) }));
+    const insert = rows.map(({ wp_member_id, ...r }) => ({
+      ...r,
+      slug: videoSlug(r.title as string),
+      member_id: memberId(wp_member_id as number | null),
+    }));
     const { error } = await db.from("videos").insert(insert);
     if (error) throw error;
   }
@@ -301,6 +352,11 @@ async function main() {
     { key: "news_mid", label: "News mid-page", cap: 3 },
     { key: "footer", label: "Footer banner", cap: 3 },
     { key: "supplier_logos", label: "Supplier logos", cap: 8 },
+    // Grid-design inventory (migration 20260825000001 adds the formats)
+    { key: "home_sky", label: "Homepage skyscraper", cap: 3 },
+    { key: "home_mpu_1", label: "Homepage box 1", cap: 3 },
+    { key: "home_mpu_2", label: "Homepage box 2", cap: 3 },
+    { key: "home_infeed", label: "Homepage in-feed", cap: 3 },
   ]); // story_ad_* / member_ad_* / machine_ad_* come from migration 20260810000002;
   // videos_mid / events_mid / directory_mid from 20260811000002
   await db.from("settings").insert([

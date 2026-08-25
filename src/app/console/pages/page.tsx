@@ -13,6 +13,7 @@ const TABS: { type: PageType; label: string }[] = [
   { type: "story", label: "Story pages" },
   { type: "member_profile", label: "Member pages" },
   { type: "featured_machine", label: "Featured Machine" },
+  { type: "static_page", label: "Content pages" },
 ];
 
 export default async function PageLayoutsPage(props: PageProps<"/console/pages">) {
@@ -37,13 +38,18 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
         const { data } = await db.from("members").select("name").eq("id", entity).single();
         return data?.name ?? null;
       }
+      if (type === "static_page") {
+        // keyed on the surrogate uuid, not the slug — see 20260824000002
+        const { data } = await db.from("static_pages").select("title").eq("id", entity).maybeSingle();
+        return data?.title ?? null;
+      }
       return null;
     })(),
   ]);
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-xl font-bold text-navy">Page Layouts</h1>
+      <h1 className="text-xl font-bold text-ink">Page Layouts</h1>
       <p className="mt-1 text-sm text-gray-500">
         Drag blocks to arrange the page. Advert blocks are rotating slots — every advertiser gets equal
         rotation, so a layout can never favour anyone.
@@ -54,7 +60,7 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
           <Link
             key={t.type}
             href={`/console/pages?type=${t.type}`}
-            className={`rounded-t px-4 py-2 ${t.type === type && !entity ? "border border-b-0 bg-white font-semibold text-navy" : "text-gray-500 hover:text-navy"}`}
+            className={`rounded-t px-4 py-2 ${t.type === type && !entity ? "border border-b-0 bg-white font-semibold text-ink" : "text-gray-500 hover:text-ink"}`}
           >
             {t.label}
           </Link>
@@ -62,9 +68,9 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
       </div>
 
       {entity && (
-        <p className="mt-3 rounded bg-steel/10 p-2 text-sm">
+        <p className="mt-3 rounded bg-graphite/10 p-2 text-sm">
           Editing the layout for <b>{entityLabel ?? entity}</b> only{overrideRow ? " (override active)" : " (currently using the default)"} ·{" "}
-          <Link href={`/console/pages?type=${type}`} className="text-steel underline">edit the default instead</Link>
+          <Link href={`/console/pages?type=${type}`} className="text-graphite underline">edit the default instead</Link>
         </p>
       )}
       {typeof sp.saved === "string" && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Layout saved.</p>}

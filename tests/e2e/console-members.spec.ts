@@ -26,7 +26,7 @@ async function createMember(page: Page, company: string, email: string) {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', PASSWORD);
   await page.click("button:has-text('Create member')");
-  await page.waitForURL(/\/console\/members\/[0-9a-f-]{36}\?created=1/, { timeout: 20_000 });
+  await page.waitForURL(/\/console\/member\/[0-9a-f-]{36}\?created=1/, { timeout: 20_000 });
   return page.url().split("?")[0];
 }
 
@@ -48,7 +48,7 @@ test.describe("console member editor", () => {
     // reachable from the list, not just the URL we were redirected to
     await page.goto("/console/members");
     await page.locator("tr", { hasText: company }).getByRole("link", { name: company }).click();
-    await page.waitForURL(/\/console\/members\/[0-9a-f-]{36}$/);
+    await page.waitForURL(/\/console\/member\/[0-9a-f-]{36}$/);
 
     await page.fill('input[name="phone"]', "0161 555 0100");
     await page.fill('input[name="address"]', "Unit 4, Trafford Park, Manchester");
@@ -107,7 +107,7 @@ test.describe("console member editor", () => {
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', PASSWORD);
     await page.click("button:has-text('Create member')");
-    await page.waitForURL(/\/console\/members\/new\?error=/, { timeout: 20_000 });
+    await page.waitForURL(/\/console\/member\/new\?error=/, { timeout: 20_000 });
     await expect(page.getByText(/already exists/)).toBeVisible();
 
     // "<company> Again" contains "<company>", so a second row would show up here
@@ -143,8 +143,8 @@ test.describe("console member editor", () => {
     await page.check('input[name="confirm_slug"]');
     await save(page, /\?saved=1/);
 
-    await page.goto(`/members/${oldSlug}`);
-    await expect(page).toHaveURL(new RegExp(`/members/${newSlug}$`));
+    await page.goto(`/member/${oldSlug}`);
+    await expect(page).toHaveURL(new RegExp(`/member/${newSlug}$`));
   });
 });
 

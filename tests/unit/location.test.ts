@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { displayLocation } from "@/lib/location";
 
-// Real ACF Google-Map values from the WordPress handover (json/events.json).
+// Real ACF Google-Map values from the WordPress handover (json/event.json).
 const GOLF = `a:13:{s:7:"address";s:93:"Moor Hall Drive, The Royal Town of Sutton Coldfield, Birmingham, Sutton Coldfield B75 6LN, UK";s:3:"lat";d:52.5830722;s:3:"lng";d:-1.8125813;s:4:"zoom";i:5;s:8:"place_id";s:27:"ChIJLSq3EMClcEgRruVUrb28rDA";s:4:"name";s:7:"B75 6LN";s:11:"street_name";s:15:"Moor Hall Drive";s:17:"street_name_short";s:12:"Moor Hall Dr";s:4:"city";s:16:"Sutton Coldfield";s:5:"state";s:7:"England";s:9:"post_code";s:7:"B75 6LN";s:7:"country";s:14:"United Kingdom";s:13:"country_short";s:2:"GB";}`;
 
 // s:54: is a BYTE count against a 51-character string — the multi-byte trap.

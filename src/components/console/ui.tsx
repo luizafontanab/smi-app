@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 
-// Console-only primitives: one home for the card shell so all three themes
-// stay consistent (the hairline border keeps cards visible on the demo
-// theme's pure-white paper).
+// Console-only primitives: one home for the card shell, so the console stays
+// internally consistent. The hairline border was added when a retired theme
+// used pure-white paper; it still earns its place separating a white card from
+// the paper ground, which is near-white.
 
 export function Card({ id, className = "", children }: { id?: string; className?: string; children: ReactNode }) {
   return (
@@ -14,8 +15,8 @@ export function Card({ id, className = "", children }: { id?: string; className?
 
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="flex items-center gap-2 font-bold text-navy">
-      <span aria-hidden className="inline-block h-3.5 w-1 shrink-0 rounded-full bg-amber" />
+    <h2 className="flex items-center gap-2 font-bold text-ink">
+      <span aria-hidden className="inline-block h-3.5 w-1 shrink-0 rounded-full bg-brand" />
       {children}
     </h2>
   );
@@ -25,15 +26,15 @@ export function Stat({ label, value, sub }: { label: string; value: string; sub?
   return (
     <div className="rounded-xl border border-black/5 bg-white p-4 shadow-sm">
       <p className="text-xs uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-navy">{value}</p>
+      <p className="mt-1 text-2xl font-bold text-ink">{value}</p>
       {sub && <p className="text-xs text-gray-500">{sub}</p>}
     </div>
   );
 }
 
 const BADGE_TONES = {
-  neutral: "bg-navy/10 text-navy",
-  amber: "bg-amber/20 text-navy",
+  neutral: "bg-ink/10 text-ink",
+  brand: "bg-brand/20 text-ink",
   green: "bg-green-100 text-green-700",
   red: "bg-red-100 text-red-700",
 } as const;
