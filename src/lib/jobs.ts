@@ -10,7 +10,7 @@ import type { Json } from "./db/types";
 
 export type JobKind =
   | "publish_scheduled"      // periodic sweep: stories whose scheduled_at has passed
-  | "social_push"            // payload: { story_id } — delayed push after publish
+  | "social_push"            // payload: { story_id } or { video_id } — delayed push after publish
   | "notify_member"          // payload: { member_id, kind, ... }
   | "crm_sync"               // periodic Bigin poll
   | "rollup_daily"           // nightly analytics rollup + partition upkeep
@@ -91,9 +91,51 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
           await enqueue("notify_member", { member_id: s.member_id, kind: "story_live", story_id: s.id });
         }
       }
+      const { data: readyVideos } = await db
+        .from("videos")
+        .select("id, member_id")
+        .eq("status", "scheduled")
+        .lte("scheduled_at", new Date().toISOString());
+      for (const v of readyVideos ?? []) {
+        await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", v.id);
+        const { data: caps } = await db.from("settings").select("value").eq("key", "social_caps").single();
+        const delayMin = (caps?.value as { delay_minutes?: number })?.delay_minutes ?? 30;
+        await enqueue("social_push", { video_id: v.id }, new Date(Date.now() + delayMin * 60_000));
+        if (v.member_id) {
+          await enqueue("notify_member", { member_id: v.member_id, kind: "video_live", video_id: v.id });
+        }
+      }
       break;
     }
     case "social_push": {
+      if (payload.video_id) {
+        const { data: video } = await db
+          .from("videos")
+          .select("id, title, slug, thumbnail_path, member:members(name, social)")
+          .eq("id", String(payload.video_id))
+          .single();
+        if (!video) return;
+        const { data: caps } = await db.from("settings").select("value").eq("key", "social_caps").single();
+        const perDay = (caps?.value as { per_day?: number })?.per_day ?? 3;
+        const { count } = await db
+          .from("jobs")
+          .select("*", { count: "exact", head: true })
+          .eq("kind", "social_push")
+          .eq("status", "done")
+          .gte("updated_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString());
+        if ((count ?? 0) >= perDay) {
+          const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(9, 0, 0, 0);
+          await enqueue("social_push", payload, tomorrow);
+          return;
+        }
+        const { getSocialPublisher } = await import("./adapters/social");
+        await getSocialPublisher().publish({
+          text: `${video.title}\n\nhttps://sheetmetalindustries.com/video/${video.slug}`,
+          imagePath: video.thumbnail_path,
+          tagHandles: (video.member?.social ?? {}) as Record<string, string>,
+        });
+        break;
+      }
       const { data: story } = await db
         .from("stories")
         .select("id, title, slug, excerpt, cover_path, member:members(name, social)")
@@ -138,6 +180,8 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
         to: member.contact_email,
         subject: payload.kind === "story_live" ? "Your story is live on SMI" :
                  payload.kind === "story_rejected" ? "About your submitted story" :
+                 payload.kind === "video_live" ? "Your video is live on SMI" :
+                 payload.kind === "video_rejected" ? "About your submitted video" :
                  payload.kind === "page_live" ? "Your SMI member page is live" : "Update from SMI",
         text: payload.kind === "page_live"
           ? "Your company page has been approved and is now live in the SMI member directory."

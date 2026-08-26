@@ -49,7 +49,7 @@ export function DevTaskWidget({ reporterName }: { reporterName: string }) {
         onClick={open}
         className="fixed bottom-4 right-4 z-50 rounded-full bg-chrome px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-chrome-hover print:hidden"
       >
-        Report a bug
+        Feedback
       </button>
       <dialog
         ref={dialogRef}
@@ -105,7 +105,7 @@ function DevTaskForm({
   return (
     <form action={action} className="p-5">
       <h2 id={titleId} className="text-lg font-bold text-ink">
-        Report a bug
+        Feedback
       </h2>
       <p className="mt-1 text-xs text-gray-400">
         Filing as {reporterName}. The page, browser and any recent errors are attached automatically.

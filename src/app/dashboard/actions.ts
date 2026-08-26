@@ -43,6 +43,35 @@ export async function submitStory(formData: FormData) {
   redirect("/dashboard?submitted=story");
 }
 
+/** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
+export async function memberUploadVideoImage(formData: FormData): Promise<string | null> {
+  const user = await requireMember();
+  const path = await uploadImage(formData.get("file") as File | null, `videos/${user.memberId}`);
+  return mediaUrl(path);
+}
+
+/** Member self-post: lands awaiting approval, never live directly. */
+export async function submitVideo(formData: FormData) {
+  const user = await requireMember();
+  const title = String(formData.get("title") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  if (!title || !url) return;
+  const thumbnail = await uploadImage(formData.get("thumbnail") as File | null, "videos");
+  await serviceDb().from("videos").insert({
+    slug: `${slugify(title)}-${Date.now().toString(36)}`,
+    title,
+    url,
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    status: "awaiting_approval",
+    source: "member",
+    member_id: user.memberId,
+    submitted_by: user.userId,
+    thumbnail_path: thumbnail,
+  });
+  revalidatePath("/dashboard");
+  redirect("/dashboard?submitted=video");
+}
+
 /** M4 — member adds an event; Jas approves. */
 export async function submitEvent(formData: FormData) {
   const user = await requireMember();

@@ -256,7 +256,7 @@ h1, h2, h3 {
   font-family: var(--smi-font-heading);
   font-weight: 800;
   font-size: clamp(1.75rem, 3.6vw, 3rem);
-  line-height: 1.06;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   text-wrap: balance;
   text-shadow: 0 2px 24px rgb(0 0 0 / 0.45);

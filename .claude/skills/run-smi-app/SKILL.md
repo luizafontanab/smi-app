@@ -16,23 +16,16 @@ Three moving parts. Only the first two are needed to look at a page.
 ```bash
 supabase status        # already up? then skip the next line
 supabase start         # ~30s cold; leaves Docker containers running between sessions
-pnpm dev               # background it — see below
+pnpm dev:start          # idempotent: no-ops with "Already running" if it's already up
 ```
 
-Run the dev server backgrounded (`run_in_background: true`), then poll until it answers rather than sleeping a fixed amount:
+`dev:start` (`scripts/dev-server.sh`) runs `next dev --turbopack -p 3100` detached, so it survives this session ending — don't use `run_in_background: true` for it, it isn't needed. It polls `http://127.0.0.1:3100/` itself and only returns once the server answers (or after ~60s if something's wrong), so the command finishing is your readiness signal — no separate curl loop to write.
 
-```bash
-for i in $(seq 1 60); do
-  curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3100/ | grep -qE "^[23]" && echo READY && break
-  sleep 1
-done
-```
+Config comes from `.env.local` (gitignored, points at the local stack). `pnpm dev:logs` tails `.dev-server/dev.log`, which should show `- Environments: .env.local` — if that line is missing, the file is gone and every Supabase call will fail.
 
-Ready in well under a second on a warm cache; the first request compiles the route and takes ~2s.
+Port 3100 is fixed in `package.json` and in `playwright.config.ts`'s `baseURL`; don't move it. `dev:start` already refuses to spawn a second server if the port is occupied — it reports whatever's already listening (tracked or not) instead of starting a duplicate.
 
-Config comes from `.env.local` (gitignored, points at the local stack). `next dev` prints `- Environments: .env.local` — if that line is missing, the file is gone and every Supabase call will fail.
-
-Port 3100 is fixed in `package.json` and in `playwright.config.ts`'s `baseURL`; don't move it. If it's occupied, that's usually a dev server from an earlier session — reuse it instead of starting a second.
+Only run `pnpm dev:stop` when something actually needs a fresh process: an env var change, an edit to `next.config.ts`, or a new/updated dependency. Plain source edits are already covered by Turbopack's HMR — no restart needed.
 
 ## Drive it
 

@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 3100",
+    "dev:start": "scripts/dev-server.sh start",
+    "dev:stop": "scripts/dev-server.sh stop",
+    "dev:status": "scripts/dev-server.sh status",
+    "dev:logs": "scripts/dev-server.sh logs",
     "build": "next build",
     "start": "next start -p 3100",
     "lint": "eslint",

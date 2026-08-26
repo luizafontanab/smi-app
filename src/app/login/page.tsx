@@ -24,7 +24,8 @@ export default async function LoginPage(props: PageProps<"/login">) {
     if (dest) redirect(dest);
     const { currentUser } = await import("@/lib/auth");
     const user = await currentUser();
-    redirect(user?.role === "member" ? "/dashboard" : "/console");
+    if (!user) redirect("/login?error=1");
+    redirect(user.role === "member" ? "/dashboard" : "/console");
   }
 
   return (

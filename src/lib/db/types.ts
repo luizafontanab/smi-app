@@ -1064,6 +1064,7 @@ export type Database = {
           id: string
           intro: string | null
           number: number
+          scheduled_at: string | null
           sent_at: string | null
           status: string
           subject: string
@@ -1074,6 +1075,7 @@ export type Database = {
           id?: string
           intro?: string | null
           number: number
+          scheduled_at?: string | null
           sent_at?: string | null
           status?: string
           subject: string
@@ -1084,6 +1086,7 @@ export type Database = {
           id?: string
           intro?: string | null
           number?: number
+          scheduled_at?: string | null
           sent_at?: string | null
           status?: string
           subject?: string
@@ -1511,12 +1514,17 @@ export type Database = {
           description: string | null
           id: string
           member_id: string | null
+          pinned_until: string | null
           published_at: string | null
+          rejected_reason: string | null
+          scheduled_at: string | null
           slug: string
           source: string
           status: Database["public"]["Enums"]["content_status"]
+          submitted_by: string | null
           thumbnail_path: string | null
           title: string
+          updated_at: string
           url: string
         }
         Insert: {
@@ -1524,12 +1532,17 @@ export type Database = {
           description?: string | null
           id?: string
           member_id?: string | null
+          pinned_until?: string | null
           published_at?: string | null
+          rejected_reason?: string | null
+          scheduled_at?: string | null
           slug: string
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
+          submitted_by?: string | null
           thumbnail_path?: string | null
           title: string
+          updated_at?: string
           url: string
         }
         Update: {
@@ -1537,12 +1550,17 @@ export type Database = {
           description?: string | null
           id?: string
           member_id?: string | null
+          pinned_until?: string | null
           published_at?: string | null
+          rejected_reason?: string | null
+          scheduled_at?: string | null
           slug?: string
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
+          submitted_by?: string | null
           thumbnail_path?: string | null
           title?: string
+          updated_at?: string
           url?: string
         }
         Relationships: [
@@ -1552,6 +1570,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "members"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "videos_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
           },
         ]
       }

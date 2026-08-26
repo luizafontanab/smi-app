@@ -5,10 +5,12 @@ Custom rebuild of sheetmetalindustries.com: public site, member area, operator c
 ## Run locally
 
 ```bash
-supabase start                 # Postgres/Auth/Storage on ports 563xx (see supabase/config.toml)
-pnpm dev                       # app on http://127.0.0.1:3100
+supabase start                 # Postgres/Auth/Storage on ports 563xx (see supabase/config.toml); no-op if already running
+pnpm dev:start                 # detached Next.js dev server on http://127.0.0.1:3100; no-op if already running
 pnpm exec tsx scripts/job-runner.ts   # optional: background jobs (publishing, notifications)
 ```
+
+`pnpm dev:start` runs `next dev --turbopack` detached from the current terminal, logging to `.dev-server/dev.log` (gitignored) — it keeps running after the terminal closes, so there's no need to keep a foreground window open or restart it between sessions. `pnpm dev:logs` tails the log, `pnpm dev:status` reports whether it's up, and `pnpm dev:stop` shuts it down. Only actually stop/restart it for an env var change, a `next.config.ts` edit, or a new/updated dependency — Turbopack's HMR already picks up source file edits live. Plain `pnpm dev` in the foreground still works too, if you'd rather have it tied to your terminal.
 
 First-time / reset seed (real stories fetched from the live site + synthetic everything else):
 

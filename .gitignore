@@ -37,6 +37,9 @@ yarn-error.log*
 .pnpm-debug.log*
 dev.log
 
+# persistent dev server state (pnpm dev:start / dev:stop)
+/.dev-server/
+
 # env files (can opt-in for committing if needed)
 .env*
 

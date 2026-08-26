@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 const CARDS = [
   { href: "/dashboard/profile", icon: "🏢", title: "Update your page", sub: "Description, images, video, socials" },
   { href: "/dashboard/story/new", icon: "📰", title: "Add a story", sub: "Your news on SMI's channels" },
+  { href: "/dashboard/video/new", icon: "🎬", title: "Add a video", sub: "Your video on SMI's channels" },
   { href: "/dashboard/event/new", icon: "📅", title: "Add an event", sub: "Open days, shows, launches" },
   { href: "/dashboard/equipment/new", icon: "⚙️", title: "Add equipment", sub: "Machines for sale, linked to your site" },
   { href: "/dashboard/stats", icon: "📈", title: "View statistics", sub: "Who's engaging with you" },
@@ -42,6 +43,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
           {submitted === "paid" && "Payment sorted — now build your company page and submit it for approval."}
           {submitted === "page" && "Page submitted — Jas reviews it and you'll be live in the directory once approved."}
           {submitted === "story" && "Story submitted — it goes live once the editor approves it, and we'll email you."}
+          {submitted === "video" && "Video submitted — it goes live once the editor approves it, and we'll email you."}
           {submitted === "event" && "Event submitted for approval."}
           {submitted === "machine" && "Equipment submitted — it appears once the editor approves it."}
           {submitted === "profile" && "Page changes submitted — they appear once approved."}

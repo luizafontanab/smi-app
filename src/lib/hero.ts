@@ -1,6 +1,9 @@
 import { mediaUrl } from "./db/server";
 import type { StoryCard } from "./queries";
 import { excerptFromHtml } from "./sanitize";
+import { youtubeId } from "./youtube";
+
+export { youtubeId };
 
 /**
  * Home hero composition.
@@ -55,11 +58,6 @@ const INTRO_MAX = 200;
 
 /** Position 0 is forced to the headline; 1-4 follow this. */
 const PATTERN = ["story", "story", "video", "story", "video"] as const;
-
-/** Same extraction the video cards have always used — watch?v=<id>. */
-export function youtubeId(url: string): string | null {
-  return url.match(/[?&]v=([\w-]+)/)?.[1] ?? null;
-}
 
 function dateGB(iso: string | null): string | null {
   if (!iso) return null;

@@ -125,6 +125,113 @@ export async function pinStory(formData: FormData) {
   revalidatePath("/console/stories");
 }
 
+/* ---------- videos ---------- */
+
+/** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
+export async function consoleUploadVideoImage(formData: FormData): Promise<string | null> {
+  const user = await requireConsole();
+  if (!canWrite(user)) return null;
+  const path = await uploadImage(formData.get("file") as File | null, "videos/console");
+  return mediaUrl(path);
+}
+
+export async function saveVideo(formData: FormData) {
+  const user = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const db = serviceDb();
+  const title = String(formData.get("title") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  if (!title || !url) return;
+  if (!canWrite(user)) return;
+
+  let thumbnail_path: string | null = null;
+  try {
+    thumbnail_path = await uploadImage(formData.get("thumbnail") as File | null, "videos");
+  } catch (e) {
+    redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Thumbnail upload failed.")}`);
+  }
+
+  const values = {
+    title,
+    url,
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    member_id: String(formData.get("member_id") ?? "") || null,
+    updated_at: new Date().toISOString(),
+    ...(thumbnail_path ? { thumbnail_path } : {}),
+  };
+
+  let videoId = id;
+  if (id) {
+    await db.from("videos").update(values).eq("id", id);
+  } else {
+    const { data } = await db.from("videos").insert({
+      ...values,
+      slug: `${slugify(title)}-${Date.now().toString(36)}`,
+      status: "draft",
+      source: "manual",
+      submitted_by: user.userId,
+    }).select("id").single();
+    videoId = data!.id;
+  }
+  revalidatePath("/console/videos");
+  redirect(`/console/videos/${videoId}`);
+}
+
+export async function scheduleVideo(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const id = String(formData.get("id"));
+  const when = String(formData.get("scheduled_at") ?? "");
+  const db = serviceDb();
+  if (formData.get("mode") === "now") {
+    // urgent override — publish immediately, social push follows on its delay
+    await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
+    const { data: v } = await db.from("videos").select("member_id").eq("id", id).single();
+    await enqueue("social_push", { video_id: id }, new Date(Date.now() + 30 * 60_000));
+    if (v?.member_id) await enqueue("notify_member", { member_id: v.member_id, kind: "video_live", video_id: id });
+  } else if (when) {
+    await db.from("videos").update({ status: "scheduled", scheduled_at: new Date(when).toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
+  }
+  revalidatePath("/console/videos");
+  const back = String(formData.get("return_to") ?? "");
+  redirect(/^\/console\/videos(\?[\w=&-]*)?$/.test(back) ? back : "/console/videos");
+}
+
+export async function decideVideo(formData: FormData) {
+  const user = await requireConsole();
+  if (!canApprove(user)) return;
+  const id = String(formData.get("id"));
+  const decision = String(formData.get("decision"));
+  const reason = String(formData.get("reason") ?? "");
+  const db = serviceDb();
+  const { data: video } = await db.from("videos").select("id, member_id, status").eq("id", id).single();
+  if (!video || video.status !== "awaiting_approval") return;
+
+  if (decision === "approve") {
+    await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
+    await enqueue("social_push", { video_id: id }, new Date(Date.now() + 30 * 60_000));
+    if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: id });
+  } else {
+    await db.from("videos").update({ status: "rejected", rejected_reason: reason, updated_at: new Date().toISOString() }).eq("id", id);
+    if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_rejected", video_id: id, reason });
+  }
+  await db.from("approvals").insert({ kind: "video", subject_id: id, decision: decision === "approve" ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
+  revalidatePath("/console");
+  revalidatePath("/console/videos");
+}
+
+export async function pinVideo(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const id = String(formData.get("id"));
+  const days = Number(formData.get("days") || 0);
+  await serviceDb().from("videos").update({
+    pinned_until: days > 0 ? new Date(Date.now() + days * 864e5).toISOString() : null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+  revalidatePath("/console/videos");
+}
+
 /* ---------- events & member revisions ---------- */
 
 export async function decideEvent(formData: FormData) {
@@ -323,6 +430,32 @@ export async function sendIssue(formData: FormData) {
   const user = await requireConsole();
   if (!canWrite(user)) return;
   await enqueue("newsletter_send", { issue_id: String(formData.get("id")) });
+  revalidatePath("/console/newsletter");
+}
+
+export async function scheduleIssue(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const id = String(formData.get("id"));
+  const when = String(formData.get("scheduled_at") ?? "");
+  if (!when) return;
+  const at = new Date(when);
+  const db = serviceDb();
+  await db.from("newsletter_issues").update({ status: "scheduled", scheduled_at: at.toISOString() }).eq("id", id);
+  await enqueue("newsletter_send", { issue_id: id }, at);
+  revalidatePath("/console/newsletter");
+}
+
+export async function unscheduleIssue(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  // the pending job would otherwise still fire at the original time — reverting
+  // the row to draft alone doesn't stop it, since the job's only guard is
+  // "is it already sent" (src/lib/jobs.ts)
+  await db.from("jobs").delete().eq("kind", "newsletter_send").eq("status", "pending").filter("payload->>issue_id", "eq", id);
+  await db.from("newsletter_issues").update({ status: "draft", scheduled_at: null }).eq("id", id);
   revalidatePath("/console/newsletter");
 }
 

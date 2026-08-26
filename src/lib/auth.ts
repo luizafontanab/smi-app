@@ -12,6 +12,11 @@ export type CurrentUser = {
   displayName: string | null;
 };
 
+/** Guards against a stale/unmigrated role value (e.g. a pre-collapse "super_admin" row) reaching the redirect logic below, where it would fail every role check and loop. */
+function normalizeRole(role: string): Role | null {
+  return role === "admin" || role === "member" ? role : null;
+}
+
 /** Request-scoped cache: the public layout and JoinCta both call this per render. */
 export const currentUser = cache(async (): Promise<CurrentUser | null> => {
   const db = await sessionDb();
@@ -23,10 +28,12 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
     .eq("user_id", user.id)
     .single();
   if (!profile) return null;
+  const role = normalizeRole(profile.role);
+  if (!role) return null;
   return {
     userId: user.id,
     email: user.email ?? "",
-    role: profile.role as Role,
+    role,
     memberId: profile.member_id,
     displayName: profile.display_name,
   };

@@ -32,6 +32,10 @@ export default async function CommandCentre() {
     publishedStories,
     sessions,
     lastSent,
+    pendingVideos,
+    draftVideos,
+    scheduledVideos,
+    publishedVideosCount,
   ] = await Promise.all([
     db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"),
     db.from("advert_bookings").select("advert:adverts(format, advertiser_id), bundle:bundles(price_pennies)").lte("starts_on", today).gte("ends_on", today),
@@ -51,6 +55,10 @@ export default async function CommandCentre() {
     db.from("stories").select("*", { count: "exact", head: true }).eq("status", "published"),
     db.rpc("site_sessions_last_year"),
     db.from("newsletter_issues").select("number, sent_at").eq("status", "sent").order("sent_at", { ascending: false }).limit(1),
+    db.from("videos").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
+    db.from("videos").select("*", { count: "exact", head: true }).eq("status", "draft"),
+    db.from("videos").select("*", { count: "exact", head: true }).eq("status", "scheduled"),
+    db.from("videos").select("*", { count: "exact", head: true }).eq("status", "published"),
   ]);
 
   const live = liveBookings.data ?? [];
@@ -81,8 +89,16 @@ export default async function CommandCentre() {
     { label: "Published", value: publishedStories.count ?? 0 },
   ];
 
+  const videoPipeline: { label: string; value: number }[] = [
+    { label: "Awaiting approval", value: pendingVideos.data?.length ?? 0 },
+    { label: "Drafts", value: draftVideos.count ?? 0 },
+    { label: "Scheduled", value: scheduledVideos.count ?? 0 },
+    { label: "Published", value: publishedVideosCount.count ?? 0 },
+  ];
+
   const needs: { label: string; href: string; urgent?: boolean }[] = [];
   if (pendingStories.data?.length) needs.push({ label: `${pendingStories.data.length} member stories awaiting your approval`, href: "/console/stories" });
+  if (pendingVideos.data?.length) needs.push({ label: `${pendingVideos.data.length} member videos awaiting your approval`, href: "/console/videos" });
   if (pendingEvents.data?.length) needs.push({ label: `${pendingEvents.data.length} member events awaiting approval`, href: "#approvals" });
   if (pendingRevisions.data?.length) needs.push({ label: `${pendingRevisions.data.length} member page edits awaiting approval`, href: "#approvals" });
   if (expiring.data?.length) needs.push({ label: `${expiring.data.length} adverts expire within 7 days`, href: "/console/adverts" });
@@ -145,6 +161,23 @@ export default async function CommandCentre() {
                 <p className="text-xs uppercase tracking-wide text-gray-400">{p.label}</p>
                 <p className="mt-0.5 text-xl font-bold text-ink">{p.value === null ? "—" : p.value}</p>
                 {p.value === null && <Badge>module 6</Badge>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      </Link>
+
+      <Link href="/console/videos" className="group mt-6 block">
+        <Card className="transition group-hover:shadow-md">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <SectionTitle>Video pipeline</SectionTitle>
+            <span className="text-xs text-graphite group-hover:underline">Open Video Engine →</span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {videoPipeline.map((p) => (
+              <div key={p.label}>
+                <p className="text-xs uppercase tracking-wide text-gray-400">{p.label}</p>
+                <p className="mt-0.5 text-xl font-bold text-ink">{p.value}</p>
               </div>
             ))}
           </div>

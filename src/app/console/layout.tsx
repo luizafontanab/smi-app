@@ -15,6 +15,7 @@ const CONSOLE_NAV: NavItem[] = [
   { href: "/console/adverts", label: "Adverts & Inventory" },
   { href: "/console/members", label: "Members & CRM" },
   { href: "/console/stories", label: "Story Engine (CMS)" },
+  { href: "/console/videos", label: "Video Engine (CMS)" },
   { href: "/console/newsletter", label: "Newsletter" },
   { href: "/console/machines", label: "Featured Machine", muted: true },
   { href: "/console/content-pages", label: "Content Pages", muted: true },
