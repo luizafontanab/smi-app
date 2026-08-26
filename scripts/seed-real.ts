@@ -274,14 +274,25 @@ async function main() {
 
   if (!NO_ADVERTS) await seedAdverts(memberRows, memberId);
 
-  console.log("— auth users (admin, media input-only, 3 member logins on real members)");
+  console.log("— auth users (1 admin, media co member, 3 member logins on real members)");
   const mkUser = async (email: string, role: string, member_id: string | null, display_name: string) => {
     const { data, error } = await db.auth.admin.createUser({ email, password: "local-dev-password", email_confirm: true });
     if (error) throw error;
     await db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name });
   };
-  await mkUser("jas@smi.local", "super_admin", null, "Jas");
-  await mkUser("media@smi.local", "input_only", null, "Media Co");
+  await mkUser("jas@smi.local", "admin", null, "Jas");
+
+  // Media Co isn't an SMI trade member — a member row with status "draft"
+  // (the default) gives it a member_id for the dashboard's draft-only story
+  // flow without it ever surfacing in the public directory/search/sitemap,
+  // which only ever query status "active"/"grace".
+  const { data: mediaMember, error: mediaMemberErr } = await db
+    .from("members")
+    .insert({ slug: "media-co", name: "Media Co", contact_email: "media@smi.local" })
+    .select("id")
+    .single();
+  if (mediaMemberErr) throw mediaMemberErr;
+  await mkUser("media@smi.local", "member", mediaMember.id, "Media Co");
   const activeSeed = memberRows.filter((m) => m.status === "active");
   for (let i = 0; i < Math.min(3, activeSeed.length); i++) {
     const m = activeSeed[i];

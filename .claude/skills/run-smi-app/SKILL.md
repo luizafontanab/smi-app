@@ -49,8 +49,8 @@ node scripts/screenshot.mjs / shot.png '[data-stage-card]'   # 3rd arg hovers fi
 
 | Email | Role |
 |---|---|
-| `jas@smi.local` | super admin — `/console/*` |
-| `media@smi.local` | input-only operator |
+| `jas@smi.local` | admin — `/console/*` |
+| `media@smi.local` | member (external contributor) — `/dashboard/*`, drafts only |
 | `member1@smi.local` … `member3@smi.local` | members — `/dashboard/*` |
 
 Sign in at `/login` (`input[name="email"]`, `input[name="password"]`); `tests/e2e/flows.spec.ts` has the helper if you need it in a script.

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { ConsoleNav, type NavItem } from "@/components/console/ConsoleNav";
-import { requireConsole } from "@/lib/auth";
+import { isAdmin, requireConsole } from "@/lib/auth";
 import { sessionDb } from "@/lib/db/server";
 import { SkipLink } from "@/components/SkipLink";
 
@@ -21,17 +21,19 @@ const CONSOLE_NAV: NavItem[] = [
   { href: "/console/pages", label: "Page Layouts", muted: true },
 ];
 
+// Internal tool — admin only, so it's appended per-role rather than living
+// in the module-level array.
+const DEV_NAV: NavItem = { href: "/console/dev", label: "Dev Board", muted: true };
+
 const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Editor",
-  approver: "Approver",
-  viewer: "Viewer",
-  input_only: "Contributor",
+  admin: "Admin",
 };
 
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const user = await requireConsole();
   const name = user.displayName ?? user.email;
   const roleLabel = ROLE_LABELS[user.role] ?? user.role.replace("_", " ");
+  const nav = isAdmin(user) ? [...CONSOLE_NAV, DEV_NAV] : CONSOLE_NAV;
 
   async function signOut() {
     "use server";
@@ -55,7 +57,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
             <ThemeSwitcher compact />
           </div>
         </div>
-        <ConsoleNav items={CONSOLE_NAV} />
+        <ConsoleNav items={nav} />
       </header>
       <main id="main" className="min-w-0 flex-1 bg-paper p-6">{children}</main>
     </div>

@@ -2,7 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { sessionDb, serviceDb } from "./db/server";
 
-export type Role = "super_admin" | "approver" | "viewer" | "input_only" | "member";
+export type Role = "admin" | "member";
 
 export type CurrentUser = {
   userId: string;
@@ -32,22 +32,24 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
   };
 });
 
-const CONSOLE_ROLES: Role[] = ["super_admin", "approver", "viewer", "input_only"];
-
 /** Console access; returns the user or redirects. Call in every console page/action. */
 export async function requireConsole(): Promise<CurrentUser> {
   const user = await currentUser();
   if (!user) redirect("/login?next=/console");
-  if (!CONSOLE_ROLES.includes(user.role)) redirect("/dashboard");
+  if (user.role !== "admin") redirect("/dashboard");
   return user;
 }
 
-/** Mutating console actions: viewer can't write; input_only can only create draft stories. */
 export function canWrite(user: CurrentUser): boolean {
-  return user.role === "super_admin" || user.role === "approver";
+  return user.role === "admin";
 }
 export function canApprove(user: CurrentUser): boolean {
-  return user.role === "super_admin" || user.role === "approver";
+  return user.role === "admin";
+}
+
+/** Admin-only surface: the dev-task widget, rendered for a possibly-anonymous visitor on any route. */
+export function isAdmin(user: CurrentUser | null): boolean {
+  return user?.role === "admin";
 }
 
 export async function requireMember(): Promise<CurrentUser & { memberId: string }> {

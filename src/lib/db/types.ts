@@ -569,6 +569,71 @@ export type Database = {
           },
         ]
       }
+      dev_tasks: {
+        Row: {
+          assignee: string | null
+          context: Json
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          kind: string | null
+          notes: string
+          page_path: string | null
+          priority: string
+          reporter_email: string | null
+          sort_order: number
+          status: string
+          title: string
+          triage_notes: string
+          updated_at: string
+        }
+        Insert: {
+          assignee?: string | null
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          kind?: string | null
+          notes?: string
+          page_path?: string | null
+          priority?: string
+          reporter_email?: string | null
+          sort_order?: number
+          status?: string
+          title: string
+          triage_notes?: string
+          updated_at?: string
+        }
+        Update: {
+          assignee?: string | null
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          kind?: string | null
+          notes?: string
+          page_path?: string | null
+          priority?: string
+          reporter_email?: string | null
+          sort_order?: number
+          status?: string
+          title?: string
+          triage_notes?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dev_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       engagement_audit: {
         Row: {
           company: string | null
@@ -1552,7 +1617,7 @@ export type Database = {
         | "featured_machine"
         | "grid_block"
         | "takeover"
-      user_role: "super_admin" | "approver" | "viewer" | "input_only" | "member"
+      user_role: "admin" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1698,7 +1763,7 @@ export const Constants = {
         "grid_block",
         "takeover",
       ],
-      user_role: ["super_admin", "approver", "viewer", "input_only", "member"],
+      user_role: ["admin", "member"],
     },
   },
 } as const

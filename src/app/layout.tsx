@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Allerta_Stencil, League_Spartan } from "next/font/google";
 import { cookies } from "next/headers";
+import { DevTaskLauncher } from "@/components/dev-task/DevTaskLauncher";
 import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
@@ -53,7 +54,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       data-theme={theme}
       className={`${leagueSpartan.variable} ${allertaStencil.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col font-sans">{children}</body>
+      <body className="flex min-h-full flex-col font-sans">
+        {children}
+        <DevTaskLauncher />
+      </body>
     </html>
   );
 }

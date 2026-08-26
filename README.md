@@ -17,7 +17,7 @@ supabase db reset && docker restart supabase_kong_app && sleep 5 \
   && set -a && source .env.local && set +a && pnpm exec tsx scripts/seed.ts
 ```
 
-**Logins** (password `local-dev-password`): `jas@smi.local` (super admin) · `media@smi.local` (input-only) · `member1..3@smi.local` (members).
+**Logins** (password `local-dev-password`): `jas@smi.local` (admin) · `media@smi.local` (member, draft-only) · `member1..3@smi.local` (members).
 
 ## Deploy to hosted Supabase
 

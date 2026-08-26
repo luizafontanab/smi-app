@@ -102,15 +102,26 @@ async function main() {
   if (memErr) throw memErr;
   const activeMembers = members!.filter((m) => m.status === "active");
 
-  console.log("— auth users (admin, media input-only, 3 member logins)");
+  console.log("— auth users (1 admin, media co member, 3 member logins)");
   const mkUser = async (email: string, role: string, member_id: string | null, display_name: string) => {
     const { data, error } = await db.auth.admin.createUser({ email, password: "local-dev-password", email_confirm: true });
     if (error) throw error;
     await db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name });
     return data.user.id;
   };
-  await mkUser("jas@smi.local", "super_admin", null, "Jas");
-  await mkUser("media@smi.local", "input_only", null, "Media Co");
+  const jasId = await mkUser("jas@smi.local", "admin", null, "Jas");
+
+  // Media Co isn't an SMI trade member — a member row with status "draft"
+  // (the default) gives it a member_id for the dashboard's draft-only story
+  // flow without it ever surfacing in the public directory/search/sitemap,
+  // which only ever query status "active"/"grace".
+  const { data: mediaMember, error: mediaMemberErr } = await db
+    .from("members")
+    .insert({ slug: "media-co", name: "Media Co", contact_email: "media@smi.local" })
+    .select("id")
+    .single();
+  if (mediaMemberErr) throw mediaMemberErr;
+  await mkUser("media@smi.local", "member", mediaMember.id, "Media Co");
   const memberLogins: string[] = [];
   for (let i = 0; i < 3; i++) {
     const m = activeMembers[i];
@@ -359,6 +370,25 @@ async function main() {
     Object.entries(DEFAULT_LAYOUTS).map(([page_type, layout]) => ({ page_type, entity_id: null, layout })),
   );
   await db.from("jobs").insert({ kind: "newsletter_draft_reminder", payload: { month: iso(today).slice(0, 7) }, due_at: new Date().toISOString() });
+
+  console.log("— dev board");
+  await db.from("dev_tasks").insert([
+    { title: "Fix double-submit on the join form", status: "not_started", assignee: "Luiza", priority: "high", sort_order: 0,
+      kind: "bug", description: "Clicking Pay twice creates two Stripe sessions.",
+      notes: "Page: /join/account — \"Join | SMI\"\nURL: https://smi.local/join/account\n\nEnvironment\n  Viewport 1440x900 · screen 2560x1440 · DPR 2 · theme forge\n  Locale en-GB · Europe/London\n  UA Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)\n\nRecent client errors: none.",
+      context: { page: { pathname: "/join/account", url: "https://smi.local/join/account", title: "Join | SMI", referrer: "" }, env: { user_agent: "Mozilla/5.0", viewport: "1440x900", screen: "2560x1440", dpr: 2, theme: "forge", language: "en-GB", timezone: "Europe/London" }, errors: [], captured_at: new Date().toISOString(), reporter: { user_id: jasId, email: "jas@smi.local", role: "admin" } },
+      page_path: "/join/account", created_by: jasId, reporter_email: "jas@smi.local" },
+    { title: "Improve the empty state on the members search", status: "not_started", assignee: "Luiza", priority: "low", sort_order: 1,
+      kind: "idea", description: "\"No results\" reads a bit bare — could suggest clearing filters." },
+    { title: "Typo in the About page footer", status: "in_progress", assignee: "Luiza", priority: "medium", sort_order: 0,
+      kind: "copy", description: "\"buisness\" should be \"business\"." },
+    { title: "Add pagination to the news archive", status: "blocked", assignee: "Rishi", priority: "medium", sort_order: 0,
+      description: "Blocked on the new /news route's data layer landing first." },
+    { title: "Wire up the newsletter unsubscribe link", status: "in_staging", assignee: "Harsh", priority: "high", sort_order: 0 },
+    { title: "Audit alt text across the member directory", status: "done", assignee: "Dan", priority: "low", sort_order: 0 },
+    { title: "Spike: image CDN options", status: "done", assignee: "Jas", priority: "low", sort_order: 1 },
+    { title: "Old machine listing importer", status: "canceled", assignee: null, priority: "low", sort_order: 0 },
+  ]);
 
   console.log("Seed complete.");
   const counts = await Promise.all(

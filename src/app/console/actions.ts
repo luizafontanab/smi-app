@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { canApprove, canWrite, requireConsole } from "@/lib/auth";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } from "@/lib/dev-tasks";
 import { enqueue } from "@/lib/jobs";
 import { uploadImage } from "@/lib/media";
 import { memberValuesFromForm } from "@/lib/member-form";
@@ -15,15 +16,10 @@ import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 
-/**
- * Editor image upload — returns the public URL for insertion as <img src>.
- * Gated like saveStory rather than on canWrite alone: input_only (the external
- * media company) writes drafts and needs artwork with them. Only viewer, the
- * read-only role, is turned away — it had write access to the public bucket.
- */
+/** Editor image upload — returns the public URL for insertion as <img src>. */
 export async function consoleUploadImage(formData: FormData): Promise<string | null> {
   const user = await requireConsole();
-  if (!canWrite(user) && user.role !== "input_only") return null;
+  if (!canWrite(user)) return null;
   const path = await uploadImage(formData.get("file") as File | null, "stories/console");
   return mediaUrl(path);
 }
@@ -48,16 +44,10 @@ export async function saveStory(formData: FormData) {
       : undefined,
   };
 
-  // input_only (external media company) can only create/edit drafts
-  const inputOnly = user.role === "input_only";
-  if (!canWrite(user) && !inputOnly) return;
+  if (!canWrite(user)) return;
 
   let storyId = id;
   if (id) {
-    if (inputOnly) {
-      const { data: existing } = await db.from("stories").select("status").eq("id", id).single();
-      if (existing?.status !== "draft") return;
-    }
     await db.from("stories").update(values).eq("id", id);
   } else {
     const { data } = await db.from("stories").insert({
@@ -618,4 +608,140 @@ export async function deleteContentPage(formData: FormData) {
   await serviceDb().from("static_pages").delete().eq("slug", slug);
   revalidatePath("/console/content-pages");
   redirect("/console/content-pages?deleted=1");
+}
+
+/* ---------- dev board ---------- */
+
+/** updated_at is stamped by hand — there is no trigger in this database, by convention. */
+
+const devFail = (id: string, message: string): never =>
+  redirect(`/console/dev/${id}?error=${encodeURIComponent(message)}`);
+
+/** Mirrors the return_to allowlist at saveStory (line ~100) for /console/dev. */
+function devBackTo(formData: FormData): string {
+  const back = String(formData.get("return_to") ?? "");
+  return /^\/console\/dev(\?[\w=&,%.-]*)?$/.test(back) ? back : "/console/dev";
+}
+
+/** Quick-add from a board column or the list view: title only, appended to the end of its column. */
+export async function createDevTask(formData: FormData) {
+  const user = await requireConsole();
+  const title = String(formData.get("title") ?? "").trim().slice(0, 200);
+  if (!title) return;
+
+  const statusRaw = String(formData.get("status") ?? "");
+  const status: DevStatus = (DEV_STATUSES as readonly string[]).includes(statusRaw) ? (statusRaw as DevStatus) : "not_started";
+  const assigneeRaw = String(formData.get("assignee") ?? "");
+  const assignee = (DEV_ASSIGNEES as readonly string[]).includes(assigneeRaw) ? assigneeRaw : null;
+
+  const db = serviceDb();
+  const { data: last } = await db
+    .from("dev_tasks")
+    .select("sort_order")
+    .eq("status", status)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  await db.from("dev_tasks").insert({
+    title,
+    status,
+    assignee,
+    created_by: user.userId,
+    sort_order: (last?.sort_order ?? -1) + 1,
+  });
+  revalidatePath("/console/dev");
+}
+
+/**
+ * Detail-page form: insert or update. On success, returns to the filtered
+ * board the caller came from — Save is a quick in-and-out edit, not a
+ * dedicated editing session. On a validation error, re-renders the same
+ * detail page instead, so a rejected edit doesn't lose the in-progress form.
+ */
+export async function saveDevTask(formData: FormData) {
+  const user = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const parsed = devTaskValuesFromForm(formData);
+  if ("error" in parsed) {
+    redirect(`/console/dev/${id || "new"}?error=${encodeURIComponent(parsed.error)}`);
+  }
+
+  const db = serviceDb();
+  if (id) {
+    await db.from("dev_tasks").update({ ...parsed.values, updated_at: new Date().toISOString() }).eq("id", id);
+  } else {
+    const status = parsed.values.status ?? "not_started";
+    const { data: last } = await db
+      .from("dev_tasks")
+      .select("sort_order")
+      .eq("status", status)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    await db.from("dev_tasks").insert({ ...parsed.values, created_by: user.userId, sort_order: (last?.sort_order ?? -1) + 1 });
+  }
+  revalidatePath("/console/dev");
+  const to = devBackTo(formData);
+  redirect(`${to}${to.includes("?") ? "&" : "?"}saved=1`);
+}
+
+/** The card's status dropdown — the keyboard/no-JS path, and how a card leaves the board (via "canceled"). */
+export async function setDevTaskStatus(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const statusRaw = String(formData.get("status") ?? "");
+  if (!id || !(DEV_STATUSES as readonly string[]).includes(statusRaw)) return;
+  const status = statusRaw as DevStatus;
+
+  const db = serviceDb();
+  const { data: last } = await db
+    .from("dev_tasks")
+    .select("sort_order")
+    .eq("status", status)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  await db
+    .from("dev_tasks")
+    .update({ status, sort_order: (last?.sort_order ?? -1) + 1, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  revalidatePath("/console/dev");
+}
+
+export async function deleteDevTask(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  if (formData.get("confirm") !== "1") return devFail(id, "Tick the confirm box to delete this task.");
+  await serviceDb().from("dev_tasks").delete().eq("id", id);
+  revalidatePath("/console/dev");
+  const to = devBackTo(formData);
+  redirect(`${to}${to.includes("?") ? "&" : "?"}deleted=1`);
+}
+
+/**
+ * Drag-and-drop persistence — a typed server action called directly from a
+ * client component rather than FormData from a <form action=>. New for this
+ * repo, but standard Next; the arguments are still attacker-controlled, so
+ * every value is checked against the const arrays / real rows before use.
+ * orderedIds is the full, dense id list of the destination column after the
+ * move — every id in it belongs to `status` now. Concurrent per-row updates,
+ * not a single upsert: upsert()'s types require every Insert-only column
+ * (title included), which a reorder that only ever touches existing rows has
+ * no business setting.
+ */
+export async function moveDevTask(input: { id: string; status: string; orderedIds: string[] }) {
+  await requireConsole();
+  if (!(DEV_STATUSES as readonly string[]).includes(input.status)) return;
+  const status = input.status as DevStatus;
+
+  const db = serviceDb();
+  const { data: existing } = await db.from("dev_tasks").select("id").in("id", input.orderedIds);
+  const validIds = new Set((existing ?? []).map((r) => r.id));
+  const orderedIds = input.orderedIds.filter((id) => validIds.has(id));
+  if (!orderedIds.includes(input.id)) return;
+
+  await Promise.all(orderedIds.map((id, index) => db.from("dev_tasks").update({ status, sort_order: index }).eq("id", id)));
+  revalidatePath("/console/dev");
 }
