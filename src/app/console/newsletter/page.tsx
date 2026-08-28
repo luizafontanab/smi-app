@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { monthGrid, parseMonth } from "@/lib/calendar";
 import { createIssue, scheduleIssue, sendIssue, unscheduleIssue } from "../actions";
-import { CalendarView, monthGrid, parseMonth, type CalendarIssue } from "./CalendarView";
+import { CalendarView, type CalendarIssue } from "./CalendarView";
 
 export const dynamic = "force-dynamic";
 

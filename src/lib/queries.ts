@@ -112,7 +112,7 @@ export async function videoBySlug(slug: string) {
   return data;
 }
 
-const EVENT_FIELDS = "slug, title, location, starts_on, ends_on, link, description, cover_path, member:members(slug, name)";
+const EVENT_FIELDS = "slug, title, location, starts_on, starts_time, ends_on, link, description, cover_path, member:members(slug, name)";
 
 /** Shared by all three event reads: repair legacy ACF map blobs in one place. */
 function withDisplayLocation<T extends { location: string | null }>(rows: T[] | null) {

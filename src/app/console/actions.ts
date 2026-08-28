@@ -234,15 +234,80 @@ export async function pinVideo(formData: FormData) {
 
 /* ---------- events & member revisions ---------- */
 
+/** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
+export async function consoleUploadEventImage(formData: FormData): Promise<string | null> {
+  const user = await requireConsole();
+  if (!canWrite(user)) return null;
+  const path = await uploadImage(formData.get("file") as File | null, "events/console");
+  return mediaUrl(path);
+}
+
+export async function saveEvent(formData: FormData) {
+  const user = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const db = serviceDb();
+  const title = String(formData.get("title") ?? "").trim();
+  const starts_on = String(formData.get("starts_on") ?? "");
+  if (!title || !starts_on) return;
+  if (!canWrite(user)) return;
+
+  let cover_path: string | null = null;
+  try {
+    cover_path = await uploadImage(formData.get("cover") as File | null, "events");
+  } catch (e) {
+    redirect(`/console/events/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
+  }
+
+  const values = {
+    title,
+    starts_on,
+    ends_on: String(formData.get("ends_on") ?? "") || null,
+    starts_time: String(formData.get("starts_time") ?? "") || null,
+    location: String(formData.get("location") ?? "") || null,
+    link: String(formData.get("link") ?? "") || null,
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    member_id: String(formData.get("member_id") ?? "") || null,
+    updated_at: new Date().toISOString(),
+    ...(cover_path ? { cover_path } : {}),
+  };
+
+  let eventId = id;
+  if (id) {
+    await db.from("events").update(values).eq("id", id);
+  } else {
+    const { data } = await db.from("events").insert({
+      ...values,
+      slug: `${slugify(title)}-${Date.now().toString(36)}`,
+      status: "draft",
+      source: "admin",
+      submitted_by: user.userId,
+    }).select("id").single();
+    eventId = data!.id;
+  }
+  revalidatePath("/console/events");
+  redirect(`/console/events/${eventId}`);
+}
+
 export async function decideEvent(formData: FormData) {
   const user = await requireConsole();
   if (!canApprove(user)) return;
   const id = String(formData.get("id"));
-  const approve = formData.get("decision") === "approve";
+  const decision = String(formData.get("decision"));
+  const reason = String(formData.get("reason") ?? "");
   const db = serviceDb();
-  await db.from("events").update({ status: approve ? "published" : "rejected" }).eq("id", id);
-  await db.from("approvals").insert({ kind: "event", subject_id: id, decision: approve ? "approved" : "rejected", decided_by: user.userId });
+  const { data: event } = await db.from("events").select("id, member_id, status").eq("id", id).single();
+  if (!event || event.status !== "awaiting_approval") return;
+
+  if (decision === "approve") {
+    await db.from("events").update({ status: "published", updated_at: new Date().toISOString() }).eq("id", id);
+    if (event.member_id) await enqueue("notify_member", { member_id: event.member_id, kind: "event_published", event_id: id });
+  } else {
+    await db.from("events").update({ status: "rejected", rejected_reason: reason, updated_at: new Date().toISOString() }).eq("id", id);
+    if (event.member_id) await enqueue("notify_member", { member_id: event.member_id, kind: "event_rejected", event_id: id, reason });
+  }
+  await db.from("approvals").insert({ kind: "event", subject_id: id, decision: decision === "approve" ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
   revalidatePath("/console");
+  revalidatePath("/console/events");
 }
 
 export async function decideRevision(formData: FormData) {
@@ -407,6 +472,48 @@ export async function endBooking(formData: FormData) {
   revalidatePath("/console/adverts");
 }
 
+export async function saveAdvertProduct(formData: FormData) {
+  const user = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const db = serviceDb();
+  const short_name = String(formData.get("short_name") ?? "").trim();
+  const format = String(formData.get("format") ?? "");
+  const cap = Math.max(1, Number(formData.get("cap") ?? 1));
+  if (!short_name || !format) return;
+  if (!canWrite(user)) return;
+
+  let sample_path: string | null = null;
+  try {
+    sample_path = await uploadImage(formData.get("sample") as File | null, "advert-products");
+  } catch (e) {
+    redirect(`/console/adverts/spots/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Sample upload failed.")}`);
+  }
+
+  const values = {
+    short_name,
+    format,
+    cap,
+    description: String(formData.get("description") ?? "").trim() || null,
+    updated_at: new Date().toISOString(),
+    ...(sample_path ? { sample_path } : {}),
+  };
+
+  if (id) {
+    await db.from("advert_products").update(values).eq("id", id);
+  } else {
+    await db.from("advert_products").insert(values);
+  }
+  revalidatePath("/console/adverts/spots");
+  redirect("/console/adverts/spots");
+}
+
+export async function deleteAdvertProduct(formData: FormData) {
+  const user = await requireConsole();
+  if (!canWrite(user)) return;
+  await serviceDb().from("advert_products").delete().eq("id", String(formData.get("id")));
+  revalidatePath("/console/adverts/spots");
+}
+
 /* ---------- newsletter ---------- */
 
 export async function createIssue(formData: FormData) {
@@ -464,7 +571,7 @@ export async function unscheduleIssue(formData: FormData) {
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 const contactsFail = (message: string): never =>
-  redirect(`/console/members?error=${encodeURIComponent(message)}#contacts`);
+  redirect(`/console/crm?error=${encodeURIComponent(message)}`);
 
 /** A19/A20 — edit a mirrored contact in place; changes write through to Bigin. */
 export async function saveContact(formData: FormData) {
@@ -503,8 +610,8 @@ export async function saveContact(formData: FormData) {
 
   const { getCrmSync } = await import("@/lib/adapters/crm");
   await getCrmSync().pushContact({ email, name: name ?? undefined, company: company ?? undefined });
-  revalidatePath("/console/members");
-  redirect("/console/members?saved=1#contacts");
+  revalidatePath("/console/crm");
+  redirect("/console/crm?saved=1");
 }
 
 export async function addContact(formData: FormData) {
@@ -524,7 +631,7 @@ export async function addContact(formData: FormData) {
     const { getCrmSync } = await import("@/lib/adapters/crm");
     await getCrmSync().pushContact({ email }); // write-through to Bigin
   }
-  revalidatePath("/console/members");
+  revalidatePath("/console/crm");
 }
 
 /* ---------- members ---------- */

@@ -2,12 +2,21 @@ import Link from "next/link";
 import { serviceDb } from "@/lib/db/server";
 import { Badge, Card, SectionTitle, Stat } from "@/components/console/ui";
 import { FEATURED_SLOTS, MEMBERSHIP_MONTHLY_PENNIES, pounds, revenueByStream } from "@/lib/pricing";
-import { decideEvent, decideRevision, markInboxRead } from "./actions";
+import { monthGrid, monthKey, parseMonth } from "@/lib/calendar";
+import { OverviewCalendar, type OverviewItem } from "./OverviewCalendar";
+import { decideRevision, markInboxRead } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function CommandCentre() {
+export default async function CommandCentre(props: PageProps<"/console">) {
   const db = serviceDb();
+  const sp = await props.searchParams;
+  const month = parseMonth(typeof sp.month === "string" ? sp.month : undefined);
+  const { start, end } = monthGrid(month);
+  const startIso = start.toISOString();
+  const endIso = end.toISOString();
+  const startDate = startIso.slice(0, 10);
+  const endDate = endIso.slice(0, 10);
   // eslint-disable-next-line react-hooks/purity -- server component, per-request render is the point
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
@@ -36,6 +45,10 @@ export default async function CommandCentre() {
     draftVideos,
     scheduledVideos,
     publishedVideosCount,
+    calStories,
+    calVideos,
+    calIssues,
+    calEvents,
   ] = await Promise.all([
     db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"),
     db.from("advert_bookings").select("advert:adverts(format, advertiser_id), bundle:bundles(price_pennies)").lte("starts_on", today).gte("ends_on", today),
@@ -59,6 +72,22 @@ export default async function CommandCentre() {
     db.from("videos").select("*", { count: "exact", head: true }).eq("status", "draft"),
     db.from("videos").select("*", { count: "exact", head: true }).eq("status", "scheduled"),
     db.from("videos").select("*", { count: "exact", head: true }).eq("status", "published"),
+    db.from("stories").select("id, title, status, scheduled_at, published_at").or(
+      `and(status.eq.scheduled,scheduled_at.gte.${startIso},scheduled_at.lt.${endIso}),` +
+      `and(status.eq.published,published_at.gte.${startIso},published_at.lt.${endIso})`,
+    ),
+    db.from("videos").select("id, title, status, scheduled_at, published_at").or(
+      `and(status.eq.scheduled,scheduled_at.gte.${startIso},scheduled_at.lt.${endIso}),` +
+      `and(status.eq.published,published_at.gte.${startIso},published_at.lt.${endIso})`,
+    ),
+    db.from("newsletter_issues").select("id, number, subject, status, scheduled_at, sent_at").or(
+      `and(status.eq.scheduled,scheduled_at.gte.${startIso},scheduled_at.lt.${endIso}),` +
+      `and(status.eq.sent,sent_at.gte.${startIso},sent_at.lt.${endIso})`,
+    ),
+    db.from("events").select("id, title, status, starts_on, starts_time")
+      .in("status", ["draft", "awaiting_approval", "published"])
+      .gte("starts_on", startDate)
+      .lt("starts_on", endDate),
   ]);
 
   const live = liveBookings.data ?? [];
@@ -81,6 +110,44 @@ export default async function CommandCentre() {
   const issueSent = lastSent.data?.[0];
   const dateLabel = new Date(now).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
+  const fmtTime = (t: string) => {
+    const [h, m] = t.split(":");
+    return new Date(2000, 0, 1, Number(h), Number(m)).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const monthParam = monthKey(month);
+  const overviewItems: OverviewItem[] = [
+    ...(calStories.data ?? []).map((s) => ({
+      id: s.id,
+      type: "story" as const,
+      title: s.title,
+      date: new Date((s.status === "published" ? s.published_at : s.scheduled_at)!),
+      href: `/console/stories/${s.id}?from=calendar&month=${monthParam}`,
+    })),
+    ...(calVideos.data ?? []).map((v) => ({
+      id: v.id,
+      type: "video" as const,
+      title: v.title,
+      date: new Date((v.status === "published" ? v.published_at : v.scheduled_at)!),
+      href: `/console/videos/${v.id}?from=calendar&month=${monthParam}`,
+    })),
+    ...(calIssues.data ?? []).map((i) => ({
+      id: i.id,
+      type: "newsletter" as const,
+      title: `#${i.number} — ${i.subject}`,
+      date: new Date((i.status === "sent" ? i.sent_at : i.scheduled_at)!),
+      href: "/console/newsletter?view=board",
+    })),
+    ...(calEvents.data ?? []).map((e) => ({
+      id: e.id,
+      type: "event" as const,
+      title: e.title,
+      date: new Date(`${e.starts_on}T12:00:00Z`),
+      time: e.starts_time ? fmtTime(e.starts_time) : null,
+      href: `/console/events/${e.id}?from=calendar&month=${monthParam}`,
+    })),
+  ];
+
   const pipeline: { label: string; value: number | null }[] = [
     { label: "Suggested", value: null },
     { label: "Awaiting approval", value: pendingStories.data?.length ?? 0 },
@@ -99,7 +166,7 @@ export default async function CommandCentre() {
   const needs: { label: string; href: string; urgent?: boolean }[] = [];
   if (pendingStories.data?.length) needs.push({ label: `${pendingStories.data.length} member stories awaiting your approval`, href: "/console/stories" });
   if (pendingVideos.data?.length) needs.push({ label: `${pendingVideos.data.length} member videos awaiting your approval`, href: "/console/videos" });
-  if (pendingEvents.data?.length) needs.push({ label: `${pendingEvents.data.length} member events awaiting approval`, href: "#approvals" });
+  if (pendingEvents.data?.length) needs.push({ label: `${pendingEvents.data.length} member events awaiting approval`, href: "/console/events" });
   if (pendingRevisions.data?.length) needs.push({ label: `${pendingRevisions.data.length} member page edits awaiting approval`, href: "#approvals" });
   if (expiring.data?.length) needs.push({ label: `${expiring.data.length} adverts expire within 7 days`, href: "/console/adverts" });
   if (graceMembers.data?.length) needs.push({ label: `${graceMembers.data.length} memberships lapsing (grace period)`, href: "/console/members" });
@@ -149,6 +216,11 @@ export default async function CommandCentre() {
         </div>
       </Card>
 
+      <Card className="mt-6">
+        <SectionTitle>This month</SectionTitle>
+        <OverviewCalendar month={month} items={overviewItems} />
+      </Card>
+
       <Link href="/console/stories" className="group mt-6 block">
         <Card className="transition group-hover:shadow-md">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -196,18 +268,9 @@ export default async function CommandCentre() {
         </ul>
       </Card>
 
-      {(pendingEvents.data?.length || pendingRevisions.data?.length) ? (
+      {pendingRevisions.data?.length ? (
         <Card id="approvals" className="mt-6">
           <SectionTitle>Quick approvals</SectionTitle>
-          {pendingEvents.data?.map((e) => (
-            <div key={e.id} className="mt-2 flex items-center justify-between gap-3 rounded border p-3 text-sm">
-              <span>Event: <b>{e.title}</b> {e.member && <>— {e.member.name}</>}</span>
-              <span className="flex gap-2">
-                <form action={decideEvent}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="decision" value="approve" /><button className="rounded bg-green-600 px-3 py-1 text-white">Approve</button></form>
-                <form action={decideEvent}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="decision" value="reject" /><button className="rounded border px-3 py-1">Reject</button></form>
-              </span>
-            </div>
-          ))}
           {pendingRevisions.data?.map((r) => (
             <div key={r.id} className="mt-2 flex items-center justify-between gap-3 rounded border p-3 text-sm">
               <span>Page edit from <b>{r.member?.name}</b></span>

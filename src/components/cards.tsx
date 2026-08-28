@@ -95,6 +95,7 @@ export type EventCardData = {
   title: string;
   location: string | null;
   starts_on: string;
+  starts_time: string | null;
   ends_on: string | null;
   link: string | null;
   description: string | null;
@@ -105,6 +106,13 @@ export type EventCardData = {
 // shift a day back west of Greenwich.
 const eventDate = (d: string, withYear = true) =>
   new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "long", ...(withYear && { year: "numeric" }), timeZone: "UTC" });
+
+// starts_time is a time column (HH:MM:SS) — parse as a plain wall-clock time,
+// no timezone conversion.
+const eventTime = (t: string) => {
+  const [h, m] = t.split(":");
+  return new Date(2000, 0, 1, Number(h), Number(m)).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
+};
 
 /**
  * "md" is the listing card on /event — description, outbound links, host.
@@ -127,6 +135,7 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
     <div className="overflow-hidden rounded-lg bg-white p-5 shadow-sm">
       <p className="text-xs font-semibold uppercase text-brand">
         {eventDate(event.starts_on)}{event.ends_on && event.ends_on > event.starts_on && ` – ${eventDate(event.ends_on)}`}
+        {event.starts_time && `, ${eventTime(event.starts_time)}`}
       </p>
       <h2 className="mt-1 text-lg font-bold">
         <Link href={`/event/${event.slug}`} className="hover:text-graphite">{event.title}</Link>

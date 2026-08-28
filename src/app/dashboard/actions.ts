@@ -72,21 +72,33 @@ export async function submitVideo(formData: FormData) {
   redirect("/dashboard?submitted=video");
 }
 
+/** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
+export async function memberUploadEventImage(formData: FormData): Promise<string | null> {
+  const user = await requireMember();
+  const path = await uploadImage(formData.get("file") as File | null, `events/${user.memberId}`);
+  return mediaUrl(path);
+}
+
 /** M4 — member adds an event; Jas approves. */
 export async function submitEvent(formData: FormData) {
   const user = await requireMember();
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
+  const cover = await uploadImage(formData.get("cover") as File | null, "events");
   await serviceDb().from("events").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
     title,
-    description: String(formData.get("description") ?? ""),
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
     location: String(formData.get("location") ?? ""),
     starts_on: String(formData.get("starts_on")),
+    starts_time: String(formData.get("starts_time") ?? "") || null,
     ends_on: String(formData.get("ends_on") ?? "") || null,
     link: String(formData.get("link") ?? "") || null,
     member_id: user.memberId,
     status: "awaiting_approval",
+    source: "member",
+    submitted_by: user.userId,
+    cover_path: cover,
   });
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=event");

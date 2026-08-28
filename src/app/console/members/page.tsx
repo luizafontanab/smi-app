@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
-import { newsletterChoiceOf } from "@/lib/contacts";
 import { serviceDb } from "@/lib/db/server";
-import { addContact, saveContact, setMemberStatus } from "../actions";
+import { MEMBER_STATUSES } from "@/lib/membership";
+import { setMemberStatus } from "../actions";
 
 export const dynamic = "force-dynamic";
+
+const STATUS_FILTERS = ["all", ...MEMBER_STATUSES] as const;
 
 export default async function MembersAdminPage(props: PageProps<"/console/members">) {
   await requireConsole();
@@ -13,29 +15,41 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
   // the activity timeline moved to the member's own page — keep old links working
   if (typeof sp.member === "string") redirect(`/console/members/${sp.member}`);
   const q = typeof sp.q === "string" ? sp.q.toLowerCase() : "";
+  const status = STATUS_FILTERS.includes(sp.status as typeof STATUS_FILTERS[number]) ? (sp.status as typeof STATUS_FILTERS[number]) : "all";
   const db = serviceDb();
 
-  const [{ data: members }, { data: contacts }] = await Promise.all([
-    db.from("members").select("id, name, status, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, category:categories(name)").order("name"),
-    db.from("contacts").select("id, email, name, company, member_id, subscribed, unsubscribed_at, member:members(name), last_synced_at").order("created_at", { ascending: false }).limit(200),
-  ]);
+  const { data: members } = await db.from("members").select("id, name, status, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, category:categories(name)").order("name");
 
-  const filtered = q
-    ? (members ?? []).filter((m) => m.name.toLowerCase().includes(q))
-    : (members ?? []);
+  const filtered = (members ?? [])
+    .filter((m) => status === "all" || m.status === status)
+    .filter((m) => !q || m.name.toLowerCase().includes(q));
 
-  const editing = typeof sp.contact === "string"
-    ? (contacts ?? []).find((c) => c.id === sp.contact)
-    : null;
+  const statusHref = (s: string) => `/console/members?status=${s}${q ? `&q=${q}` : ""}`;
 
   return (
     <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold text-ink">Members &amp; CRM</h1>
+        <h1 className="text-2xl font-bold text-ink">Members</h1>
         <Link href="/console/members/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New member</Link>
       </div>
 
-      <form className="mt-4"><input name="q" defaultValue={q} placeholder="Search members…" className="w-72 rounded border bg-white px-3 py-2 text-sm" /></form>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <form>
+          {status !== "all" && <input type="hidden" name="status" value={status} />}
+          <input name="q" defaultValue={q} placeholder="Search members…" className="w-72 rounded border bg-white px-3 py-2 text-sm" />
+        </form>
+        <div className="flex gap-1 text-sm">
+          {STATUS_FILTERS.map((s) => (
+            <Link
+              key={s}
+              href={statusHref(s)}
+              className={`rounded px-2.5 py-1.5 ${s === status ? "bg-ink font-semibold text-white" : "bg-white text-gray-500 hover:text-ink"}`}
+            >
+              {s === "all" ? "All" : s}
+            </Link>
+          ))}
+        </div>
+      </div>
 
       {typeof sp.saved === "string" && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Saved.</p>}
       {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
@@ -95,71 +109,6 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
           </div>
         </section>
       </div>
-
-      <section id="contacts" className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-ink">Contacts (Bigin mirror — {(contacts ?? []).length} recent)</h2>
-        </div>
-        <form action={addContact} className="mt-3 flex flex-wrap gap-2 text-sm">
-          <input name="email" type="email" required placeholder="email" className="rounded border px-3 py-1.5" />
-          <input name="name" placeholder="name" className="rounded border px-3 py-1.5" />
-          <input name="company" placeholder="company" className="rounded border px-3 py-1.5" />
-          <button className="rounded bg-ink px-4 py-1.5 text-white">Add (writes through to Bigin)</button>
-        </form>
-
-        {/* One editor above the table rather than one per row: a member <select>
-            inside every row would put every member's name into every row's text. */}
-        {editing && (
-          <form action={saveContact} className="mt-4 grid gap-2 rounded border border-graphite/30 bg-graphite/5 p-3 text-sm sm:grid-cols-2">
-            <input type="hidden" name="id" value={editing.id} />
-            <label htmlFor="name" className="sm:col-span-2 text-xs uppercase tracking-wide text-gray-400">Editing {editing.email}</label>
-            <input id="name" name="name" defaultValue={editing.name ?? ""} placeholder="name" className="rounded border px-3 py-1.5" />
-            <input name="email" type="email" required defaultValue={editing.email} placeholder="email" className="rounded border px-3 py-1.5" />
-            <input name="company" defaultValue={editing.company ?? ""} placeholder="company" className="rounded border px-3 py-1.5" />
-            <select name="member_id" defaultValue={editing.member_id ?? ""} className="rounded border px-3 py-1.5">
-              <option value="">— not a member —</option>
-              {(members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-            <select name="newsletter" defaultValue={newsletterChoiceOf(editing)} className="rounded border px-3 py-1.5">
-              <option value="subscribed">subscribed</option>
-              <option value="not_subscribed">not subscribed</option>
-              <option value="unsubscribed">unsubscribed</option>
-            </select>
-            {editing.unsubscribed_at && (
-              <label className="flex items-center gap-2 text-xs text-gray-500 sm:col-span-2">
-                <input type="checkbox" name="re_opt_in" />
-                They have asked to go back on the list — unsubscribes are permanent without this.
-              </label>
-            )}
-            <div className="flex items-center gap-3 sm:col-span-2">
-              <button className="rounded bg-ink px-4 py-1.5 text-white">Save contact</button>
-              <Link href={`/console/members${q ? `?q=${q}` : ""}#contacts`} className="text-xs text-gray-400 hover:text-ink">Cancel</Link>
-            </div>
-          </form>
-        )}
-        <div className="mt-3 max-h-80 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs uppercase text-gray-400"><th className="py-1">Contact</th><th>Company</th><th>Newsletter</th><th>Synced</th><th /></tr></thead>
-            <tbody>
-              {(contacts ?? []).map((c) => (
-                <tr key={c.id} className="border-t align-top">
-                  <td className="py-1.5">{c.name ?? "—"} <span className="text-xs text-gray-400">{c.email}</span></td>
-                  <td className="text-gray-500">{c.member?.name ?? c.company ?? "—"}</td>
-                  <td>
-                    {c.unsubscribed_at
-                      ? <span className="text-xs text-red-500">unsubscribed {c.unsubscribed_at.slice(0, 10)} (permanent)</span>
-                      : c.subscribed ? <span className="text-xs text-green-600">subscribed</span> : <span className="text-xs text-gray-400">no</span>}
-                  </td>
-                  <td className="text-xs text-gray-400">{c.last_synced_at?.slice(0, 16).replace("T", " ") ?? "never"}</td>
-                  <td className="text-right">
-                    <Link href={`?contact=${c.id}${q ? `&q=${q}` : ""}#contacts`} className="text-xs text-gray-400 hover:text-graphite">Edit</Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </div>
   );
 }

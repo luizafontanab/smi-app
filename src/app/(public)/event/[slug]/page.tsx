@@ -13,6 +13,10 @@ export const dynamic = "force-dynamic";
 // Greenwich. Same helper shape as the listing; keep the two in step.
 const fmt = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
+// starts_time is a time column (HH:MM:SS) — parse as a plain wall-clock time,
+// no timezone conversion.
+const fmtTime = (t: string) => new Date(2000, 0, 1, Number(t.split(":")[0]), Number(t.split(":")[1])).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
+
 export async function generateMetadata(props: PageProps<"/event/[slug]">) {
   const { slug } = await props.params;
   const event = await eventBySlug(slug);
@@ -41,6 +45,7 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
       <p className="mt-6 text-xs font-semibold uppercase tracking-widest text-brand">
         {fmt(event.starts_on)}
         {event.ends_on && event.ends_on > event.starts_on && ` – ${fmt(event.ends_on)}`}
+        {event.starts_time && `, ${fmtTime(event.starts_time)}`}
       </p>
       <h1 className="mt-1 text-2xl font-bold text-ink">{event.title}</h1>
       {event.location && <p className="mt-1 text-sm text-gray-500 break-words">{event.location}</p>}

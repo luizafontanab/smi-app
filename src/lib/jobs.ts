@@ -182,6 +182,8 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
                  payload.kind === "story_rejected" ? "About your submitted story" :
                  payload.kind === "video_live" ? "Your video is live on SMI" :
                  payload.kind === "video_rejected" ? "About your submitted video" :
+                 payload.kind === "event_published" ? "Your event is live on SMI" :
+                 payload.kind === "event_rejected" ? "About your submitted event" :
                  payload.kind === "page_live" ? "Your SMI member page is live" : "Update from SMI",
         text: payload.kind === "page_live"
           ? "Your company page has been approved and is now live in the SMI member directory."

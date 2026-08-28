@@ -10,7 +10,7 @@ import { Badge, Card, SectionTitle } from "@/components/console/ui";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { SubmitButton } from "@/components/SubmitButton";
 import {
-  consoleUploadImage, createMember, decideRevision, recordMemberPayment, saveMember,
+  consoleUploadImage, createMember, decideRevision, recordMemberPayment, saveMember, setMemberStatus,
 } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   if (id === "new") {
     return (
       <div className="mx-auto max-w-lg">
-        <Link href="/console/members" className="text-sm text-gray-400 hover:text-ink">← Members &amp; CRM</Link>
+        <Link href="/console/members" className="text-sm text-gray-400 hover:text-ink">← Members</Link>
         <h1 className="mt-1 text-xl font-bold text-ink">New member</h1>
         <p className="mt-1 text-sm text-gray-500">
           Creates their login and a draft company page. Category, page content and billing come next, on the edit screen.
@@ -96,10 +96,23 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/members" className="text-sm text-gray-400 hover:text-ink">← Members &amp; CRM</Link>
+      <Link href="/console/members" className="text-sm text-gray-400 hover:text-ink">← Members</Link>
       <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
           {member.name} <Badge tone={STATUS_TONE[member.status]}>{member.status}</Badge>
+          {editable && member.status !== "active" && (
+            isDraft && !member.paid_at && !member.comped_until ? (
+              <span className="text-xs font-normal text-gray-400">awaiting payment</span>
+            ) : isDraft && !member.draft_submitted_at ? (
+              <span className="text-xs font-normal text-gray-400">awaiting page</span>
+            ) : (
+              <form action={setMemberStatus}>
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="status" value="active" />
+                <button className="rounded bg-green-600 px-3 py-1 text-xs font-semibold text-white">Activate</button>
+              </form>
+            )
+          )}
         </h1>
         <span className="flex gap-4 text-sm">
           {isPublic && <a href={`/member/${member.slug}`} className="text-graphite underline">View public page</a>}

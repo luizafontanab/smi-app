@@ -79,6 +79,39 @@ export type Database = {
           },
         ]
       }
+      advert_products: {
+        Row: {
+          cap: number
+          created_at: string
+          description: string | null
+          format: string
+          id: string
+          sample_path: string | null
+          short_name: string
+          updated_at: string
+        }
+        Insert: {
+          cap?: number
+          created_at?: string
+          description?: string | null
+          format: string
+          id?: string
+          sample_path?: string | null
+          short_name: string
+          updated_at?: string
+        }
+        Update: {
+          cap?: number
+          created_at?: string
+          description?: string | null
+          format?: string
+          id?: string
+          sample_path?: string | null
+          short_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       advert_slots: {
         Row: {
           cap: number
@@ -682,10 +715,15 @@ export type Database = {
           link: string | null
           location: string | null
           member_id: string | null
+          rejected_reason: string | null
           slug: string
+          source: string
           starts_on: string
+          starts_time: string | null
           status: Database["public"]["Enums"]["content_status"]
+          submitted_by: string | null
           title: string
+          updated_at: string
         }
         Insert: {
           cover_path?: string | null
@@ -696,10 +734,15 @@ export type Database = {
           link?: string | null
           location?: string | null
           member_id?: string | null
+          rejected_reason?: string | null
           slug: string
+          source?: string
           starts_on: string
+          starts_time?: string | null
           status?: Database["public"]["Enums"]["content_status"]
+          submitted_by?: string | null
           title: string
+          updated_at?: string
         }
         Update: {
           cover_path?: string | null
@@ -710,10 +753,15 @@ export type Database = {
           link?: string | null
           location?: string | null
           member_id?: string | null
+          rejected_reason?: string | null
           slug?: string
+          source?: string
           starts_on?: string
+          starts_time?: string | null
           status?: Database["public"]["Enums"]["content_status"]
+          submitted_by?: string | null
           title?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -722,6 +770,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "members"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
           },
         ]
       }
