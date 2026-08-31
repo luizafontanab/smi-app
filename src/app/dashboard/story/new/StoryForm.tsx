@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CoverField } from "@/components/CoverField";
 import { MemberBacklink } from "@/components/MemberBacklink";
 import { RichTextEditor } from "@/components/RichTextEditor";
 
@@ -41,33 +42,14 @@ export function StoryForm({ action, uploadImage, categories, member }: Props) {
           <span className="block text-sm font-medium">Story</span>
           <RichTextEditor name="body" ariaLabel="Story" uploadImage={uploadImage} />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="category" className="text-sm font-medium">Category</label>
-            <select id="category" name="category" className="mt-1 w-full rounded border px-3 py-2">
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="cover" className="text-sm font-medium">Cover image</label>
-            <input id="cover"
-              type="file"
-              name="cover"
-              accept="image/jpeg,image/png,image/webp"
-              className="mt-1 w-full text-sm"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                setCoverUrl((prev) => {
-                  if (prev) URL.revokeObjectURL(prev);
-                  return f ? URL.createObjectURL(f) : null;
-                });
-              }}
-            />
-            <p className="mt-1 text-xs text-gray-400">
-              Landscape works best: at least 1200×675px (16:9), JPG/PNG, max 8MB. Keep faces and key detail near the centre.
-            </p>
-          </div>
+        <div className="sm:w-1/2 sm:pr-2">
+          <label htmlFor="category" className="text-sm font-medium">Category</label>
+          <select id="category" name="category" className="mt-1 w-full rounded border px-3 py-2">
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
         </div>
+        {/* Full width, not a grid column: the crop picker is a fixed 320px box. */}
+        <CoverField onPreview={setCoverUrl} />
       </div>
 
       {tab === "preview" && <StoryPreview title={title} coverUrl={coverUrl} member={member} />}

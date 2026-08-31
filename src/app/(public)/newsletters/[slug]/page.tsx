@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
+import { focusStyle } from "@/lib/focus";
 import { newsletterBySlug } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export default async function NewsletterIssuePage(props: PageProps<"/newsletters
           <Link key={position} href={`/news/${story.slug}`} className="flex gap-4 rounded-lg border p-3 hover:border-ink">
             {story.cover_path && (
               <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded">
-                <Image src={mediaUrl(story.cover_path)!} alt="" fill sizes="112px" className="object-cover" unoptimized />
+                <Image src={mediaUrl(story.cover_path)!} alt="" fill sizes="112px" style={focusStyle(story.cover_focus)} className="object-cover" unoptimized />
               </div>
             )}
             <div>

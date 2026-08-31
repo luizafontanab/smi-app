@@ -39,11 +39,19 @@ export async function sendContactMessage(_prev: { message: string }, formData: F
     console.warn("[contact] ADMIN_EMAIL is not set — inbox row written, no email sent.");
     return { message: "Thanks — we'll come back to you shortly." };
   }
-  const { getEmailSender } = await import("@/lib/adapters/email");
-  await getEmailSender().send({
-    to: ADMIN_EMAIL,
-    subject: `New ${kind} enquiry from ${name}`,
-    text: `${name} <${email}>\n\n${message}`,
-  });
+  try {
+    const { getEmailSender } = await import("@/lib/adapters/email");
+    await getEmailSender().send({
+      to: ADMIN_EMAIL,
+      subject: `New ${kind} enquiry from ${name}`,
+      text: `${name} <${email}>\n\n${message}`,
+    });
+  } catch (e) {
+    // The sender throws on a provider rejection so failures are visible. The
+    // enquiry is already safe in the console inbox (line 35), so the visitor
+    // must still get their acknowledgement — losing the send is not losing
+    // the message.
+    console.error("[contact] admin notification failed:", e);
+  }
   return { message: "Thanks — we'll come back to you shortly." };
 }

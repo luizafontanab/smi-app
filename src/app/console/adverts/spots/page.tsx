@@ -2,14 +2,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { deleteAdvertProduct } from "../../actions";
+import { deleteAdvertProduct, saveMediaPack } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdvertSpotsPage() {
   await requireConsole();
   const db = serviceDb();
-  const { data: spots } = await db.from("advert_products").select("*").order("created_at");
+  const [{ data: spots }, { data: pack }] = await Promise.all([
+    db.from("advert_products").select("*").order("created_at"),
+    db.from("settings").select("value").eq("key", "media_pack").maybeSingle(),
+  ]);
+  const packPath = (pack?.value as { path?: string } | null)?.path ?? null;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -64,6 +68,22 @@ export default async function AdvertSpotsPage() {
             })}
           </tbody>
         </table>
+      </section>
+
+      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-ink">Media pack</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          The PDF offered on the public advertising page. Upload a new one whenever the rates or specs change.
+        </p>
+        {packPath && (
+          <p className="mt-2 text-sm">
+            <a href={mediaUrl(packPath)!} target="_blank" rel="noopener" className="text-graphite underline">current pack</a>
+          </p>
+        )}
+        <form action={saveMediaPack} className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <input type="file" name="pack" accept="application/pdf" required className="text-sm" />
+          <button className="rounded bg-ink px-4 py-2 text-white">Upload</button>
+        </form>
       </section>
     </div>
   );

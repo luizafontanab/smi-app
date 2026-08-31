@@ -44,7 +44,7 @@ export async function showAdPlaceholders(): Promise<boolean> {
   return process.env.NODE_ENV !== "production" || (await adPreview());
 }
 
-/** Mirrors the adverts.format check constraint. Mobile is a creative, not a format. */
+/** Mirrors the adverts.format check constraint. Mobile is artwork, not a format. */
 export type AdvertFormat =
   | "banner"
   | "supplier_logo"
@@ -54,28 +54,79 @@ export type AdvertFormat =
   | "mpu"
   | "in_feed";
 
-/** One query for today's live bookings, tagged with format. */
+/**
+ * The statuses that may appear on the public site. Exported because the render
+ * predicate must be identical everywhere it is asked — most importantly in
+ * /api/seen, where a disagreement means either dropping real impressions or
+ * recording ones for adverts that never showed.
+ */
+export const RENDERABLE_BOOKING_STATUSES = ["scheduled", "live"] as const;
+
+/**
+ * Status AND dates, deliberately, and neither alone.
+ *
+ * Status alone would take every advert dark the moment a nightly sweep is
+ * missed — prod cron runs once at 03:00 and fails closed when CRON_SECRET is
+ * unset, so "stale by a week" is a real state. Dates alone is what this used to
+ * do, and it let any draft or sent-back booking onto the site the moment its
+ * dates matched.
+ *
+ * The rule: an approved booking renders only inside its own term. The daily job
+ * records the transition; it never authorises it. So `scheduled` and `live` are
+ * deliberately indistinguishable here — a booking whose start date has arrived
+ * renders even if the sweep has not relabelled it yet. Narrowing this to
+ * `live` would reintroduce every cron-failure mode above.
+ */
 async function liveBookings(): Promise<(LiveAdvert & { format: string })[]> {
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
-  const { data } = await db
+  const { data, error } = await db
     .from("advert_bookings")
-    .select("advert:adverts(id, name, desktop_path, mobile_path, link_url, format, advertiser:advertisers(member:members(id, slug)))")
+    .select("advert:adverts(id, name, desktop_path, mobile_path, link_url, format, member:members(id, slug))")
+    .in("status", RENDERABLE_BOOKING_STATUSES)
     .lte("starts_on", today)
     .gte("ends_on", today);
+  // Never swallow this. A schema mismatch here returns null data, which would
+  // empty every slot on the site with no exception and no 500 — an outage that
+  // looks exactly like "nothing is booked".
+  if (error) console.error("liveBookings failed", error);
+
+  const seen = new Set<string>();
   return (data ?? [])
     .map((b) => b.advert)
     .filter((a): a is NonNullable<typeof a> => !!a)
+    // One advert booked twice over the same days would otherwise enter the
+    // rotation array twice and take double share — a weight, in the module that
+    // forbids weights. The DB has an exclusion constraint against it; this keeps
+    // the invariant if that constraint is ever dropped.
+    .filter((a) => !seen.has(a.id) && seen.add(a.id))
     .map((a) => ({
       advertId: a.id,
       name: a.name,
       desktopPath: a.desktop_path,
       mobilePath: a.mobile_path,
       linkUrl: a.link_url,
-      memberSlug: a.advertiser?.member?.slug ?? null,
-      memberId: a.advertiser?.member?.id ?? null,
+      memberSlug: a.member?.slug ?? null,
+      memberId: a.member?.id ?? null,
       format: a.format,
     }));
+}
+
+/** What to call a booking in the console. The public site uses liveBookings. */
+export function bookingPhase(
+  booking: { status: string; starts_on: string; ends_on: string },
+  today: string,
+): "draft" | "awaiting" | "changes_needed" | "upcoming" | "live" | "ended" {
+  switch (booking.status) {
+    case "draft": return "draft";
+    case "awaiting_approval": return "awaiting";
+    case "review_required": return "changes_needed";
+    case "ended": return "ended";
+    default:
+      // scheduled/live: the term decides, matching what the site actually shows
+      if (booking.starts_on > today) return "upcoming";
+      return booking.ends_on < today ? "ended" : "live";
+  }
 }
 
 export async function liveAdverts(format: AdvertFormat): Promise<LiveAdvert[]> {

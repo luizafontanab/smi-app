@@ -30,7 +30,9 @@ const CONSOLE_SECTIONS: NavSection[] = [
     label: "Adverts & Inventory",
     children: [
       { href: "/console/adverts", label: "Bookings" },
+      { href: "/console/adverts/artwork", label: "Artwork" },
       { href: "/console/adverts/spots", label: "Ad Spots" },
+      { href: "/console/adverts/interest", label: "Interest" },
     ],
   },
   {
@@ -58,14 +60,9 @@ const CONSOLE_SECTIONS: NavSection[] = [
 // in the module-level array.
 const DEV_SECTION: NavSection = { key: "dev", href: "/console/dev", label: "Dev Board" };
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Admin",
-};
-
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const user = await requireConsole();
   const name = user.displayName ?? user.email;
-  const roleLabel = ROLE_LABELS[user.role] ?? user.role.replace("_", " ");
   const nav = isAdmin(user) ? [...CONSOLE_SECTIONS, DEV_SECTION] : CONSOLE_SECTIONS;
 
   async function signOut() {
@@ -82,7 +79,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
           <Link href="/console" className="font-bold">SMI <span className="text-brand">Console</span></Link>
           <div className="flex items-center gap-4 text-xs text-white/70">
-            <span>Signed in as {name} · {roleLabel}</span>
+            <span>Signed in as {name} · Admin</span>
             <Link href="/" className="hover:text-white">View public site</Link>
             <form action={signOut}>
               <button className="hover:text-white">Sign out</button>

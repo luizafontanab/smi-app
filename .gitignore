@@ -42,6 +42,8 @@ dev.log
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the documented template, which holds no secrets
+!.env.example
 
 # vercel
 .vercel

@@ -1,6 +1,8 @@
 import { ContactForm } from "@/components/ContactForm";
+import { mediaUrl, serviceDb } from "@/lib/db/server";
 
 export const metadata = { title: "Advertising" };
+export const dynamic = "force-dynamic";
 
 const FORMATS = [
   { key: "A", name: "Sitewide website banners", detail: "Randomised rotation across homepage, news, articles, videos and the member directory. Desktop 1280×170px, mobile 370×280px. No advertiser owns a position — every slot rotates." },
@@ -11,7 +13,9 @@ const FORMATS = [
   { key: "F", name: "Banner design help", detail: "One-off design service for desktop and mobile banners." },
 ];
 
-export default function AdvertisingPage() {
+export default async function AdvertisingPage() {
+  const { data: setting } = await serviceDb().from("settings").select("value").eq("key", "media_pack").maybeSingle();
+  const packUrl = mediaUrl((setting?.value as { path?: string } | null)?.path ?? null);
   return (
     <div className="mx-auto max-w-4xl px-4">
       <h1 className="mt-6 text-2xl font-bold text-ink">Advertise with SMI</h1>
@@ -28,8 +32,18 @@ export default function AdvertisingPage() {
         ))}
       </div>
       <div className="mt-8 rounded-lg bg-white p-6 shadow-sm">
-        <h2 className="font-bold text-ink">Request the media pack</h2>
-        <p className="mb-4 mt-1 text-sm text-gray-600">Rates and audience stats — we&apos;ll send the current pack.</p>
+        <h2 className="font-bold text-ink">{packUrl ? "Media pack" : "Request the media pack"}</h2>
+        {packUrl ? (
+          <>
+            <p className="mt-1 text-sm text-gray-600">Rates, formats and audience stats.</p>
+            <a href={packUrl} target="_blank" rel="noopener" className="mt-3 inline-block rounded bg-ink px-4 py-2 text-sm text-white">
+              Download the media pack (PDF)
+            </a>
+            <p className="mb-4 mt-6 text-sm text-gray-600">Or ask us anything:</p>
+          </>
+        ) : (
+          <p className="mb-4 mt-1 text-sm text-gray-600">Rates and audience stats — we&apos;ll send the current pack.</p>
+        )}
         <ContactForm kind="advertising" />
       </div>
       <div className="my-10" />

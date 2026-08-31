@@ -23,7 +23,7 @@ export default async function MemberStatsPage() {
     db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "member_page_view").eq("member_id", user.memberId).gte("occurred_at", yearAgo),
     db.from("stories").select("id", { count: "exact" }).eq("member_id", user.memberId).eq("status", "published"),
     db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "story_view").eq("member_id", user.memberId),
-    db.from("adverts").select("id, advertiser:advertisers!inner(member_id)").eq("advertiser.member_id", user.memberId),
+    db.from("adverts").select("id").eq("member_id", user.memberId),
     db.from("engagement_audit").select("occurred_on, region, company, page, views").eq("member_id", user.memberId).order("occurred_on", { ascending: false }).limit(20),
   ]);
 

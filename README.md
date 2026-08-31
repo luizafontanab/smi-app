@@ -41,8 +41,16 @@ The same three names must be set in Vercel — `NEXT_PUBLIC_*` are inlined at bu
 |---|---|---|
 | `CRON_SECRET` | **Yes in production** | `/api/cron` fails closed and returns 503 — **no background job runs at all** (scheduled publishing, comp expiry, daily rollups, and the analytics partition top-up that rides on them). Vercel injects `Authorization: Bearer $CRON_SECRET` on its own cron requests once this is set on the project. Set it locally too, or `scripts/job-runner.ts` refuses to start. |
 | `ADMIN_EMAIL` | Recommended | Admin notification emails are skipped with a logged warning. Enquiries and funnel events still land in the console inbox, so nothing is lost — but nobody is told. Has no fallback on purpose: the old `jas@smi.local` default bounced silently. |
-| `SITE_URL` | Optional | Falls back to the deployment's own origin (`VERCEL_PROJECT_PRODUCTION_URL`, then `VERCEL_URL`, then localhost). Set it once there is a real domain, so `sitemap.xml`, `robots.txt` and canonical/OG tags use it. Read at request time — no rebuild needed. |
-| `RESEND_API_KEY`, `BUFFER_ACCESS_TOKEN` | Optional | Adapters fall back to logging stubs (`src/lib/adapters/`). |
+| `SITE_URL` | Optional | Falls back to the deployment's own origin (`VERCEL_PROJECT_PRODUCTION_URL`, then `VERCEL_URL`, then localhost). Set it once there is a real domain, so `sitemap.xml`, `robots.txt`, canonical/OG tags **and every link in an outgoing email** use it. Read at request time — no rebuild needed. |
+| `RESEND_API_KEY` | **Yes in production** | No mail is sent. Falls back to local Mailpit when `MAILPIT_URL` is set, otherwise a console log. Nothing is lost — member notifications are also rows in `notifications` — but nobody is told anything: no approvals, no advert notices, no password reset. When it **is** set the sender throws on a provider rejection, so a bad key or unverified domain surfaces as a dead job in "Needs You Today" instead of failing silently. |
+| `EMAIL_FROM` | Optional | Defaults to `SMI <noreply@sheetmetalindustries.com>`. Point staging at its own verified subdomain so a mistake there cannot damage the production domain's sending reputation. |
+| `EMAIL_REPLY_TO` | Recommended | Replies go to the no-reply address, i.e. nowhere. A member answering "your advert needs a change" reaches no one. |
+| `RESEND_SEGMENT_ID` | Needed for the newsletter | The newsletter falls back to the logging stub even with a key set (and says so). Issues are not marked sent. |
+| `RESEND_WEBHOOK_SECRET` | Needed for the newsletter | `/api/webhooks/resend` fails closed with 503, so unsubscribes and spam complaints made at Resend's end never reach our `contacts` table and the list silently goes stale. |
+| `MAILPIT_URL` | Dev only | The dev sender logs instead of delivering. From `supabase status`. |
+| `BUFFER_ACCESS_TOKEN` | Optional | Adapter falls back to a logging stub (`src/lib/adapters/`). |
+
+A full template with commentary lives in [`.env.example`](.env.example).
 
 ### ⚠ Cron runs once a day — revisit before launch
 
@@ -84,10 +92,10 @@ pnpm test:e2e                 # playwright (approval-gate loop, member-first sea
 
 - **Advert neutrality is structural**: selection is an unbiased shuffle in `src/lib/adverts.ts`; the schema has no weight/priority column and must never gain one.
 - **Approval gate**: no code path publishes content without editor action; RLS keeps non-published rows invisible to the public role.
-- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer), CRM (Bigin), newsletter (undecided — deliverability gate), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
+- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer), CRM (Bigin), newsletter (**Resend** — the MailChimp deliverability gate was closed in its favour on 31 Aug; TECH-DECISIONS #7 superseded), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
 - **Jobs**: Postgres queue (`jobs` table) driven by `/api/cron` (Vercel Cron in prod, `scripts/job-runner.ts` locally). Dead-lettered jobs surface in the console's "Needs You Today".
 - **Analytics**: first-party, partitioned `analytics_events` + nightly rollups. Numbers shown to members are real — no padding, by requirement.
 
 ## Still parked (needs approval / external accounts)
 
-GitHub org + repo transfer to SMI ownership · **Supabase EU/UK project** (deployed to `ca-central-1` for the demo — see above) · Vercel project + Cron (`/api/cron` is unauthenticated unless `CRON_SECRET` is set) · Resend/Buffer/MaxMind keys · Stripe test wiring · real WP export import at cutover · newsletter deliverability test · Content OS (module 6, priced separately).
+GitHub org + repo transfer to SMI ownership · **Supabase EU/UK project** (deployed to `ca-central-1` for the demo — see above) · Vercel project + Cron (`/api/cron` is unauthenticated unless `CRON_SECRET` is set) · **Resend account (SMI-owned) + verified sending domain with SPF/DKIM/DMARC, plus Resend SMTP set in the hosted Supabase dashboard for auth mail** · Buffer/MaxMind keys · Stripe test wiring · real WP export import at cutover · Content OS (module 6, priced separately).

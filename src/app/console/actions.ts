@@ -2,24 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { canApprove, canWrite, requireConsole } from "@/lib/auth";
+import { requireConsole } from "@/lib/auth";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
+import { meetsWcagAA } from "@/lib/contrast";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } from "@/lib/dev-tasks";
 import { enqueue } from "@/lib/jobs";
-import { uploadImage } from "@/lib/media";
+import { removeMedia, uploadDocument, uploadImage } from "@/lib/media";
 import { memberValuesFromForm } from "@/lib/member-form";
 import { recordRename } from "@/lib/redirects";
 import { activationBlocked, MEMBER_STATUSES, type MemberStatus } from "@/lib/membership";
 import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
+import { siteUrl } from "@/lib/site-url";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 
 /** Editor image upload — returns the public URL for insertion as <img src>. */
 export async function consoleUploadImage(formData: FormData): Promise<string | null> {
-  const user = await requireConsole();
-  if (!canWrite(user)) return null;
+  await requireConsole();
   const path = await uploadImage(formData.get("file") as File | null, "stories/console");
   return mediaUrl(path);
 }
@@ -33,22 +34,34 @@ export async function saveStory(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
 
+  let cover_path: string | null = null;
+  try {
+    cover_path = await uploadImage(formData.get("cover") as File | null, "stories");
+  } catch (e) {
+    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
+  }
+
   const values = {
     title,
     excerpt: String(formData.get("excerpt") ?? ""),
     body: sanitizeRichText(String(formData.get("body") ?? "")),
     member_id: String(formData.get("member_id") ?? "") || null,
     is_member_news: formData.get("is_member_news") === "on",
+    updated_at: new Date().toISOString(),
     cover_focus: formData.get("focus_x")
       ? { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) }
       : undefined,
+    // An empty file input leaves the existing cover alone.
+    ...(cover_path ? { cover_path } : {}),
   };
-
-  if (!canWrite(user)) return;
 
   let storyId = id;
   if (id) {
+    const { data: prev } = cover_path
+      ? await db.from("stories").select("cover_path").eq("id", id).single()
+      : { data: null };
     await db.from("stories").update(values).eq("id", id);
+    if (prev?.cover_path && prev.cover_path !== cover_path) await removeMedia(prev.cover_path);
   } else {
     const { data } = await db.from("stories").insert({
       ...values,
@@ -69,8 +82,7 @@ export async function saveStory(formData: FormData) {
 }
 
 export async function scheduleStory(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const id = String(formData.get("id"));
   const when = String(formData.get("scheduled_at") ?? "");
   const db = serviceDb();
@@ -92,7 +104,6 @@ export async function scheduleStory(formData: FormData) {
 
 export async function decideStory(formData: FormData) {
   const user = await requireConsole();
-  if (!canApprove(user)) return;
   const id = String(formData.get("id"));
   const decision = String(formData.get("decision"));
   const reason = String(formData.get("reason") ?? "");
@@ -115,8 +126,7 @@ export async function decideStory(formData: FormData) {
 }
 
 export async function pinStory(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const id = String(formData.get("id"));
   const days = Number(formData.get("days") || 0);
   await serviceDb().from("stories").update({
@@ -129,8 +139,7 @@ export async function pinStory(formData: FormData) {
 
 /** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
 export async function consoleUploadVideoImage(formData: FormData): Promise<string | null> {
-  const user = await requireConsole();
-  if (!canWrite(user)) return null;
+  await requireConsole();
   const path = await uploadImage(formData.get("file") as File | null, "videos/console");
   return mediaUrl(path);
 }
@@ -142,7 +151,6 @@ export async function saveVideo(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const url = String(formData.get("url") ?? "").trim();
   if (!title || !url) return;
-  if (!canWrite(user)) return;
 
   let thumbnail_path: string | null = null;
   try {
@@ -178,8 +186,7 @@ export async function saveVideo(formData: FormData) {
 }
 
 export async function scheduleVideo(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const id = String(formData.get("id"));
   const when = String(formData.get("scheduled_at") ?? "");
   const db = serviceDb();
@@ -199,7 +206,6 @@ export async function scheduleVideo(formData: FormData) {
 
 export async function decideVideo(formData: FormData) {
   const user = await requireConsole();
-  if (!canApprove(user)) return;
   const id = String(formData.get("id"));
   const decision = String(formData.get("decision"));
   const reason = String(formData.get("reason") ?? "");
@@ -221,8 +227,7 @@ export async function decideVideo(formData: FormData) {
 }
 
 export async function pinVideo(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const id = String(formData.get("id"));
   const days = Number(formData.get("days") || 0);
   await serviceDb().from("videos").update({
@@ -236,8 +241,7 @@ export async function pinVideo(formData: FormData) {
 
 /** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
 export async function consoleUploadEventImage(formData: FormData): Promise<string | null> {
-  const user = await requireConsole();
-  if (!canWrite(user)) return null;
+  await requireConsole();
   const path = await uploadImage(formData.get("file") as File | null, "events/console");
   return mediaUrl(path);
 }
@@ -249,7 +253,6 @@ export async function saveEvent(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const starts_on = String(formData.get("starts_on") ?? "");
   if (!title || !starts_on) return;
-  if (!canWrite(user)) return;
 
   let cover_path: string | null = null;
   try {
@@ -290,7 +293,6 @@ export async function saveEvent(formData: FormData) {
 
 export async function decideEvent(formData: FormData) {
   const user = await requireConsole();
-  if (!canApprove(user)) return;
   const id = String(formData.get("id"));
   const decision = String(formData.get("decision"));
   const reason = String(formData.get("reason") ?? "");
@@ -312,7 +314,6 @@ export async function decideEvent(formData: FormData) {
 
 export async function decideRevision(formData: FormData) {
   const user = await requireConsole();
-  if (!canApprove(user)) return;
   const id = String(formData.get("id"));
   const approve = formData.get("decision") === "approve";
   const reason = String(formData.get("reason") ?? "");
@@ -326,8 +327,10 @@ export async function decideRevision(formData: FormData) {
     if (typeof payload.description === "string") payload.description = renderableHtml(payload.description);
     await db.from("members").update(payload).eq("id", rev.member_id);
     await db.from("member_revisions").update({ status: "published", decided_at: new Date().toISOString() }).eq("id", id);
+    await enqueue("notify_member", { member_id: rev.member_id, kind: "page_changes_live", revision_id: id });
   } else {
     await db.from("member_revisions").update({ status: "rejected", rejected_reason: reason, decided_at: new Date().toISOString() }).eq("id", id);
+    await enqueue("notify_member", { member_id: rev.member_id, kind: "page_changes_rejected", revision_id: id, reason });
   }
   await db.from("approvals").insert({ kind: "member_revision", subject_id: id, decision: approve ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
   revalidatePath("/console");
@@ -338,8 +341,7 @@ export async function decideRevision(formData: FormData) {
 const PAGE_TYPES = ["story", "member_profile", "featured_machine"] as const;
 
 export async function saveLayout(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const pageType = String(formData.get("page_type")) as (typeof PAGE_TYPES)[number];
   if (!PAGE_TYPES.includes(pageType)) return;
   const entityId = String(formData.get("entity_id") ?? "") || null;
@@ -364,8 +366,7 @@ export async function saveLayout(formData: FormData) {
 }
 
 export async function resetLayout(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const pageType = String(formData.get("page_type")) as (typeof PAGE_TYPES)[number];
   if (!PAGE_TYPES.includes(pageType)) return;
   const entityId = String(formData.get("entity_id") ?? "") || null;
@@ -380,7 +381,6 @@ export async function resetLayout(formData: FormData) {
 
 export async function saveMachine(formData: FormData) {
   const user = await requireConsole();
-  if (!canWrite(user)) return;
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const memberId = String(formData.get("member_id") ?? "");
@@ -412,7 +412,6 @@ export async function saveMachine(formData: FormData) {
 
 export async function decideMachine(formData: FormData) {
   const user = await requireConsole();
-  if (!canApprove(user)) return;
   const id = String(formData.get("id"));
   const approve = formData.get("decision") === "approve";
   const reason = String(formData.get("reason") ?? "");
@@ -431,8 +430,7 @@ export async function decideMachine(formData: FormData) {
 }
 
 export async function saveMachinePlacement(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const machineId = String(formData.get("machine_id"));
   const db = serviceDb();
   const { data: machine } = await db.from("featured_machines").select("member_id, status").eq("id", machineId).single();
@@ -450,37 +448,299 @@ export async function saveMachinePlacement(formData: FormData) {
 
 /* ---------- adverts ---------- */
 
+/**
+ * An admin booking an advert is selling it, which is also approving it — there
+ * is nobody else to ask. So it lands 'scheduled' with the approval stamped,
+ * rather than sitting in a queue waiting for the person who just created it.
+ */
 export async function saveBooking(formData: FormData) {
   const user = await requireConsole();
-  if (!canWrite(user)) return;
   const db = serviceDb();
-  const advertId = String(formData.get("advert_id"));
-  await db.from("advert_bookings").insert({
-    advert_id: advertId,
+  const now = new Date().toISOString();
+  const { error } = await db.from("advert_bookings").insert({
+    advert_id: String(formData.get("advert_id")),
     starts_on: String(formData.get("starts_on")),
     ends_on: String(formData.get("ends_on")),
     notes: String(formData.get("notes") ?? "") || null,
+    product_id: String(formData.get("product_id") ?? "") || null,
+    bundle_id: String(formData.get("bundle_id") ?? "") || null,
+    status: "scheduled",
+    source: "admin",
+    submitted_by: user.userId,
+    submitted_at: now,
+    approved_by: user.userId,
+    approved_at: now,
   });
+  // The overlap exclusion constraint is the likely rejection here: the same
+  // artwork already has a run covering these dates.
+  if (error) {
+    redirect(`/console/adverts?error=${encodeURIComponent(
+      error.message.includes("advert_bookings_no_overlap")
+        ? "That advert already has a run covering those dates."
+        : error.message,
+    )}`);
+  }
   revalidatePath("/console/adverts");
 }
 
+/**
+ * Ending a run early. Never touches the dates.
+ *
+ * This used to write ends_on = yesterday, which destroyed the term needed for
+ * invoicing and — for a run starting today — produced ends_on < starts_on,
+ * violating the table's own check constraint. The error was discarded, so the
+ * button appeared to work while the advert kept running.
+ *
+ * The status is what stops it now: terminal beats dates in the render
+ * predicate, so it comes down immediately. `.in(...)` makes it idempotent —
+ * a double submit cannot re-end an ended run.
+ */
 export async function endBooking(formData: FormData) {
   const user = await requireConsole();
-  if (!canWrite(user)) return;
-  const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-  await serviceDb().from("advert_bookings").update({ ends_on: yesterday }).eq("id", String(formData.get("id")));
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { data: booking } = await db
+    .from("advert_bookings")
+    .select("id, ends_on, advert:adverts(member_id)")
+    .eq("id", id)
+    .single();
+  if (!booking) return;
+
+  const now = new Date().toISOString();
+  const { data: ended } = await db
+    .from("advert_bookings")
+    .update({
+      status: "ended",
+      ended_at: now,
+      ended_by: user.userId,
+      ended_reason: "ended_early",
+      ended_note: String(formData.get("note") ?? "") || null,
+      // stamped so the nightly sweep does not also send a renew prompt
+      ended_notified_for: booking.ends_on,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .in("status", ["scheduled", "live"])
+    .select("id");
+
+  if (ended?.length && booking.advert?.member_id) {
+    await enqueue("notify_member", { member_id: booking.advert.member_id, kind: "advert_ended", booking_id: id });
+  }
   revalidatePath("/console/adverts");
+}
+
+/** Approve a member-submitted run, or send it back with a reason they can read. */
+export async function decideAdvertBooking(formData: FormData) {
+  const user = await requireConsole();
+  const id = String(formData.get("id"));
+  const decision = String(formData.get("decision"));
+  const reason = String(formData.get("reason") ?? "").trim();
+  const db = serviceDb();
+  const { data: booking } = await db
+    .from("advert_bookings")
+    .select("id, status, advert:adverts(member_id)")
+    .eq("id", id)
+    .single();
+  // same idempotency guard as decideStory/decideVideo/decideEvent
+  if (!booking || booking.status !== "awaiting_approval") return;
+  // the DB enforces this too; catching it here keeps the redirect friendly
+  if (decision !== "approve" && !reason) {
+    redirect(`/console/adverts/${id}?error=${encodeURIComponent("Give the member a reason for the change.")}`);
+  }
+
+  const now = new Date().toISOString();
+  const memberId = booking.advert?.member_id;
+  if (decision === "approve") {
+    await db.from("advert_bookings")
+      .update({ status: "scheduled", approved_by: user.userId, approved_at: now, review_reason: null, updated_at: now })
+      .eq("id", id);
+    if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_scheduled", booking_id: id });
+  } else {
+    await db.from("advert_bookings")
+      .update({ status: "review_required", review_reason: reason, updated_at: now })
+      .eq("id", id);
+    if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_changes_needed", booking_id: id, reason });
+  }
+  await db.from("approvals").insert({
+    kind: "advert_booking",
+    subject_id: id,
+    decision: decision === "approve" ? "approved" : "rejected",
+    reason: reason || null,
+    decided_by: user.userId,
+  });
+  revalidatePath("/console");
+  revalidatePath("/console/adverts");
+}
+
+/**
+ * Rebook an ended run: same artwork, new dates. A fresh draft rather than a
+ * reopened booking, so the finished run keeps its own record for invoicing.
+ */
+export async function renewBooking(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { data: prev } = await db
+    .from("advert_bookings")
+    .select("advert_id, product_id, bundle_id, notes")
+    .eq("id", id)
+    .single();
+  if (!prev) return;
+  const { data: created } = await db.from("advert_bookings").insert({
+    advert_id: prev.advert_id,
+    product_id: prev.product_id,
+    bundle_id: prev.bundle_id,
+    notes: prev.notes,
+    // dates are the point of a renewal, so they are filled in on the draft
+    starts_on: String(formData.get("starts_on")),
+    ends_on: String(formData.get("ends_on")),
+    status: "draft",
+    source: "admin",
+    renewed_from: id,
+    submitted_by: user.userId,
+  }).select("id").single();
+  revalidatePath("/console/adverts");
+  if (created) redirect(`/console/adverts/${created.id}`);
+}
+
+/** The artwork itself — name, format, link and the two images. */
+export async function saveAdvertArtwork(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const db = serviceDb();
+  const name = String(formData.get("name") ?? "").trim();
+  const member_id = String(formData.get("member_id") ?? "");
+  const format = String(formData.get("format") ?? "");
+  if (!name || !member_id || !format) return;
+
+  let desktop_path: string | null = null;
+  let mobile_path: string | null = null;
+  try {
+    // "panels" not "adverts": the public bucket path is in the URL, and
+    // /adverts/ is an ad-blocker filename heuristic — see visit/[id]/route.ts.
+    desktop_path = await uploadImage(formData.get("desktop") as File | null, "panels");
+    mobile_path = await uploadImage(formData.get("mobile") as File | null, "panels");
+  } catch (e) {
+    redirect(`/console/adverts/artwork/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
+  }
+
+  const values = {
+    name,
+    member_id,
+    format,
+    link_url: String(formData.get("link_url") ?? "").trim() || null,
+    updated_at: new Date().toISOString(),
+    ...(desktop_path ? { desktop_path } : {}),
+    ...(mobile_path ? { mobile_path } : {}),
+  };
+
+  if (id) {
+    await db.from("adverts").update(values).eq("id", id);
+  } else {
+    // both images are NOT NULL, so a new advert cannot be created without them
+    if (!desktop_path || !mobile_path) {
+      redirect(`/console/adverts/artwork/new?error=${encodeURIComponent("Both a desktop and a mobile image are required.")}`);
+    }
+    await db.from("adverts").insert({ ...values, desktop_path, mobile_path });
+  }
+  revalidatePath("/console/adverts/artwork");
+  redirect("/console/adverts/artwork");
+}
+
+/**
+ * Admin proposing a swap on a member's behalf: fulfilling it, same reasoning
+ * saveBooking already applies to bookings — there is nobody else to ask, so it
+ * applies immediately. Recorded already-'approved' so the audit trail (and the
+ * member-facing history) shows the same shape whoever raised it.
+ */
+export async function proposeArtworkSwap(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const advertId = String(formData.get("advert_id"));
+  const bookingId = String(formData.get("booking_id") ?? "") || null;
+  const back = bookingId ? `/console/adverts/${bookingId}` : `/console/adverts/artwork/${advertId}`;
+
+  let desktop_path: string | null = null;
+  let mobile_path: string | null = null;
+  try {
+    desktop_path = await uploadImage(formData.get("desktop") as File | null, "panels");
+    mobile_path = await uploadImage(formData.get("mobile") as File | null, "panels");
+  } catch (e) {
+    redirect(`${back}?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
+  }
+  if (!desktop_path || !mobile_path) {
+    redirect(`${back}?error=${encodeURIComponent("Both a desktop and a mobile image are required.")}`);
+  }
+
+  const now = new Date().toISOString();
+  await db.from("adverts").update({ desktop_path, mobile_path, updated_at: now }).eq("id", advertId);
+  const { data: proposal } = await db.from("advert_artwork_proposals").insert({
+    advert_id: advertId,
+    desktop_path,
+    mobile_path,
+    status: "approved",
+    source: "admin",
+    submitted_by: user.userId,
+    submitted_at: now,
+    decided_by: user.userId,
+    decided_at: now,
+  }).select("id").single();
+  if (proposal) {
+    await db.from("approvals").insert({ kind: "advert_artwork", subject_id: proposal.id, decision: "approved", decided_by: user.userId });
+  }
+  revalidatePath("/console/adverts");
+  revalidatePath("/console/adverts/artwork");
+  redirect(bookingId ? back : "/console/adverts/artwork");
+}
+
+/** Approve a member-proposed swap, or send it back with a reason they can read. */
+export async function decideArtworkSwap(formData: FormData) {
+  const user = await requireConsole();
+  const id = String(formData.get("id"));
+  const decision = String(formData.get("decision"));
+  const reason = String(formData.get("reason") ?? "").trim();
+  const db = serviceDb();
+  const { data: proposal } = await db
+    .from("advert_artwork_proposals")
+    .select("id, advert_id, desktop_path, mobile_path, status, advert:adverts(member_id)")
+    .eq("id", id)
+    .single();
+  if (!proposal || proposal.status !== "pending") return;
+  if (decision !== "approve" && !reason) {
+    redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent("Give the member a reason for the change.")}`);
+  }
+
+  const now = new Date().toISOString();
+  const memberId = proposal.advert?.member_id;
+  if (decision === "approve") {
+    // the live image only changes here, at approval — never at submission
+    await db.from("adverts").update({ desktop_path: proposal.desktop_path, mobile_path: proposal.mobile_path, updated_at: now }).eq("id", proposal.advert_id);
+    await db.from("advert_artwork_proposals").update({ status: "approved", decided_by: user.userId, decided_at: now, updated_at: now }).eq("id", id);
+    if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_artwork_approved", advert_id: proposal.advert_id });
+  } else {
+    await db.from("advert_artwork_proposals").update({ status: "rejected", review_reason: reason, decided_by: user.userId, decided_at: now, updated_at: now }).eq("id", id);
+    if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_artwork_rejected", advert_id: proposal.advert_id, reason });
+  }
+  await db.from("approvals").insert({
+    kind: "advert_artwork",
+    subject_id: id,
+    decision: decision === "approve" ? "approved" : "rejected",
+    reason: reason || null,
+    decided_by: user.userId,
+  });
+  revalidatePath("/console");
+  revalidatePath("/console/adverts");
+  revalidatePath("/console/adverts/artwork");
 }
 
 export async function saveAdvertProduct(formData: FormData) {
-  const user = await requireConsole();
+  await requireConsole();
   const id = String(formData.get("id") ?? "");
   const db = serviceDb();
   const short_name = String(formData.get("short_name") ?? "").trim();
   const format = String(formData.get("format") ?? "");
   const cap = Math.max(1, Number(formData.get("cap") ?? 1));
   if (!short_name || !format) return;
-  if (!canWrite(user)) return;
 
   let sample_path: string | null = null;
   try {
@@ -507,18 +767,145 @@ export async function saveAdvertProduct(formData: FormData) {
   redirect("/console/adverts/spots");
 }
 
+/**
+ * Archive rather than delete once a booking references the product: the record
+ * of what a run was sold as has to survive, and the FK is ON DELETE RESTRICT so
+ * a hard delete would fail anyway. Unreferenced products delete outright.
+ */
 export async function deleteAdvertProduct(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
-  await serviceDb().from("advert_products").delete().eq("id", String(formData.get("id")));
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { count } = await db
+    .from("advert_bookings")
+    .select("*", { count: "exact", head: true })
+    .eq("product_id", id);
+  if (count) {
+    await db.from("advert_products").update({ archived_at: new Date().toISOString() }).eq("id", id);
+  } else {
+    await db.from("advert_products").delete().eq("id", id);
+  }
   revalidatePath("/console/adverts/spots");
+}
+
+/** Slot caps are Jas's to set — inventory guidance, never a rotation input. */
+export async function saveSlotCap(formData: FormData) {
+  await requireConsole();
+  const key = String(formData.get("key"));
+  const cap = Math.max(0, Number(formData.get("cap") ?? 0));
+  await serviceDb().from("advert_slots").update({ cap }).eq("key", key);
+  revalidatePath("/console/adverts");
+}
+
+/** Turn a member's expression of interest into a draft run for Jas to fill in. */
+export async function startAdvertFromInterest(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { data: request } = await db
+    .from("visibility_requests")
+    .select("id, member_id, product")
+    .eq("id", id)
+    .single();
+  if (!request) return;
+  await db.from("visibility_requests").update({ status: "confirmed" }).eq("id", id);
+  // The member asked for this and was previously told nothing either way (A2.6).
+  if (request.member_id) {
+    await enqueue("notify_member", { member_id: request.member_id, kind: "visibility_confirmed", request_id: id });
+  }
+  revalidatePath("/console/adverts/interest");
+  // No artwork yet — that is the whole point of the interest route, so this
+  // lands on the artwork form with the member prefilled.
+  redirect(`/console/adverts/artwork/new?member_id=${request.member_id}&from=interest`);
+}
+
+/** The advertising media pack — a PDF readers download from /advertising. */
+export async function saveMediaPack(formData: FormData) {
+  await requireConsole();
+  let path: string | null = null;
+  try {
+    path = await uploadDocument(formData.get("pack") as File | null, "media-pack");
+  } catch (e) {
+    redirect(`/console/adverts/spots?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
+  }
+  if (!path) return;
+  await serviceDb().from("settings").upsert({ key: "media_pack", value: { path, updated_at: new Date().toISOString() } });
+  revalidatePath("/console/adverts/spots");
+  revalidatePath("/advertising");
+}
+
+/**
+ * Homepage takeover (V17/A12): one advertiser's colour + banner across the
+ * public site for a paid period. Same date-driven pattern as every other
+ * placement — no job flips it live or ends it, activeTakeover() just reads
+ * the dates. The overlap exclusion constraint (placements_takeover_no_overlap)
+ * stops two clients' colours ever being booked over the same days.
+ */
+export async function saveTakeoverPlacement(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const member_id = String(formData.get("member_id"));
+  const hex = String(formData.get("hex") ?? "").trim();
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) {
+    redirect(`/console/adverts/takeover?error=${encodeURIComponent("Enter a 6-digit hex colour, e.g. #fe5000.")}`);
+  }
+  // Checked against the site's own paper background — the takeover banner and
+  // top-of-page chrome sit on white, same pairing globals.css documents for brand.
+  if (!meetsWcagAA(hex, "#ffffff", { largeText: true })) {
+    redirect(`/console/adverts/takeover?error=${encodeURIComponent("That colour is too close to white to read — it needs at least 3:1 contrast (WCAG AA, large text/UI).")}`);
+  }
+
+  let banner_path: string | null = null;
+  try {
+    banner_path = await uploadImage(formData.get("banner") as File | null, "takeovers");
+  } catch (e) {
+    redirect(`/console/adverts/takeover?error=${encodeURIComponent(e instanceof Error ? e.message : "Banner upload failed.")}`);
+  }
+  if (!banner_path) {
+    redirect(`/console/adverts/takeover?error=${encodeURIComponent("A banner image is required.")}`);
+  }
+
+  const { error } = await db.from("placements").insert({
+    kind: "takeover",
+    member_id,
+    config: { hex, banner_path },
+    starts_on: String(formData.get("starts_on")),
+    ends_on: String(formData.get("ends_on")),
+  });
+  if (error) {
+    redirect(`/console/adverts/takeover?error=${encodeURIComponent(
+      error.message.includes("placements_takeover_no_overlap")
+        ? "Another takeover already covers those dates — only one can run at a time."
+        : error.message,
+    )}`);
+  }
+  revalidatePath("/console/adverts");
+  revalidatePath("/console/adverts/takeover");
+  revalidatePath("/");
+}
+
+export async function declineInterest(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const reason = String(formData.get("reason") ?? "");
+  const { data: request } = await db
+    .from("visibility_requests")
+    .select("id, member_id")
+    .eq("id", id)
+    .single();
+  await db.from("visibility_requests").update({ status: "declined" }).eq("id", id);
+  // A decline is still an answer — the member is owed one either way (A2.6).
+  if (request?.member_id) {
+    await enqueue("notify_member", { member_id: request.member_id, kind: "visibility_declined", request_id: id, reason });
+  }
+  revalidatePath("/console/adverts/interest");
 }
 
 /* ---------- newsletter ---------- */
 
 export async function createIssue(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const db = serviceDb();
   const { data: last } = await db.from("newsletter_issues").select("number").order("number", { ascending: false }).limit(1).single();
   const number = (last?.number ?? 46) + 1;
@@ -534,15 +921,22 @@ export async function createIssue(formData: FormData) {
 }
 
 export async function sendIssue(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
-  await enqueue("newsletter_send", { issue_id: String(formData.get("id")) });
+  await requireConsole();
+  const id = String(formData.get("id"));
+  // Doubles as the retry for a failed send: clear the previous error and drop
+  // back to draft so the board doesn't show a stale failure while it reruns.
+  await serviceDb()
+    .from("newsletter_issues")
+    .update({ status: "draft", send_error: null })
+    .eq("id", id)
+    .eq("status", "send_failed");
+  await enqueue("newsletter_send", { issue_id: id });
   revalidatePath("/console/newsletter");
+  revalidatePath("/console");
 }
 
 export async function scheduleIssue(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const id = String(formData.get("id"));
   const when = String(formData.get("scheduled_at") ?? "");
   if (!when) return;
@@ -554,8 +948,7 @@ export async function scheduleIssue(formData: FormData) {
 }
 
 export async function unscheduleIssue(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const id = String(formData.get("id"));
   const db = serviceDb();
   // the pending job would otherwise still fire at the original time — reverting
@@ -575,8 +968,7 @@ const contactsFail = (message: string): never =>
 
 /** A19/A20 — edit a mirrored contact in place; changes write through to Bigin. */
 export async function saveContact(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const db = serviceDb();
@@ -615,8 +1007,7 @@ export async function saveContact(formData: FormData) {
 }
 
 export async function addContact(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!email) return;
   const db = serviceDb();
@@ -650,7 +1041,6 @@ async function recordActivation(memberId: string, userId: string) {
 /** A17 — the full member record, editable by Jas without the revision queue. */
 export async function saveMember(formData: FormData) {
   const user = await requireConsole();
-  if (!canWrite(user)) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const db = serviceDb();
@@ -713,8 +1103,7 @@ export async function saveMember(formData: FormData) {
  * public join flow, minus the funnel notifications: Jas is the actor here.
  */
 export async function createMember(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const company = String(formData.get("company") ?? "").trim();
@@ -735,9 +1124,42 @@ export async function createMember(formData: FormData) {
       : result.error);
   }
 
+  // Jas is usually on the phone to them, so the typed password stays — it gets
+  // them in right now. This is the durable half: the member is told the account
+  // exists and can set a password only they know. The link is emailed directly
+  // rather than queued, so a credential-equivalent never sits in the
+  // `notifications` payload for anyone with console access to read.
+  const invited = await sendAccountInvite(email);
+
   revalidatePath("/console/members");
   revalidatePath("/console");
-  redirect(`/console/members/${result.memberId}?created=1`);
+  redirect(`/console/members/${result.memberId}?created=1${invited ? "" : "&invite=failed"}`);
+}
+
+/**
+ * Emails a new member a set-your-own-password link. Returns false if it could
+ * not be sent, so the caller can tell Jas to pass the details on by phone
+ * instead — a silently undelivered invite is how someone ends up with an
+ * account they never learn about.
+ */
+async function sendAccountInvite(email: string): Promise<boolean> {
+  try {
+    const { data, error } = await serviceDb().auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: { redirectTo: `${siteUrl()}/reset/confirm` },
+    });
+    const link = data?.properties?.action_link;
+    if (error || !link) return false;
+
+    const { getEmailSender } = await import("@/lib/adapters/email");
+    const { renderNotification } = await import("@/lib/email/templates");
+    await getEmailSender().send({ to: email, ...renderNotification({ kind: "account_created", action_link: link }) });
+    return true;
+  } catch (e) {
+    console.error("[console] account invite failed:", e);
+    return false;
+  }
 }
 
 /**
@@ -746,8 +1168,7 @@ export async function createMember(formData: FormData) {
  * shows up under the member's Billing tab.
  */
 export async function recordMemberPayment(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const months = Number(formData.get("months") || 0);
@@ -765,7 +1186,6 @@ export async function recordMemberPayment(formData: FormData) {
 
 export async function setMemberStatus(formData: FormData) {
   const user = await requireConsole();
-  if (!canWrite(user)) return;
   const id = String(formData.get("id"));
   const status = String(formData.get("status")) as MemberStatus;
   if (!MEMBER_STATUSES.includes(status)) return;
@@ -801,8 +1221,7 @@ export async function markInboxRead(formData: FormData) {
  * arranges blocks; this one owns the words.
  */
 export async function saveContentPage(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
 
   const originalSlug = String(formData.get("original_slug") ?? "").trim();
   const isNew = !originalSlug;
@@ -841,8 +1260,7 @@ export async function saveContentPage(formData: FormData) {
 }
 
 export async function deleteContentPage(formData: FormData) {
-  const user = await requireConsole();
-  if (!canWrite(user)) return;
+  await requireConsole();
   const slug = String(formData.get("slug") ?? "");
   if (!slug) return;
   await serviceDb().from("static_pages").delete().eq("slug", slug);

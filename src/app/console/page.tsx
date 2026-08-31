@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RENDERABLE_BOOKING_STATUSES } from "@/lib/adverts";
 import { serviceDb } from "@/lib/db/server";
 import { Badge, Card, SectionTitle, Stat } from "@/components/console/ui";
 import { FEATURED_SLOTS, MEMBERSHIP_MONTHLY_PENNIES, pounds, revenueByStream } from "@/lib/pricing";
@@ -27,6 +28,8 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     liveBookings,
     pendingStories,
     pendingEvents,
+    pendingAdverts,
+    pendingArtworkSwaps,
     pendingRevisions,
     expiring,
     graceMembers,
@@ -34,6 +37,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     deadJobs,
     inbox,
     draftIssue,
+    failedIssues,
     subscribers,
     featuredSold,
     draftStories,
@@ -51,16 +55,19 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     calEvents,
   ] = await Promise.all([
     db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"),
-    db.from("advert_bookings").select("advert:adverts(format, advertiser_id), bundle:bundles(price_pennies)").lte("starts_on", today).gte("ends_on", today),
+    db.from("advert_bookings").select("advert:adverts(format, member_id), bundle:bundles(price_pennies)").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today),
     db.from("stories").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
     db.from("events").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
+    db.from("advert_bookings").select("id, advert:adverts(name)").eq("status", "awaiting_approval"),
+    db.from("advert_artwork_proposals").select("id, advert:adverts(name)").eq("status", "pending"),
     db.from("member_revisions").select("id, member:members(name)").eq("status", "awaiting_approval"),
-    db.from("advert_bookings").select("id, ends_on, advert:adverts(name)").gte("ends_on", today).lte("ends_on", weekOut),
+    db.from("advert_bookings").select("id, ends_on, advert:adverts(name)").eq("status", "live").gte("ends_on", today).lte("ends_on", weekOut),
     db.from("members").select("id, name").eq("status", "grace"),
     db.from("members").select("id, name, draft_submitted_at").eq("status", "draft"),
     db.from("jobs").select("id, kind, last_error").eq("status", "dead"),
     db.from("inbox_messages").select("id, kind, name, email, message").eq("read", false).order("created_at", { ascending: false }).limit(5),
     db.from("newsletter_issues").select("id, number").eq("status", "draft").limit(1),
+    db.from("newsletter_issues").select("id, number, send_error").eq("status", "send_failed"),
     db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true),
     db.from("placements").select("*", { count: "exact", head: true }).eq("kind", "featured_member").lte("starts_on", today).gte("ends_on", today),
     db.from("stories").select("*", { count: "exact", head: true }).eq("status", "draft"),
@@ -93,7 +100,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   const live = liveBookings.data ?? [];
   const liveBanners = live.filter((b) => b.advert?.format === "banner").length;
   const liveLogos = live.filter((b) => b.advert?.format === "supplier_logo").length;
-  const advertisers = new Set(live.map((b) => b.advert?.advertiser_id).filter(Boolean)).size;
+  const advertisers = new Set(live.map((b) => b.advert?.member_id).filter(Boolean)).size;
   const slotsSold = featuredSold.count ?? 0;
 
   const revenue = revenueByStream({
@@ -167,6 +174,8 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   if (pendingStories.data?.length) needs.push({ label: `${pendingStories.data.length} member stories awaiting your approval`, href: "/console/stories" });
   if (pendingVideos.data?.length) needs.push({ label: `${pendingVideos.data.length} member videos awaiting your approval`, href: "/console/videos" });
   if (pendingEvents.data?.length) needs.push({ label: `${pendingEvents.data.length} member events awaiting approval`, href: "/console/events" });
+  if (pendingAdverts.data?.length) needs.push({ label: `${pendingAdverts.data.length} member adverts awaiting approval`, href: "/console/adverts" });
+  if (pendingArtworkSwaps.data?.length) needs.push({ label: `${pendingArtworkSwaps.data.length} artwork swap${pendingArtworkSwaps.data.length === 1 ? "" : "s"} awaiting approval`, href: "/console/adverts" });
   if (pendingRevisions.data?.length) needs.push({ label: `${pendingRevisions.data.length} member page edits awaiting approval`, href: "#approvals" });
   if (expiring.data?.length) needs.push({ label: `${expiring.data.length} adverts expire within 7 days`, href: "/console/adverts" });
   if (graceMembers.data?.length) needs.push({ label: `${graceMembers.data.length} memberships lapsing (grace period)`, href: "/console/members" });
@@ -175,6 +184,12 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   if (readyToReview.length) needs.push({ label: `${readyToReview.length} new member page${readyToReview.length === 1 ? "" : "s"} ready to review & activate`, href: "/console/members" });
   if (midFunnel) needs.push({ label: `${midFunnel} signup${midFunnel === 1 ? "" : "s"} part-way through joining (watch the inbox)`, href: "/console/members" });
   if (draftIssue.data?.length) needs.push({ label: `Newsletter issue ${draftIssue.data[0].number} is drafted but unsent`, href: "/console/newsletter" });
+  // A send that failed halfway to the whole list is the most urgent thing on
+  // this page — it used to be invisible, because the issue was marked sent
+  // regardless of what the sender did (GAPS C3).
+  for (const issue of failedIssues.data ?? []) {
+    needs.push({ label: `⚠ Newsletter issue ${issue.number} failed to send${issue.send_error ? ` — ${issue.send_error}` : ""}`, href: "/console/newsletter", urgent: true });
+  }
   if (deadJobs.data?.length) needs.push({ label: `⚠ ${deadJobs.data.length} background jobs failed and need attention`, href: "#jobs", urgent: true });
 
   return (

@@ -127,6 +127,17 @@ const nextConfig: NextConfig = {
   // Playwright drives the app via 127.0.0.1; without this the dev server 403s
   // client chunks/HMR for that origin (only `localhost` is allowed by default)
   allowedDevOrigins: ["127.0.0.1"],
+  /**
+   * Every upload in this app goes through a server action, and the default
+   * body limit is 1MB — so `uploadImage`'s 8MB cap and `uploadDocument`'s 20MB
+   * cap could never actually be reached: a larger file 500'd with "Body
+   * exceeded 1 MB limit" into the error boundary instead of the readable
+   * message the form is written to show. 22mb covers the document cap plus the
+   * multipart overhead the docs warn about.
+   */
+  experimental: {
+    serverActions: { bodySizeLimit: "22mb" },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -11,6 +11,9 @@ const COLUMNS = [
   { key: "draft", label: "Draft" },
   { key: "scheduled", label: "Scheduled" },
   { key: "sent", label: "Sent" },
+  // A failed send has to live somewhere visible. Before this state existed the
+  // issue was marked sent regardless of what happened (GAPS C3).
+  { key: "send_failed", label: "Failed" },
 ] as const;
 
 const TABS = [
@@ -18,7 +21,7 @@ const TABS = [
   { view: "calendar", label: "Calendar" },
 ] as const;
 
-const ISSUE_SELECT = "id, number, subject, status, scheduled_at, sent_at, web_slug";
+const ISSUE_SELECT = "id, number, subject, status, scheduled_at, sent_at, web_slug, send_error";
 
 export default async function NewsletterPage(props: PageProps<"/console/newsletter">) {
   await requireConsole();
@@ -46,7 +49,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
       <h1 className="text-2xl font-bold text-ink">Newsletter</h1>
       <p className="mt-1 text-sm text-gray-500">
         {subscribers ?? 0} clean subscribers. Unsubscribes sync back to the CRM and are never re-added.
-        Sender platform is behind the adapter pending the deliverability decision.
+        Issues send via Resend and are only marked sent once Resend accepts them.
       </p>
 
       <section className="mt-5 rounded-xl bg-white p-5 shadow-sm">
@@ -84,7 +87,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
       {view === "calendar" ? (
         <CalendarView month={month} issues={(issues ?? []) as CalendarIssue[]} />
       ) : (
-        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => {
             const items = byStatus(col.key);
             return (
@@ -128,6 +131,15 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
                           <form action={unscheduleIssue}>
                             <input type="hidden" name="id" value={i.id} />
                             <button className="rounded border px-2.5 py-1 text-xs text-gray-500">Unschedule</button>
+                          </form>
+                        </div>
+                      )}
+                      {i.status === "send_failed" && (
+                        <div className="mt-2 space-y-2">
+                          {i.send_error && <p className="rounded bg-red-50 p-1.5 text-xs text-red-700">{i.send_error}</p>}
+                          <form action={sendIssue}>
+                            <input type="hidden" name="id" value={i.id} />
+                            <button className="rounded bg-brand px-2.5 py-1 text-xs font-semibold text-ink">Try again</button>
                           </form>
                         </div>
                       )}

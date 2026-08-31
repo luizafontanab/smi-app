@@ -18,11 +18,11 @@ export async function GET(_req: Request, ctx: RouteContext<"/visit/[id]">) {
   const db = serviceDb();
   const { data: ad } = await db
     .from("adverts")
-    .select("id, link_url, advertiser:advertisers(member:members(id, slug))")
+    .select("id, link_url, member:members(id, slug)")
     .eq("id", id)
     .maybeSingle();
   if (!ad) redirect("/");
   const reqCtx = await requestContext();
-  record([{ kind: "ad_click", advert_id: ad.id, member_id: ad.advertiser?.member?.id ?? null, ...reqCtx }]);
-  redirect(resolveAdvertTarget(ad.link_url, ad.advertiser?.member?.slug ?? null));
+  record([{ kind: "ad_click", advert_id: ad.id, member_id: ad.member?.id ?? null, ...reqCtx }]);
+  redirect(resolveAdvertTarget(ad.link_url, ad.member?.slug ?? null));
 }

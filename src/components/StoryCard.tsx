@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { mediaUrl } from "@/lib/db/server";
+import { focusStyle } from "@/lib/focus";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
 
 // Dark ground, white text: the badge sits over photography at small sizes, so
@@ -22,9 +23,11 @@ export function StoryCard({ story, size = "md" }: { story: StoryCardType; size?:
   const heights = { sm: "h-32", md: "h-44", lg: "h-80" };
   return (
     <Link href={`/news/${story.slug}`} className="group block overflow-hidden rounded-lg bg-white shadow-sm transition hover:shadow-md">
-      <div className={`relative ${heights[size]} bg-graphite/10`}>
+      {/* overflow-hidden clips the crop zoom (and the hover grow) to the media
+          box — without it a zoomed cover spills over the headline below. */}
+      <div className={`relative ${heights[size]} overflow-hidden bg-graphite/10`}>
         {img ? (
-          <Image src={img} alt="" fill sizes={size === "lg" ? "100vw" : "(max-width: 768px) 100vw, 33vw"} className="object-cover transition group-hover:scale-[1.02]" unoptimized />
+          <Image src={img} alt="" fill sizes={size === "lg" ? "100vw" : "(max-width: 768px) 100vw, 33vw"} style={focusStyle(story.cover_focus)} className="object-cover transition group-hover:scale-[1.02]" unoptimized />
         ) : (
           <div className="flex h-full items-center justify-center text-4xl text-graphite/30">⚙</div>
         )}

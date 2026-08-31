@@ -25,6 +25,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Role } from "@/lib/auth";
 import { svgBanner } from "./lib/placeholder-art";
 import { assertSeedTarget } from "./lib/target-guard";
 
@@ -98,27 +99,26 @@ async function seedAdverts(
   const banners = adMembers.slice(0, 8);
   const logos = adMembers.slice(8, 13);
   console.log(`— sample adverts (${banners.length} banners, ${logos.length} supplier logos)`);
+  // Seeded bookings are admin-sold and already approved: without a status they
+  // would take the 'draft' default and render nothing.
+  const booked = { status: "live", source: "admin", approved_at: today.toISOString(), went_live_at: monthsAgo.toISOString() };
 
   for (let i = 0; i < banners.length; i++) {
     const m = banners[i];
     const name = String(m.name);
-    const { data: adv, error: advErr } = await db
-      .from("advertisers")
-      .insert({ name, member_id: memberId(m.wp_member_id), contact_email: `sales@${m.slug}.example` })
-      .select("id").single();
-    if (advErr) throw advErr;
     const [dPath, mPath] = await Promise.all([
       putSvg(`panels/panel-${i}-wide.svg`, svgBanner(name, 1280, 170, palette[i], { sample: true })),
       putSvg(`panels/panel-${i}-narrow.svg`, svgBanner(name, 370, 280, palette[i], { sample: true })),
     ]);
     const { data: ad, error: adErr } = await db
       .from("adverts")
-      .insert({ advertiser_id: adv!.id, name: `${name} banner`, desktop_path: dPath, mobile_path: mPath, format: "banner" })
+      .insert({ member_id: memberId(m.wp_member_id), name: `${name} banner`, desktop_path: dPath, mobile_path: mPath, format: "banner" })
       .select("id").single();
     if (adErr) throw adErr;
     // last two expire within the week, so the console's expiry view has something to show
     await db.from("advert_bookings").insert({
       advert_id: ad!.id,
+      ...booked,
       starts_on: iso(monthsAgo),
       ends_on: i < 6 ? iso(monthsAhead) : iso(new Date(today.getTime() + 5 * 864e5)),
     });
@@ -127,16 +127,13 @@ async function seedAdverts(
   for (let i = 0; i < logos.length; i++) {
     const m = logos[i];
     const name = String(m.name);
-    const { data: adv, error: advErr } = await db
-      .from("advertisers").insert({ name, member_id: memberId(m.wp_member_id) }).select("id").single();
-    if (advErr) throw advErr;
     const p = await putSvg(`panels/mark-${i}.svg`, svgBanner(name.split(" ")[0], 240, 120, palette[(i + 3) % 8], { sample: true }));
     const { data: ad, error: adErr } = await db
       .from("adverts")
-      .insert({ advertiser_id: adv!.id, name: `${name} supplier logo`, desktop_path: p, mobile_path: p, format: "supplier_logo" })
+      .insert({ member_id: memberId(m.wp_member_id), name: `${name} supplier logo`, desktop_path: p, mobile_path: p, format: "supplier_logo" })
       .select("id").single();
     if (adErr) throw adErr;
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
 }
 
@@ -275,7 +272,7 @@ async function main() {
   if (!NO_ADVERTS) await seedAdverts(memberRows, memberId);
 
   console.log("— auth users (1 admin, media co member, 3 member logins on real members)");
-  const mkUser = async (email: string, role: string, member_id: string | null, display_name: string) => {
+  const mkUser = async (email: string, role: Role, member_id: string | null, display_name: string) => {
     const { data, error } = await db.auth.admin.createUser({ email, password: "local-dev-password", email_confirm: true });
     if (error) throw error;
     await db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name });

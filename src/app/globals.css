@@ -160,11 +160,16 @@ h1, h2, h3 {
 
 /* Ken Burns rides the inner <img> so it composes with the layer's own scale
    rather than fighting it. Scoping to [data-active] restarts the drift from
-   frame 0 on every promotion, so each item gets the same entrance. */
+   frame 0 on every promotion, so each item gets the same entrance.
+
+   --focus-scale is the admin's cover crop zoom (see lib/focus.ts), set inline
+   per image. It multiplies into the drift rather than being applied inline,
+   because an animation outranks an inline transform and would drop it. */
+.hero-media { transform: scale(var(--focus-scale, 1)); }
 @keyframes hero-kenburns {
-  0%   { transform: scale(1.04) translate3d(0, 0, 0); }
-  50%  { transform: scale(1.13) translate3d(-1.6%, -1.2%, 0); }
-  100% { transform: scale(1.04) translate3d(0, 0, 0); }
+  0%   { transform: scale(calc(var(--focus-scale, 1) * 1.04)) translate3d(0, 0, 0); }
+  50%  { transform: scale(calc(var(--focus-scale, 1) * 1.13)) translate3d(-1.6%, -1.2%, 0); }
+  100% { transform: scale(calc(var(--focus-scale, 1) * 1.04)) translate3d(0, 0, 0); }
 }
 .hero-media-layer[data-active="true"] .hero-media {
   animation: hero-kenburns 26s var(--hero-ease-soft) infinite;
@@ -367,8 +372,8 @@ h1, h2, h3 {
 .hero-card:focus-visible { outline: 3px solid var(--smi-brand); outline-offset: 3px; }
 
 .hero-card-media { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: rgb(0 0 0 / 0.35); }
-.hero-card-img { transition: transform 460ms var(--hero-ease); }
-.hero-card[data-active="true"] .hero-card-img { transform: scale(1.07); }
+.hero-card-img { transition: transform 460ms var(--hero-ease); transform: scale(var(--focus-scale, 1)); }
+.hero-card[data-active="true"] .hero-card-img { transform: scale(calc(var(--focus-scale, 1) * 1.07)); }
 
 .hero-play {
   position: absolute;
@@ -460,7 +465,8 @@ h1, h2, h3 {
   }
   .hero-card,
   .hero-card[data-active="true"] { transform: none !important; }
-  .hero-card-img { transition: none !important; transform: none !important; }
+  /* The crop zoom stays — it is framing, not motion. Only the hover grow goes. */
+  .hero-card-img { transition: none !important; transform: scale(var(--focus-scale, 1)) !important; }
   .hero-card::after { transition: none !important; }
   .hero-cta { transition: none !important; }
 }

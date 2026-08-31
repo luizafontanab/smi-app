@@ -15,6 +15,7 @@ const story = (id: string, over: Partial<StoryCard> = {}): StoryCard => ({
   title: `Story ${id}`,
   excerpt: "excerpt",
   cover_path: `stories/${id}/cover.jpg`,
+  cover_focus: null,
   published_at: "2026-08-12T09:00:00Z",
   is_member_news: false,
   member: { slug: "acme", name: "Acme Fabrications", logo_path: null },

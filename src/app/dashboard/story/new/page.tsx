@@ -7,8 +7,9 @@ import { StoryForm } from "./StoryForm";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Add a story" };
 
-export default async function NewMemberStory() {
+export default async function NewMemberStory(props: PageProps<"/dashboard/story/new">) {
   const user = await requireMember();
+  const sp = await props.searchParams;
   const [{ data: cats }, { data: member }] = await Promise.all([
     publicDb().from("categories").select("id, name").eq("kind", "story").order("name"),
     serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single(),
@@ -21,6 +22,7 @@ export default async function NewMemberStory() {
         The editor reviews every story before it goes live. Once approved it&apos;s published with a link back to
         your page and shared on SMI&apos;s social channels.
       </p>
+      {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
       <StoryForm
         action={submitStory}
         uploadImage={memberUploadImage}

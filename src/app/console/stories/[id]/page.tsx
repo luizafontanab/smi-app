@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { consoleUploadImage, decideStory, saveStory, scheduleStory } from "../../actions";
-import { FocusPicker } from "@/components/FocusPicker";
+import { CoverField } from "@/components/CoverField";
+import { parseFocus } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +35,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
     : await db.from("story_categories").select("category_id").eq("story_id", id);
   const selected = new Set((selectedCats ?? []).map((c) => c.category_id));
   const cover = mediaUrl(story?.cover_path);
-  const focus = (story?.cover_focus ?? { x: 0.5, y: 0.5, scale: 1 }) as { x: number; y: number; scale: number };
+  const focus = parseFocus(story?.cover_focus);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -50,6 +51,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
       {story?.status === "rejected" && (
         <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">Rejected: {story.rejected_reason}</p>
       )}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
 
       <form action={saveStory} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         {!isNew && <input type="hidden" name="id" value={id} />}
@@ -89,12 +91,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
             ))}
           </div>
         </fieldset>
-        {cover && (
-          <div>
-            <span className="block text-sm font-medium" id="focus-picker-label">Cover crop focus (pan/zoom — fixes lost heads)</span>
-            <FocusPicker src={cover} initial={focus} />
-          </div>
-        )}
+        <CoverField cover={cover} focus={focus} hint="Landscape works best: at least 1200×675px (16:9), JPG/PNG/WebP, max 8MB. Leaving this empty keeps the current image. The crop fixes lost heads — it applies on the story page, the news cards and the homepage." />
         <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
       </form>
 

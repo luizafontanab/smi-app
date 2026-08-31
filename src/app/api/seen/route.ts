@@ -1,3 +1,4 @@
+import { RENDERABLE_BOOKING_STATUSES } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { serviceDb } from "@/lib/db/server";
 
@@ -34,14 +35,19 @@ export async function POST(req: Request) {
   // The client says what it saw, so trust it only as far as the booking allows:
   // drop anything that is not a real advert with a live booking today, or an
   // invented id could pad the number we invoice against.
+  // Must stay identical to liveBookings() in lib/adverts.ts — hence the shared
+  // constant. If validation and rendering ever disagree we either drop real
+  // impressions or bill for adverts that never showed.
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
-  const { data } = await db
+  const { data, error } = await db
     .from("advert_bookings")
     .select("advert_id")
     .in("advert_id", wanted)
+    .in("status", RENDERABLE_BOOKING_STATUSES)
     .lte("starts_on", today)
     .gte("ends_on", today);
+  if (error) console.error("impression validation failed", error);
 
   const live = [...new Set((data ?? []).map((b) => b.advert_id))];
   if (live.length === 0) return new Response(null, { status: 204 });

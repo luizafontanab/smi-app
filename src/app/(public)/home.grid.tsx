@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { dealSlots } from "@/lib/adverts";
 import { mediaUrl } from "@/lib/db/server";
+import { focusStyle } from "@/lib/focus";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
 import { EventCard, FeaturedMemberCard, MachineCard, VideoCard } from "@/components/cards";
 import { HomeHero } from "@/components/HomeHero";
@@ -229,7 +230,7 @@ function StoryRow({ story }: { story: HomeData["stories"][number] }) {
     <Link href={`/news/${story.slug}`} className="group flex gap-4 py-4">
       <div className="relative h-20 w-32 shrink-0 overflow-hidden rounded bg-graphite/10 sm:h-24 sm:w-40">
         {img
-          ? <Image src={img} alt="" fill sizes="160px" className="object-cover transition group-hover:scale-[1.03]" unoptimized />
+          ? <Image src={img} alt="" fill sizes="160px" style={focusStyle(story.cover_focus)} className="object-cover transition group-hover:scale-[1.03]" unoptimized />
           : <span className="flex h-full items-center justify-center text-2xl text-graphite/30">⚙</span>}
         {story.is_member_news && <MemberBadge />}
       </div>

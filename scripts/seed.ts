@@ -7,6 +7,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { faker } from "@faker-js/faker";
+import type { Role } from "@/lib/auth";
 import { svgBanner } from "./lib/placeholder-art";
 import { assertSeedTarget } from "./lib/target-guard";
 
@@ -103,7 +104,7 @@ async function main() {
   const activeMembers = members!.filter((m) => m.status === "active");
 
   console.log("— auth users (1 admin, media co member, 3 member logins)");
-  const mkUser = async (email: string, role: string, member_id: string | null, display_name: string) => {
+  const mkUser = async (email: string, role: Role, member_id: string | null, display_name: string) => {
     const { data, error } = await db.auth.admin.createUser({ email, password: "local-dev-password", email_confirm: true });
     if (error) throw error;
     await db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name });
@@ -191,7 +192,7 @@ async function main() {
     });
   }
 
-  console.log("— advert slots, advertisers, banners, bookings");
+  console.log("— advert slots, banners, bookings");
   await db.from("advert_slots").insert([
     { key: "home_1", label: "Homepage banner 1", cap: 3 },
     { key: "home_2", label: "Homepage banner 2", cap: 3 },
@@ -213,21 +214,22 @@ async function main() {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const monthsAhead = new Date(today); monthsAhead.setMonth(monthsAhead.getMonth() + 2);
   const monthsAgo = new Date(today); monthsAgo.setMonth(monthsAgo.getMonth() - 2);
+  // Seeded bookings are admin-sold and already approved: without a status they
+  // would take the 'draft' default and render nothing.
+  const booked = { status: "live", source: "admin", approved_at: today.toISOString(), went_live_at: monthsAgo.toISOString() };
 
   for (let i = 0; i < 8; i++) {
     const m = activeMembers[i + 3];
-    const { data: adv } = await db.from("advertisers").insert({ name: m.name, member_id: m.id, contact_email: `sales@${slugify(m.name)}.co.uk` }).select("id").single();
     const dPath = await upload(`panels/panel-${i}-wide.svg`, svgBanner(m.name, 1280, 170, palette[i]), "image/svg+xml");
     const mPath = await upload(`panels/panel-${i}-narrow.svg`, svgBanner(m.name, 370, 280, palette[i]), "image/svg+xml");
-    const { data: ad } = await db.from("adverts").insert({ advertiser_id: adv!.id, name: `${m.name} banner`, desktop_path: dPath, mobile_path: mPath, format: "banner" }).select("id").single();
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, starts_on: iso(monthsAgo), ends_on: i < 6 ? iso(monthsAhead) : iso(new Date(today.getTime() + 5 * 864e5)) }); // 2 expire within a week
+    const { data: ad } = await db.from("adverts").insert({ member_id: m.id, name: `${m.name} banner`, desktop_path: dPath, mobile_path: mPath, format: "banner" }).select("id").single();
+    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: i < 6 ? iso(monthsAhead) : iso(new Date(today.getTime() + 5 * 864e5)) }); // 2 expire within a week
   }
   for (let i = 0; i < 5; i++) {
     const m = activeMembers[i + 12];
-    const { data: adv } = await db.from("advertisers").insert({ name: m.name, member_id: m.id }).select("id").single();
     const p = await upload(`panels/mark-${i}.svg`, svgBanner(m.name.split(" ")[0], 240, 120, palette[(i + 3) % 8]), "image/svg+xml");
-    const { data: ad } = await db.from("adverts").insert({ advertiser_id: adv!.id, name: `${m.name} supplier logo`, desktop_path: p, mobile_path: p, format: "supplier_logo" }).select("id").single();
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+    const { data: ad } = await db.from("adverts").insert({ member_id: m.id, name: `${m.name} supplier logo`, desktop_path: p, mobile_path: p, format: "supplier_logo" }).select("id").single();
+    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
 
   // One booked creative per new format, so the grid design's slots can be
@@ -235,10 +237,9 @@ async function main() {
   for (const [i, fmt] of (["skyscraper", "mpu", "in_feed"] as const).entries()) {
     const [w, h] = fmt === "skyscraper" ? [300, 600] : fmt === "mpu" ? [300, 250] : [370, 280];
     const m = activeMembers[i + 17];
-    const { data: adv } = await db.from("advertisers").insert({ name: m.name, member_id: m.id }).select("id").single();
     const p = await upload(`panels/${fmt}-${i}.svg`, svgBanner(m.name, w, h, palette[(i + 5) % 8]), "image/svg+xml");
-    const { data: ad } = await db.from("adverts").insert({ advertiser_id: adv!.id, name: `${m.name} ${fmt}`, desktop_path: p, mobile_path: p, format: fmt }).select("id").single();
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+    const { data: ad } = await db.from("adverts").insert({ member_id: m.id, name: `${m.name} ${fmt}`, desktop_path: p, mobile_path: p, format: fmt }).select("id").single();
+    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
 
   console.log("— placements: featured members, featured machine, grid blocks");

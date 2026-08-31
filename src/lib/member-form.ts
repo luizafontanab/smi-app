@@ -119,6 +119,9 @@ export function memberValuesFromForm(
     paid_at,
     social,
     testimonials: testimonials as Json,
+    // fulfilment tag only — see the neutrality note on the column's migration
+    // and the source-grep test in tests/unit/adverts.test.ts
+    is_bundle_account: checked(formData, "is_bundle_account"),
     ...(uploaded.logo_path ? { logo_path: uploaded.logo_path } : checked(formData, "remove_logo") ? { logo_path: null } : {}),
     ...(uploaded.hero_path ? { hero_path: uploaded.hero_path } : checked(formData, "remove_hero") ? { hero_path: null } : {}),
   };

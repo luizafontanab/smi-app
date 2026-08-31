@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sessionDb } from "@/lib/db/server";
 import { currentUser } from "@/lib/auth";
@@ -11,6 +12,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
   if (user) redirect(user.role === "member" ? "/dashboard" : "/console");
   const next = typeof sp.next === "string" ? sp.next : "";
   const failed = sp.error === "1";
+  const resetFailed = sp.error === "reset";
 
   async function signIn(formData: FormData) {
     "use server";
@@ -34,6 +36,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <p className="text-center text-lg font-bold text-ink">Sheet Metal <span className="text-brand">Industries</span></p>
         <p className="mt-1 text-center text-sm text-gray-500">Member &amp; editor login</p>
         {failed && <p className="mt-3 rounded bg-red-50 p-2 text-center text-sm text-red-600">Wrong email or password.</p>}
+        {resetFailed && <p className="mt-3 rounded bg-red-50 p-2 text-center text-sm text-red-600">That reset link has expired or was already used. <Link href="/reset" className="underline">Request a new one</Link>.</p>}
         <input type="hidden" name="next" value={next} />
         <label htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
         <input id="email" name="email" type="email" required className="mt-1 w-full rounded border px-3 py-2" />
@@ -42,7 +45,9 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <div className="mt-5">
           <SubmitButton pendingLabel="Signing in…">Sign in</SubmitButton>
         </div>
-        <p className="mt-3 text-center text-xs text-gray-400">Forgotten password? Use the reset link (coming with email adapter).</p>
+        <p className="mt-3 text-center text-sm text-gray-500">
+          <Link href="/reset" className="underline">Forgotten your password?</Link>
+        </p>
       </form>
     </div>
   );

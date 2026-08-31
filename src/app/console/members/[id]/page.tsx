@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canWrite, requireConsole } from "@/lib/auth";
+import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { socialFieldName } from "@/lib/member-form";
 import { renderableHtml } from "@/lib/sanitize";
@@ -23,8 +23,7 @@ const label = "text-sm font-medium";
 export default async function MemberEditor(props: PageProps<"/console/members/[id]">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const user = await requireConsole();
-  const editable = canWrite(user);
+  await requireConsole();
   const db = serviceDb();
   const error = typeof sp.error === "string" ? sp.error : null;
 
@@ -65,7 +64,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
   const [{ data: member }, { data: cats }, { data: revisions }] = await Promise.all([
     db.from("members").select(
-      "id, slug, name, status, category_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, testimonials, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email",
+      "id, slug, name, status, category_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, testimonials, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
     ).eq("id", id).single(),
     db.from("categories").select("id, name").eq("kind", "member").order("name"),
     db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1),
@@ -100,7 +99,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
       <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
           {member.name} <Badge tone={STATUS_TONE[member.status]}>{member.status}</Badge>
-          {editable && member.status !== "active" && (
+          {member.status !== "active" && (
             isDraft && !member.paid_at && !member.comped_until ? (
               <span className="text-xs font-normal text-gray-400">awaiting payment</span>
             ) : isDraft && !member.draft_submitted_at ? (
@@ -125,9 +124,6 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
       )}
       {typeof sp.saved === "string" && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Saved.</p>}
       {error && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
-      {!editable && (
-        <p className="mt-3 rounded bg-gray-100 p-2 text-sm text-gray-500">Your role can view this record but not change it.</p>
-      )}
 
       {pendingRevision && (
         <Card className="mt-4 border-brand/40 bg-brand/5">
@@ -157,7 +153,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
         <Card>
           <SectionTitle>Company page</SectionTitle>
-          <fieldset disabled={!editable} className="mt-3 space-y-4">
+          <fieldset className="mt-3 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="name" className={label}>Company name</label>
@@ -256,7 +252,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
         <Card>
           <SectionTitle>Membership</SectionTitle>
-          <fieldset disabled={!editable} className="mt-3 space-y-4">
+          <fieldset className="mt-3 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="status" className={label}>Status</label>
@@ -299,37 +295,42 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               Page submitted: {member.draft_submitted_at?.slice(0, 10) ?? "not yet"}
               {member.stripe_customer_id && ` · Stripe customer ${member.stripe_customer_id}`}
             </p>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" name="is_bundle_account" defaultChecked={member.is_bundle_account} className="mt-0.5" />
+              <span>
+                Bundle account
+                <span className="block text-xs text-gray-400">
+                  Fulfilment tag only, for your own tracking — never affects which adverts rotate or how often.
+                </span>
+              </span>
+            </label>
           </fieldset>
         </Card>
 
-        {editable && (
-          <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">
-            Save changes
-          </SubmitButton>
-        )}
+        <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">
+          Save changes
+        </SubmitButton>
       </form>
 
-      {editable && (
-        <Card className="mt-4">
-          <SectionTitle>Record a payment</SectionTitle>
-          <p className="mt-1 text-sm text-gray-500">
-            For payments taken offline. A payment raises the £40 invoice the member sees under Billing; a comp just extends their free period.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-            <form action={recordMemberPayment}>
-              <input type="hidden" name="id" value={id} />
-              <input type="hidden" name="kind" value="paid" />
-              <button className="rounded bg-ink px-4 py-2 text-sm text-white">Record £40 payment</button>
-            </form>
-            <form action={recordMemberPayment} className="flex items-center gap-2">
-              <input type="hidden" name="id" value={id} />
-              <input type="hidden" name="kind" value="comped" />
-              <input type="number" name="months" defaultValue={12} min={1} max={60} className="w-20 rounded border px-3 py-1.5 text-sm" />
-              <button className="rounded border border-ink px-4 py-1.5 text-sm text-ink">Comp for months</button>
-            </form>
-          </div>
-        </Card>
-      )}
+      <Card className="mt-4">
+        <SectionTitle>Record a payment</SectionTitle>
+        <p className="mt-1 text-sm text-gray-500">
+          For payments taken offline. A payment raises the £40 invoice the member sees under Billing; a comp just extends their free period.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <form action={recordMemberPayment}>
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="kind" value="paid" />
+            <button className="rounded bg-ink px-4 py-2 text-sm text-white">Record £40 payment</button>
+          </form>
+          <form action={recordMemberPayment} className="flex items-center gap-2">
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="kind" value="comped" />
+            <input type="number" name="months" defaultValue={12} min={1} max={60} className="w-20 rounded border px-3 py-1.5 text-sm" />
+            <button className="rounded border border-ink px-4 py-1.5 text-sm text-ink">Comp for months</button>
+          </form>
+        </div>
+      </Card>
 
       <Card className="mt-4">
         <SectionTitle>Activity</SectionTitle>

@@ -34,33 +34,151 @@ export type Database = {
   }
   public: {
     Tables: {
-      advert_bookings: {
+      advert_artwork_proposals: {
         Row: {
           advert_id: string
-          bundle_id: string | null
-          created_at: string
-          ends_on: string
+          decided_at: string | null
+          decided_by: string | null
+          desktop_path: string
           id: string
-          notes: string | null
-          starts_on: string
+          mobile_path: string
+          review_reason: string | null
+          source: string
+          status: string
+          submitted_at: string
+          submitted_by: string | null
+          updated_at: string
         }
         Insert: {
           advert_id: string
-          bundle_id?: string | null
-          created_at?: string
-          ends_on: string
+          decided_at?: string | null
+          decided_by?: string | null
+          desktop_path: string
           id?: string
-          notes?: string | null
-          starts_on: string
+          mobile_path: string
+          review_reason?: string | null
+          source: string
+          status?: string
+          submitted_at?: string
+          submitted_by?: string | null
+          updated_at?: string
         }
         Update: {
           advert_id?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          desktop_path?: string
+          id?: string
+          mobile_path?: string
+          review_reason?: string | null
+          source?: string
+          status?: string
+          submitted_at?: string
+          submitted_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advert_artwork_proposals_advert_id_fkey"
+            columns: ["advert_id"]
+            isOneToOne: false
+            referencedRelation: "adverts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advert_artwork_proposals_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "advert_artwork_proposals_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      advert_bookings: {
+        Row: {
+          advert_id: string
+          approved_at: string | null
+          approved_by: string | null
+          bundle_id: string | null
+          created_at: string
+          ended_at: string | null
+          ended_by: string | null
+          ended_note: string | null
+          ended_notified_for: string | null
+          ended_reason: string | null
+          ending_soon_notified_for: string | null
+          ends_on: string
+          id: string
+          notes: string | null
+          product_id: string | null
+          renewed_from: string | null
+          review_reason: string | null
+          source: string
+          starts_on: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          updated_at: string
+          went_live_at: string | null
+        }
+        Insert: {
+          advert_id: string
+          approved_at?: string | null
+          approved_by?: string | null
           bundle_id?: string | null
           created_at?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          ended_note?: string | null
+          ended_notified_for?: string | null
+          ended_reason?: string | null
+          ending_soon_notified_for?: string | null
+          ends_on: string
+          id?: string
+          notes?: string | null
+          product_id?: string | null
+          renewed_from?: string | null
+          review_reason?: string | null
+          source?: string
+          starts_on: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          updated_at?: string
+          went_live_at?: string | null
+        }
+        Update: {
+          advert_id?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          bundle_id?: string | null
+          created_at?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          ended_note?: string | null
+          ended_notified_for?: string | null
+          ended_reason?: string | null
+          ending_soon_notified_for?: string | null
           ends_on?: string
           id?: string
           notes?: string | null
+          product_id?: string | null
+          renewed_from?: string | null
+          review_reason?: string | null
+          source?: string
           starts_on?: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          updated_at?: string
+          went_live_at?: string | null
         }
         Relationships: [
           {
@@ -71,16 +189,52 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "advert_bookings_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "advert_bookings_bundle_fk"
             columns: ["bundle_id"]
             isOneToOne: false
             referencedRelation: "bundles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "advert_bookings_ended_by_fkey"
+            columns: ["ended_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "advert_bookings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "advert_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advert_bookings_renewed_from_fkey"
+            columns: ["renewed_from"]
+            isOneToOne: false
+            referencedRelation: "advert_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advert_bookings_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       advert_products: {
         Row: {
+          archived_at: string | null
           cap: number
           created_at: string
           description: string | null
@@ -91,6 +245,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
           cap?: number
           created_at?: string
           description?: string | null
@@ -101,6 +256,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
           cap?: number
           created_at?: string
           description?: string | null
@@ -130,75 +286,46 @@ export type Database = {
         }
         Relationships: []
       }
-      advertisers: {
-        Row: {
-          contact_email: string | null
-          created_at: string
-          id: string
-          member_id: string | null
-          name: string
-        }
-        Insert: {
-          contact_email?: string | null
-          created_at?: string
-          id?: string
-          member_id?: string | null
-          name: string
-        }
-        Update: {
-          contact_email?: string | null
-          created_at?: string
-          id?: string
-          member_id?: string | null
-          name?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "advertisers_member_id_fkey"
-            columns: ["member_id"]
-            isOneToOne: false
-            referencedRelation: "members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       adverts: {
         Row: {
-          advertiser_id: string
           created_at: string
           desktop_path: string
           format: string
           id: string
           link_url: string | null
+          member_id: string
           mobile_path: string
           name: string
+          updated_at: string
         }
         Insert: {
-          advertiser_id: string
           created_at?: string
           desktop_path: string
           format?: string
           id?: string
           link_url?: string | null
+          member_id: string
           mobile_path: string
           name: string
+          updated_at?: string
         }
         Update: {
-          advertiser_id?: string
           created_at?: string
           desktop_path?: string
           format?: string
           id?: string
           link_url?: string | null
+          member_id?: string
           mobile_path?: string
           name?: string
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "adverts_advertiser_id_fkey"
-            columns: ["advertiser_id"]
+            foreignKeyName: "adverts_member_id_fkey"
+            columns: ["member_id"]
             isOneToOne: false
-            referencedRelation: "advertisers"
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
@@ -495,35 +622,35 @@ export type Database = {
       }
       bundles: {
         Row: {
-          advertiser_id: string
           created_at: string
           id: string
+          member_id: string
           name: string
           notes: string | null
           price_pennies: number | null
         }
         Insert: {
-          advertiser_id: string
           created_at?: string
           id?: string
+          member_id: string
           name: string
           notes?: string | null
           price_pennies?: number | null
         }
         Update: {
-          advertiser_id?: string
           created_at?: string
           id?: string
+          member_id?: string
           name?: string
           notes?: string | null
           price_pennies?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "bundles_advertiser_id_fkey"
-            columns: ["advertiser_id"]
+            foreignKeyName: "bundles_member_id_fkey"
+            columns: ["member_id"]
             isOneToOne: false
-            referencedRelation: "advertisers"
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
@@ -998,6 +1125,7 @@ export type Database = {
           grace_until: string | null
           hero_path: string | null
           id: string
+          is_bundle_account: boolean
           joined_at: string | null
           lat: number | null
           lng: number | null
@@ -1026,6 +1154,7 @@ export type Database = {
           grace_until?: string | null
           hero_path?: string | null
           id?: string
+          is_bundle_account?: boolean
           joined_at?: string | null
           lat?: number | null
           lng?: number | null
@@ -1054,6 +1183,7 @@ export type Database = {
           grace_until?: string | null
           hero_path?: string | null
           id?: string
+          is_bundle_account?: boolean
           joined_at?: string | null
           lat?: number | null
           lng?: number | null
@@ -1120,6 +1250,7 @@ export type Database = {
           intro: string | null
           number: number
           scheduled_at: string | null
+          send_error: string | null
           sent_at: string | null
           status: string
           subject: string
@@ -1131,6 +1262,7 @@ export type Database = {
           intro?: string | null
           number: number
           scheduled_at?: string | null
+          send_error?: string | null
           sent_at?: string | null
           status?: string
           subject: string
@@ -1142,6 +1274,7 @@ export type Database = {
           intro?: string | null
           number?: number
           scheduled_at?: string | null
+          send_error?: string | null
           sent_at?: string | null
           status?: string
           subject?: string

@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { dealSlots, resolveAdvertTarget, uniformShuffle, type LiveAdvert } from "@/lib/adverts";
+import { bookingPhase, dealSlots, RENDERABLE_BOOKING_STATUSES, resolveAdvertTarget, uniformShuffle, type LiveAdvert } from "@/lib/adverts";
 
 const ad = (i: number): LiveAdvert => ({
   advertId: `ad-${i}`,
@@ -36,6 +38,23 @@ describe("rotation neutrality (the contractual rule: no advertiser can be favour
     const renamed = pool.map((p) => ({ ...p, name: "BUY-TOP-SLOT-£££" }));
     const b = uniformShuffle(renamed, fixed).map((x) => x.advertId);
     expect(a).toEqual(b);
+  });
+
+  it("the rotation module's code never reads a bias-capable field — checked, not just commented", () => {
+    // Turns the migration comment "this column may never be read by the
+    // rotation path" into something CI fails on, rather than a promise that
+    // only holds until someone forgets it. Strips comments first: the file's
+    // own doc comments name "weight/priority/bid" precisely to forbid them,
+    // and a naive scan would trip over its own warning label.
+    const path = fileURLToPath(new URL("../../src/lib/adverts.ts", import.meta.url));
+    const source = readFileSync(path, "utf8");
+    const code = source
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    const forbidden = ["is_bundle_account", "bundle_id", "weight", "priority", "bid"];
+    for (const term of forbidden) {
+      expect(code.toLowerCase()).not.toContain(term.toLowerCase());
+    }
   });
 });
 
@@ -81,5 +100,35 @@ describe("advert click target", () => {
     expect(resolveAdvertTarget("https://x.co.uk", "acme")).toBe("https://x.co.uk");
     expect(resolveAdvertTarget(null, "acme")).toBe("/member/acme");
     expect(resolveAdvertTarget(null, null)).toBe("/");
+  });
+});
+
+describe("the approval gate and the render predicate", () => {
+  it("only scheduled and live are renderable — a draft or sent-back run never reaches the site", () => {
+    // Guards the property that used to be absent entirely: before the lifecycle
+    // existed, ANY booking row whose dates spanned today rendered publicly.
+    expect([...RENDERABLE_BOOKING_STATUSES]).toEqual(["scheduled", "live"]);
+    for (const status of ["draft", "awaiting_approval", "review_required", "ended"]) {
+      expect(RENDERABLE_BOOKING_STATUSES).not.toContain(status);
+    }
+  });
+
+  it("an approved run still renders only inside its term, so a missed nightly sweep cannot leak it", () => {
+    const term = { status: "live", starts_on: "2026-03-01", ends_on: "2026-03-31" };
+    expect(bookingPhase(term, "2026-03-15")).toBe("live");
+    // sweep hasn't relabelled these yet — the dates must still decide
+    expect(bookingPhase(term, "2026-04-01")).toBe("ended");
+    expect(bookingPhase({ ...term, status: "scheduled" }, "2026-02-01")).toBe("upcoming");
+    expect(bookingPhase({ ...term, status: "scheduled" }, "2026-03-15")).toBe("live");
+  });
+
+  it("a terminal or unapproved status beats the dates, however they fall", () => {
+    const spanning = { starts_on: "2026-03-01", ends_on: "2026-03-31" };
+    const today = "2026-03-15";
+    expect(bookingPhase({ ...spanning, status: "draft" }, today)).toBe("draft");
+    expect(bookingPhase({ ...spanning, status: "awaiting_approval" }, today)).toBe("awaiting");
+    expect(bookingPhase({ ...spanning, status: "review_required" }, today)).toBe("changes_needed");
+    // ended stays ended even if someone edits the end date back into the future
+    expect(bookingPhase({ ...spanning, status: "ended" }, today)).toBe("ended");
   });
 });

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { notificationLabel } from "@/lib/email/templates";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ const CARDS = [
   { href: "/dashboard/event/new", icon: "📅", title: "Add an event", sub: "Open days, shows, launches" },
   { href: "/dashboard/equipment/new", icon: "⚙️", title: "Add equipment", sub: "Machines for sale, linked to your site" },
   { href: "/dashboard/stats", icon: "📈", title: "View statistics", sub: "Who's engaging with you" },
+  { href: "/dashboard/advert/new", icon: "📣", title: "Advertise", sub: "Your banner in the rotation" },
   { href: "/dashboard/buy", icon: "⭐", title: "Buy visibility", sub: "Featured slots & newsletter" },
   { href: "/dashboard/billing", icon: "🧾", title: "Billing", sub: "Invoices & membership" },
 ];
@@ -21,11 +23,19 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
   const sp = await props.searchParams;
   const db = serviceDb();
 
-  const [{ data: lastStory }, { data: pending }, { data: notifications }, { data: member }] = await Promise.all([
+  const [{ data: lastStory }, { data: pending }, { data: notifications }, { data: member }, { data: pendingAdverts }] = await Promise.all([
     db.from("stories").select("published_at").eq("member_id", user.memberId).eq("status", "published").order("published_at", { ascending: false }).limit(1).maybeSingle(),
     db.from("stories").select("id, title, status, rejected_reason").eq("member_id", user.memberId).in("status", ["awaiting_approval", "rejected"]).order("created_at", { ascending: false }).limit(3),
     db.from("notifications").select("kind, payload, created_at").eq("member_id", user.memberId).order("created_at", { ascending: false }).limit(4),
     db.from("members").select("status, paid_at, comped_until, draft_submitted_at").eq("id", user.memberId).single(),
+    // Adverts belong to the member, and their run carries the state — so this
+    // asks the bookings table, filtered through the member's own artwork.
+    db.from("advert_bookings")
+      .select("id, status, review_reason, starts_on, advert:adverts!inner(name, member_id)")
+      .eq("advert.member_id", user.memberId)
+      .in("status", ["draft", "awaiting_approval", "review_required"])
+      .order("created_at", { ascending: false })
+      .limit(3),
   ]);
 
   // nudge: "the last time you posted a story was six months ago"
@@ -48,6 +58,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
           {submitted === "machine" && "Equipment submitted — it appears once the editor approves it."}
           {submitted === "profile" && "Page changes submitted — they appear once approved."}
           {submitted === "buy" && "Request received — Jas will confirm and invoice you."}
+          {submitted === "advert" && "Advert submitted — we'll confirm availability, invoice you, and email you when it's scheduled."}
         </p>
       )}
 
@@ -76,7 +87,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
         ))}
       </div>
 
-      {(pending ?? []).length > 0 && (
+      {((pending ?? []).length > 0 || (pendingAdverts ?? []).length > 0) && (
         <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Your submissions</h2>
           {(pending ?? []).map((s) => (
@@ -87,6 +98,18 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
                 : <span className="text-red-600">not published{s.rejected_reason && `: ${s.rejected_reason}`}</span>}
             </p>
           ))}
+          {/* Adverts are actionable in a way stories are not — a sent-back run
+              can be edited and resubmitted, so each one links to its own page. */}
+          {(pendingAdverts ?? []).map((b) => (
+            <p key={b.id} className="mt-2 border-t pt-2 text-sm">
+              <Link href={`/dashboard/advert/${b.id}`} className="hover:underline">{b.advert?.name}</Link> —{" "}
+              {b.status === "awaiting_approval"
+                ? <span className="text-brand">awaiting approval</span>
+                : b.status === "draft"
+                ? <span className="text-gray-500">draft, not sent</span>
+                : <span className="text-red-600">needs a change{b.review_reason && `: ${b.review_reason}`}</span>}
+            </p>
+          ))}
         </section>
       )}
 
@@ -95,7 +118,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
           <h2 className="font-bold text-ink">Recent updates</h2>
           {(notifications ?? []).map((n, i) => (
             <p key={i} className="mt-2 border-t pt-2 text-sm text-gray-600">
-              {n.created_at.slice(0, 10)} — {n.kind === "story_live" ? "Your story went live 🎉" : n.kind === "story_rejected" ? "A story needs changes" : n.kind}
+              {n.created_at.slice(0, 10)} — {n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind)}
             </p>
           ))}
         </section>

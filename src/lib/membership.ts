@@ -76,20 +76,33 @@ export async function provisionMember(opts: {
  */
 export async function applyPaymentResult(memberId: string, result: CheckoutResult): Promise<void> {
   const db = serviceDb();
+  const { enqueue } = await import("./jobs");
   if (result.kind === "paid") {
     const now = new Date();
+    const number = `SMI-JOIN-${now.getTime().toString(36).toUpperCase()}`;
     await db.from("members").update({ paid_at: now.toISOString() }).eq("id", memberId);
     await db.from("invoices").insert({
       member_id: memberId,
-      number: `SMI-JOIN-${now.getTime().toString(36).toUpperCase()}`,
+      number,
       amount_pennies: 4000,
       issued_on: now.toISOString().slice(0, 10),
       status: "paid",
     });
+    // Gated, not unconditional: while payments are stubbed a "paid" result means
+    // nothing was charged (GAPS C1), and a receipt for money that never moved is
+    // a false record in a member's inbox. Flips on with the Stripe adapter — and
+    // because the webhook route will call this same seam, it works there too.
+    const { paymentsAreLive } = await import("./adapters/payments");
+    if (paymentsAreLive()) {
+      await enqueue("notify_member", { member_id: memberId, kind: "payment_receipt", amount: "£40.00", invoice_ref: number });
+    }
   } else if (result.kind === "comped") {
     // date-only arithmetic: UTC noon dodges TZ off-by-one at month boundaries
     const d = new Date(`${new Date().toISOString().slice(0, 10)}T12:00:00Z`);
     d.setUTCMonth(d.getUTCMonth() + result.months);
-    await db.from("members").update({ comped_until: d.toISOString().slice(0, 10) }).eq("id", memberId);
+    const until = d.toISOString().slice(0, 10);
+    await db.from("members").update({ comped_until: until }).eq("id", memberId);
+    // A comp is real whether or not Stripe exists, so this one always sends.
+    await enqueue("notify_member", { member_id: memberId, kind: "comp_applied", months: result.months, comped_until: until });
   }
 }

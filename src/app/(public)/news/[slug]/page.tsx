@@ -6,6 +6,7 @@ import { record, requestContext } from "@/lib/analytics";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys, bodyAdSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
+import { focusStyle } from "@/lib/focus";
 import { storyBySlug, publishedStories } from "@/lib/queries";
 import { splitAtAdBreaks } from "@/lib/sanitize";
 import { AdSlot } from "@/components/AdSlot";
@@ -98,7 +99,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
           ),
           story_hero: cover && (
             <div className="relative mt-4 h-96 overflow-hidden rounded-lg">
-              <Image src={cover} alt="" fill sizes="100vw" className="object-cover" preload unoptimized />
+              <Image src={cover} alt="" fill sizes="100vw" style={focusStyle(story.cover_focus)} className="object-cover" preload unoptimized />
             </div>
           ),
           story_body: (

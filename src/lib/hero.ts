@@ -1,4 +1,5 @@
 import { mediaUrl } from "./db/server";
+import { DEFAULT_FOCUS, parseFocus, type Focus } from "./focus";
 import type { StoryCard } from "./queries";
 import { excerptFromHtml } from "./sanitize";
 import { youtubeId } from "./youtube";
@@ -33,6 +34,8 @@ type HeroBase = {
   title: string;
   /** Absolute URL, already resolved. Null renders the gear-glyph fallback. */
   image: string | null;
+  /** Crop box for the image, already parsed. Videos use the centred default. */
+  focus: Focus;
   eyebrow: string;
   /** "12 August 2026 · Acme Fabrications" — formatted server-side. */
   meta: string | null;
@@ -70,6 +73,7 @@ function storyItem(story: StoryCard, eyebrow: string): HeroItem {
     key: `s:${story.id}`,
     title: story.title,
     image: mediaUrl(story.cover_path),
+    focus: parseFocus(story.cover_focus),
     eyebrow,
     meta: [dateGB(story.published_at), story.member?.name].filter(Boolean).join(" · ") || null,
     href: `/news/${story.slug}`,
@@ -88,6 +92,7 @@ function videoItem(video: HeroVideo): HeroItem {
     key: `v:${video.id}`,
     title: video.title,
     image: mediaUrl(video.thumbnail_path) ?? (yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : null),
+    focus: DEFAULT_FOCUS,
     eyebrow: "Video",
     meta: video.member?.name ?? null,
     href: video.url,

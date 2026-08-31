@@ -7,12 +7,14 @@ export type StoryCard = {
   title: string;
   excerpt: string | null;
   cover_path: string | null;
+  /** {x, y, scale} crop box — jsonb, so read it through parseFocus(). */
+  cover_focus: unknown;
   published_at: string | null;
   is_member_news: boolean;
   member: { slug: string; name: string; logo_path: string | null } | null;
 };
 
-const STORY_CARD = "id, slug, title, excerpt, cover_path, published_at, is_member_news, member:members(slug, name, logo_path)";
+const STORY_CARD = "id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member:members(slug, name, logo_path)";
 
 export async function publishedStories(opts: { limit?: number; offset?: number; category?: string; memberOnly?: boolean; order?: "desc" | "asc" } = {}) {
   const db = publicDb();
@@ -88,6 +90,29 @@ export async function activePlacements() {
     .lte("starts_on", today)
     .gte("ends_on", today);
   return data ?? [];
+}
+
+export type ActiveTakeover = { hex: string; bannerPath: string; memberSlug: string | null };
+
+/**
+ * Lightweight and separate from activePlacements(): that call is home-only and
+ * fetches far more than a takeover needs, while this is read on every public
+ * page via the shared layout. Same date-driven pattern as everywhere else —
+ * no job flips this live or ends it.
+ */
+export async function activeTakeover(): Promise<ActiveTakeover | null> {
+  const db = serviceDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await db
+    .from("placements")
+    .select("config, member:members(slug)")
+    .eq("kind", "takeover")
+    .lte("starts_on", today)
+    .gte("ends_on", today)
+    .maybeSingle();
+  const config = data?.config as { hex?: string; banner_path?: string } | undefined;
+  if (!config?.hex || !config.banner_path) return null;
+  return { hex: config.hex, bannerPath: config.banner_path, memberSlug: data?.member?.slug ?? null };
 }
 
 export async function publishedVideos(limit = 8) {
@@ -251,7 +276,7 @@ export async function newsletterBySlug(slug: string) {
   if (!issue) return null;
   const { data: items } = await publicDb()
     .from("newsletter_items")
-    .select("position, story:stories(slug, title, excerpt, cover_path)")
+    .select("position, story:stories(slug, title, excerpt, cover_path, cover_focus)")
     .eq("issue_id", issue.id)
     .order("position");
   return { ...issue, items: items ?? [] };

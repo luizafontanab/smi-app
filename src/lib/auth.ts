@@ -1,8 +1,10 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { sessionDb, serviceDb } from "./db/server";
+import type { Database } from "./db/types";
 
-export type Role = "admin" | "member";
+/** Two roles, by design: admins are provisioned directly in the database; members are created by the join funnel and console's createMember. */
+export type Role = Database["public"]["Enums"]["user_role"];
 
 export type CurrentUser = {
   userId: string;
@@ -11,11 +13,6 @@ export type CurrentUser = {
   memberId: string | null;
   displayName: string | null;
 };
-
-/** Guards against a stale/unmigrated role value (e.g. a pre-collapse "super_admin" row) reaching the redirect logic below, where it would fail every role check and loop. */
-function normalizeRole(role: string): Role | null {
-  return role === "admin" || role === "member" ? role : null;
-}
 
 /** Request-scoped cache: the public layout and JoinCta both call this per render. */
 export const currentUser = cache(async (): Promise<CurrentUser | null> => {
@@ -28,12 +25,10 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
     .eq("user_id", user.id)
     .single();
   if (!profile) return null;
-  const role = normalizeRole(profile.role);
-  if (!role) return null;
   return {
     userId: user.id,
     email: user.email ?? "",
-    role,
+    role: profile.role,
     memberId: profile.member_id,
     displayName: profile.display_name,
   };
@@ -45,13 +40,6 @@ export async function requireConsole(): Promise<CurrentUser> {
   if (!user) redirect("/login?next=/console");
   if (user.role !== "admin") redirect("/dashboard");
   return user;
-}
-
-export function canWrite(user: CurrentUser): boolean {
-  return user.role === "admin";
-}
-export function canApprove(user: CurrentUser): boolean {
-  return user.role === "admin";
 }
 
 /** Admin-only surface: the dev-task widget, rendered for a possibly-anonymous visitor on any route. */

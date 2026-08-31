@@ -1,9 +1,17 @@
 "use client";
 import Image from "next/image";
 import { useState } from "react";
+import { focusStyle, type Focus } from "@/lib/focus";
 
-/** Crop focus control: click sets the focal point, slider zooms. Values stored in cover_focus. */
-export function FocusPicker({ src, initial }: { src: string; initial: { x: number; y: number; scale: number } }) {
+/**
+ * Crop focus control: click sets the focal point, slider zooms. Values stored
+ * in cover_focus.
+ *
+ * The preview deliberately uses focusStyle — the same helper the public pages
+ * render with — so what an admin sees here is what the site does. (It used to
+ * zoom from the element centre, which no public page reproduced.)
+ */
+export function FocusPicker({ src, initial }: { src: string; initial: Focus }) {
   const [focus, setFocus] = useState(initial);
   return (
     <div className="mt-1" role="group" aria-labelledby="focus-picker-label">
@@ -21,7 +29,7 @@ export function FocusPicker({ src, initial }: { src: string; initial: { x: numbe
           sizes="320px"
           unoptimized
           className="object-cover"
-          style={{ objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${focus.scale})` }}
+          style={focusStyle(focus)}
         />
         <span
           className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-brand bg-white/60"

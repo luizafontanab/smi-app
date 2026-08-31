@@ -35,6 +35,12 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
     emailSubject: `New member signup: ${company}`,
   });
 
+  // The member's own welcome. provisionMember sets email_confirm, so Supabase
+  // sends nothing — without this a new member hears from us for the first time
+  // only when Jas activates their page, which can be days later.
+  const { enqueue } = await import("@/lib/jobs");
+  await enqueue("notify_member", { member_id: result.memberId, kind: "welcome" });
+
   const session = await sessionDb();
   await session.auth.signInWithPassword({ email, password });
   redirect("/dashboard/pay");
