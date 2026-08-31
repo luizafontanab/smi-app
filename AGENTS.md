@@ -12,6 +12,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 `docs/GAPS.md` is the standing audit of Phase 1 against `../requirements/USE-CASES.md`. Every item is numbered (A1.1, B2.1, C3 …) so it can be referenced directly. Check it before starting work in an area, and tick items off as they land.
 
+`docs/HUMAN-TODO.md` is the companion list of steps only a person can take — external accounts, DNS, hosted-dashboard settings, decisions. When work is finished but inert because it needs a key, a domain or an approval, record it there rather than leaving it implied in a summary.
+
 ## Verifying changes
 
 Use the `verify` skill (`.claude/skills/verify/SKILL.md`) while iterating and before calling any task done:

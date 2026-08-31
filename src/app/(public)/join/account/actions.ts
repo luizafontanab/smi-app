@@ -38,8 +38,16 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
   // The member's own welcome. provisionMember sets email_confirm, so Supabase
   // sends nothing — without this a new member hears from us for the first time
   // only when Jas activates their page, which can be days later.
-  const { enqueue } = await import("@/lib/jobs");
-  await enqueue("notify_member", { member_id: result.memberId, kind: "welcome" });
+  //
+  // Guarded for the same reason notifyAdminFunnel is: the account and the draft
+  // page already exist by this point, so failing the signup over an unsent
+  // welcome would strand a real member behind an error they cannot retry past.
+  try {
+    const { enqueue } = await import("@/lib/jobs");
+    await enqueue("notify_member", { member_id: result.memberId, kind: "welcome" });
+  } catch (e) {
+    console.error("[join] welcome email could not be queued:", e);
+  }
 
   const session = await sessionDb();
   await session.auth.signInWithPassword({ email, password });

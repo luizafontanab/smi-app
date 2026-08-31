@@ -7,6 +7,8 @@ Audited 31 Aug 2026 against [`USE-CASES.md`](../../requirements/USE-CASES.md) (6
 
 Every item is numbered so it can be referenced directly (e.g. "do A2.1 and A2.2"). Tick items as they land; add the commit SHA next to a ticked item.
 
+Where an item is *coded but inert* pending an account, key or approval, the human step is written up in **[`HUMAN-TODO.md`](HUMAN-TODO.md)** — Part B items in particular.
+
 Feature-parity scoping for Part A4 ("Member area") against the legacy site's members-only dashboard is in **[`legacy-members-admin-inventory.md`](legacy-members-admin-inventory.md)** — what exists there today, per role, and three modules confirmed coded-but-unwired.
 
 ---
@@ -146,7 +148,7 @@ Feature-parity scoping for Part A4 ("Member area") against the legacy site's mem
 
 ### B5 · Newsletter delivery
 
-- [x] **B5.1 — No sender exists.** ~~Choose an ESP.~~ Done 31 Aug: **the ESP is Resend** — the MailChimp deliverability gate is closed (TECH-DECISIONS #7, superseded). `ResendNewsletterSender` builds the issue HTML from `newsletter_items` *and* `newsletter_ads` and sends it as a Broadcast; a daily `newsletter_sync` job mirrors `contacts` to the provider, without which a broadcast would have no recipients. ⚠ Written against Resend's documented API but never run live — confirm the Broadcasts/Contacts shapes on the first real send. → `src/lib/adapters/newsletter.ts`
+- [x] **B5.1 — No sender exists.** ~~`LoggingNewsletterStub` counts subscribers and logs.~~ Done 31 Aug: a real sender exists. **This does not choose the ESP** — Jas's MailChimp deliverability gate is still open, and Resend is built as the candidate to test *with*, not as the answer. That is the point of the adapter: MailChimp can still win for one class' work. `ResendNewsletterSender` builds the issue HTML from `newsletter_items` *and* `newsletter_ads` and sends it as a Broadcast; a daily `newsletter_sync` job mirrors `contacts` to the provider, without which a broadcast would have no recipients. ⚠ Written against Resend's documented API but never run live — confirm the Broadcasts/Contacts shapes on the first real send. → `src/lib/adapters/newsletter.ts`
 - [x] **B5.2 — No reader-facing unsubscribe route anywhere.** Done 31 Aug: broadcasts carry Resend's hosted one-click unsubscribe (RFC 8058, `List-Unsubscribe` set for us — not worth hand-rolling), and `/api/webhooks/resend` mirrors unsubscribes, hard bounces and spam complaints back into `contacts` through the tested `applyOptIn`, so our table stays authoritative. A plain `/unsubscribe` page covers the web archive. → `src/app/unsubscribe/page.tsx`, `src/app/api/webhooks/resend/route.ts`
 - [ ] **B5.3 — No preview/proof step and no way to edit an issue after creation** (no `updateIssue` action). No video pick in the composer.
 

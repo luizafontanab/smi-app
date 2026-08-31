@@ -17,7 +17,8 @@
       "Bash(pnpm typecheck 2>&1)",
       "Bash(tail *)",
       "Bash(head *)",
-      "Bash(npx tsc --noEmit 2>&1)"
+      "Bash(npx tsc --noEmit 2>&1)",
+      "Bash(supabase migration list 2>&1)"
     ],
     "deny": [
       "Bash(rm -rf:*)",

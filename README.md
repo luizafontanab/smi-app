@@ -75,7 +75,7 @@ pnpm seed:prod --stories-limit 300  # real WP content; --remote guard is baked i
 Then in the dashboard: **Authentication → URL Configuration** → set Site URL + redirect URLs to the deployed app.
 
 - **New Postgres functions are callable by `anon` unless you revoke from `PUBLIC`.** Two things grant it: migration 0006's `alter default privileges … grant execute on functions to anon, authenticated`, and Postgres's own default of granting `EXECUTE` to `PUBLIC` at creation. `revoke … from anon, authenticated` alone does **not** work — the roles still inherit through `PUBLIC`. Any maintenance or `security definer` function needs `revoke execute on function f() from public;` plus an explicit `grant … to service_role;` (see `20260816000002`).
-- **Never run `supabase config push`.** It would overwrite hosted auth settings with the local values in `config.toml` — `site_url = 127.0.0.1:3000`, `enable_confirmations = false`, and a 2-emails/hour rate limit.
+- **Never run `supabase config push`.** It would overwrite hosted auth settings with the local values in `config.toml` — `site_url = 127.0.0.1:3100`, a localhost-only redirect allow-list, `enable_confirmations = false`, and a 2-emails/hour rate limit. Local auth config is now load-bearing (password reset reads it), so there is more to clobber than there used to be, not less.
 - The seed expects a **fresh database** — it uses plain `.insert()`, so a second run collides. Re-deploy by resetting the remote schema, not by re-seeding.
 - `--stories-limit N` bounds the media upload too (only media referenced by seeded rows is uploaded). All 1,992 stories = 1.00 GiB, exactly the free-tier storage cap; 300 stories ≈ 306 MiB. Members/videos/events contribute a fixed 164 MiB regardless.
 - The `media` bucket is created by the seed script, not by a migration — a schema-only deploy leaves prod with no bucket and every image 404ing.
@@ -92,10 +92,12 @@ pnpm test:e2e                 # playwright (approval-gate loop, member-first sea
 
 - **Advert neutrality is structural**: selection is an unbiased shuffle in `src/lib/adverts.ts`; the schema has no weight/priority column and must never gain one.
 - **Approval gate**: no code path publishes content without editor action; RLS keeps non-published rows invisible to the public role.
-- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer), CRM (Bigin), newsletter (**Resend** — the MailChimp deliverability gate was closed in its favour on 31 Aug; TECH-DECISIONS #7 superseded), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
+- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer), CRM (Bigin), newsletter (**Resend, as the candidate under test** — the MailChimp deliverability gate is still open and still Jas's call; the sender exists so the test can be run), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
 - **Jobs**: Postgres queue (`jobs` table) driven by `/api/cron` (Vercel Cron in prod, `scripts/job-runner.ts` locally). Dead-lettered jobs surface in the console's "Needs You Today".
 - **Analytics**: first-party, partitioned `analytics_events` + nightly rollups. Numbers shown to members are real — no padding, by requirement.
 
 ## Still parked (needs approval / external accounts)
+
+Step-by-step, with what breaks until each is done: **[`docs/HUMAN-TODO.md`](docs/HUMAN-TODO.md)**.
 
 GitHub org + repo transfer to SMI ownership · **Supabase EU/UK project** (deployed to `ca-central-1` for the demo — see above) · Vercel project + Cron (`/api/cron` is unauthenticated unless `CRON_SECRET` is set) · **Resend account (SMI-owned) + verified sending domain with SPF/DKIM/DMARC, plus Resend SMTP set in the hosted Supabase dashboard for auth mail** · Buffer/MaxMind keys · Stripe test wiring · real WP export import at cutover · Content OS (module 6, priced separately).

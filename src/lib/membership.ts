@@ -74,9 +74,24 @@ export async function provisionMember(opts: {
  * member can see under Billing) or comped months from a promo code.
  * The future Stripe webhook route calls this too — keep it the single seam.
  */
+/**
+ * Queue a member notification without ever failing the caller.
+ *
+ * Every caller here has already committed the thing that matters — the payment
+ * is recorded, the comp is applied — so a queue hiccup must not surface as a
+ * failed payment to someone whose money has moved.
+ */
+async function notifyQuietly(memberId: string, payload: Record<string, unknown>): Promise<void> {
+  try {
+    const { enqueue } = await import("./jobs");
+    await enqueue("notify_member", { member_id: memberId, ...payload });
+  } catch (e) {
+    console.error("[membership] notification could not be queued:", e);
+  }
+}
+
 export async function applyPaymentResult(memberId: string, result: CheckoutResult): Promise<void> {
   const db = serviceDb();
-  const { enqueue } = await import("./jobs");
   if (result.kind === "paid") {
     const now = new Date();
     const number = `SMI-JOIN-${now.getTime().toString(36).toUpperCase()}`;
@@ -94,7 +109,7 @@ export async function applyPaymentResult(memberId: string, result: CheckoutResul
     // because the webhook route will call this same seam, it works there too.
     const { paymentsAreLive } = await import("./adapters/payments");
     if (paymentsAreLive()) {
-      await enqueue("notify_member", { member_id: memberId, kind: "payment_receipt", amount: "£40.00", invoice_ref: number });
+      await notifyQuietly(memberId, { kind: "payment_receipt", amount: "£40.00", invoice_ref: number });
     }
   } else if (result.kind === "comped") {
     // date-only arithmetic: UTC noon dodges TZ off-by-one at month boundaries
@@ -103,6 +118,6 @@ export async function applyPaymentResult(memberId: string, result: CheckoutResul
     const until = d.toISOString().slice(0, 10);
     await db.from("members").update({ comped_until: until }).eq("id", memberId);
     // A comp is real whether or not Stripe exists, so this one always sends.
-    await enqueue("notify_member", { member_id: memberId, kind: "comp_applied", months: result.months, comped_until: until });
+    await notifyQuietly(memberId, { kind: "comp_applied", months: result.months, comped_until: until });
   }
 }
