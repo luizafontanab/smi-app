@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { uploadImage } from "@/lib/media";
+import { removeMedia, uploadImage } from "@/lib/media";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { mergeSocial } from "@/lib/social";
 
@@ -242,7 +242,7 @@ export async function submitAdvert(formData: FormData) {
   }
 
   const db = serviceDb();
-  const { data: advert } = await db.from("adverts").insert({
+  const { data: advert, error: advertError } = await db.from("adverts").insert({
     member_id: user.memberId,
     name,
     format,
@@ -250,9 +250,14 @@ export async function submitAdvert(formData: FormData) {
     mobile_path,
     link_url: String(formData.get("link_url") ?? "").trim() || null,
   }).select("id").single();
-  if (!advert) return;
+  if (!advert) {
+    // Nothing was written, so the just-uploaded artwork would otherwise be
+    // orphaned storage with no row pointing at it.
+    await Promise.all([removeMedia(desktop_path), removeMedia(mobile_path)]);
+    redirect(`/dashboard/advert/new?error=${encodeURIComponent(advertError?.message ?? "Could not save the advert.")}`);
+  }
 
-  await db.from("advert_bookings").insert({
+  const { error: bookingError } = await db.from("advert_bookings").insert({
     advert_id: advert.id,
     starts_on,
     ends_on,
@@ -262,6 +267,18 @@ export async function submitAdvert(formData: FormData) {
     submitted_at: new Date().toISOString(),
     notes: String(formData.get("notes") ?? "").trim() || null,
   });
+  if (bookingError) {
+    // The advert row is worthless without a booking on it (and would show up
+    // nowhere the member or console can reach to retry) — clean it and its
+    // artwork up rather than leaving an orphan and redirecting to "success".
+    await Promise.all([removeMedia(desktop_path), removeMedia(mobile_path)]);
+    await db.from("adverts").delete().eq("id", advert.id);
+    redirect(`/dashboard/advert/new?error=${encodeURIComponent(
+      bookingError.message.includes("ends_on")
+        ? "The run must end on or after its start date."
+        : bookingError.message,
+    )}`);
+  }
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=advert");
 }

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { sessionDb } from "@/lib/db/server";
 import { currentUser } from "@/lib/auth";
 import { siteUrl } from "@/lib/site-url";
-import { allowRequest, HOUR } from "@/lib/rate-limit";
+import { allowRequest, HOUR, withinLimit } from "@/lib/rate-limit";
 import { SubmitButton } from "@/components/SubmitButton";
 
 export const metadata = { title: "Reset your password" };
@@ -27,8 +27,10 @@ export default async function ResetPage(props: PageProps<"/reset">) {
     "use server";
     const email = String(formData.get("email") ?? "").trim().toLowerCase();
     // Deliberately generous: locking someone out of the *unlock* flow is worse
-    // than a few extra emails, and Supabase rate-limits the send itself.
-    if (email && (await allowRequest("reset", 5, HOUR))) {
+    // than a few extra emails, and Supabase rate-limits the send itself. The
+    // per-IP budget alone would still let one caller spend all 5 requests/hour
+    // against a single address, so the address gets its own budget too.
+    if (email && (await allowRequest("reset", 5, HOUR)) && withinLimit(`reset-email:${email}`, 5, HOUR)) {
       const db = await sessionDb();
       await db.auth.resetPasswordForEmail(email, { redirectTo: `${siteUrl()}/reset/confirm` });
     }

@@ -20,8 +20,11 @@
 
 export type OutgoingEmail = { to: string; subject: string; text: string; html?: string };
 
+/** `idempotencyKey`, when given, is passed to the provider so a retried job can't cause a second send. */
+export type SendOptions = { idempotencyKey?: string };
+
 export interface EmailSender {
-  send(mail: OutgoingEmail): Promise<void>;
+  send(mail: OutgoingEmail, opts?: SendOptions): Promise<void>;
 }
 
 /** A non-2xx from the provider. `retryAfterMs` is set when it told us to wait. */
@@ -65,7 +68,8 @@ class MailpitSender implements EmailSender {
   async send(mail: OutgoingEmail): Promise<void> {
     const from = parseAddress(this.from);
     // Mailpit's HTTP send API rather than SMTP: it keeps this adapter
-    // dependency-free, matching every other adapter in this directory.
+    // dependency-free, matching every other adapter in this directory. Mailpit
+    // has no idempotency concept, and dev-only duplicate mail is harmless.
     const res = await fetch(`${this.baseUrl.replace(/\/+$/, "")}/api/v1/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -102,10 +106,17 @@ class ResendSender implements EmailSender {
     private replyTo?: string,
   ) {}
 
-  async send(mail: OutgoingEmail): Promise<void> {
+  async send(mail: OutgoingEmail, opts?: SendOptions): Promise<void> {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+        // A retried job (network blip, our own DB write failing after the send
+        // succeeded) must not cause a second email — Resend dedupes repeats of
+        // the same key instead of sending again.
+        ...(opts?.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
+      },
       body: JSON.stringify({
         from: this.from,
         ...(this.replyTo ? { reply_to: this.replyTo } : {}),

@@ -44,14 +44,18 @@ describe.skipIf(!KEY)("notify_member", () => {
   });
 
   it("writes the notification, sends the email and stamps emailed_at", async () => {
-    const { enqueue, runDueJobs } = await import("@/lib/jobs");
+    const { enqueue, runJobById } = await import("@/lib/jobs");
     await enqueue("notify_member", {
       member_id: memberId,
       kind: "advert_ending_soon",
       booking_id: "booking-under-test",
       ends_on: "2026-09-30",
     });
-    await runDueJobs();
+    // Targeted rather than runDueJobs()'s table-wide sweep, which would race
+    // against any other test file's pending jobs on this same local stack.
+    const { data: job } = await db.from("jobs").select("id").eq("kind", "notify_member")
+      .eq("status", "pending").order("created_at", { ascending: false }).limit(1).single();
+    await runJobById(job!.id);
 
     const { data: note } = await db
       .from("notifications")
@@ -78,5 +82,50 @@ describe.skipIf(!KEY)("notify_member", () => {
     // with no reachable path (GAPS A2.5).
     expect(body.Text).toContain("/dashboard/advert/booking-under-test");
     expect(body.HTML).toContain("Sheet Metal");
+  }, 120_000);
+
+  it("does not duplicate the notification or the email if the same job runs again", async () => {
+    // Regression test for the bug this job used to have: insert the
+    // notification, send, THEN stamp emailed_at as three separate steps meant
+    // a job that ran again after already sending (e.g. the runner retrying it
+    // for an unrelated reason) had no way to tell it had already gone out —
+    // it inserted a second row and mailed the member twice.
+    const { enqueue, runJobById } = await import("@/lib/jobs");
+    await enqueue("notify_member", {
+      member_id: memberId,
+      kind: "advert_ending_soon",
+      booking_id: "retry-test-booking",
+      ends_on: "2026-10-01",
+    });
+    const { data: jobRow } = await db
+      .from("jobs")
+      .select("id")
+      .eq("kind", "notify_member")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    expect(jobRow).toBeTruthy();
+
+    await runJobById(jobRow!.id);
+    // Put the same job back in front of the runner, as if it were being
+    // retried — this is the exact scenario the job_id-keyed lookup exists for.
+    await db.from("jobs").update({ status: "pending", due_at: new Date().toISOString() }).eq("id", jobRow!.id);
+    await runJobById(jobRow!.id);
+
+    const { data: notes } = await db.from("notifications").select("id, emailed_at").eq("job_id", jobRow!.id);
+    expect(notes).toHaveLength(1);
+    expect(notes![0].emailed_at).not.toBeNull();
+
+    // The previous test also mails this same address, with the same subject —
+    // so identify this test's message(s) by its distinct ends_on date rather
+    // than by subject or recipient alone.
+    const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`);
+    const found = (await res.json()) as { messages?: { ID: string }[] };
+    created.push(...(found.messages ?? []).map((m) => m.ID));
+    const bodies = await Promise.all(
+      (found.messages ?? []).map((m) => fetch(`${MAILPIT}/api/v1/message/${m.ID}`).then((r) => r.json() as Promise<{ Text: string }>)),
+    );
+    expect(bodies.filter((b) => b.Text.includes("2026-10-01"))).toHaveLength(1);
   }, 120_000);
 });

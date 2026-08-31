@@ -7,6 +7,8 @@ Audited 31 Aug 2026 against [`USE-CASES.md`](../../requirements/USE-CASES.md) (6
 
 Every item is numbered so it can be referenced directly (e.g. "do A2.1 and A2.2"). Tick items as they land; add the commit SHA next to a ticked item.
 
+Feature-parity scoping for Part A4 ("Member area") against the legacy site's members-only dashboard is in **[`legacy-members-admin-inventory.md`](legacy-members-admin-inventory.md)** — what exists there today, per role, and three modules confirmed coded-but-unwired.
+
 ---
 
 ## Part A — Buildable now, no third-party dependency

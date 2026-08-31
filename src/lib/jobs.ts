@@ -25,6 +25,49 @@ export async function enqueue(kind: JobKind, payload: Record<string, unknown> = 
   await serviceDb().from("jobs").insert({ kind, payload: payload as Json, due_at: (dueAt ?? new Date()).toISOString() });
 }
 
+type JobRow = { id: string; kind: string; payload: unknown; attempts: number; max_attempts: number; due_at: string };
+
+/** Claim one specific pending job row and run it, with the same retry/dead-letter handling `runDueJobs` uses. Returns true if it ran (whether it succeeded or was handed back for retry), false if something else claimed it first. */
+async function claimAndRun(db: ReturnType<typeof serviceDb>, job: JobRow): Promise<boolean> {
+  const { data: claimed } = await db
+    .from("jobs")
+    .update({ status: "running", attempts: job.attempts + 1, updated_at: new Date().toISOString() })
+    .eq("id", job.id)
+    .eq("status", "pending") // optimistic claim — only one runner wins
+    .select("id");
+  if (!claimed?.length) return false;
+  try {
+    await runJob(job.kind as JobKind, (job.payload ?? {}) as Record<string, unknown>, job.id);
+    await db.from("jobs").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", job.id);
+  } catch (e) {
+    // Provider backpressure is not job failure. Resend allows 2 requests a
+    // second and a sweep can claim up to 20 jobs, so a burst of member
+    // notifications will legitimately 429. Honour Retry-After and hand the
+    // attempt back, or three quick notifications in a row would dead-letter
+    // a perfectly good job.
+    const pause = rateLimitPauseMs(e);
+    if (pause !== null) {
+      await db.from("jobs").update({
+        status: "pending",
+        attempts: job.attempts, // undo the claim's increment
+        due_at: new Date(Date.now() + pause).toISOString(),
+        last_error: String(e).slice(0, 500),
+        updated_at: new Date().toISOString(),
+      }).eq("id", job.id);
+      return true;
+    }
+    const dead = job.attempts + 1 >= job.max_attempts;
+    await db.from("jobs").update({
+      status: dead ? "dead" : "pending",
+      due_at: dead ? job.due_at : new Date(Date.now() + 60_000 * job.attempts).toISOString(),
+      last_error: String(e).slice(0, 500),
+      updated_at: new Date().toISOString(),
+    }).eq("id", job.id);
+    throw e;
+  }
+  return true;
+}
+
 export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   const db = serviceDb();
   let ran = 0, failed = 0;
@@ -47,45 +90,34 @@ export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
     .limit(20);
 
   for (const job of due ?? []) {
-    const { data: claimed } = await db
-      .from("jobs")
-      .update({ status: "running", attempts: job.attempts + 1, updated_at: new Date().toISOString() })
-      .eq("id", job.id)
-      .eq("status", "pending") // optimistic claim — only one runner wins
-      .select("id");
-    if (!claimed?.length) continue;
     try {
-      await runJob(job.kind as JobKind, (job.payload ?? {}) as Record<string, unknown>);
-      await db.from("jobs").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", job.id);
-      ran++;
-    } catch (e) {
+      if (await claimAndRun(db, job)) ran++;
+    } catch {
       failed++;
-      // Provider backpressure is not job failure. Resend allows 2 requests a
-      // second and this loop claims up to 20 jobs, so a burst of member
-      // notifications will legitimately 429. Honour Retry-After and hand the
-      // attempt back, or three quick notifications in a row would dead-letter
-      // a perfectly good job.
-      const pause = rateLimitPauseMs(e);
-      if (pause !== null) {
-        await db.from("jobs").update({
-          status: "pending",
-          attempts: job.attempts, // undo the claim's increment
-          due_at: new Date(Date.now() + pause).toISOString(),
-          last_error: String(e).slice(0, 500),
-          updated_at: new Date().toISOString(),
-        }).eq("id", job.id);
-        continue;
-      }
-      const dead = job.attempts + 1 >= job.max_attempts;
-      await db.from("jobs").update({
-        status: dead ? "dead" : "pending",
-        due_at: dead ? job.due_at : new Date(Date.now() + 60_000 * job.attempts).toISOString(),
-        last_error: String(e).slice(0, 500),
-        updated_at: new Date().toISOString(),
-      }).eq("id", job.id);
     }
   }
   return { ran, failed };
+}
+
+/**
+ * Claim and run exactly one job by id, bypassing the due-jobs sweep. For
+ * tests: `runDueJobs()` claims up to 20 pending jobs table-wide, which races
+ * against any other test (in this file or another running concurrently
+ * against the same local stack) that also has jobs pending — this runs only
+ * the job the caller asked for.
+ */
+export async function runJobById(jobId: string): Promise<void> {
+  const db = serviceDb();
+  const { data: job } = await db.from("jobs").select("*").eq("id", jobId).single();
+  if (!job) return;
+  // Mirrors runDueJobs: a job failure's bookkeeping (retry/dead-letter) is
+  // already persisted to the row by claimAndRun before it rethrows — callers
+  // read the job/its side effects back from the DB, not this promise.
+  try {
+    await claimAndRun(db, job);
+  } catch {
+    // handled
+  }
 }
 
 /**
@@ -109,7 +141,7 @@ async function ensurePeriodic(kind: JobKind, everySeconds: number) {
   }
 }
 
-async function runJob(kind: JobKind, payload: Record<string, unknown>) {
+async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: string) {
   const db = serviceDb();
   switch (kind) {
     case "publish_scheduled": {
@@ -205,14 +237,22 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
     case "notify_member": {
       const { data: member } = await db.from("members").select("id, name, contact_email").eq("id", String(payload.member_id)).single();
       if (!member) return;
-      // Keep the notification id: the send is stamped onto it below, so
-      // `emailed_at` records what actually left rather than what was queued.
-      const { data: note } = await db.from("notifications").insert({
-        member_id: member.id,
-        kind: String(payload.kind ?? "generic"),
-        payload: payload as Json,
-      }).select("id").single();
+      // Keyed on this job's own id (unique, stable across this job's own
+      // retries) so a retry after a crash between "email sent" and "emailed_at
+      // stamped" finds the row it already made instead of inserting a second
+      // one — and reuses the same send below, which reuses the same
+      // Idempotency-Key, so the retry can't mail the member twice either.
+      const { data: existing } = await db.from("notifications").select("id, emailed_at").eq("job_id", jobId).maybeSingle();
+      const noteId = existing?.id ?? (
+        await db.from("notifications").insert({
+          member_id: member.id,
+          kind: String(payload.kind ?? "generic"),
+          payload: payload as Json,
+          job_id: jobId,
+        }).select("id").single()
+      ).data?.id;
       if (!member.contact_email) return; // pre-funnel members may have no address; in-app notification still lands
+      if (existing?.emailed_at) return; // already sent on a prior attempt of this same job
 
       const [{ getEmailSender }, { renderNotification }] = await Promise.all([
         import("./adapters/email"),
@@ -221,9 +261,9 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
       // Deliberately unguarded: a provider rejection throws, the job retries
       // with backoff and eventually dead-letters into "Needs You Today". A
       // swallowed failure here is how a member silently never hears back.
-      await getEmailSender().send({ to: member.contact_email, ...renderNotification(payload) });
-      if (note) {
-        await db.from("notifications").update({ emailed_at: new Date().toISOString() }).eq("id", note.id);
+      await getEmailSender().send({ to: member.contact_email, ...renderNotification(payload) }, { idempotencyKey: `notify-${jobId}` });
+      if (noteId) {
+        await db.from("notifications").update({ emailed_at: new Date().toISOString() }).eq("id", noteId);
       }
       break;
     }
@@ -418,7 +458,12 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>) {
       const { data: issue } = await db.from("newsletter_issues").select("id, number, subject, status").eq("id", String(payload.issue_id)).single();
       if (!issue || issue.status === "sent") return;
       const { getNewsletterSender, newsletterIsLive } = await import("./adapters/newsletter");
-      const result = await getNewsletterSender().sendIssue(issue.id);
+      // Keyed on this job's own id: a retry of the SAME job (crash between the
+      // broadcast succeeding and the status write below landing) reuses the
+      // key, so Resend dedupes rather than mailing the whole list twice. A
+      // deliberate re-send from the console enqueues a new job with a new id,
+      // so it isn't blocked from actually re-sending.
+      const result = await getNewsletterSender().sendIssue(issue.id, `newsletter-${jobId}`);
 
       // GAPS C3: this used to flip to 'sent' unconditionally, on top of a stub.
       // The status now follows what actually happened.

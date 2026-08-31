@@ -1,13 +1,20 @@
 import { serviceDb } from "../db/server";
 import { mediaUrl } from "../db/server";
 import { siteUrl } from "../site-url";
+import { EmailSendError } from "./email";
 
 /**
  * NewsletterSender adapter (TECH-DECISIONS #7).
  *
- * The deliverability gate (MailChimp vs Resend) is CLOSED: Resend carries both
- * transactional and marketing mail. This is the marketing half — Resend
- * Broadcasts, sent to a segment of contacts mirrored from our `contacts` table.
+ * The deliverability gate (MailChimp vs Resend) is still OPEN. Resend is the
+ * candidate being tested, not the chosen platform: this exists so the test Jas
+ * asked for can actually be run against real trade addresses. If MailChimp wins
+ * on firewall penetration and open rates, it wins, and the replacement is
+ * another class behind this interface — which is the whole reason the interface
+ * is here. Do not collapse it into the caller.
+ *
+ * The mechanism is Resend Broadcasts, sent to a segment of contacts mirrored
+ * from our `contacts` table.
  *
  * `contacts` stays authoritative for opt-in state. Resend is a delivery
  * mechanism we push to, never the source of truth, which is what keeps the
@@ -24,7 +31,12 @@ import { siteUrl } from "../site-url";
 export type SendResult = { ok: true; recipients: number } | { ok: false; error: string };
 
 export interface NewsletterSender {
-  sendIssue(issueId: string): Promise<SendResult>;
+  /**
+   * `idempotencyKey`, when given, is passed to the provider so a retried job
+   * (the job runner retrying after our own status write failed, not a
+   * deliberate re-send) can't cause the same broadcast to go out twice.
+   */
+  sendIssue(issueId: string, idempotencyKey?: string): Promise<SendResult>;
   /** Push our contact list to the provider. No-op for the stub. */
   syncContacts(): Promise<{ pushed: number; failed: number }>;
 }
@@ -170,13 +182,24 @@ class ResendNewsletterSender implements NewsletterSender {
     private from: string,
   ) {}
 
-  private async api(path: string, body: unknown): Promise<{ ok: boolean; status: number; body: string }> {
+  private async api(
+    path: string,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): Promise<{ ok: boolean; status: number; body: string; retryAfterMs?: number }> {
     const res = await fetch(`https://api.resend.com${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
     });
-    return { ok: res.ok, status: res.status, body: await res.text().catch(() => "") };
+    const retryAfterHeader = res.headers.get("retry-after");
+    const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+    return {
+      ok: res.ok,
+      status: res.status,
+      body: await res.text().catch(() => ""),
+      retryAfterMs: Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds * 1000 : undefined,
+    };
   }
 
   /**
@@ -200,8 +223,12 @@ class ResendNewsletterSender implements NewsletterSender {
         segments: [this.segmentId],
       });
       // A duplicate is the expected steady state, not a failure.
-      if (res.ok || res.status === 409) pushed++;
-      else failed++;
+      if (res.ok || res.status === 409) { pushed++; return; }
+      // Provider backpressure, not a bad contact — let jobs.ts's
+      // rateLimitPauseMs recognise this and back off, instead of counting
+      // every throttled contact toward the job's max_attempts.
+      if (res.status === 429) throw new EmailSendError(`Resend rate-limited /contacts: ${res.body.slice(0, 200)}`, 429, res.retryAfterMs);
+      failed++;
     };
 
     for (const contact of subscribed) await push(contact.email, false);
@@ -210,7 +237,7 @@ class ResendNewsletterSender implements NewsletterSender {
     return { pushed, failed };
   }
 
-  async sendIssue(issueId: string): Promise<SendResult> {
+  async sendIssue(issueId: string, idempotencyKey?: string): Promise<SendResult> {
     const content = await renderIssueHtml(issueId);
     if (!content) return { ok: false, error: "Issue not found." };
 
@@ -218,15 +245,22 @@ class ResendNewsletterSender implements NewsletterSender {
     if (!recipients) return { ok: false, error: "No subscribed contacts — nothing to send." };
 
     // Created with send:true so there is no window where a broadcast exists in
-    // Resend but our status says otherwise.
-    const created = await this.api("/broadcasts", {
-      segment_id: this.segmentId,
-      from: this.from,
-      subject: content.subject,
-      html: content.html,
-      text: content.text,
-      send: true,
-    });
+    // Resend but our status says otherwise. The idempotency key is the queue
+    // job's own id (see jobs.ts) — stable across that job's own retries, but a
+    // deliberate re-send from the console enqueues a new job and gets a new
+    // key, so it isn't blocked from actually re-sending.
+    const created = await this.api(
+      "/broadcasts",
+      {
+        segment_id: this.segmentId,
+        from: this.from,
+        subject: content.subject,
+        html: content.html,
+        text: content.text,
+        send: true,
+      },
+      idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    );
     if (!created.ok) {
       return { ok: false, error: `Resend rejected the broadcast (${created.status}): ${created.body.slice(0, 300)}` };
     }

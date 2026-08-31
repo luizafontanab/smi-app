@@ -551,14 +551,27 @@ export async function decideAdvertBooking(formData: FormData) {
   const now = new Date().toISOString();
   const memberId = booking.advert?.member_id;
   if (decision === "approve") {
-    await db.from("advert_bookings")
+    const { error } = await db.from("advert_bookings")
       .update({ status: "scheduled", approved_by: user.userId, approved_at: now, review_reason: null, updated_at: now })
       .eq("id", id);
+    // The overlap exclusion constraint is the likely rejection here: another
+    // booking on the same advert already covers these dates. Without this
+    // check the code below would write an "approved" audit row and tell the
+    // member their advert is scheduled while the booking is still stuck
+    // awaiting_approval — a false record on top of a silent no-op.
+    if (error) {
+      redirect(`/console/adverts/${id}?error=${encodeURIComponent(
+        error.message.includes("advert_bookings_no_overlap")
+          ? "That advert already has a run covering those dates."
+          : error.message,
+      )}`);
+    }
     if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_scheduled", booking_id: id });
   } else {
-    await db.from("advert_bookings")
+    const { error } = await db.from("advert_bookings")
       .update({ status: "review_required", review_reason: reason, updated_at: now })
       .eq("id", id);
+    if (error) redirect(`/console/adverts/${id}?error=${encodeURIComponent(error.message)}`);
     if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_changes_needed", booking_id: id, reason });
   }
   await db.from("approvals").insert({
@@ -586,7 +599,7 @@ export async function renewBooking(formData: FormData) {
     .eq("id", id)
     .single();
   if (!prev) return;
-  const { data: created } = await db.from("advert_bookings").insert({
+  const { data: created, error } = await db.from("advert_bookings").insert({
     advert_id: prev.advert_id,
     product_id: prev.product_id,
     bundle_id: prev.bundle_id,
@@ -599,6 +612,10 @@ export async function renewBooking(formData: FormData) {
     renewed_from: id,
     submitted_by: user.userId,
   }).select("id").single();
+  // Previously silent: an admin picking an invalid date range (e.g. ends_on
+  // before starts_on) got no feedback and the page just re-rendered as if
+  // nothing had been clicked.
+  if (error) redirect(`/console/adverts/${id}?error=${encodeURIComponent(error.message)}`);
   revalidatePath("/console/adverts");
   if (created) redirect(`/console/adverts/${created.id}`);
 }
@@ -714,11 +731,20 @@ export async function decideArtworkSwap(formData: FormData) {
   const memberId = proposal.advert?.member_id;
   if (decision === "approve") {
     // the live image only changes here, at approval — never at submission
-    await db.from("adverts").update({ desktop_path: proposal.desktop_path, mobile_path: proposal.mobile_path, updated_at: now }).eq("id", proposal.advert_id);
-    await db.from("advert_artwork_proposals").update({ status: "approved", decided_by: user.userId, decided_at: now, updated_at: now }).eq("id", id);
+    const { error: artworkError } = await db.from("adverts")
+      .update({ desktop_path: proposal.desktop_path, mobile_path: proposal.mobile_path, updated_at: now })
+      .eq("id", proposal.advert_id);
+    if (artworkError) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(artworkError.message)}`);
+    const { error } = await db.from("advert_artwork_proposals")
+      .update({ status: "approved", decided_by: user.userId, decided_at: now, updated_at: now })
+      .eq("id", id);
+    if (error) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(error.message)}`);
     if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_artwork_approved", advert_id: proposal.advert_id });
   } else {
-    await db.from("advert_artwork_proposals").update({ status: "rejected", review_reason: reason, decided_by: user.userId, decided_at: now, updated_at: now }).eq("id", id);
+    const { error } = await db.from("advert_artwork_proposals")
+      .update({ status: "rejected", review_reason: reason, decided_by: user.userId, decided_at: now, updated_at: now })
+      .eq("id", id);
+    if (error) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(error.message)}`);
     if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_artwork_rejected", advert_id: proposal.advert_id, reason });
   }
   await db.from("approvals").insert({

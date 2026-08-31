@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type { EmailOtpType } from "@supabase/supabase-js";
 import { sessionDb } from "@/lib/db/server";
 
 /**
@@ -21,14 +20,16 @@ import { sessionDb } from "@/lib/db/server";
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const tokenHash = searchParams.get("token_hash");
-  const type = (searchParams.get("type") ?? "recovery") as EmailOtpType;
   const code = searchParams.get("code");
 
   const failed = new URL("/login?error=reset", request.url);
   const db = await sessionDb();
 
   if (tokenHash) {
-    const { error } = await db.auth.verifyOtp({ type, token_hash: tokenHash });
+    // This route only ever exists to land a password reset — hardcoded rather
+    // than trusting the query string's own `type`, so it can't be used to
+    // verify an unrelated OTP purpose (signup, email-change, magic link).
+    const { error } = await db.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
     if (error) return NextResponse.redirect(failed);
   } else if (code) {
     const { error } = await db.auth.exchangeCodeForSession(code);

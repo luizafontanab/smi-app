@@ -1364,6 +1364,7 @@ export type Database = {
           created_at: string
           emailed_at: string | null
           id: string
+          job_id: string | null
           kind: string
           member_id: string
           payload: Json
@@ -1372,6 +1373,7 @@ export type Database = {
           created_at?: string
           emailed_at?: string | null
           id?: string
+          job_id?: string | null
           kind: string
           member_id: string
           payload?: Json
@@ -1380,11 +1382,19 @@ export type Database = {
           created_at?: string
           emailed_at?: string | null
           id?: string
+          job_id?: string | null
           kind?: string
           member_id?: string
           payload?: Json
         }
         Relationships: [
+          {
+            foreignKeyName: "notifications_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "notifications_member_id_fkey"
             columns: ["member_id"]
