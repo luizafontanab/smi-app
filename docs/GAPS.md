@@ -67,6 +67,13 @@ Every item is numbered so it can be referenced directly (e.g. "do A2.1 and A2.2"
 - [ ] **A4.9 — Signup collects almost nothing to auto-populate (M1).** `provisionMember` writes only `name` + `contact_email`; the profile form has no company-name field. `/join` step 3 promises "we auto-fill what we know". → `src/lib/membership.ts:55`
 - [x] **A4.10 — Notification feed renders raw enum strings.** Done 31 Aug: both the feed and the emails read from one `notificationLabel()` table, so they cannot drift apart. → `src/lib/email/templates.ts`
 - [ ] **A4.11 — No comp-via-promo-code in admin (A17).** The console comps by entering a number of months; promo codes are hardcoded in the payments stub for the public join flow and are not manageable anywhere.
+- [ ] **A4.12 — No self-service account security page.** `dashboard/settings` only sets notification cadence; there is no change-password or change-email UI for a logged-in member (distinct from the logged-out reset flow in A4.1). → `src/app/dashboard/settings/page.tsx`
+- [ ] **A4.13 — Sector/category is entirely console-set.** `provisionMember` never writes `category_id` and `submitProfileEdit` doesn't expose it — a member's directory category is whatever an admin later assigns, whenever they get to it. Legacy parity: sector is meant to stay member-editable, not lock after registration. → `src/lib/membership.ts:55`, `src/app/dashboard/actions.ts` (`submitProfileEdit`)
+- [ ] **A4.14 — `contact_email` is console-only.** The public lead-contact address (distinct from the member's login email) can only be set via the console editor, never by the member. → `src/lib/member-form.ts:74`, `src/app/dashboard/actions.ts` (`submitProfileEdit`)
+- [ ] **A4.15 — No notifications feed.** Dashboard home renders only the 4 most recent notifications inline; there is no dedicated feed page, unread badge, mark-as-read, or pagination. → `src/app/dashboard/page.tsx:116`
+- [ ] **A4.16 — Resources page is a single hardcoded graphic.** `/dashboard/resources` offers one generated "proud member" badge; no logo pack, brand guidelines, or other downloadable assets exist. → `src/app/dashboard/resources/page.tsx`
+- [ ] **A4.17 — Submitted content can't be edited or withdrawn before approval.** Stories, videos, events and machine listings are submit-once — only adverts have resubmit/edit actions (`resubmitAdvert`). → `src/app/dashboard/actions.ts`
+- [ ] **A4.18 — No onboarding beyond the draft-status checklist.** `OnboardingChecklist` only shows while `status === "draft"`; nothing guides a newly-activated member around stats/buy/resources on first arrival. → `src/app/dashboard/OnboardingChecklist.tsx`
 
 ### A5 · Reporting & analytics surfaces
 
@@ -79,6 +86,7 @@ Every item is numbered so it can be referenced directly (e.g. "do A2.1 and A2.2"
 - [ ] **A5.7 — Newsletter stats are wrong (M8, Gap 6 item 5).** "Featured in N issues" counts `newsletter_items` unfiltered by sent status *and* unfiltered by year; "~2,500 trade readers" is a hardcoded literal; newsletter advert clicks are absent entirely. → `src/app/dashboard/stats/page.tsx:41`
 - [ ] **A5.8 — Member activity timeline is incomplete (A18).** Merges stories, placements, invoices and notifications but omits advert clicks and newsletter appearances, both of which are queryable. → `src/app/console/members/[id]/page.tsx:76`
 - [ ] **A5.9 — CRM view has no site activity and no search (A19).** A hardcoded `limit(200)` most-recent slice. → `src/app/console/crm/page.tsx`
+- [ ] **A5.10 — Click-through tracking covers website clicks only.** Legacy tracked phone-click, email-click and per-platform social clicks (Facebook/LinkedIn/etc.) as first-class member stats feeding their own charts; none of these exist here, even as a gap beyond A5.6's website-click case. → `src/lib/analytics.ts:10`
 
 ### A6 · Public site compliance & polish
 
