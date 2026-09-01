@@ -1,32 +1,23 @@
 /**
  * IP → region/company resolution (TECH-DECISIONS #8: region-first, company optional).
  *
- * Production: region from self-hosted MaxMind GeoLite2 (key pending approval),
- * company from a vendor API behind this same interface, tried first when enabled.
- * Local dev: deterministic stub so seeded/demo traffic gets plausible UK regions.
+ * Both fields return null until their real source is wired: region from
+ * self-hosted MaxMind GeoLite2 (key pending approval, GAPS B2.1), company
+ * from a vendor API behind this same interface (parked for Phase 1, B2.2).
+ * A hashed-IP placeholder region used to be returned here regardless of
+ * environment, which meant paying members saw invented UK regions labelled
+ * as real data on /dashboard/stats — GAPS C2. Do not reintroduce a stub
+ * region: null is the honest value until GeoLite2 is actually wired.
  */
 
 export type IpResolution = { region: string | null; company: string | null };
 
-const UK_REGIONS = [
-  "West Midlands", "South Yorkshire", "Greater Manchester", "East Midlands",
-  "South East", "North West", "Scotland", "Wales", "North East", "East of England",
-];
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- ip stays in the signature for the GeoLite2 lookup that lands here
 export async function resolveIp(ip: string): Promise<IpResolution> {
   if (process.env.COMPANY_RESOLVER === "vendor") {
     // Wire the vendor API here once cost + UK-GDPR lawfulness are confirmed.
     // Falls through to region-only until then.
   }
-  if (ip === "local" || ip.startsWith("127.") || ip.startsWith("::1")) {
-    return { region: stableRegion(ip), company: null };
-  }
   // GeoLite2 lookup goes here once the MaxMind key is approved.
-  return { region: stableRegion(ip), company: null };
-}
-
-function stableRegion(ip: string): string {
-  let h = 0;
-  for (let i = 0; i < ip.length; i++) h = (Math.imul(33, h) + ip.charCodeAt(i)) | 0;
-  return UK_REGIONS[Math.abs(h) % UK_REGIONS.length];
+  return { region: null, company: null };
 }

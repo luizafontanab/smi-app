@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Allerta_Stencil, League_Spartan } from "next/font/google";
 import { cookies } from "next/headers";
 import { DevTaskLauncher } from "@/components/dev-task/DevTaskLauncher";
@@ -41,6 +41,16 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
   },
   twitter: { card: "summary_large_image", title: SITE_NAME, description: DESCRIPTION },
+};
+
+export const viewport: Viewport = {
+  // width/initial-scale match what Next injects by default — declared so the
+  // rest is explicit: the chrome colour paints the browser UI on mobile, and
+  // colorScheme stops iOS/Android auto-darkening a light-designed page.
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0b0d10",
+  colorScheme: "light",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

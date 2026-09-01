@@ -31,7 +31,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
   const db = serviceDb();
 
   const { start, end } = monthGrid(month);
-  const [{ data: issues }, { data: stories }, { count: subscribers }] = await Promise.all([
+  const [{ data: issues }, { data: stories }, { data: videos }, { count: subscribers }] = await Promise.all([
     view === "calendar"
       ? db.from("newsletter_issues").select(ISSUE_SELECT).or(
           `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
@@ -39,6 +39,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
         )
       : db.from("newsletter_issues").select(ISSUE_SELECT).order("number", { ascending: false }),
     db.from("stories").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20),
+    db.from("videos").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20),
     db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null),
   ]);
 
@@ -57,18 +58,29 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
         <form action={createIssue} className="mt-3 space-y-3 text-sm">
           <input name="subject" placeholder="Subject" required className="w-full rounded border px-3 py-2" />
           <textarea name="intro" placeholder="Intro paragraph" rows={2} className="w-full rounded border px-3 py-2" />
-          <p className="text-xs uppercase tracking-wide text-gray-400">Pick ~8 stories</p>
+          <p className="text-xs uppercase tracking-wide text-gray-500">Pick ~8 stories</p>
           <div className="max-h-56 space-y-1 overflow-y-auto rounded border p-2">
             {(stories ?? []).map((s) => (
               <label key={s.id} className="flex items-center gap-2">
                 <input type="checkbox" name="stories" value={s.id} />
                 <span>{s.title}</span>
-                <span className="text-xs text-gray-400">{s.published_at?.slice(0, 10)}</span>
+                <span className="text-xs text-gray-500">{s.published_at?.slice(0, 10)}</span>
               </label>
             ))}
           </div>
+          <p className="text-xs uppercase tracking-wide text-gray-500">Pick a video (optional)</p>
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded border p-2">
+            {(videos ?? []).map((v) => (
+              <label key={v.id} className="flex items-center gap-2">
+                <input type="checkbox" name="videos" value={v.id} />
+                <span>{v.title}</span>
+                <span className="text-xs text-gray-500">{v.published_at?.slice(0, 10)}</span>
+              </label>
+            ))}
+            {!videos?.length && <p className="text-xs text-gray-500">No published videos yet.</p>}
+          </div>
           <button className="rounded bg-ink px-4 py-2 text-white">Create draft</button>
-          <p className="text-xs text-gray-400">Advert slots attach from Adverts &amp; Inventory (2–3 per issue).</p>
+          <p className="text-xs text-gray-500">Advert slots attach from the issue&apos;s own page once it&apos;s created — open a draft below to add ~2–3.</p>
         </form>
       </section>
 
@@ -93,14 +105,14 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
             return (
               <div key={col.key} className="rounded-xl bg-white p-3 shadow-sm">
                 <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-                  {col.label} <span className="text-gray-300">({items.length})</span>
+                  {col.label} <span className="text-gray-500">({items.length})</span>
                 </h2>
                 <div className="mt-2 space-y-2">
                   {items.map((i) => (
                     <div key={i.id} className="rounded border p-2.5 text-sm">
-                      <p className="font-medium leading-snug">#{i.number} — {i.subject}</p>
+                      <Link href={`/console/newsletter/${i.id}`} className="font-medium leading-snug hover:text-graphite hover:underline">#{i.number} — {i.subject}</Link>
                       {i.status === "scheduled" && i.scheduled_at && (
-                        <p className="mt-1 text-xs text-gray-400">{new Date(i.scheduled_at).toLocaleString("en-GB")}</p>
+                        <p className="mt-1 text-xs text-gray-500">{new Date(i.scheduled_at).toLocaleString("en-GB")}</p>
                       )}
                       {i.status === "sent" && i.sent_at && (
                         <p className="mt-1 text-xs text-green-600">sent {i.sent_at.slice(0, 10)}</p>
@@ -145,7 +157,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
                       )}
                     </div>
                   ))}
-                  {items.length === 0 && <p className="px-1 text-xs text-gray-300">Empty</p>}
+                  {items.length === 0 && <p className="px-1 text-xs text-gray-500">Empty</p>}
                 </div>
               </div>
             );

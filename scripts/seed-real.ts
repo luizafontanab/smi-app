@@ -135,6 +135,18 @@ async function seedAdverts(
     if (adErr) throw adErr;
     await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
+
+  // Rate card (A2.7): sample rates so this seed path also has priced
+  // products, not just the synthetic scripts/seed.ts.
+  await db.from("advert_products").insert([
+    { short_name: "Homepage banner", format: "banner", cap: 3, rate_pennies: 65000 },
+    { short_name: "Skyscraper", format: "skyscraper", cap: 3, rate_pennies: 55000 },
+    { short_name: "MPU box", format: "mpu", cap: 3, rate_pennies: 45000 },
+    { short_name: "In-feed card", format: "in_feed", cap: 3, rate_pennies: 40000 },
+    { short_name: "Supplier logo", format: "supplier_logo", cap: 8, rate_pennies: 10000 },
+    { short_name: "Newsletter banner", format: "newsletter_banner", cap: 3, rate_pennies: 35000 },
+    { short_name: "Association logo", format: "association_logo", cap: 3, rate_pennies: 15000 },
+  ]);
 }
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
@@ -214,6 +226,8 @@ async function main() {
     await new Promise((r) => setTimeout(r, 2000));
   }
   await db.storage.createBucket("media", { public: true }).catch(() => {});
+  // Invoices are private: served via signed URLs only (lib/invoice-pdf.ts).
+  await db.storage.createBucket("invoices", { public: false }).catch(() => {});
 
   type Cat = { kind: string; slug: string; name: string };
   type MemberRow = Record<string, unknown> & { wp_member_id: number; slug: string; category_slugs: string[] };

@@ -1,24 +1,31 @@
 import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
-import { publishedStories, storyCategories } from "@/lib/queries";
+import { publishedStories, publishedVideos, storyCategories } from "@/lib/queries";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
+import { SearchForm } from "@/components/SearchForm";
 import { StoryCard } from "@/components/StoryCard";
+import { VideoCard } from "@/components/cards";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 12;
 
-export const metadata = { title: "News" };
+export const metadata = {
+  title: "News",
+  description: "The latest news from the UK sheet metal, fabrication and welding trade — company stories, machinery and industry developments.",
+  alternates: { canonical: "/news" },
+};
 
 export default async function NewsPage(props: PageProps<"/news">) {
   const sp = await props.searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const category = typeof sp.category === "string" ? sp.category : undefined;
   const memberOnly = sp.filter === "members";
-  const order = sp.sort === "oldest" ? "asc" : "desc";
 
-  const [{ stories, total }, cats, banners, logos, showPlaceholders, ctx] = await Promise.all([
-    publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly, order }),
+  const [{ stories, total }, { videos }, cats, banners, logos, showPlaceholders, ctx] = await Promise.all([
+    publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly }),
+    // Decorative — woven into the grid, not part of the story pagination math.
+    publishedVideos({ limit: 4 }),
     storyCategories(),
     liveAdverts("banner"),
     liveAdverts("supplier_logo"),
@@ -33,7 +40,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
 
   const qs = (over: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams();
-    const merged = { category, sort: sp.sort as string | undefined, filter: sp.filter as string | undefined, page: undefined, ...over };
+    const merged = { category, filter: sp.filter as string | undefined, page: undefined, ...over };
     Object.entries(merged).forEach(([k, v]) => v !== undefined && v !== "" && params.set(k, String(v)));
     const s = params.toString();
     return s ? `/news?${s}` : "/news";
@@ -44,11 +51,11 @@ export default async function NewsPage(props: PageProps<"/news">) {
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-ink">Newsroom</h1>
         <div className="flex gap-2 text-sm">
-          <Link href={qs({ sort: undefined })} className={`rounded border px-3 py-1.5 ${order === "desc" ? "bg-ink text-white" : "bg-white"}`}>Most recent</Link>
-          <Link href={qs({ sort: "oldest" })} className={`rounded border px-3 py-1.5 ${order === "asc" ? "bg-ink text-white" : "bg-white"}`}>Oldest</Link>
           <Link href={qs({ filter: memberOnly ? undefined : "members" })} className={`rounded border px-3 py-1.5 ${memberOnly ? "bg-brand text-ink" : "bg-white"}`}>Member news</Link>
         </div>
       </div>
+
+      <SearchForm className="mt-4 flex gap-2" />
 
       <div className="mt-4 flex flex-wrap gap-1.5 text-xs">
         <Link href={qs({ category: undefined })} className={`rounded-full border px-3 py-1 ${!category ? "bg-ink text-white" : "bg-white"}`}>All</Link>
@@ -62,13 +69,19 @@ export default async function NewsPage(props: PageProps<"/news">) {
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stories.slice(0, 6).map((s) => <StoryCard key={s.id} story={s} />)}
       </div>
+      {videos.length > 0 && (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {videos.map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
+        </div>
+      )}
+      {/* Rendered unconditionally — the slot is booked inventory, so it must
+          not vanish just because the listing is short. Only the split below
+          is count-dependent. */}
+      <div className="my-6"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
       {stories.length > 6 && (
-        <>
-          <div className="my-6"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {stories.slice(6).map((s) => <StoryCard key={s.id} story={s} />)}
-          </div>
-        </>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {stories.slice(6).map((s) => <StoryCard key={s.id} story={s} />)}
+        </div>
       )}
       {stories.length === 0 && <p className="mt-10 text-center text-gray-500">No stories found.</p>}
 

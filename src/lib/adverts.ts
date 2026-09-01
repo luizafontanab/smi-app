@@ -149,6 +149,17 @@ export async function liveAdvertsByFormat<F extends AdvertFormat>(formats: reado
   return out;
 }
 
+/**
+ * Uniformly pick one of a slot's already-dealt adverts (A2.10). A slot shows
+ * one advert per page load, not all ~3 at once and not a rotating carousel
+ * within one view — the pick is made once per request, same as the shuffle
+ * that fed it, so it stays static for the duration of that load.
+ */
+export function pickOne<T>(items: T[], rand: () => number = Math.random): T | undefined {
+  if (items.length === 0) return undefined;
+  return items[Math.floor(rand() * items.length)];
+}
+
 /** Fisher–Yates on a uniform PRNG; slots pick the first N of an unbiased shuffle. */
 export function uniformShuffle<T>(items: T[], rand: () => number = Math.random): T[] {
   const a = [...items];

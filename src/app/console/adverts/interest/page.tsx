@@ -27,7 +27,7 @@ export default async function AdvertInterestPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/adverts" className="text-sm text-gray-400 hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-gray-500 hover:text-ink">← Adverts &amp; Inventory</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Interest</h1>
       <p className="mt-1 text-sm text-gray-500">
         Members who asked about advertising from their dashboard. There is no online payment — you confirm availability and invoice.
@@ -43,14 +43,17 @@ export default async function AdvertInterestPage() {
                 <b>{r.member?.name}</b>{" "}
                 <span className="text-xs uppercase text-brand">{PRODUCT_LABELS[r.product] ?? r.product}</span>
               </p>
-              <span className="text-xs text-gray-400">{String(r.created_at).slice(0, 10)}</span>
+              <span className="text-xs text-gray-500">{String(r.created_at).slice(0, 10)}</span>
             </div>
             {r.message && <p className="mt-1 text-gray-600">{r.message}</p>}
-            {r.member?.contact_email && <p className="mt-1 text-xs text-gray-400">{r.member.contact_email}</p>}
-            <div className="mt-2 flex gap-2">
-              <form action={startAdvertFromInterest}>
+            {r.member?.contact_email && <p className="mt-1 text-xs text-gray-500">{r.member.contact_email}</p>}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <form action={startAdvertFromInterest} className="flex items-center gap-1.5">
                 <input type="hidden" name="id" value={r.id} />
-                <button className="rounded bg-ink px-3 py-1.5 text-xs text-white">Start artwork for them</button>
+                <span aria-hidden="true" className="text-xs text-gray-500">£</span>
+                <label htmlFor={`interest-amount-${r.id}`} className="sr-only">Amount in pounds</label>
+                <input id={`interest-amount-${r.id}`} name="amount_pounds" type="number" step="0.01" min="0.01" required placeholder="0.00" className="w-20 rounded border px-1.5 py-1 text-xs" />
+                <button className="rounded bg-ink px-3 py-1.5 text-xs text-white">Confirm &amp; invoice</button>
               </form>
               <form action={declineInterest}>
                 <input type="hidden" name="id" value={r.id} />
@@ -64,18 +67,20 @@ export default async function AdvertInterestPage() {
       {handled.length > 0 && (
         <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Handled</h2>
-          <table className="mt-2 w-full text-sm">
+          <div className="overflow-x-auto mt-2">
+          <table className="w-full text-sm min-w-[560px]">
             <tbody>
               {handled.map((r) => (
                 <tr key={r.id} className="border-t">
                   <td className="py-2">{r.member?.name}</td>
                   <td className="text-gray-500">{PRODUCT_LABELS[r.product] ?? r.product}</td>
-                  <td className="text-gray-400">{r.status}</td>
-                  <td className="text-right text-xs text-gray-400">{String(r.created_at).slice(0, 10)}</td>
+                  <td className="text-gray-500">{r.status}</td>
+                  <td className="text-right text-xs text-gray-500">{String(r.created_at).slice(0, 10)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
         </section>
       )}
     </div>

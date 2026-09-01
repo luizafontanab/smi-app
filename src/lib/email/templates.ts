@@ -41,6 +41,11 @@ export const NOTIFICATION_KINDS = [
   "payment_receipt",
   "comp_applied",
   "account_created",
+  "membership_lapsed",
+  "membership_cancel_requested",
+  "membership_cancelled",
+  "stats_summary",
+  "lead_alert",
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -55,6 +60,8 @@ export type NotificationPayload = {
   months?: number;
   comped_until?: string;
   action_link?: string;
+  page_views?: number;
+  count?: number;
   [key: string]: unknown;
 };
 
@@ -92,6 +99,11 @@ const LABELS: Record<NotificationKind, string> = {
   payment_receipt: "Membership payment received",
   comp_applied: "Your promo code has been applied",
   account_created: "Your SMI account is ready",
+  membership_lapsed: "Your membership has lapsed",
+  membership_cancel_requested: "Your cancellation is scheduled",
+  membership_cancelled: "Your membership has ended",
+  stats_summary: "Your statistics summary",
+  lead_alert: "New companies engaging with your page",
 };
 
 export function notificationLabel(kind: string): string {
@@ -205,6 +217,49 @@ function copyFor(kind: string, payload: NotificationPayload, base: string): Copy
           "The next step is to build your company page so we can get it live.",
         ].filter(Boolean),
         cta: dashboard,
+      };
+    }
+    case "membership_lapsed":
+      return {
+        subject: "Your SMI membership has lapsed",
+        paragraphs: [
+          "Your grace period has ended and your membership is now lapsed. Your page is no longer visible in the member directory.",
+          "Get in touch to reactivate — we'll pick up right where things left off.",
+        ],
+        cta: dashboard,
+      };
+    case "membership_cancel_requested":
+      return {
+        subject: "Your SMI membership cancellation is scheduled",
+        paragraphs: [
+          "We've received your cancellation request. Your membership stays active for the rest of your current billing period, and won't renew after that.",
+          "Changed your mind? Get in touch before the period ends and we'll pick up right where things left off.",
+        ],
+        cta: dashboard,
+      };
+    case "membership_cancelled":
+      return {
+        subject: "Your SMI membership has ended",
+        paragraphs: [
+          "Your cancellation has taken effect and your membership has now ended. Your page is no longer visible in the member directory.",
+          "You're welcome back any time — get in touch and we'll help you rejoin.",
+        ],
+        cta: dashboard,
+      };
+    case "stats_summary": {
+      const views = Number(payload.page_views ?? 0);
+      return {
+        subject: "Your SMI statistics summary",
+        paragraphs: [`Your page had ${views} view${views === 1 ? "" : "s"} in the last 30 days.`, "See the full breakdown, including advert performance and story reach, in your member area."],
+        cta: { label: "View your statistics", href: `${base}/dashboard/stats` },
+      };
+    }
+    case "lead_alert": {
+      const count = Number(payload.count ?? 0);
+      return {
+        subject: "New companies engaging with your page",
+        paragraphs: [`${count} compan${count === 1 ? "y has" : "ies have"} engaged with your page recently.`, "See who's interested in your member area."],
+        cta: { label: "View who's engaging", href: `${base}/dashboard/stats` },
       };
     }
     default:

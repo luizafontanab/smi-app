@@ -28,6 +28,22 @@ export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
  */
 const CACHE_CONTROL = "31536000";
 
+/**
+ * Best-effort media-library row for an object already written to storage. A
+ * failure here must never break the actual upload/save it's recording — the
+ * library is a convenience index (A1.4), not the source of truth.
+ */
+async function recordMedia(db: ReturnType<typeof serviceDb>, path: string, kind: "image" | "document", file: File) {
+  const { error } = await db.from("media").insert({
+    path,
+    kind,
+    content_type: file.type,
+    byte_size: file.size,
+    original_name: file.name || null,
+  });
+  if (error) console.warn(`[media] could not record ${path}: ${error.message}`);
+}
+
 /** Upload an image to the public media bucket. Returns the storage path. */
 export async function uploadImage(file: File | null, prefix: string): Promise<string | null> {
   if (!file || file.size === 0) return null;
@@ -38,19 +54,22 @@ export async function uploadImage(file: File | null, prefix: string): Promise<st
   const path = `${prefix}/${Date.now().toString(36)}.${ext}`;
   const { error } = await db.storage.from("media").upload(path, file, { contentType: file.type, cacheControl: CACHE_CONTROL });
   if (error) throw new Error(error.message);
+  await recordMedia(db, path, "image", file);
   return path;
 }
 
 /**
- * Drop a replaced object so the bucket doesn't accumulate orphans — there is no
- * media library to sweep them up yet (GAPS A1.4). Best-effort by design: the
- * row already points at the new file, so a failure here is litter, not a
- * broken page, and must never fail the save.
+ * Drop a replaced object so the bucket doesn't accumulate orphans. Best-effort
+ * by design: the row already points at the new file, so a failure here is
+ * litter, not a broken page, and must never fail the save. Also drops the
+ * media-library row so the library stays in sync with the bucket.
  */
 export async function removeMedia(path: string | null | undefined): Promise<void> {
   if (!path) return;
-  const { error } = await serviceDb().storage.from("media").remove([path]);
+  const db = serviceDb();
+  const { error } = await db.storage.from("media").remove([path]);
   if (error) console.warn(`[media] could not remove ${path}: ${error.message}`);
+  await db.from("media").delete().eq("path", path);
 }
 
 /**
@@ -72,5 +91,6 @@ export async function uploadDocument(file: File | null, prefix: string): Promise
   const path = `${prefix}/${Date.now().toString(36)}.${ext}`;
   const { error } = await db.storage.from("media").upload(path, file, { contentType: file.type });
   if (error) throw new Error(error.message);
+  await recordMedia(db, path, "document", file);
   return path;
 }

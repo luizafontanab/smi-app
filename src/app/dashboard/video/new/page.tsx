@@ -12,7 +12,7 @@ export default async function NewMemberVideo() {
   const { data: member } = await serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single();
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-400 hover:text-ink">← Dashboard</Link>
+      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">Add a video</h1>
       <p className="mt-1 text-sm text-gray-500">
         The editor reviews every video before it goes live. Once approved it&apos;s published with a link back to

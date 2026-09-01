@@ -44,7 +44,7 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-400 hover:text-ink">← Dashboard</Link>
+      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{booking.advert?.name}</h1>
       <p className="mt-1 text-sm text-gray-500">{STATUS_COPY[phase]}</p>
       {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}

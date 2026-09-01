@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { record, requestContext } from "@/lib/analytics";
 import { youtubeId } from "@/lib/hero";
+import { breadcrumbLd, stripTags, videoLd } from "@/lib/jsonld";
 import { videoBySlug } from "@/lib/queries";
+import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
 import { ShareButtons } from "@/components/ShareButtons";
 
@@ -11,7 +13,18 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(props: PageProps<"/video/[slug]">) {
   const { slug } = await props.params;
   const video = await videoBySlug(slug);
-  return { title: video?.title ?? "Video" };
+  const title = video?.title ?? "Video";
+  const description = video?.description ? stripTags(video.description).slice(0, 160) : undefined;
+  // No cover uploads for videos — the YouTube thumbnail is the natural card.
+  const yt = video ? youtubeId(video.url) : null;
+  const thumb = yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : undefined;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/video/${slug}` },
+    openGraph: { type: "video.other", url: `/video/${slug}`, title, description, images: thumb ? [thumb] : undefined },
+    twitter: { card: "summary_large_image", title, description, images: thumb ? [thumb] : undefined },
+  };
 }
 
 const fmt = (iso: string | null) =>
@@ -28,7 +41,16 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
 
   return (
     <div className="mx-auto max-w-4xl px-4">
-      <Link href="/video" className="mt-6 inline-block text-sm text-gray-400 hover:text-ink">← All videos</Link>
+      <JsonLd
+        data={[
+          videoLd({ ...video, youtubeId: yt }),
+          breadcrumbLd([
+            { name: "Videos", path: "/video" },
+            { name: video.title, path: `/video/${slug}` },
+          ]),
+        ]}
+      />
+      <Link href="/video" className="mt-6 inline-block text-sm text-gray-500 hover:text-ink">← All videos</Link>
 
       {/* youtube-nocookie so an embed does not set advertising cookies before the
           visitor has answered the consent banner. frame-src in next.config.ts

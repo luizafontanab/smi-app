@@ -1,6 +1,8 @@
 import { RENDERABLE_BOOKING_STATUSES } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { serviceDb } from "@/lib/db/server";
+import { allowRequest, MINUTE } from "@/lib/rate-limit";
+import { UUID_RE } from "@/lib/validate";
 
 /**
  * Advert impression beacon. The browser posts the ids of adverts that actually
@@ -16,10 +18,18 @@ import { serviceDb } from "@/lib/db/server";
  * in the common blocklists, which would put us straight back to undercounting.
  */
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_PER_BEACON = 20;
 
 export async function POST(req: Request) {
+  // Booking validation below stops *fabricated* ids padding the count, but not
+  // *repetition* — impressions are billed against, so a loop replaying a real
+  // advert id must not inflate them unboundedly. Same per-instance-memory
+  // caveat as rate-limit.ts documents; a DB-side dedupe (session+advert+day)
+  // is the escalation if distributed inflation ever shows up in the numbers.
+  // Always 204: a beacon endpoint must not reveal to the client whether it
+  // counted.
+  if (!(await allowRequest("seen", 30, MINUTE))) return new Response(null, { status: 204 });
+
   let body: unknown;
   try {
     body = await req.json();
@@ -28,7 +38,7 @@ export async function POST(req: Request) {
   }
   const raw = (body as { ids?: unknown })?.ids;
   const wanted = Array.isArray(raw)
-    ? [...new Set(raw.filter((v): v is string => typeof v === "string" && UUID.test(v)))].slice(0, MAX_PER_BEACON)
+    ? [...new Set(raw.filter((v): v is string => typeof v === "string" && UUID_RE.test(v)))].slice(0, MAX_PER_BEACON)
     : [];
   if (wanted.length === 0) return new Response(null, { status: 204 });
 

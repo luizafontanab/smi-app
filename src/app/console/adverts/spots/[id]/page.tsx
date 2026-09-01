@@ -32,7 +32,7 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/console/adverts/spots" className="text-sm text-gray-400 hover:text-ink">← Ad Spots</Link>
+      <Link href="/console/adverts/spots" className="text-sm text-gray-500 hover:text-ink">← Ad Spots</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New ad spot" : "Edit ad spot"}</h1>
       {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
 
@@ -56,8 +56,19 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
           <div>
             <label htmlFor="cap" className="text-sm font-medium">Allowable spots</label>
             <input id="cap" name="cap" type="number" min={1} defaultValue={spot?.cap ?? 1} required className="mt-1 w-full rounded border px-3 py-2" />
-            <p className="mt-1 text-xs text-gray-400">How many advertisers can hold this spot at once.</p>
+            <p className="mt-1 text-xs text-gray-500">How many advertisers can hold this spot at once.</p>
           </div>
+        </div>
+        <div>
+          <label htmlFor="rate_pounds" className="text-sm font-medium">Rate (£, optional)</label>
+          <input
+            id="rate_pounds" name="rate_pounds" type="number" step="0.01" min="0"
+            defaultValue={spot?.rate_pennies != null ? (spot.rate_pennies / 100).toFixed(2) : ""}
+            className="mt-1 w-full rounded border px-3 py-2"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Raises an invoice automatically when a booking sold as this product is approved. Leave blank to invoice manually.
+          </p>
         </div>
         <div>
           <span className="block text-sm font-medium">Sample file</span>
@@ -66,7 +77,7 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
             <img src={sample} alt="" className="mt-2 h-24 w-auto rounded object-cover" />
           )}
           <input type="file" name="sample" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
-          <p className="mt-1 text-xs text-gray-400">JPG/PNG/WebP, max 8MB.</p>
+          <p className="mt-1 text-xs text-gray-500">JPG/PNG/WebP, max 8MB.</p>
         </div>
         <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
       </form>

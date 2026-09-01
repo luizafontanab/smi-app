@@ -10,7 +10,11 @@ import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { RichText } from "@/components/RichText";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Featured Machine" };
+export const metadata = {
+  title: "Featured Machine",
+  description: "The SMI featured machine — a closer look at one machine working in the UK sheet metal trade.",
+  alternates: { canonical: "/featured-machine" },
+};
 
 export default async function FeaturedMachinePage() {
   const [placements, layout, ctx] = await Promise.all([activePlacements(), getLayout("featured_machine"), requestContext()]);

@@ -32,7 +32,7 @@ export default async function DevTaskEditor(props: PageProps<"/console/dev/[id]"
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href={returnTo} className="text-sm text-gray-400 hover:text-ink">
+      <Link href={returnTo} className="text-sm text-gray-500 hover:text-ink">
         ← Dev Board
       </Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New task" : task!.title}</h1>
@@ -136,7 +136,7 @@ export default async function DevTaskEditor(props: PageProps<"/console/dev/[id]"
         </SubmitButton>
 
         {!isNew && (
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-gray-500">
             Created {new Date(task!.created_at).toLocaleString("en-GB")} · Last updated {new Date(task!.updated_at).toLocaleString("en-GB")}
           </p>
         )}

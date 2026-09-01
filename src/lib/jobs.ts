@@ -1,6 +1,7 @@
 import { serviceDb } from "./db/server";
 import type { Json } from "./db/types";
 import { siteUrl } from "./site-url";
+import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "./social-caps";
 
 /**
  * Postgres-backed job queue (TECH-DECISIONS #13).
@@ -17,9 +18,12 @@ export type JobKind =
   | "rollup_daily"           // nightly analytics rollup + partition upkeep
   | "newsletter_send"        // payload: { issue_id }
   | "comp_expiry"            // daily sweep: expired promo comps → grace + console note
+  | "membership_lapse"       // daily sweep: grace members whose grace_until has passed → lapsed
   | "advert_lifecycle"       // daily sweep: advert runs start, end, and warn before ending
   | "admin_digest"           // daily sweep: everything waiting on Jas, in one email
-  | "newsletter_sync";       // daily sweep: mirror the contact list to the sender
+  | "newsletter_sync"        // daily sweep: mirror the contact list to the sender
+  | "stats_summary"          // daily sweep: fires per member on their chosen stats cadence
+  | "lead_alert";            // daily sweep: fires per member on their chosen leads cadence
 
 export async function enqueue(kind: JobKind, payload: Record<string, unknown> = {}, dueAt?: Date) {
   await serviceDb().from("jobs").insert({ kind, payload: payload as Json, due_at: (dueAt ?? new Date()).toISOString() });
@@ -77,9 +81,12 @@ export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   await ensurePeriodic("crm_sync", 15 * 60);
   await ensurePeriodic("rollup_daily", 24 * 60 * 60);
   await ensurePeriodic("comp_expiry", 24 * 60 * 60);
+  await ensurePeriodic("membership_lapse", 24 * 60 * 60);
   await ensurePeriodic("advert_lifecycle", 24 * 60 * 60);
   await ensurePeriodic("admin_digest", 24 * 60 * 60);
   await ensurePeriodic("newsletter_sync", 24 * 60 * 60);
+  await ensurePeriodic("stats_summary", 24 * 60 * 60);
+  await ensurePeriodic("lead_alert", 24 * 60 * 60);
 
   const { data: due } = await db
     .from("jobs")
@@ -141,10 +148,40 @@ async function ensurePeriodic(kind: JobKind, everySeconds: number) {
   }
 }
 
+async function socialCaps(db: ReturnType<typeof serviceDb>): Promise<SocialCaps> {
+  const { data } = await db.from("settings").select("value").eq("key", "social_caps").maybeSingle();
+  return { ...DEFAULT_SOCIAL_CAPS, ...(data?.value as Partial<SocialCaps> | undefined) };
+}
+
+/**
+ * Space an overflow social push across tomorrow instead of stacking every
+ * overflow item on the same 09:00 slot — counts what's already pending
+ * tomorrow and offsets by one more delay increment per item ahead of it.
+ * Deliberately simple: no cap on how late a day can run if many items
+ * overflow onto it, that's an accepted limit, not a bug.
+ */
+async function nextOverflowSlot(db: ReturnType<typeof serviceDb>, delayMinutes: number): Promise<Date> {
+  const slot = new Date();
+  slot.setDate(slot.getDate() + 1);
+  slot.setHours(9, 0, 0, 0);
+  const dayEnd = new Date(slot);
+  dayEnd.setHours(23, 59, 59, 999);
+  const { count } = await db
+    .from("jobs")
+    .select("*", { count: "exact", head: true })
+    .eq("kind", "social_push")
+    .eq("status", "pending")
+    .gte("due_at", slot.toISOString())
+    .lte("due_at", dayEnd.toISOString());
+  slot.setMinutes(slot.getMinutes() + (count ?? 0) * delayMinutes);
+  return slot;
+}
+
 async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: string) {
   const db = serviceDb();
   switch (kind) {
     case "publish_scheduled": {
+      const caps = await socialCaps(db);
       const { data: ready } = await db
         .from("stories")
         .select("id, member_id")
@@ -152,9 +189,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         .lte("scheduled_at", new Date().toISOString());
       for (const s of ready ?? []) {
         await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", s.id);
-        const { data: caps } = await db.from("settings").select("value").eq("key", "social_caps").single();
-        const delayMin = (caps?.value as { delay_minutes?: number })?.delay_minutes ?? 30;
-        await enqueue("social_push", { story_id: s.id }, new Date(Date.now() + delayMin * 60_000));
+        await enqueue("social_push", { story_id: s.id }, new Date(Date.now() + caps.delay_minutes * 60_000));
         if (s.member_id) {
           await enqueue("notify_member", { member_id: s.member_id, kind: "story_live", story_id: s.id });
         }
@@ -166,9 +201,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         .lte("scheduled_at", new Date().toISOString());
       for (const v of readyVideos ?? []) {
         await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", v.id);
-        const { data: caps } = await db.from("settings").select("value").eq("key", "social_caps").single();
-        const delayMin = (caps?.value as { delay_minutes?: number })?.delay_minutes ?? 30;
-        await enqueue("social_push", { video_id: v.id }, new Date(Date.now() + delayMin * 60_000));
+        await enqueue("social_push", { video_id: v.id }, new Date(Date.now() + caps.delay_minutes * 60_000));
         if (v.member_id) {
           await enqueue("notify_member", { member_id: v.member_id, kind: "video_live", video_id: v.id });
         }
@@ -176,6 +209,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       break;
     }
     case "social_push": {
+      const caps = await socialCaps(db);
       if (payload.video_id) {
         const { data: video } = await db
           .from("videos")
@@ -183,17 +217,14 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
           .eq("id", String(payload.video_id))
           .single();
         if (!video) return;
-        const { data: caps } = await db.from("settings").select("value").eq("key", "social_caps").single();
-        const perDay = (caps?.value as { per_day?: number })?.per_day ?? 3;
         const { count } = await db
           .from("jobs")
           .select("*", { count: "exact", head: true })
           .eq("kind", "social_push")
           .eq("status", "done")
           .gte("updated_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString());
-        if ((count ?? 0) >= perDay) {
-          const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(9, 0, 0, 0);
-          await enqueue("social_push", payload, tomorrow);
+        if ((count ?? 0) >= caps.per_day) {
+          await enqueue("social_push", payload, await nextOverflowSlot(db, caps.delay_minutes));
           return;
         }
         const { getSocialPublisher } = await import("./adapters/social");
@@ -211,18 +242,15 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         .single();
       if (!story) return;
       // daily cap check (2–3 posts/day — never bombard)
-      const { data: caps } = await db.from("settings").select("value").eq("key", "social_caps").single();
-      const perDay = (caps?.value as { per_day?: number })?.per_day ?? 3;
       const { count } = await db
         .from("jobs")
         .select("*", { count: "exact", head: true })
         .eq("kind", "social_push")
         .eq("status", "done")
         .gte("updated_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString());
-      if ((count ?? 0) >= perDay) {
-        // push past the cap → tomorrow morning
-        const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(9, 0, 0, 0);
-        await enqueue("social_push", payload, tomorrow);
+      if ((count ?? 0) >= caps.per_day) {
+        // push past the cap — spaced across tomorrow, not stacked on one slot
+        await enqueue("social_push", payload, await nextOverflowSlot(db, caps.delay_minutes));
         return;
       }
       const { getSocialPublisher } = await import("./adapters/social");
@@ -365,6 +393,88 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       }
       break;
     }
+    case "membership_lapse": {
+      // grace period ran out with nothing resolving it → lapsed (Jas decides
+      // from there; lapsed members already surface in "Needs You Today" via
+      // whatever console view lists them)
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: lapsed } = await db
+        .from("members")
+        .select("id, name, contact_email")
+        .eq("status", "grace")
+        .lt("grace_until", today);
+      for (const m of lapsed ?? []) {
+        const { data: updated } = await db.from("members")
+          .update({ status: "lapsed" })
+          .eq("id", m.id)
+          .eq("status", "grace")
+          .select("id");
+        if (!updated?.length) continue;
+        await enqueue("notify_member", { member_id: m.id, kind: "membership_lapsed" });
+        await db.from("inbox_messages").insert({
+          kind: "membership",
+          name: m.name,
+          email: m.contact_email ?? "",
+          message: "Grace period ended with no resolution — membership moved to lapsed.",
+        });
+      }
+      break;
+    }
+    case "stats_summary": {
+      const nowDate = new Date();
+      const isMonthStart = nowDate.getUTCDate() === 1;
+      const isQuarterStart = isMonthStart && [0, 3, 6, 9].includes(nowDate.getUTCMonth());
+      const monthAgo = new Date(nowDate.getTime() - 30 * 864e5).toISOString();
+      const { data: members } = await db
+        .from("members")
+        .select("id, notification_prefs(stats_frequency)")
+        .in("status", ["active", "grace"]);
+      // Per-member exact counts, but concurrent: sequential awaits made this
+      // linear in member count (2 round-trips each) on the nightly cron. A
+      // grouped single query isn't available without an RPC, and pulling raw
+      // event rows to count in JS risks PostgREST's max-rows cap silently
+      // truncating the numbers members are sent.
+      const due = (members ?? []).filter((m) => {
+        const frequency = m.notification_prefs?.stats_frequency ?? "quarterly";
+        return frequency === "monthly" ? isMonthStart : frequency === "quarterly" ? isQuarterStart : false;
+      });
+      await Promise.all(due.map(async (m) => {
+        const { count } = await db
+          .from("analytics_events")
+          .select("*", { count: "exact", head: true })
+          .eq("kind", "member_page_view")
+          .eq("member_id", m.id)
+          .gte("occurred_at", monthAgo);
+        await enqueue("notify_member", { member_id: m.id, kind: "stats_summary", page_views: count ?? 0 });
+      }));
+      break;
+    }
+    case "lead_alert": {
+      const isMonday = new Date().getUTCDay() === 1;
+      const { data: members } = await db
+        .from("members")
+        .select("id, notification_prefs(leads_frequency)")
+        .in("status", ["active", "grace"]);
+      // Concurrent for the same reason as stats_summary above.
+      const due = (members ?? []).filter((m) => {
+        const frequency = m.notification_prefs?.leads_frequency ?? "weekly";
+        if (frequency === "never") return false;
+        return frequency !== "weekly" || isMonday;
+      });
+      await Promise.all(due.map(async (m) => {
+        const frequency = m.notification_prefs?.leads_frequency ?? "weekly";
+        const sinceDays = frequency === "weekly" ? 7 : 1;
+        const since = new Date(Date.now() - sinceDays * 864e5).toISOString().slice(0, 10);
+        const { count } = await db
+          .from("engagement_audit")
+          .select("*", { count: "exact", head: true })
+          .eq("member_id", m.id)
+          .gte("occurred_on", since);
+        if (!count) return;
+        await enqueue("notify_member", { member_id: m.id, kind: "lead_alert", count });
+      }));
+      break;
+    }
     /**
      * The advert run lifecycle, swept once a day.
      *
@@ -477,7 +587,13 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       }
 
       await db.from("newsletter_issues")
-        .update({ status: "sent", sent_at: new Date().toISOString(), send_error: null })
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          send_error: null,
+          sent_count: result.recipients,
+          provider_broadcast_id: result.providerBroadcastId ?? null,
+        })
         .eq("id", issue.id);
       if (!newsletterIsLive()) {
         // Still honest in the logs when the stub is what "succeeded".

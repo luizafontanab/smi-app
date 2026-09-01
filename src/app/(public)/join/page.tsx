@@ -1,6 +1,10 @@
 import Link from "next/link";
 
-export const metadata = { title: "Become a Member" };
+export const metadata = {
+  title: "Become a Member",
+  description: "Join Sheet Metal Industries for £40/month — a company page, news coverage, and a direct line to the UK sheet metal trade.",
+  alternates: { canonical: "/join" },
+};
 
 const BENEFITS = [
   ["Your company page", "A permanent, Google-indexed profile with your story library, map, video and contact routes."],

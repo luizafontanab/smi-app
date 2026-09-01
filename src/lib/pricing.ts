@@ -11,7 +11,7 @@ export const ADVERT_FORMAT_PENNIES: Record<string, number> = {
   supplier_logo: 10000,
 };
 
-export type LiveBooking = { format: string | null; bundlePennies: number | null };
+export type LiveBooking = { format: string | null; productPennies: number | null };
 
 export function revenueByStream(input: {
   activeMembers: number;
@@ -19,12 +19,15 @@ export function revenueByStream(input: {
   featuredSold: number;
 }) {
   const membership = input.activeMembers * MEMBERSHIP_MONTHLY_PENNIES;
-  const advertising = input.liveBookings.reduce(
-    (sum, b) => sum + (b.bundlePennies ?? ADVERT_FORMAT_PENNIES[b.format ?? ""] ?? 0),
-    0,
-  );
+  let advertising = 0;
+  let unpriced = 0;
+  for (const b of input.liveBookings) {
+    const rate = b.productPennies ?? ADVERT_FORMAT_PENNIES[b.format ?? ""] ?? null;
+    if (rate === null) unpriced++;
+    else advertising += rate;
+  }
   const featured = input.featuredSold * FEATURED_SLOTS.pennies;
-  return { membership, advertising, featured, total: membership + advertising + featured };
+  return { membership, advertising, featured, total: membership + advertising + featured, unpriced };
 }
 
 export function pounds(pennies: number): string {

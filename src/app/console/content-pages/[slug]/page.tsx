@@ -20,7 +20,7 @@ export default async function ContentPageEditor(props: PageProps<"/console/conte
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/content-pages" className="text-sm text-gray-400 hover:text-ink">← Content Pages</Link>
+      <Link href="/console/content-pages" className="text-sm text-gray-500 hover:text-ink">← Content Pages</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New page" : `Edit “${page!.title}”`}</h1>
       {sp.error && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
       {sp.saved && <p className="mt-2 rounded bg-green-50 p-2 text-sm text-green-700">Saved.</p>}
@@ -34,12 +34,12 @@ export default async function ContentPageEditor(props: PageProps<"/console/conte
         <div>
           <label htmlFor="slug" className="text-sm font-medium">Web address</label>
           <div className="mt-1 flex items-center gap-1">
-            <span className="text-sm text-gray-400">/pages/</span>
+            <span className="text-sm text-gray-500">/pages/</span>
             <input id="slug" name="slug" defaultValue={page?.slug ?? ""} placeholder="from the title" className="w-full rounded border px-3 py-2" />
           </div>
           {/* Changing it is allowed — saveContentPage records a 301 from the old
               path so anything already linking here keeps working. */}
-          <p className="mt-1 text-xs text-gray-400">Leave blank to derive it from the title. Changing it redirects the old address here.</p>
+          <p className="mt-1 text-xs text-gray-500">Leave blank to derive it from the title. Changing it redirects the old address here.</p>
         </div>
         <div>
           <span className="block text-sm font-medium">Page content</span>

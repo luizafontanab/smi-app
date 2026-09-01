@@ -30,7 +30,7 @@ export function AdPreviewToggle({ initialOn }: { initialOn: boolean }) {
     <div className="rounded-xl bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase text-gray-400">Preview unsold state</p>
+          <p className="text-xs uppercase text-gray-500">Preview unsold state</p>
           <p className="mt-0.5 text-xs text-gray-500">
             {on
               ? "On — the public site shows empty slot placeholders to you only. Adverts are untouched."

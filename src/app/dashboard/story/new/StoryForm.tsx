@@ -10,19 +10,25 @@ type Props = {
   uploadImage: (formData: FormData) => Promise<string | null>;
   categories: { id: number; name: string }[];
   member: { name: string; slug: string; logoUrl: string | null };
+  /** Present only in edit mode — pre-fills the form and switches the copy/actions. */
+  initial?: { id: string; title: string; excerpt: string; body: string; coverUrl: string | null; categoryId: number | null };
+  withdrawAction?: (formData: FormData) => Promise<void>;
 };
 
 /**
  * Member story form with a true preview: body + backlink + logo shown exactly
  * as they will publish (req §7 — branding used to appear only after publish).
+ * Doubles as the edit form for a pending/rejected submission when `initial`
+ * is given — same fields, pre-filled, posting to a resubmit action instead.
  */
-export function StoryForm({ action, uploadImage, categories, member }: Props) {
+export function StoryForm({ action, uploadImage, categories, member, initial, withdrawAction }: Props) {
   const [tab, setTab] = useState<"write" | "preview">("write");
-  const [title, setTitle] = useState("");
-  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [coverUrl, setCoverUrl] = useState<string | null>(initial?.coverUrl ?? null);
 
   return (
     <form action={action} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
+      {initial && <input type="hidden" name="id" value={initial.id} />}
       <div className="flex gap-1 border-b pb-3 text-sm">
         <button type="button" onClick={() => setTab("write")} className={`rounded px-3 py-1.5 ${tab === "write" ? "bg-ink text-white" : "bg-gray-100"}`}>Write</button>
         <button type="button" onClick={() => setTab("preview")} className={`rounded px-3 py-1.5 ${tab === "preview" ? "bg-ink text-white" : "bg-gray-100"}`}>Preview</button>
@@ -36,15 +42,15 @@ export function StoryForm({ action, uploadImage, categories, member }: Props) {
         </div>
         <div>
           <label htmlFor="excerpt" className="text-sm font-medium">Summary (1–2 sentences)</label>
-          <textarea id="excerpt" name="excerpt" rows={2} className="mt-1 w-full rounded border px-3 py-2" />
+          <textarea id="excerpt" name="excerpt" rows={2} defaultValue={initial?.excerpt} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
           <span className="block text-sm font-medium">Story</span>
-          <RichTextEditor name="body" ariaLabel="Story" uploadImage={uploadImage} />
+          <RichTextEditor name="body" ariaLabel="Story" uploadImage={uploadImage} initialHtml={initial?.body} />
         </div>
         <div className="sm:w-1/2 sm:pr-2">
           <label htmlFor="category" className="text-sm font-medium">Category</label>
-          <select id="category" name="category" className="mt-1 w-full rounded border px-3 py-2">
+          <select id="category" name="category" defaultValue={initial?.categoryId ?? ""} className="mt-1 w-full rounded border px-3 py-2">
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
@@ -54,7 +60,14 @@ export function StoryForm({ action, uploadImage, categories, member }: Props) {
 
       {tab === "preview" && <StoryPreview title={title} coverUrl={coverUrl} member={member} />}
 
-      <button className="rounded bg-ink px-5 py-2.5 text-white">Submit for approval</button>
+      <div className="flex items-center gap-3">
+        <button className="rounded bg-ink px-5 py-2.5 text-white">{initial ? "Save & resubmit" : "Submit for approval"}</button>
+        {initial && withdrawAction && (
+          <button type="submit" formAction={withdrawAction} className="text-sm text-gray-500 underline hover:text-red-600">
+            Withdraw
+          </button>
+        )}
+      </div>
     </form>
   );
 }
@@ -67,7 +80,7 @@ function StoryPreview({ title, coverUrl, member }: { title: string; coverUrl: st
     : "";
   return (
     <div data-testid="story-preview" className="rounded-lg border bg-paper p-5">
-      <p className="text-xs uppercase tracking-widest text-gray-400">Preview — how your story will appear</p>
+      <p className="text-xs uppercase tracking-widest text-gray-500">Preview — how your story will appear</p>
       <h1 className="mt-3 text-3xl font-bold leading-tight text-ink">{title || "Untitled story"}</h1>
       {coverUrl && (
         // eslint-disable-next-line @next/next/no-img-element

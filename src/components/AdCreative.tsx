@@ -117,7 +117,14 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
         // Desktop artwork at its own aspect; no mobile creative is booked for it.
         <Image src={desktop} alt={name} width={300} height={600} className="w-full rounded" onLoad={checkLoaded} unoptimized />
       ) : shape === "mpu" ? (
-        <Image src={desktop} alt={name} width={300} height={250} className="w-full rounded" onLoad={checkLoaded} unoptimized />
+        // Same 300×250 box at every breakpoint — only the artwork swaps.
+        // A crop meant for a phone-width column is genuinely different
+        // creative from the desktop one, not just a resize, same reasoning
+        // as banner above.
+        <>
+          <Image src={desktop} alt={name} width={300} height={250} className="hidden w-full rounded md:block" onLoad={checkLoaded} unoptimized />
+          <Image src={mobile} alt={name} width={300} height={250} className="w-full rounded md:hidden" onLoad={checkLoaded} unoptimized />
+        </>
       ) : (
         // rail and in_feed both take the squarer mobile creative.
         <Image src={mobile} alt={name} width={370} height={280} className="w-full rounded" onLoad={checkLoaded} unoptimized />

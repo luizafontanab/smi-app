@@ -37,7 +37,7 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/console/adverts" className="text-sm text-gray-400 hover:text-ink">← Bookings</Link>
+      <Link href="/console/adverts" className="text-sm text-gray-500 hover:text-ink">← Bookings</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{booking.advert?.name}</h1>
       <p className="mt-1 text-sm text-gray-500">
         {booking.advert?.member?.name} · {booking.advert?.format.replace(/_/g, " ")}
@@ -77,7 +77,8 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
           <form action={decideArtworkSwap} className="mt-3 flex gap-2">
             <input type="hidden" name="id" value={pendingSwap.id} />
             <input type="hidden" name="decision" value="reject" />
-            <input name="reason" placeholder="What needs changing? (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
+            <label htmlFor="swap-reason" className="sr-only">Reason (sent to the member)</label>
+            <input id="swap-reason" name="reason" placeholder="What needs changing? (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
             <button className="whitespace-nowrap rounded border border-red-300 px-3 py-1.5 text-sm text-red-600">Send back</button>
           </form>
         </section>
@@ -95,7 +96,8 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
           <form action={decideAdvertBooking} className="mt-3 flex gap-2">
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="decision" value="reject" />
-            <input name="reason" placeholder="What needs changing? (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
+            <label htmlFor="booking-reason" className="sr-only">Reason (sent to the member)</label>
+            <input id="booking-reason" name="reason" placeholder="What needs changing? (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
             <button className="whitespace-nowrap rounded border border-red-300 px-3 py-1.5 text-sm text-red-600">Send back</button>
           </form>
         </section>

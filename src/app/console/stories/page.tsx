@@ -1,17 +1,13 @@
 import Link from "next/link";
 import { serviceDb } from "@/lib/db/server";
 import { requireConsole } from "@/lib/auth";
-import { decideStory, pinStory } from "../actions";
+import { saveSocialCaps, saveSocialChannels } from "../actions";
+import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
+import { DEFAULT_SOCIAL_CHANNELS, type SocialChannels } from "@/lib/social-channels";
 import { CalendarView, monthGrid, parseMonth, type CalendarStory } from "./CalendarView";
+import { StoryBoard } from "./StoryBoard";
 
 export const dynamic = "force-dynamic";
-
-const COLUMNS = [
-  { key: "awaiting_approval", label: "Awaiting approval" },
-  { key: "draft", label: "Drafts" },
-  { key: "scheduled", label: "Scheduled" },
-  { key: "published", label: "Published" },
-] as const;
 
 const TABS = [
   { view: "board", label: "Board" },
@@ -30,21 +26,25 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
   // The board's "most recently touched 120" is the wrong window for a calendar —
   // a story scheduled months out can fall outside it. Query by date range instead.
   const { start, end } = monthGrid(month);
-  const { data: stories } = view === "calendar"
-    ? await db
-        .from("stories")
-        .select(SELECT)
-        .or(
-          `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
-          `and(status.eq.published,published_at.gte.${start.toISOString()},published_at.lt.${end.toISOString()})`,
-        )
-    : await db
-        .from("stories")
-        .select(SELECT)
-        .order("updated_at", { ascending: false })
-        .limit(120);
-
-  const byStatus = (s: string) => (stories ?? []).filter((x) => x.status === s);
+  const [{ data: stories }, { data: capsSetting }, { data: channelsSetting }] = await Promise.all([
+    view === "calendar"
+      ? db
+          .from("stories")
+          .select(SELECT)
+          .or(
+            `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
+            `and(status.eq.published,published_at.gte.${start.toISOString()},published_at.lt.${end.toISOString()})`,
+          )
+      : db
+          .from("stories")
+          .select(SELECT)
+          .order("updated_at", { ascending: false })
+          .limit(120),
+    db.from("settings").select("value").eq("key", "social_caps").maybeSingle(),
+    db.from("settings").select("value").eq("key", "social_channels").maybeSingle(),
+  ]);
+  const caps: SocialCaps = { ...DEFAULT_SOCIAL_CAPS, ...(capsSetting?.value as Partial<SocialCaps> | null) };
+  const channels: SocialChannels = { ...DEFAULT_SOCIAL_CHANNELS, ...(channelsSetting?.value as Partial<SocialChannels> | null) };
 
   return (
     <div>
@@ -71,51 +71,41 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
       {view === "calendar" ? (
         <CalendarView month={month} stories={(stories ?? []) as CalendarStory[]} />
       ) : (
-        <div className="mt-5 grid gap-4 lg:grid-cols-4">
-          {COLUMNS.map((col) => {
-            const items = byStatus(col.key).slice(0, col.key === "published" ? 10 : 30);
-            return (
-              <div key={col.key} className="rounded-xl bg-white p-3 shadow-sm">
-                <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-                  {col.label} <span className="text-gray-300">({byStatus(col.key).length})</span>
-                </h2>
-                <div className="mt-2 space-y-2">
-                  {items.map((s) => (
-                    <div key={s.id} className="rounded border p-2.5 text-sm">
-                      <Link href={`/console/stories/${s.id}`} className="font-medium leading-snug hover:text-graphite">{s.title}</Link>
-                      <p className="mt-1 text-xs text-gray-400">
-                        {s.member?.name && <>{s.member.name} · </>}{s.source}
-                        {s.scheduled_at && s.status === "scheduled" && <> · {new Date(s.scheduled_at).toLocaleString("en-GB")}</>}
-                        {s.pinned_until && new Date(s.pinned_until) > new Date() && <> · 📌 pinned</>}
-                      </p>
-                      {s.status === "awaiting_approval" && (
-                        <div className="mt-2 flex gap-2">
-                          <form action={decideStory}>
-                            <input type="hidden" name="id" value={s.id} />
-                            <input type="hidden" name="decision" value="approve" />
-                            <button className="rounded bg-green-600 px-2.5 py-1 text-xs text-white">Approve</button>
-                          </form>
-                          <Link href={`/console/stories/${s.id}`} className="rounded border px-2.5 py-1 text-xs">Review</Link>
-                        </div>
-                      )}
-                      {s.status === "published" && (
-                        <form action={pinStory} className="mt-1.5 flex items-center gap-1 text-xs">
-                          <input type="hidden" name="id" value={s.id} />
-                          <input type="hidden" name="days" value={s.pinned_until && new Date(s.pinned_until) > new Date() ? "0" : "2"} />
-                          <button className="text-gray-400 hover:text-ink">
-                            {s.pinned_until && new Date(s.pinned_until) > new Date() ? "Unpin" : "📌 Pin 2 days"}
-                          </button>
-                        </form>
-                      )}
-                    </div>
-                  ))}
-                  {items.length === 0 && <p className="px-1 text-xs text-gray-300">Empty</p>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <StoryBoard stories={stories ?? []} />
       )}
+
+      <section className="mt-6 rounded-xl bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-bold text-ink">Social push settings</h2>
+        <p className="mt-1 text-xs text-gray-500">Caps how many auto-posts go out a day, and how long after publish the first one waits.</p>
+        <form action={saveSocialCaps} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
+          <label className="flex flex-col">
+            Per day
+            <input type="number" name="per_day" min={1} defaultValue={caps.per_day} className="mt-1 w-20 rounded border px-2 py-1" />
+          </label>
+          <label className="flex flex-col">
+            Delay (minutes)
+            <input type="number" name="delay_minutes" min={0} defaultValue={caps.delay_minutes} className="mt-1 w-24 rounded border px-2 py-1" />
+          </label>
+          <button className="rounded bg-ink px-4 py-2 text-white">Save</button>
+        </form>
+
+        <h2 className="mt-5 text-sm font-bold text-ink">Buffer channels</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Which connected Buffer profiles auto-posts go to — Buffer has no &quot;post everywhere&quot; default, so this must be set before any post can send.
+        </p>
+        <form action={saveSocialChannels} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
+          <label className="flex flex-1 flex-col">
+            Profile IDs (one per line, or comma-separated)
+            <textarea
+              name="profile_ids"
+              rows={2}
+              defaultValue={channels.profileIds.join("\n")}
+              className="mt-1 w-full rounded border px-2 py-1"
+            />
+          </label>
+          <button className="rounded bg-ink px-4 py-2 text-white">Save</button>
+        </form>
+      </section>
     </div>
   );
 }

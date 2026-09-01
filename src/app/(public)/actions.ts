@@ -21,6 +21,14 @@ export async function subscribeNewsletter(_prev: { message: string }, formData: 
   if (!existing) {
     await db.from("contacts").insert({ email, source: "newsletter", subscribed: true });
   }
+  try {
+    const { getCrmSync } = await import("@/lib/adapters/crm");
+    await getCrmSync().pushContact({ email }); // write-through to Bigin (GAPS B6.2)
+  } catch (e) {
+    // The signup is already recorded above — a CRM outage must not cost a
+    // visitor their subscription confirmation.
+    console.error("[newsletter] CRM push failed:", e);
+  }
   return { message: "Subscribed — see you next issue." };
 }
 

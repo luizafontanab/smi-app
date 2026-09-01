@@ -8,6 +8,19 @@ import { newsletterBySlug } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata(props: PageProps<"/newsletters/[slug]">) {
+  const { slug } = await props.params;
+  const issue = await newsletterBySlug(slug).catch(() => null);
+  const title = issue ? `SMI Monthly · Issue ${issue.number} — ${issue.subject}` : "Newsletter";
+  const description = issue?.intro ?? undefined;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/newsletters/${slug}` },
+    openGraph: { url: `/newsletters/${slug}`, title, description },
+  };
+}
+
 export default async function NewsletterIssuePage(props: PageProps<"/newsletters/[slug]">) {
   const { slug } = await props.params;
   const [issue, ctx] = await Promise.all([newsletterBySlug(slug), requestContext()]);

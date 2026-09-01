@@ -85,7 +85,7 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
       <form action={resetLayout} className="mt-3">
         <input type="hidden" name="page_type" value={type} />
         {entity && <input type="hidden" name="entity_id" value={entity} />}
-        <button className="text-sm text-gray-400 underline hover:text-red-500">
+        <button className="text-sm text-gray-500 underline hover:text-red-500">
           {entity ? "Remove this page's override (use the default)" : "Reset to the built-in default"}
         </button>
       </form>

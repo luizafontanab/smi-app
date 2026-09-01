@@ -1,21 +1,23 @@
 import { ContactForm } from "@/components/ContactForm";
+import { JoinCta } from "@/components/JoinCta";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { DEFAULT_AD_FORMATS, type AdFormat } from "@/lib/advert-formats";
 
-export const metadata = { title: "Advertising" };
+export const metadata = {
+  title: "Advertising",
+  description: "Put your brand in front of the UK sheet metal trade — banner, rail and newsletter advertising with Sheet Metal Industries.",
+  alternates: { canonical: "/advertising" },
+};
 export const dynamic = "force-dynamic";
 
-const FORMATS = [
-  { key: "A", name: "Sitewide website banners", detail: "Randomised rotation across homepage, news, articles, videos and the member directory. Desktop 1280×170px, mobile 370×280px. No advertiser owns a position — every slot rotates." },
-  { key: "B", name: "Featured Member", detail: "Your logo and profile in the homepage carousel and higher visibility in Find a Member." },
-  { key: "C", name: "Homepage Takeover", detail: "Your colour scheme across homepage, news and videos with top banner placement. Hex colour required; WCAG 2.1 A compliance applies." },
-  { key: "D", name: "Supplier Logo", detail: "Rotating logo carousel on the homepage and news pages." },
-  { key: "E", name: "Editor's Monthly E-Newsletter", detail: "Banner (560×300px, 18pt minimum font) or 'In Association With' logo (250×60px). 12 issues a year to ~2,500 trade readers." },
-  { key: "F", name: "Banner design help", detail: "One-off design service for desktop and mobile banners." },
-];
-
 export default async function AdvertisingPage() {
-  const { data: setting } = await serviceDb().from("settings").select("value").eq("key", "media_pack").maybeSingle();
+  const db = serviceDb();
+  const [{ data: setting }, { data: formatSetting }] = await Promise.all([
+    db.from("settings").select("value").eq("key", "media_pack").maybeSingle(),
+    db.from("settings").select("value").eq("key", "advert_formats").maybeSingle(),
+  ]);
   const packUrl = mediaUrl((setting?.value as { path?: string } | null)?.path ?? null);
+  const FORMATS = (formatSetting?.value as AdFormat[] | null) ?? DEFAULT_AD_FORMATS;
   return (
     <div className="mx-auto max-w-4xl px-4">
       <h1 className="mt-6 text-2xl font-bold text-ink">Advertise with SMI</h1>
@@ -46,6 +48,7 @@ export default async function AdvertisingPage() {
         )}
         <ContactForm kind="advertising" />
       </div>
+      <JoinCta />
       <div className="my-10" />
     </div>
   );

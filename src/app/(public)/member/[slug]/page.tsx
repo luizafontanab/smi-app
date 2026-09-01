@@ -5,11 +5,13 @@ import { record, requestContext } from "@/lib/analytics";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
+import { breadcrumbLd, localBusinessLd } from "@/lib/jsonld";
 import { memberBySlug, publishedStories } from "@/lib/queries";
 import { resolveRedirect } from "@/lib/redirects";
 import { excerptFromHtml } from "@/lib/sanitize";
 import { socialLinks } from "@/lib/social";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
+import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +68,20 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
 
   const profileMain = (
     <>
+      <JsonLd
+        data={[
+          localBusinessLd({
+            ...member,
+            logoUrl: mediaUrl(member.logo_path),
+            socialUrls: socials.map((s) => s.href).filter((h): h is string => Boolean(h)),
+            categoryName: member.category?.name,
+          }),
+          breadcrumbLd([
+            { name: "Members", path: "/member" },
+            { name: member.name, path: `/member/${slug}` },
+          ]),
+        ]}
+      />
       {hero && (
         <div className="relative mt-6 h-56 overflow-hidden rounded-xl">
           <Image src={hero} alt="" fill sizes="100vw" className="object-cover" unoptimized />
@@ -79,8 +95,8 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           <p className="text-sm text-gray-500">{member.address}</p>
         </div>
         <div className="flex gap-2 text-sm">
-          {member.website && <a href={member.website} target="_blank" rel="noopener" className="rounded bg-ink px-4 py-2 text-white">Website</a>}
-          {member.phone && <a href={`tel:${member.phone}`} className="rounded border px-4 py-2">Call</a>}
+          {member.website && <a href={`/go/${member.id}?kind=website`} target="_blank" rel="noopener" className="rounded bg-ink px-4 py-2 text-white">Website</a>}
+          {member.phone && <a href={`/go/${member.id}?kind=phone`} className="rounded border px-4 py-2">Call</a>}
         </div>
       </header>
 
@@ -116,9 +132,9 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
                     {!s.href ? (
                       <>{s.label}: <span className="text-gray-500">{s.value}</span></>
                     ) : s.handle ? (
-                      <>{s.label}: <a href={s.href} target="_blank" rel="noopener" className="hover:underline">{s.handle}</a></>
+                      <>{s.label}: <a href={`/go/${member.id}?kind=social&platform=${s.key}`} target="_blank" rel="noopener" className="hover:underline">{s.handle}</a></>
                     ) : (
-                      <a href={s.href} target="_blank" rel="noopener" className="hover:underline">{s.label}</a>
+                      <a href={`/go/${member.id}?kind=social&platform=${s.key}`} target="_blank" rel="noopener" className="hover:underline">{s.label}</a>
                     )}
                   </li>
                 ))}

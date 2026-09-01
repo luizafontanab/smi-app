@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * The Dev Board + "Report a bug" widget. The risk here is entirely in the
+ * The Dev Board + "Feedback" (bug-report) widget. The risk here is entirely in the
  * wiring — root gate -> client dialog -> hidden JSON field -> action -> RLS
  * grants -> the board rendering a widget-submitted row indistinguishably from
  * a manually quick-added one — which unit tests cannot reach.
@@ -41,11 +41,11 @@ function card(page: Page, title: string) {
 test.describe("Report a bug widget", () => {
   test("is hidden from anonymous visitors and members", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("button", { name: "Report a bug" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Feedback" })).toHaveCount(0);
 
     await loginAsMember1(page);
     await page.goto("/dashboard");
-    await expect(page.getByRole("button", { name: "Report a bug" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Feedback" })).toHaveCount(0);
   });
 
   test("member1 cannot reach the Dev Board", async ({ page }) => {
@@ -67,8 +67,8 @@ test.describe("filing a report and working it on the board", () => {
 
     // File it from a public page, not from the console itself.
     await page.goto("/");
-    await expect(page.getByRole("button", { name: "Report a bug" })).toBeVisible();
-    await page.getByRole("button", { name: "Report a bug" }).click();
+    await expect(page.getByRole("button", { name: "Feedback" })).toBeVisible();
+    await page.getByRole("button", { name: "Feedback" }).click();
     await page.locator("#dev-task-title").fill(title);
     await page.locator("#dev-task-kind").selectOption("bug");
     await page.locator("#dev-task-priority").selectOption("high");
@@ -88,8 +88,12 @@ test.describe("filing a report and working it on the board", () => {
     await page.waitForURL(/\/console\/dev\/[0-9a-f-]{36}/, { timeout: 20_000 });
     const detailUrl = page.url().split("?")[0];
     await expect(page.getByText("Reported from the site")).toBeVisible();
-    await expect(page.getByText(/^URL:/)).toBeVisible();
-    await expect(page.getByText(/Viewport/)).toBeVisible();
+    // The captured snapshot renders as one <pre> block, not per-line elements.
+    // Scoped to its section: in dev, dnd-kit's known aria-describedby
+    // hydration warning opens the Next overlay, which adds its own <pre>s.
+    const snapshot = page.locator("section", { hasText: "Reported from the site" }).locator("pre");
+    await expect(snapshot).toContainText("URL:");
+    await expect(snapshot).toContainText("Viewport");
 
     // Triage it: reclassify, leave a scratchpad note, move it along.
     await page.locator("#kind").selectOption("idea");

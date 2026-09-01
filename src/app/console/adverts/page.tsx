@@ -26,10 +26,10 @@ export default async function AdvertsPage() {
   const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
 
   const [{ data: adverts }, { data: bookings }, { data: slots }, { data: placements }, { data: products }, { count: openInterest }, previewOn] = await Promise.all([
-    db.from("adverts").select("id, name, format, desktop_path, member:members(name)").order("created_at"),
-    db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").order("ends_on"),
+    db.from("adverts").select("id, name, format, desktop_path, member:members(name)").order("created_at", { ascending: false }).limit(500),
+    db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").order("ends_on").limit(500),
     db.from("advert_slots").select("*").order("key"),
-    db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on"),
+    db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on").limit(500),
     db.from("advert_products").select("id, short_name, format").is("archived_at", null).order("short_name"),
     db.from("visibility_requests").select("id", { count: "exact", head: true }).eq("status", "requested"),
     adPreview(),
@@ -54,18 +54,18 @@ export default async function AdvertsPage() {
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl bg-white p-4 shadow-sm">
-          <p className="text-xs uppercase text-gray-400">Live bookings</p>
+          <p className="text-xs uppercase text-gray-500">Live bookings</p>
           <p className="text-2xl font-bold text-ink">{live.length}</p>
           <p className="mt-1 text-xs text-gray-500">
             {liveFormats.length ? liveFormats.map(([f, n]) => `${n} ${f.replace(/_/g, " ")}`).join(" · ") : "nothing booked"}
           </p>
         </div>
         <div className="rounded-xl bg-white p-4 shadow-sm">
-          <p className="text-xs uppercase text-gray-400">Formats sold</p>
+          <p className="text-xs uppercase text-gray-500">Formats sold</p>
           <p className="text-2xl font-bold text-ink">{liveFormats.length}</p>
           <p className="mt-1 text-xs text-gray-500">of 7 bookable</p>
         </div>
-        <div className="rounded-xl bg-white p-4 shadow-sm"><p className="text-xs uppercase text-gray-400">Interest</p>
+        <div className="rounded-xl bg-white p-4 shadow-sm"><p className="text-xs uppercase text-gray-500">Interest</p>
           <p className="text-2xl font-bold text-ink">{openInterest ?? 0}</p>
           <p className="mt-1 text-xs text-gray-500">
             <Link href="/console/adverts/interest" className="underline">members waiting to hear back</Link>
@@ -94,8 +94,9 @@ export default async function AdvertsPage() {
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Bookings</h2>
-        <table className="mt-2 w-full text-sm">
-          <thead><tr className="text-left text-xs uppercase text-gray-400"><th className="py-1">Advert</th><th>Format</th><th>Start</th><th>End</th><th /><th /></tr></thead>
+        <div className="overflow-x-auto mt-2">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Advert</th><th scope="col">Format</th><th scope="col">Start</th><th scope="col">End</th><th scope="col" /><th scope="col" /></tr></thead>
           <tbody>
             {(bookings ?? []).map((b) => {
               // Phase, not raw dates: a draft or sent-back booking whose dates
@@ -126,18 +127,19 @@ export default async function AdvertsPage() {
             })}
           </tbody>
         </table>
+        </div>
       </section>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">New booking</h2>
         <form action={saveBooking} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
-          <label className="block">Advert
-            <select name="advert_id" className="mt-1 block rounded border px-3 py-2">
+          <label className="block max-w-full">Advert
+            <select name="advert_id" className="mt-1 block max-w-full rounded border px-3 py-2">
               {(adverts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.format})</option>)}
             </select>
           </label>
-          <label className="block">Sold as
-            <select name="product_id" className="mt-1 block rounded border px-3 py-2">
+          <label className="block max-w-full">Sold as
+            <select name="product_id" className="mt-1 block max-w-full rounded border px-3 py-2">
               <option value="">— not set —</option>
               {(products ?? []).map((p) => <option key={p.id} value={p.id}>{p.short_name}</option>)}
             </select>
@@ -147,7 +149,7 @@ export default async function AdvertsPage() {
           <label className="block grow">Notes<input name="notes" className="mt-1 block w-full rounded border px-3 py-2" placeholder="rate, PO ref…" /></label>
           <button className="rounded bg-ink px-4 py-2 text-white">Book</button>
         </form>
-        <p className="mt-2 text-xs text-gray-400">
+        <p className="mt-2 text-xs text-gray-500">
           Booking it here approves it — it goes live on its start date. Artwork is swappable mid-run from{" "}
           <Link href="/console/adverts/artwork" className="underline">Artwork</Link>; the dates stay put.
         </p>
@@ -156,10 +158,15 @@ export default async function AdvertsPage() {
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <div className="flex items-baseline justify-between">
           <h2 className="font-bold text-ink">Paid placements (hold their spot for the paid period)</h2>
-          <Link href="/console/adverts/takeover" className="text-xs text-graphite hover:underline">Book a homepage takeover →</Link>
+          <span className="flex gap-3 text-xs">
+            <Link href="/console/adverts/takeover" className="text-graphite hover:underline">Book a homepage takeover →</Link>
+            <Link href="/console/adverts/featured-member" className="text-graphite hover:underline">Book Featured Member →</Link>
+            <Link href="/console/adverts/bundles" className="text-graphite hover:underline">Bundles →</Link>
+          </span>
         </div>
-        <table className="mt-2 w-full text-sm">
-          <thead><tr className="text-left text-xs uppercase text-gray-400"><th className="py-1">Kind</th><th>Who / what</th><th>Position</th><th>From</th><th>To</th></tr></thead>
+        <div className="overflow-x-auto mt-2">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Kind</th><th scope="col">Who / what</th><th scope="col">Position</th><th scope="col">From</th><th scope="col">To</th></tr></thead>
           <tbody>
             {(placements ?? []).map((p) => (
               <tr key={p.id} className="border-t">
@@ -172,6 +179,7 @@ export default async function AdvertsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">

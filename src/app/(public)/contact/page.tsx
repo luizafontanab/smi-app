@@ -1,6 +1,10 @@
 import { ContactForm } from "@/components/ContactForm";
 
-export const metadata = { title: "Contact" };
+export const metadata = {
+  title: "Contact",
+  description: "Get in touch with Sheet Metal Industries — news tips, membership questions and advertising enquiries.",
+  alternates: { canonical: "/contact" },
+};
 
 export default function ContactPage() {
   return (

@@ -25,7 +25,7 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 export function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-xl border border-black/5 bg-white p-4 shadow-sm">
-      <p className="text-xs uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
       <p className="mt-1 text-2xl font-bold text-ink">{value}</p>
       {sub && <p className="text-xs text-gray-500">{sub}</p>}
     </div>

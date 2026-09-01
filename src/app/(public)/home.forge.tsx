@@ -3,6 +3,7 @@ import { AdSlot, SupplierLogos } from "@/components/AdSlot";
 import { EventCard, FeaturedMemberCard, MachineCard, VideoCard } from "@/components/cards";
 import { HomeHero } from "@/components/HomeHero";
 import { JoinCta } from "@/components/JoinCta";
+import { SearchForm } from "@/components/SearchForm";
 import { Carousel, StoryCard } from "@/components/StoryCard";
 import { excluding, type HomeData } from "./home.data";
 
@@ -33,9 +34,18 @@ export function ForgeHome({
       {/* Full-bleed: a sibling of the max-w-6xl column, not inside it. The public
           layout's <main> imposes no width, so this spans the viewport without a
           100vw hack (which would overflow by the scrollbar width). */}
-      {heroItems.length > 0 && <HomeHero items={heroItems} />}
+      {/* The page's only h1 lives inside HomeHero (sr-only) — when there is
+          nothing to put in the hero, keep the heading so the page never ships
+          without one. */}
+      {heroItems.length > 0
+        ? <HomeHero items={heroItems} />
+        : <h1 className="sr-only">Sheet Metal Industries — news for UK sheet metal, fabrication and welding</h1>}
 
       <div className="mx-auto max-w-6xl px-4">
+      {/* Jas asked for the search bar on home, news, video and members — one
+          universal tool, and the query log is meant to steer SEO later. */}
+      <SearchForm />
+
       {/* The band that used to sit beside the headline. No advert here — the
           first one on the page is now home_1, below the news carousel. */}
       {featuredMembers[0]?.member && (

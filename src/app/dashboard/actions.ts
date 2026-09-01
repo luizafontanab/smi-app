@@ -3,13 +3,52 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
-import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { geocodeAddress } from "@/lib/adapters/geocode";
+import { mediaUrl, serviceDb, sessionDb } from "@/lib/db/server";
+import type { Json } from "@/lib/db/types";
+import { isEventType } from "@/lib/event-types";
 import { removeMedia, uploadImage } from "@/lib/media";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { mergeSocial } from "@/lib/social";
+import { EMAIL_RE } from "@/lib/validate";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+
+type EditableTable = "stories" | "videos" | "events" | "featured_machines";
+const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
+
+/**
+ * These member-area actions use the service role, which bypasses RLS, so
+ * ownership has to be checked by hand before every read or write. The three
+ * helpers below are the single place that happens, so a new action can't
+ * forget the check the way a one-off inline comparison could.
+ */
+
+/** True when `id` in `table` belongs to this member and is still in a state they're allowed to touch — never something already live. */
+async function assertOwnsRow(db: ReturnType<typeof serviceDb>, table: EditableTable, id: string, memberId: string): Promise<boolean> {
+  const { data } = await db.from(table).select("id, status, member_id").eq("id", id).single();
+  return Boolean(data && data.member_id === memberId && EDITABLE_STATUSES.includes(data.status));
+}
+
+/** True when the `adverts` row `id` belongs to this member. */
+async function assertOwnsAdvert(db: ReturnType<typeof serviceDb>, id: string, memberId: string): Promise<boolean> {
+  const { data } = await db.from("adverts").select("id, member_id").eq("id", id).single();
+  return data?.member_id === memberId;
+}
+
+type OwnedBooking = { id: string; status: string; advert_id: string; product_id: string | null };
+
+/** The `advert_bookings` row `id` if it belongs to this member (via its advert), else null. */
+async function assertOwnsBooking(db: ReturnType<typeof serviceDb>, id: string, memberId: string): Promise<OwnedBooking | null> {
+  const { data } = await db
+    .from("advert_bookings")
+    .select("id, status, advert_id, product_id, advert:adverts(member_id)")
+    .eq("id", id)
+    .single();
+  if (!data || data.advert?.member_id !== memberId) return null;
+  return { id: data.id, status: data.status, advert_id: data.advert_id, product_id: data.product_id };
+}
 
 /** Editor image upload — returns the public URL for insertion as <img src>. */
 export async function memberUploadImage(formData: FormData): Promise<string | null> {
@@ -54,6 +93,53 @@ export async function submitStory(formData: FormData) {
   redirect("/dashboard?submitted=story");
 }
 
+/** Pull back a story that's still waiting on (or was sent back from) a decision. */
+export async function withdrawStory(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  if (!(await assertOwnsRow(db, "stories", id, user.memberId))) return;
+  await db.from("stories").update({ status: "withdrawn" }).eq("id", id);
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
+}
+
+/** Edit and resubmit a story that's awaiting approval or was rejected — mirrors resubmitAdvert. */
+export async function editStory(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  if (!(await assertOwnsRow(db, "stories", id, user.memberId))) return;
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) return;
+  let cover: string | null = null;
+  try {
+    cover = await uploadImage(formData.get("cover") as File | null, "stories");
+  } catch (e) {
+    redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
+  }
+  await db.from("stories").update({
+    title,
+    excerpt: String(formData.get("excerpt") ?? ""),
+    body: sanitizeRichText(String(formData.get("body") ?? "")),
+    status: "awaiting_approval",
+    // cleared so the member is not still shown last time's reason once they act on it
+    rejected_reason: null,
+    updated_at: new Date().toISOString(),
+    ...(cover ? { cover_path: cover } : {}),
+    ...(formData.get("focus_x")
+      ? { cover_focus: { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) } }
+      : {}),
+  }).eq("id", id);
+  const cat = Number(formData.get("category") || 0);
+  if (cat) {
+    await db.from("story_categories").delete().eq("story_id", id);
+    await db.from("story_categories").insert({ story_id: id, category_id: cat });
+  }
+  revalidatePath("/dashboard");
+  redirect("/dashboard?submitted=story");
+}
+
 /** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
 export async function memberUploadVideoImage(formData: FormData): Promise<string | null> {
   const user = await requireMember();
@@ -83,6 +169,40 @@ export async function submitVideo(formData: FormData) {
   redirect("/dashboard?submitted=video");
 }
 
+/** Pull back a video that's still waiting on (or was sent back from) a decision. */
+export async function withdrawVideo(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  if (!(await assertOwnsRow(db, "videos", id, user.memberId))) return;
+  await db.from("videos").update({ status: "withdrawn" }).eq("id", id);
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
+}
+
+/** Edit and resubmit a video that's awaiting approval or was rejected. */
+export async function editVideo(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  if (!(await assertOwnsRow(db, "videos", id, user.memberId))) return;
+  const title = String(formData.get("title") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  if (!title || !url) return;
+  const thumbnail = await uploadImage(formData.get("thumbnail") as File | null, "videos");
+  await db.from("videos").update({
+    title,
+    url,
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    status: "awaiting_approval",
+    rejected_reason: null,
+    updated_at: new Date().toISOString(),
+    ...(thumbnail ? { thumbnail_path: thumbnail } : {}),
+  }).eq("id", id);
+  revalidatePath("/dashboard");
+  redirect("/dashboard?submitted=video");
+}
+
 /** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
 export async function memberUploadEventImage(formData: FormData): Promise<string | null> {
   const user = await requireMember();
@@ -96,6 +216,8 @@ export async function submitEvent(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
   const cover = await uploadImage(formData.get("cover") as File | null, "events");
+  const typeInput = String(formData.get("type") ?? "");
+  const eventType = isEventType(typeInput) ? typeInput : null;
   await serviceDb().from("events").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
     title,
@@ -106,11 +228,52 @@ export async function submitEvent(formData: FormData) {
     ends_on: String(formData.get("ends_on") ?? "") || null,
     link: String(formData.get("link") ?? "") || null,
     member_id: user.memberId,
+    type: eventType,
     status: "awaiting_approval",
     source: "member",
     submitted_by: user.userId,
     cover_path: cover,
   });
+  revalidatePath("/dashboard");
+  redirect("/dashboard?submitted=event");
+}
+
+/** Pull back an event that's still waiting on (or was sent back from) a decision. */
+export async function withdrawEvent(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  if (!(await assertOwnsRow(db, "events", id, user.memberId))) return;
+  await db.from("events").update({ status: "withdrawn" }).eq("id", id);
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
+}
+
+/** Edit and resubmit an event that's awaiting approval or was rejected. */
+export async function editEvent(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  if (!(await assertOwnsRow(db, "events", id, user.memberId))) return;
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) return;
+  const cover = await uploadImage(formData.get("cover") as File | null, "events");
+  const typeInput = String(formData.get("type") ?? "");
+  const eventType = isEventType(typeInput) ? typeInput : null;
+  await db.from("events").update({
+    title,
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    location: String(formData.get("location") ?? ""),
+    starts_on: String(formData.get("starts_on")),
+    starts_time: String(formData.get("starts_time") ?? "") || null,
+    ends_on: String(formData.get("ends_on") ?? "") || null,
+    link: String(formData.get("link") ?? "") || null,
+    type: eventType,
+    status: "awaiting_approval",
+    rejected_reason: null,
+    updated_at: new Date().toISOString(),
+    ...(cover ? { cover_path: cover } : {}),
+  }).eq("id", id);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=event");
 }
@@ -128,22 +291,53 @@ export async function submitProfileEdit(formData: FormData) {
   ]);
   const db = serviceDb();
   const { data: member } = await db.from("members")
-    .select("name, status, draft_submitted_at, social").eq("id", user.memberId).single();
+    .select("name, status, draft_submitted_at, social, address, lat, lng").eq("id", user.memberId).single();
+  if (!member) return;
 
-  const social = mergeSocial(member?.social, (key) => String(formData.get(key) ?? ""));
+  const social = mergeSocial(member.social, (key) => String(formData.get(key) ?? ""));
+
+  const contact_email = String(formData.get("contact_email") ?? "").trim() || null;
+  if (contact_email && !EMAIL_RE.test(contact_email)) {
+    redirect(`/dashboard/profile?error=${encodeURIComponent("Contact email is not a valid address.")}`);
+  }
+
+  const testimonials = String(formData.get("testimonials") ?? "")
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const address = String(formData.get("address") ?? "");
+  // Re-geocode only when the address actually changed — a fresh Nominatim
+  // lookup on every unrelated save would be both wasteful and against its
+  // usage policy. A failed lookup keeps whatever coordinates were already
+  // on file rather than blanking the map.
+  let lat = member.lat;
+  let lng = member.lng;
+  if (address.trim() && address.trim() !== (member.address ?? "").trim()) {
+    const geocoded = await geocodeAddress(address);
+    if (geocoded) {
+      lat = geocoded.lat;
+      lng = geocoded.lng;
+    }
+  }
 
   const payload = {
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     ...(logoPath ? { logo_path: logoPath } : {}),
     ...(heroPath ? { hero_path: heroPath } : {}),
-    address: String(formData.get("address") ?? ""),
+    address,
     phone: String(formData.get("phone") ?? ""),
     website: String(formData.get("website") ?? ""),
     video_url: String(formData.get("video_url") ?? "") || null,
     social,
+    testimonials: testimonials as Json,
+    category_id: Number(formData.get("category_id")) || null,
+    contact_email,
+    lat,
+    lng,
   };
 
-  if (member?.status === "draft") {
+  if (member.status === "draft") {
     const firstSubmit = !member.draft_submitted_at;
     await db.from("members").update({
       ...payload, // description already sanitised above; page stays hidden until Activate
@@ -189,6 +383,38 @@ export async function submitMachine(formData: FormData) {
   redirect("/dashboard?submitted=machine");
 }
 
+/** Pull back an equipment listing that's still waiting on (or was sent back from) a decision. */
+export async function withdrawMachine(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  if (!(await assertOwnsRow(db, "featured_machines", id, user.memberId))) return;
+  await db.from("featured_machines").update({ status: "withdrawn" }).eq("id", id);
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
+}
+
+/** Edit and resubmit an equipment listing that's awaiting approval or was rejected. */
+export async function editMachine(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  const db = serviceDb();
+  if (!(await assertOwnsRow(db, "featured_machines", id, user.memberId))) return;
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  const image = await uploadImage(formData.get("image") as File | null, `machines/${user.memberId}`);
+  await db.from("featured_machines").update({
+    name,
+    description: sanitizeRichText(String(formData.get("description") ?? "")),
+    external_url: String(formData.get("external_url") ?? "") || null,
+    status: "awaiting_approval",
+    rejected_reason: null,
+    ...(image ? { image_path: image } : {}),
+  }).eq("id", id);
+  revalidatePath("/dashboard");
+  redirect("/dashboard?submitted=machine");
+}
+
 /** M11 — "Buy" request: no online payment; Jas confirms and invoices. */
 export async function requestVisibility(formData: FormData) {
   const user = await requireMember();
@@ -199,6 +425,57 @@ export async function requestVisibility(formData: FormData) {
   });
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=buy");
+}
+
+export async function markNotificationRead(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id"));
+  await serviceDb().from("notifications").update({ read_at: new Date().toISOString() })
+    .eq("id", id).eq("member_id", user.memberId).is("read_at", null);
+  revalidatePath("/dashboard/notifications");
+  revalidatePath("/dashboard");
+}
+
+export async function markAllNotificationsRead() {
+  const user = await requireMember();
+  await serviceDb().from("notifications").update({ read_at: new Date().toISOString() })
+    .eq("member_id", user.memberId).is("read_at", null);
+  revalidatePath("/dashboard/notifications");
+  revalidatePath("/dashboard");
+}
+
+/** Permanently dismisses the newly-activated-member welcome panel (A4.18). */
+export async function dismissOnboarding() {
+  const user = await requireMember();
+  await serviceDb().from("members").update({ onboarding_seen: true }).eq("id", user.memberId);
+  revalidatePath("/dashboard");
+}
+
+/** Matches Supabase's own minimum; config.toml sets no stricter policy — same bound as /reset/new. */
+const PASSWORD_MIN_LENGTH = 8;
+
+/** In-session change-password: no recovery token needed since the member is already authenticated. */
+export async function changePassword(formData: FormData) {
+  await requireMember();
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (password.length < PASSWORD_MIN_LENGTH) redirect("/dashboard/settings?perror=short");
+  if (password !== confirm) redirect("/dashboard/settings?perror=mismatch");
+
+  const db = await sessionDb();
+  const { error } = await db.auth.updateUser({ password });
+  if (error) redirect("/dashboard/settings?perror=failed");
+
+  redirect("/dashboard/settings?psaved=1");
+}
+
+/** GAPS B1.5 — member-side subscription cancellation, requested from /dashboard/billing. */
+export async function cancelMembership() {
+  const user = await requireMember();
+  const { requestCancellation } = await import("@/lib/membership");
+  const result = await requestCancellation(user.memberId);
+  revalidatePath("/dashboard/billing");
+  redirect(result.ok ? "/dashboard/billing?cancelled=1" : `/dashboard/billing?cerror=${encodeURIComponent(result.error)}`);
 }
 
 export async function savePrefs(formData: FormData) {
@@ -295,14 +572,8 @@ export async function resubmitAdvert(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
   const db = serviceDb();
-  const { data: booking } = await db
-    .from("advert_bookings")
-    .select("id, status, advert:adverts(id, member_id)")
-    .eq("id", id)
-    .single();
-  // ownership is checked here because these actions use the service role, which
-  // bypasses RLS
-  if (!booking || booking.advert?.member_id !== user.memberId) return;
+  const booking = await assertOwnsBooking(db, id, user.memberId);
+  if (!booking) return;
   if (!["draft", "review_required"].includes(booking.status)) return;
 
   let desktop_path: string | null = null;
@@ -322,7 +593,7 @@ export async function resubmitAdvert(formData: FormData) {
       ...(desktop_path ? { desktop_path } : {}),
       ...(mobile_path ? { mobile_path } : {}),
       updated_at: new Date().toISOString(),
-    }).eq("id", booking.advert!.id);
+    }).eq("id", booking.advert_id);
   }
 
   const now = new Date().toISOString();
@@ -345,12 +616,8 @@ export async function renewAdvertBooking(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
   const db = serviceDb();
-  const { data: prev } = await db
-    .from("advert_bookings")
-    .select("id, advert_id, product_id, advert:adverts(member_id)")
-    .eq("id", id)
-    .single();
-  if (!prev || prev.advert?.member_id !== user.memberId) return;
+  const prev = await assertOwnsBooking(db, id, user.memberId);
+  if (!prev) return;
 
   await db.from("advert_bookings").insert({
     advert_id: prev.advert_id,
@@ -377,8 +644,7 @@ export async function proposeOwnArtworkSwap(formData: FormData) {
   const user = await requireMember();
   const advertId = String(formData.get("advert_id"));
   const db = serviceDb();
-  const { data: advert } = await db.from("adverts").select("id, member_id").eq("id", advertId).single();
-  if (!advert || advert.member_id !== user.memberId) return;
+  if (!(await assertOwnsAdvert(db, advertId, user.memberId))) return;
 
   let desktop_path: string | null = null;
   let mobile_path: string | null = null;

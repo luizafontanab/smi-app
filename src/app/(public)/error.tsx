@@ -36,7 +36,7 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
         </Link>
       </div>
       {error.digest && (
-        <p className="mt-8 text-xs text-gray-400">
+        <p className="mt-8 text-xs text-gray-500">
           If you get in touch about this, quote reference <code className="font-mono">{error.digest}</code>.
         </p>
       )}

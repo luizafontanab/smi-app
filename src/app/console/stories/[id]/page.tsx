@@ -3,10 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { consoleUploadImage, decideStory, saveStory, scheduleStory } from "../../actions";
+import { consoleUploadImage, decideStory, pinStory, saveStory, scheduleStory } from "../../actions";
 import { CoverField } from "@/components/CoverField";
-import { parseFocus } from "@/lib/focus";
+import { parseFocus, focusStyle } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { StoryBody } from "@/components/StoryBody";
+import { MemberBacklink } from "@/components/MemberBacklink";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +27,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const [{ data: story }, { data: cats }, { data: members }] = await Promise.all([
     isNew
       ? Promise.resolve({ data: null })
-      : db.from("stories").select("*, member:members(name, logo_path, slug)").eq("id", id).single(),
+      : db.from("stories").select("*, member:members(name, logo_path, slug, status)").eq("id", id).single(),
     db.from("categories").select("id, name").eq("kind", "story").order("name"),
     db.from("members").select("id, name").eq("status", "active").order("name"),
   ]);
@@ -36,10 +38,11 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const selected = new Set((selectedCats ?? []).map((c) => c.category_id));
   const cover = mediaUrl(story?.cover_path);
   const focus = parseFocus(story?.cover_focus);
+  const isPinned = !!story?.pinned_until && new Date(story.pinned_until) > new Date();
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href={backTo} className="text-sm text-gray-400 hover:text-ink">← Story Engine</Link>
+      <Link href={backTo} className="text-sm text-gray-500 hover:text-ink">← Story Engine</Link>
       <div className="flex items-baseline justify-between">
         <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New story" : "Edit story"}</h1>
         {!isNew && (
@@ -100,7 +103,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           {story.status === "awaiting_approval" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Approval</h2>
-              <p className="mt-1 text-xs text-gray-500">Preview shows backlink + logo exactly as it will publish. Edit above first if needed.</p>
+              <p className="mt-1 text-xs text-gray-500">Publishes immediately. To approve for a later date instead, use Schedule below.</p>
               <div className="mt-3 flex gap-2">
                 <form action={decideStory}>
                   <input type="hidden" name="id" value={id} />
@@ -116,7 +119,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               </form>
             </div>
           )}
-          {(story.status === "draft" || story.status === "rejected" || story.status === "scheduled") && (
+          {(story.status === "draft" || story.status === "rejected" || story.status === "scheduled" || story.status === "awaiting_approval") && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Schedule</h2>
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
@@ -126,15 +129,49 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>
                 <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
               </form>
-              <p className="mt-2 text-xs text-gray-400">Social push follows publication after the configured delay; daily cap applies.</p>
+              <p className="mt-2 text-xs text-gray-500">
+                {story.status === "awaiting_approval" && "Scheduling or publishing here also approves the story. "}
+                Social push follows publication after the configured delay; daily cap applies.
+              </p>
+            </div>
+          )}
+          {story.status === "published" && (
+            <div className="rounded-xl bg-white p-5 shadow-sm">
+              <h2 className="font-bold text-ink">Pin to headline</h2>
+              <p className="mt-1 text-xs text-gray-500">Pinned stories take over the homepage headline slot.</p>
+              <form action={pinStory} className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <input type="hidden" name="id" value={id} />
+                {isPinned ? (
+                  <>
+                    <p className="text-xs text-gray-500">Pinned until {new Date(story.pinned_until!).toLocaleString("en-GB")}</p>
+                    <input type="hidden" name="days" value="0" />
+                    <button className="rounded border px-3 py-1.5">Unpin</button>
+                  </>
+                ) : (
+                  <>
+                    <input type="number" name="days" defaultValue={2} min={1} max={30} className="w-16 rounded border px-2 py-1.5" />
+                    <span className="text-xs text-gray-500">days</span>
+                    <button className="rounded bg-ink px-3 py-1.5 text-white">Pin</button>
+                  </>
+                )}
+              </form>
             </div>
           )}
           {story.member && (
-            <div className="rounded-xl bg-white p-5 shadow-sm text-sm">
+            <div className="rounded-xl bg-white p-5 shadow-sm text-sm sm:col-span-2">
               <h2 className="font-bold text-ink">Member preview</h2>
-              <div className="mt-2 flex items-center gap-3 rounded border-2 border-brand bg-brand/5 p-3">
-                {story.member.logo_path && <Image src={mediaUrl(story.member.logo_path)!} alt="" width={40} height={40} className="rounded" unoptimized />}
-                <span>Backlink + footer branding → <b>{story.member.name}</b></span>
+              <p className="mt-1 text-xs text-gray-500">How this story will look once published.</p>
+              <div className="mt-3 rounded-lg border bg-paper p-4">
+                <h3 className="text-lg font-bold leading-tight text-ink">{story.title}</h3>
+                {cover && (
+                  <div className="relative mt-3 h-48 overflow-hidden rounded">
+                    <Image src={cover} alt="" fill sizes="100vw" style={focusStyle(story.cover_focus)} className="object-cover" unoptimized />
+                  </div>
+                )}
+                <StoryBody segments={[story.body ?? ""]} breaks={[]} className="mt-4" />
+                {["active", "grace"].includes(story.member.status) && (
+                  <MemberBacklink name={story.member.name} slug={story.member.slug} logoUrl={mediaUrl(story.member.logo_path)} />
+                )}
               </div>
             </div>
           )}

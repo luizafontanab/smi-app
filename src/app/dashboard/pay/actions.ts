@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
-import { getPayments } from "@/lib/adapters/payments";
+import { getPayments, paymentsAreLive } from "@/lib/adapters/payments";
 import { applyPaymentResult } from "@/lib/membership";
 import { notifyAdminFunnel } from "@/lib/notify-admin";
 
@@ -17,7 +17,7 @@ export async function payMembership(_prev: { message: string }, formData: FormDa
   if (member.paid_at || member.comped_until) redirect("/dashboard"); // already settled
 
   const promoCode = String(formData.get("promo") ?? "").trim() || undefined;
-  const payment = await getPayments().createCheckout({ email: user.email, companyName: member.name, promoCode });
+  const payment = await getPayments().createCheckout({ memberId: member.id, email: user.email, companyName: member.name, promoCode });
   if (payment.kind === "error") return { message: payment.message };
   if (payment.kind === "redirect") redirect(payment.url); // Stripe-hosted checkout (production)
 
@@ -27,7 +27,7 @@ export async function payMembership(_prev: { message: string }, formData: FormDa
     email: user.email,
     message: payment.kind === "comped"
       ? `Redeemed promo code ${promoCode?.toUpperCase()} — comped ${payment.months} month${payment.months === 1 ? "" : "s"}. Next step: build their page.`
-      : `Paid £40/month by card${process.env.STRIPE_SECRET_KEY ? "" : " (simulated)"}. Next step: build their page.`,
+      : `Paid £40/month by card${paymentsAreLive() ? "" : " (simulated)"}. Next step: build their page.`,
   });
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=paid");

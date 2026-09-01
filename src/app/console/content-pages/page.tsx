@@ -33,8 +33,8 @@ export default async function ContentPagesList(props: PageProps<"/console/conten
           {(pages ?? []).map((p) => (
             <li key={p.slug} className="flex flex-wrap items-baseline gap-x-3 px-5 py-3">
               <Link href={`/console/content-pages/${p.slug}`} className="font-medium text-ink hover:text-graphite">{p.title}</Link>
-              <code className="text-xs text-gray-400">/pages/{p.slug}</code>
-              <span className="ml-auto text-xs text-gray-400">edited {fmt(p.updated_at)}</span>
+              <code className="text-xs text-gray-500">/pages/{p.slug}</code>
+              <span className="ml-auto text-xs text-gray-500">edited {fmt(p.updated_at)}</span>
             </li>
           ))}
         </ul>

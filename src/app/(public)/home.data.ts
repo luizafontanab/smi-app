@@ -25,13 +25,13 @@ const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_fee
 export async function loadHome() {
   // Limits are sized so the hero can eat from the top of these lists (up to 3
   // stories and 2 videos) and every section below still fills.
-  const [headline, { stories }, { stories: memberNews }, videos, events, placements, adverts, newsletters, directory, categories, showPlaceholders, ctx] = await Promise.all([
+  const [headline, { stories }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx] = await Promise.all([
     headlineStory(),
     publishedStories({ limit: 18 }),
     publishedStories({ limit: 8, memberOnly: true }),
-    publishedVideos(10),
+    publishedVideos({ limit: 10 }),
     // Grid shows four; forge shows three and ignores the rest.
-    upcomingEvents(4),
+    upcomingEvents({ limit: 4 }),
     activePlacements(),
     liveAdvertsByFormat(HOME_AD_FORMATS),
     // The three below are grid-only today. They cost one query each and the
@@ -66,7 +66,7 @@ export async function loadHome() {
     // Logo wall, not a directory listing — members without a logo have nothing
     // to show in it, so they are filtered out here rather than in each view.
     directory: directory.filter((m) => m.logo_path).slice(0, 12),
-    memberCount: directory.length,
+    memberCount,
     categories,
     adverts,
     showPlaceholders,

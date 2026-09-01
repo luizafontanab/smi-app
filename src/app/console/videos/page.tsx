@@ -77,7 +77,7 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
             return (
               <div key={col.key} className="rounded-xl bg-white p-3 shadow-sm">
                 <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-                  {col.label} <span className="text-gray-300">({byStatus(col.key).length})</span>
+                  {col.label} <span className="text-gray-500">({byStatus(col.key).length})</span>
                 </h2>
                 <div className="mt-2 space-y-2">
                   {items.map((v) => (
@@ -87,7 +87,7 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
                       )}
                       <div className="min-w-0 flex-1">
                         <Link href={`/console/videos/${v.id}`} className="font-medium leading-snug hover:text-graphite">{v.title}</Link>
-                        <p className="mt-1 text-xs text-gray-400">
+                        <p className="mt-1 text-xs text-gray-500">
                           {v.member?.name && <>{v.member.name} · </>}{v.source}
                           {v.scheduled_at && v.status === "scheduled" && <> · {new Date(v.scheduled_at).toLocaleString("en-GB")}</>}
                           {v.pinned_until && new Date(v.pinned_until) > new Date() && <> · 📌 pinned</>}
@@ -105,16 +105,25 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
                         {v.status === "published" && (
                           <form action={pinVideo} className="mt-1.5 flex items-center gap-1 text-xs">
                             <input type="hidden" name="id" value={v.id} />
-                            <input type="hidden" name="days" value={v.pinned_until && new Date(v.pinned_until) > new Date() ? "0" : "2"} />
-                            <button className="text-gray-400 hover:text-ink">
-                              {v.pinned_until && new Date(v.pinned_until) > new Date() ? "Unpin" : "📌 Pin 2 days"}
-                            </button>
+                            {v.pinned_until && new Date(v.pinned_until) > new Date() ? (
+                              <>
+                                <input type="hidden" name="days" value="0" />
+                                <button className="text-gray-500 hover:text-ink">Unpin</button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-gray-500">📌 Pin</span>
+                                <input type="number" name="days" defaultValue={2} min={1} max={30} className="w-10 rounded border px-1 py-0.5" />
+                                <span className="text-gray-500">days</span>
+                                <button className="text-gray-500 hover:text-ink underline">Go</button>
+                              </>
+                            )}
                           </form>
                         )}
                       </div>
                     </div>
                   ))}
-                  {items.length === 0 && <p className="px-1 text-xs text-gray-300">Empty</p>}
+                  {items.length === 0 && <p className="px-1 text-xs text-gray-500">Empty</p>}
                 </div>
               </div>
             );

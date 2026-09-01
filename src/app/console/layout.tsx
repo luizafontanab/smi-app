@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
 // children) behave like a plain link and leave row 2 empty.
 const CONSOLE_SECTIONS: NavSection[] = [
   { key: "home", href: "/console", label: "Command Centre" },
+  { key: "messages", href: "/console/messages", label: "Messages" },
+  { key: "analytics", href: "/console/analytics", label: "Analytics" },
   {
     key: "cms",
     href: "/console/stories",
@@ -42,6 +44,7 @@ const CONSOLE_SECTIONS: NavSection[] = [
     children: [
       { href: "/console/members", label: "Members" },
       { href: "/console/crm", label: "CRM" },
+      { href: "/console/promo-codes", label: "Promo Codes" },
     ],
   },
   {
@@ -52,6 +55,9 @@ const CONSOLE_SECTIONS: NavSection[] = [
       { href: "/console/machines", label: "Featured Machine" },
       { href: "/console/content-pages", label: "Content Pages" },
       { href: "/console/pages", label: "Page Layouts" },
+      { href: "/console/categories", label: "Categories" },
+      { href: "/console/media", label: "Media Library" },
+      { href: "/console/resources", label: "Member Resources" },
     ],
   },
 ];
@@ -78,7 +84,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
       <header className="bg-chrome text-white">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
           <Link href="/console" className="font-bold">SMI <span className="text-brand">Console</span></Link>
-          <div className="flex items-center gap-4 text-xs text-white/70">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/70">
             <span>Signed in as {name} · Admin</span>
             <Link href="/" className="hover:text-white">View public site</Link>
             <form action={signOut}>
@@ -89,7 +95,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         </div>
         <ConsoleNav items={nav} />
       </header>
-      <main id="main" className="min-w-0 flex-1 bg-paper p-6">{children}</main>
+      <main id="main" className="min-w-0 flex-1 bg-paper p-4 sm:p-6">{children}</main>
     </div>
   );
 }

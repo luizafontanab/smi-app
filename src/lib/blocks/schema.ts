@@ -107,10 +107,19 @@ export function validateLayout(pageType: PageType, layout: unknown): string | nu
         return "back link needs a label and an internal href";
       }
     }
-    if ((b.type === "latest_news" || b.type === "member_news") && b.props?.limit !== undefined) {
+    if (b.type === "latest_news" && b.props?.limit !== undefined) {
       const limit = b.props.limit;
       if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 8) {
         return "news card limit must be 1–8";
+      }
+    }
+    // member_news may go down to 0 ("show every story about this member") —
+    // safe because it's scoped to one member's own story count, unlike
+    // latest_news which would mean "every published story site-wide".
+    if (b.type === "member_news" && b.props?.limit !== undefined) {
+      const limit = b.props.limit;
+      if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 0 || limit > 8) {
+        return "news card limit must be 0–8 (0 shows every story)";
       }
     }
   }

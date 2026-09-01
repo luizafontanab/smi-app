@@ -23,7 +23,7 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/machines" className="text-sm text-gray-400 hover:text-ink">← Featured Machine</Link>
+      <Link href="/console/machines" className="text-sm text-gray-500 hover:text-ink">← Featured Machine</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New machine" : "Edit machine"}</h1>
       {machine?.status === "rejected" && (
         <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">Rejected: {machine.rejected_reason}</p>
@@ -88,7 +88,7 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
               <form action={saveMachinePlacement} className="mt-3 flex flex-wrap items-center gap-2 text-sm">
                 <input type="hidden" name="machine_id" value={id} />
                 <input type="date" name="starts_on" required className="rounded border px-3 py-1.5" />
-                <span className="text-gray-400">→</span>
+                <span className="text-gray-500">→</span>
                 <input type="date" name="ends_on" required className="rounded border px-3 py-1.5" />
                 <button className="rounded bg-ink px-4 py-2 text-white">Book slot</button>
               </form>

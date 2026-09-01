@@ -22,7 +22,7 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/adverts" className="text-sm text-gray-400 hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-gray-500 hover:text-ink">← Adverts &amp; Inventory</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Homepage takeover</h1>
       <p className="mt-1 text-sm text-gray-500">
         One advertiser&apos;s colours and top banner across the whole public site for a paid period — reverts on its own once the dates end.
@@ -53,8 +53,9 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Booked</h2>
-        <table className="mt-2 w-full text-sm">
-          <thead><tr className="text-left text-xs uppercase text-gray-400"><th className="py-1">Advertiser</th><th>Colour</th><th>From</th><th>To</th><th /></tr></thead>
+        <div className="overflow-x-auto mt-2">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Advertiser</th><th scope="col">Colour</th><th scope="col">From</th><th scope="col">To</th><th scope="col" /></tr></thead>
           <tbody>
             {(takeovers ?? []).map((t) => {
               const config = t.config as { hex?: string; banner_path?: string };
@@ -75,14 +76,15 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
               );
             })}
             {!takeovers?.length && (
-              <tr><td colSpan={5} className="py-4 text-center text-gray-400">None booked yet.</td></tr>
+              <tr><td colSpan={5} className="py-4 text-center text-gray-500">None booked yet.</td></tr>
             )}
           </tbody>
         </table>
+        </div>
       </section>
 
       {liveBanner && (
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-gray-500">
           Preview:
           <Image src={liveBanner} alt="" width={1280} height={170} className="mt-2 h-auto w-full rounded border" unoptimized />
         </p>

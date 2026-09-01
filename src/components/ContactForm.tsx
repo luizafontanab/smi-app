@@ -9,20 +9,22 @@ export function ContactForm({ kind }: { kind: "contact" | "advertising" }) {
       <input type="hidden" name="kind" value={kind} />
       <div>
         <label htmlFor="name" className="text-sm font-medium">Name</label>
-        <input id="name" name="name" required className="mt-1 w-full rounded border px-3 py-2" />
+        <input id="name" name="name" required aria-required="true" aria-describedby="contact-status" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>
         <label htmlFor="email" className="text-sm font-medium">Email</label>
-        <input id="email" type="email" name="email" required className="mt-1 w-full rounded border px-3 py-2" />
+        <input id="email" type="email" name="email" required aria-required="true" aria-describedby="contact-status" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>
         <label htmlFor="message" className="text-sm font-medium">{kind === "advertising" ? "What are you interested in?" : "Message"}</label>
-        <textarea id="message" name="message" required rows={5} className="mt-1 w-full rounded border px-3 py-2" />
+        <textarea id="message" name="message" required rows={5} aria-required="true" aria-describedby="contact-status" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <button disabled={pending} className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">
         {pending ? "Sending…" : "Send"}
       </button>
-      {state?.message && <p aria-live="polite" className="text-sm text-graphite">{state.message}</p>}
+      {/* Always rendered: a live region announces only if it existed before
+          the message arrived. */}
+      <p id="contact-status" aria-live="polite" className={state?.message ? "text-sm text-graphite" : "sr-only"}>{state?.message}</p>
     </form>
   );
 }

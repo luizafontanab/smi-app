@@ -55,7 +55,7 @@ export function OverviewCalendar({ month, items }: { month: Date; items: Overvie
         </h2>
         <Link href={`/console?month=${monthKey(shiftMonth(month, 1))}`} className={navLink} aria-label="Next month">›</Link>
         <Link href="/console" className={`${navLink} ml-1`}>Today</Link>
-        <p className="ml-auto flex flex-wrap items-center gap-3 text-xs text-gray-400">
+        <p className="ml-auto flex flex-wrap items-center gap-3 text-xs text-gray-500">
           {(Object.entries(TYPE_STYLE) as [OverviewType, typeof TYPE_STYLE[OverviewType]][]).map(([type, s]) => (
             <span key={type} className="flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-full ${s.dot}`} /> {s.label}
@@ -68,7 +68,7 @@ export function OverviewCalendar({ month, items }: { month: Date; items: Overvie
         <div className="min-w-[720px]">
           <div className="grid grid-cols-7 gap-px">
             {WEEKDAYS.map((d) => (
-              <div key={d} className="px-2 pb-1 text-xs font-bold uppercase tracking-wide text-gray-400">{d}</div>
+              <div key={d} className="px-2 pb-1 text-xs font-bold uppercase tracking-wide text-gray-500">{d}</div>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-px bg-gray-100">
@@ -81,7 +81,7 @@ export function OverviewCalendar({ month, items }: { month: Date; items: Overvie
                   key={key}
                   className={`min-h-24 p-1.5 ${outside ? "bg-gray-50/70" : "bg-white"} ${key === today ? "ring-2 ring-inset ring-brand" : ""}`}
                 >
-                  <div className={`px-0.5 text-xs ${key === today ? "font-bold text-ink" : outside ? "text-gray-300" : "text-gray-400"}`}>
+                  <div className={`px-0.5 text-xs ${key === today ? "font-bold text-ink" : outside ? "text-gray-500" : "text-gray-600"}`}>
                     {day.getDate()}
                   </div>
                   <div className={`mt-1 space-y-1 ${outside ? "opacity-55" : ""}`}>
@@ -97,7 +97,7 @@ export function OverviewCalendar({ month, items }: { month: Date; items: Overvie
                       </Link>
                     ))}
                     {dayItems.length > MAX_PER_DAY && (
-                      <p className="px-1.5 text-xs text-gray-400">+{dayItems.length - MAX_PER_DAY} more</p>
+                      <p className="px-1.5 text-xs text-gray-500">+{dayItems.length - MAX_PER_DAY} more</p>
                     )}
                   </div>
                 </div>
@@ -108,7 +108,7 @@ export function OverviewCalendar({ month, items }: { month: Date; items: Overvie
       </div>
 
       {items.length === 0 && (
-        <p className="mt-3 text-sm text-gray-400">Nothing scheduled or published this month.</p>
+        <p className="mt-3 text-sm text-gray-500">Nothing scheduled or published this month.</p>
       )}
     </div>
   );

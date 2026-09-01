@@ -28,7 +28,9 @@ import { EmailSendError } from "./email";
  * shapes on the first real send.
  */
 
-export type SendResult = { ok: true; recipients: number } | { ok: false; error: string };
+export type SendResult =
+  | { ok: true; recipients: number; providerBroadcastId?: string }
+  | { ok: false; error: string };
 
 export interface NewsletterSender {
   /**
@@ -83,23 +85,45 @@ export async function renderIssueHtml(issueId: string): Promise<{ subject: strin
   if (!issue) return null;
 
   const [{ data: items }, { data: ads }] = await Promise.all([
-    db.from("newsletter_items").select("position, story:stories(slug, title, excerpt, cover_path)").eq("issue_id", issueId).order("position"),
-    db.from("newsletter_ads").select("position, advert:adverts(name, desktop_path, mobile_path, link_url)").eq("issue_id", issueId).order("position"),
+    db.from("newsletter_items")
+      .select("position, story:stories(slug, title, excerpt, cover_path), video:videos(slug, title, thumbnail_path)")
+      .eq("issue_id", issueId).order("position"),
+    db.from("newsletter_ads").select("position, advert:adverts(id, name, desktop_path, mobile_path, link_url)").eq("issue_id", issueId).order("position"),
   ]);
 
+  // Stories and videos are rendered in the same position order they were
+  // added, rather than stories-then-videos, so the composer's picked order
+  // is what a reader actually sees.
   const stories = (items ?? []).flatMap((item) => (item.story ? [item.story] : []));
-  const storyHtml = stories
-    .map((story) => {
-      const href = `${base}/news/${story.slug}`;
-      const image = story.cover_path
-        ? `<img src="${escapeHtml(mediaUrl(story.cover_path) ?? "")}" width="112" alt="" style="display:block;border-radius:4px;">`
-        : "";
-      return `<tr><td style="padding:12px 0;border-bottom:1px solid #e4e6e9;">
+  const storyHtml = (items ?? [])
+    .map((item) => {
+      if (item.story) {
+        const story = item.story;
+        const href = `${base}/news/${story.slug}`;
+        const image = story.cover_path
+          ? `<img src="${escapeHtml(mediaUrl(story.cover_path) ?? "")}" width="112" alt="" style="display:block;border-radius:4px;">`
+          : "";
+        return `<tr><td style="padding:12px 0;border-bottom:1px solid #e4e6e9;">
         <a href="${escapeHtml(href)}" style="text-decoration:none;color:#111418;">
           ${image}
           <p style="margin:8px 0 0;font-size:17px;font-weight:700;color:#111418;">${escapeHtml(story.title)}</p>
           ${story.excerpt ? `<p style="margin:4px 0 0;font-size:14px;color:#5a6068;">${escapeHtml(story.excerpt)}</p>` : ""}
         </a></td></tr>`;
+      }
+      if (item.video) {
+        const video = item.video;
+        const href = `${base}/video/${video.slug}`;
+        const image = video.thumbnail_path
+          ? `<img src="${escapeHtml(mediaUrl(video.thumbnail_path) ?? "")}" width="112" alt="" style="display:block;border-radius:4px;">`
+          : "";
+        return `<tr><td style="padding:12px 0;border-bottom:1px solid #e4e6e9;">
+        <a href="${escapeHtml(href)}" style="text-decoration:none;color:#111418;">
+          ${image}
+          <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5a6068;">Video</p>
+          <p style="margin:4px 0 0;font-size:17px;font-weight:700;color:#111418;">${escapeHtml(video.title)}</p>
+        </a></td></tr>`;
+      }
+      return "";
     })
     .join("");
 
@@ -113,9 +137,13 @@ export async function renderIssueHtml(issueId: string): Promise<{ subject: strin
       const image = mediaUrl(advert.mobile_path) ?? mediaUrl(advert.desktop_path);
       if (!image) return "";
       const inner = `<img src="${escapeHtml(image)}" alt="${escapeHtml(advert.name ?? "Advertisement")}" style="display:block;max-width:100%;border-radius:4px;">`;
+      // Routed through /visit/[id] rather than the raw link_url, so a
+      // newsletter ad click generates the same ad_click event a web ad slot
+      // click does (A5.4/A5.7) — /visit/[id] already falls back to the
+      // advertiser's own member page when there's no link_url.
       return `<tr><td style="padding:16px 0;">
         <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5a6068;">Advertisement</p>
-        ${advert.link_url ? `<a href="${escapeHtml(advert.link_url)}">${inner}</a>` : inner}
+        <a href="${escapeHtml(`${base}/visit/${advert.id}`)}">${inner}</a>
       </td></tr>`;
     })
     .join("");
@@ -146,12 +174,14 @@ export async function renderIssueHtml(issueId: string): Promise<{ subject: strin
   </table>
 </body></html>`;
 
+  const videos = (items ?? []).flatMap((item) => (item.video ? [item.video] : []));
   const text = [
     `SMI Monthly — Issue ${issue.number}`,
     issue.subject,
     issue.intro ?? "",
     "",
     ...stories.map((story) => `- ${story.title}\n  ${base}/news/${story.slug}`),
+    ...videos.map((video) => `- ${video.title}\n  ${base}/video/${video.slug}`),
     "",
     "Unsubscribe: {{{RESEND_UNSUBSCRIBE_URL}}}",
   ]
@@ -264,7 +294,17 @@ class ResendNewsletterSender implements NewsletterSender {
     if (!created.ok) {
       return { ok: false, error: `Resend rejected the broadcast (${created.status}): ${created.body.slice(0, 300)}` };
     }
-    return { ok: true, recipients };
+    // Unverified against a live account (see file docstring) — a shape
+    // mismatch here just leaves providerBroadcastId undefined, never fails
+    // an already-succeeded send.
+    let providerBroadcastId: string | undefined;
+    try {
+      const parsed = JSON.parse(created.body) as { id?: unknown };
+      if (typeof parsed.id === "string") providerBroadcastId = parsed.id;
+    } catch {
+      // ignore — send already succeeded
+    }
+    return { ok: true, recipients, providerBroadcastId };
   }
 }
 

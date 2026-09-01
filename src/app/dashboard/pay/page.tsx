@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { paymentsAreLive } from "@/lib/adapters/payments";
 import { PayForm } from "./PayForm";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export default async function MemberPayPage() {
     .from("members").select("status, paid_at, comped_until").eq("id", user.memberId).single();
   if (!member || member.paid_at || member.comped_until || member.status !== "draft") redirect("/dashboard");
 
-  const isLocalStub = !process.env.STRIPE_SECRET_KEY;
+  const isLocalStub = !paymentsAreLive();
   return (
     <div className="mx-auto max-w-md">
       <div className="rounded-xl bg-white p-8 shadow-sm">
@@ -23,7 +24,8 @@ export default async function MemberPayPage() {
         </p>
         {isLocalStub && (
           <p className="mt-3 rounded bg-brand/10 p-2 text-xs text-gray-600">
-            Local dev: payment is simulated. Promo codes <code>SMI-FREE-MONTH</code> / <code>SMI-FREE-YEAR</code> also work.
+            <strong>Simulated payment — no card is charged, no money moves.</strong> Clicking pay below will mark this
+            membership as paid without Stripe. Promo codes <code>SMI-FREE-MONTH</code> / <code>SMI-FREE-YEAR</code> also work.
           </p>
         )}
         <PayForm />

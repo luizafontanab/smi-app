@@ -5,6 +5,7 @@ import { sessionDb } from "@/lib/db/server";
 import { provisionMember } from "@/lib/membership";
 import { notifyAdminFunnel } from "@/lib/notify-admin";
 import { allowRequest, HOUR } from "@/lib/rate-limit";
+import { EMAIL_RE } from "@/lib/validate";
 
 /**
  * V13 step 1 of 4 — account + draft company page. Payment is step 2
@@ -15,8 +16,11 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const company = String(formData.get("company") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const website = String(formData.get("website") ?? "").trim();
+  const address = String(formData.get("address") ?? "").trim();
 
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { message: "Please enter a valid email." };
+  if (!EMAIL_RE.test(email)) return { message: "Please enter a valid email." };
   if (password.length < 8) return { message: "Password needs at least 8 characters." };
   if (!company) return { message: "Company name is required." };
   // This creates a real auth user and a draft member row; unthrottled it is a
@@ -25,7 +29,12 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
     return { message: "Too many attempts just now — please try again shortly." };
   }
 
-  const result = await provisionMember({ email, password, company });
+  const result = await provisionMember({
+    email, password, company,
+    ...(phone ? { phone } : {}),
+    ...(website ? { website } : {}),
+    ...(address ? { address } : {}),
+  });
   if ("error" in result) return { message: result.error };
 
   await notifyAdminFunnel({

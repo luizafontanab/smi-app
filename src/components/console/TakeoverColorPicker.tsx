@@ -31,7 +31,7 @@ export function TakeoverColorPicker() {
           </span>
         )}
       </div>
-      <p className="mt-1 text-xs text-gray-400">Checked against the site&apos;s white background — the same pairing globals.css documents for the brand colour.</p>
+      <p className="mt-1 text-xs text-gray-500">Checked against the site&apos;s white background — the same pairing globals.css documents for the brand colour.</p>
     </div>
   );
 }

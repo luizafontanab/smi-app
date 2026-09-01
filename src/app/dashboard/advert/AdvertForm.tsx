@@ -68,7 +68,7 @@ export function AdvertForm({ action, bookingId, defaults, submitLabel = "Submit 
         <div>
           <label htmlFor="name" className="text-sm font-medium">Advert name</label>
           <input id="name" name="name" required defaultValue={defaults?.name ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
-          <p className="mt-1 text-xs text-gray-400">For your own reference — readers never see it.</p>
+          <p className="mt-1 text-xs text-gray-500">For your own reference — readers never see it.</p>
         </div>
         <div>
           <label htmlFor="format" className="text-sm font-medium">Format</label>
@@ -79,18 +79,18 @@ export function AdvertForm({ action, bookingId, defaults, submitLabel = "Submit 
         <div>
           <label htmlFor="link_url" className="text-sm font-medium">Where should clicks go? (optional)</label>
           <input id="link_url" name="link_url" type="url" defaultValue={defaults?.linkUrl ?? ""} placeholder="https://…" className="mt-1 w-full rounded border px-3 py-2" />
-          <p className="mt-1 text-xs text-gray-400">Leave blank to send people to your SMI member page.</p>
+          <p className="mt-1 text-xs text-gray-500">Leave blank to send people to your SMI member page.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="desktop" className="text-sm font-medium">Desktop artwork</label>
-            <p className="text-xs text-gray-400">{spec.desktop}</p>
+            <p className="text-xs text-gray-500">{spec.desktop}</p>
             <input id="desktop" name="desktop" type="file" accept="image/jpeg,image/png,image/webp" required={!defaults}
               onChange={(e) => preview(e.target.files?.[0], setDesktopUrl)} className="mt-1 w-full text-sm" />
           </div>
           <div>
             <label htmlFor="mobile" className="text-sm font-medium">Mobile artwork</label>
-            <p className="text-xs text-gray-400">{spec.mobile}</p>
+            <p className="text-xs text-gray-500">{spec.mobile}</p>
             <input id="mobile" name="mobile" type="file" accept="image/jpeg,image/png,image/webp" required={!defaults}
               onChange={(e) => preview(e.target.files?.[0], setMobileUrl)} className="mt-1 w-full text-sm" />
           </div>
@@ -113,18 +113,18 @@ export function AdvertForm({ action, bookingId, defaults, submitLabel = "Submit 
 
       <div className={tab === "preview" ? "space-y-5" : "hidden"} data-testid="advert-preview">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Desktop — {spec.desktop}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">Desktop — {spec.desktop}</p>
           {desktopUrl
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={desktopUrl} alt="" className="mt-2 w-full rounded border" />
-            : <div className="mt-2 flex h-24 items-center justify-center rounded border-2 border-dashed text-xs text-gray-400">Choose desktop artwork to preview it</div>}
+            : <div className="mt-2 flex h-24 items-center justify-center rounded border-2 border-dashed text-xs text-gray-500">Choose desktop artwork to preview it</div>}
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Mobile — {spec.mobile}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">Mobile — {spec.mobile}</p>
           {mobileUrl
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={mobileUrl} alt="" className="mt-2 w-full max-w-[370px] rounded border" />
-            : <div className="mt-2 flex h-24 items-center justify-center rounded border-2 border-dashed text-xs text-gray-400">Choose mobile artwork to preview it</div>}
+            : <div className="mt-2 flex h-24 items-center justify-center rounded border-2 border-dashed text-xs text-gray-500">Choose mobile artwork to preview it</div>}
         </div>
         <p className="text-xs text-gray-500">
           Every advert rotates equally — no one can buy a position, so what you see here is what every reader sees.

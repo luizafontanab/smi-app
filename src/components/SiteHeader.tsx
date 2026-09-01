@@ -1,11 +1,14 @@
 import Link from "next/link";
 import type { CurrentUser } from "@/lib/auth";
+import { MediaMenu } from "@/components/MediaMenu";
+import { MobileNav } from "@/components/MobileNav";
 
 const MEDIA_ITEMS = [
   { href: "/news", label: "News" },
   { href: "/video", label: "Videos" },
   { href: "/newsletters", label: "Newsletters" },
   { href: "/pages/mach-publication", label: "Magazine" },
+  { href: "/advertising", label: "Advertising" },
 ];
 
 /** Session comes from the public layout — this stays presentational. */
@@ -21,23 +24,15 @@ export function SiteHeader({ user }: { user: CurrentUser | null }) {
           Sheet Metal <span className="text-brand">Industries</span>
         </Link>
         <nav className="flex items-center gap-1 text-sm">
-          <div className="group relative">
-            <button className="rounded px-3 py-2 hover:bg-chrome-hover" aria-haspopup="true">
-              Media ▾
-            </button>
-            <div className="invisible absolute left-0 z-20 w-44 rounded-b bg-chrome py-1 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-              {MEDIA_ITEMS.map((i) => (
-                <Link key={i.href} href={i.href} className="block px-4 py-2 hover:bg-chrome-hover">
-                  {i.label}
-                </Link>
-              ))}
-            </div>
-          </div>
+          {/* Below lg, MobileNav's drawer already carries every one of these
+              links (including Search) — showing both would crowd a phone-
+              width header for no reason. */}
+          <MediaMenu items={MEDIA_ITEMS} />
           <Link href="/member" className="hidden rounded px-3 py-2 hover:bg-chrome-hover sm:block">Members</Link>
           <Link href="/featured-machine" className="hidden rounded px-3 py-2 hover:bg-chrome-hover md:block">Featured Machine</Link>
           <Link href="/event" className="hidden rounded px-3 py-2 hover:bg-chrome-hover md:block">Events</Link>
-          <Link href="/advertising" className="hidden rounded px-3 py-2 hover:bg-chrome-hover lg:block">Advertising</Link>
-          <Link href="/search" className="rounded px-3 py-2 hover:bg-chrome-hover" aria-label="Search">🔍</Link>
+          <Link href="/search" className="hidden rounded px-3 py-2 hover:bg-chrome-hover lg:block" aria-label="Search">🔍</Link>
+          <MobileNav user={user} />
           {user ? (
             <Link
               href={dashboard}

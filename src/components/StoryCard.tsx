@@ -36,7 +36,7 @@ export function StoryCard({ story, size = "md" }: { story: StoryCardType; size?:
       <div className="p-3">
         <h3 className={`font-semibold leading-snug ${size === "lg" ? "text-2xl" : "text-sm"} line-clamp-3`}>{story.title}</h3>
         {size !== "sm" && story.excerpt && <p className="mt-1 text-xs text-gray-500 line-clamp-2">{story.excerpt}</p>}
-        <p className="mt-2 text-[11px] uppercase tracking-wide text-gray-400">
+        <p className="mt-2 text-[11px] uppercase tracking-wide text-gray-500">
           {story.published_at ? new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : ""}
           {story.member && <> · {story.member.name}</>}
         </p>

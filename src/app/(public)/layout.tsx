@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { JsonLd } from "@/components/JsonLd";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { CookieConsent } from "@/components/CookieConsent";
 import { SkipLink } from "@/components/SkipLink";
 import { currentUser } from "@/lib/auth";
 import { mediaUrl } from "@/lib/db/server";
+import { organizationLd, webSiteLd } from "@/lib/jsonld";
 import { activeTakeover } from "@/lib/queries";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
@@ -21,6 +23,9 @@ export default async function PublicLayout({ children }: { children: React.React
 
   return (
     <div style={style} className="flex min-h-full flex-1 flex-col">
+      {/* Site identity for search/AI crawlers — page-specific types (Article,
+          Event, …) are added by the pages themselves. */}
+      <JsonLd data={[organizationLd(), webSiteLd()]} />
       <SkipLink />
       {takeover && (
         bannerHref ? (

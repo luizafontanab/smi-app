@@ -113,14 +113,14 @@ export function CategoryCombobox({
           className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded-full px-3 py-1.5 text-left text-sm ${pending ? "opacity-60" : ""}`}
         >
           <span className="truncate">{currentName}</span>
-          <span aria-hidden className="text-gray-400">▾</span>
+          <span aria-hidden className="text-gray-500">▾</span>
         </button>
         {selected && (
           <button
             type="button"
             aria-label="Clear category filter"
             onClick={() => choose(all)}
-            className="px-2.5 py-1.5 text-sm text-gray-400 hover:text-ink"
+            className="px-2.5 py-1.5 text-sm text-gray-500 hover:text-ink"
           >
             ×
           </button>

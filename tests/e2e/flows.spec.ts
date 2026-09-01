@@ -7,7 +7,8 @@ async function login(page: import("@playwright/test").Page, email: string) {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', PASSWORD);
   await page.click("button:has-text('Sign in')");
-  await page.waitForURL(/\/(console|member)/, { timeout: 20_000 });
+  // members land on /dashboard (the member area) — /member is the public directory
+  await page.waitForURL(/\/(console|dashboard)/, { timeout: 20_000 });
 }
 
 test.describe("reader (V1/V2)", () => {
@@ -311,14 +312,16 @@ test.describe("admin (A1/A4)", () => {
     await expect(page.locator(`text=of 4 sold`)).toBeVisible();
     // pipeline strip links to the story engine
     await expect(page.locator('a[href="/console/stories"]', { hasText: "Story pipeline" })).toBeVisible();
-    // nav: wireframe module order first, active state on the current page
+    // nav: current module order first, active state on the current page
+    // (the nav was reorganised after the original wireframe — Messages and
+    // Analytics were added, and the engines grouped under CMS)
     const labels = await page.locator("header nav a").allTextContents();
     expect(labels.slice(0, 5)).toEqual([
       "Command Centre",
+      "Messages",
+      "Analytics",
+      "CMS",
       "Adverts & Inventory",
-      "Members & CRM",
-      "Story Engine (CMS)",
-      "Newsletter",
     ]);
     await expect(page.locator('header nav a[aria-current="page"]')).toHaveText("Command Centre");
   });
@@ -326,7 +329,7 @@ test.describe("admin (A1/A4)", () => {
   test("advert inventory lists live bookings with caps", async ({ page }) => {
     await login(page, "jas@smi.local");
     await page.goto("/console/adverts");
-    await expect(page.locator("text=Live banners")).toBeVisible();
+    await expect(page.locator("text=Live bookings")).toBeVisible();
     expect(await page.locator("td:has-text('live')").count()).toBeGreaterThan(0);
   });
 });

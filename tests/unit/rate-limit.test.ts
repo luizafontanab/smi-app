@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
-import { withinLimit, MINUTE } from "@/lib/rate-limit";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { allowRequest, callerKey, withinLimit, MINUTE } from "@/lib/rate-limit";
+import { headers, requestHeaders, resetNextHeadersMocks } from "../stubs/next-headers";
+
+afterEach(() => {
+  resetNextHeadersMocks();
+  vi.restoreAllMocks();
+});
 
 /**
- * The pure half of the limiter. callerKey/allowRequest need a request scope
- * (headers()), so they are exercised by the e2e suite instead — what matters
- * here is that the window arithmetic is right, since getting it wrong either
- * locks out real users or lets a flood through.
+ * The pure half of the limiter — what matters here is that the window
+ * arithmetic is right, since getting it wrong either locks out real users or
+ * lets a flood through.
  */
 describe("withinLimit", () => {
   it("allows exactly `limit` attempts, then refuses", () => {
@@ -37,5 +42,34 @@ describe("withinLimit", () => {
     expect(withinLimit(key, 1, MINUTE)).toBe(true);
     expect(withinLimit(key, 1, MINUTE)).toBe(false);
     expect(withinLimit(key, 1, MINUTE)).toBe(false);
+  });
+});
+
+describe("callerKey", () => {
+  it("keys by the first x-forwarded-for entry, trimmed", async () => {
+    requestHeaders.set("x-forwarded-for", "203.0.113.5, 70.41.3.18");
+    expect(await callerKey("join")).toBe("join:203.0.113.5");
+  });
+
+  it("falls back to 'local' with no forwarding header", async () => {
+    expect(await callerKey("join")).toBe("join:local");
+  });
+
+  it("returns null rather than throwing when headers() has no request scope", async () => {
+    vi.mocked(headers).mockRejectedValueOnce(new Error("no request scope"));
+    expect(await callerKey("join")).toBeNull();
+  });
+});
+
+describe("allowRequest", () => {
+  it("delegates to withinLimit using the caller's key", async () => {
+    requestHeaders.set("x-forwarded-for", `198.51.100.${Math.floor(Math.random() * 255)}`);
+    expect(await allowRequest("contact", 1, MINUTE)).toBe(true);
+    expect(await allowRequest("contact", 1, MINUTE)).toBe(false);
+  });
+
+  it("never blocks when there's no caller to attribute the limit to", async () => {
+    vi.mocked(headers).mockRejectedValue(new Error("no request scope"));
+    expect(await allowRequest("contact", 0, MINUTE)).toBe(true);
   });
 });

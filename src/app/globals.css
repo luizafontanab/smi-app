@@ -52,6 +52,18 @@ body {
   color: var(--smi-ink);
 }
 
+/*
+ * Keyboard focus must be visible everywhere, including on the near-black
+ * chrome header/footer where the UA default outline disappears. Brand orange
+ * reads on both the white page (3.3:1 non-text contrast passes the 3:1
+ * indicator floor) and the chrome; the offset keeps it legible on same-hue
+ * CTAs. :focus-visible only — pointer clicks stay outline-free.
+ */
+:focus-visible {
+  outline: 2px solid var(--smi-brand);
+  outline-offset: 2px;
+}
+
 h1, h2, h3 {
   font-family: var(--smi-font-heading);
 }

@@ -24,7 +24,7 @@ export default function ConsoleError({ error, retry }: { error: Error & { digest
       >
         Try again
       </button>
-      {error.digest && <p className="mt-6 text-xs text-gray-400">Reference {error.digest}</p>}
+      {error.digest && <p className="mt-6 text-xs text-gray-500">Reference {error.digest}</p>}
     </div>
   );
 }

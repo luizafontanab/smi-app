@@ -22,10 +22,10 @@ export function OnboardingChecklist({ paid, pageSubmitted }: Props) {
           return (
             <li key={s.title} className="flex items-center gap-3 text-sm">
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                s.done ? "bg-green-100 text-green-700" : isNext ? "bg-brand text-ink" : "bg-gray-100 text-gray-400"}`}>
+                s.done ? "bg-green-100 text-green-700" : isNext ? "bg-brand text-ink" : "bg-gray-100 text-gray-500"}`}>
                 {s.done ? "✓" : i + 1}
               </span>
-              <span className={s.done ? "text-gray-400 line-through" : isNext ? "font-semibold text-ink" : "text-gray-500"}>
+              <span className={s.done ? "text-gray-500 line-through" : isNext ? "font-semibold text-ink" : "text-gray-500"}>
                 {s.title}
               </span>
               {isNext && s.href && (

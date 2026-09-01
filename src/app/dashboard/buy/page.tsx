@@ -13,7 +13,7 @@ const PRODUCTS = [
 export default function BuyPage() {
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-400 hover:text-ink">← Dashboard</Link>
+      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">Buy visibility</h1>
       <p className="mt-1 text-sm text-gray-500">
         Pick what you&apos;re interested in — Jas confirms availability, schedules it, and invoices you. No online payment.
@@ -27,7 +27,8 @@ export default function BuyPage() {
               <p className="text-sm text-gray-500">{p.detail}</p>
             </div>
             <div className="flex items-center gap-2">
-              <input name="message" placeholder="Timing / notes (optional)" className="rounded border px-3 py-1.5 text-sm" />
+              <label htmlFor={`buy-message-${p.key}`} className="sr-only">Timing / notes (optional)</label>
+              <input id={`buy-message-${p.key}`} name="message" placeholder="Timing / notes (optional)" className="rounded border px-3 py-1.5 text-sm" />
               <button className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Buy</button>
             </div>
           </form>

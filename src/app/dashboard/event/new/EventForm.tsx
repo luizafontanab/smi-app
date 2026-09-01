@@ -3,24 +3,34 @@
 import Link from "next/link";
 import { useState } from "react";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
 
 type Props = {
   action: (formData: FormData) => Promise<void>;
   uploadImage: (formData: FormData) => Promise<string | null>;
   member: { name: string; slug: string };
+  /** Present only in edit mode — pre-fills the form and switches the copy/actions. */
+  initial?: {
+    id: string; title: string; description: string; startsOn: string; startsTime: string | null;
+    endsOn: string | null; location: string; link: string | null; type: string | null; coverUrl: string | null;
+  };
+  withdrawAction?: (formData: FormData) => Promise<void>;
 };
 
 /**
  * Member event form with a true preview: date/time/location + description
  * shown exactly as it will publish — same pattern as StoryForm/VideoForm.
+ * Doubles as the edit form for a pending/rejected submission when `initial`
+ * is given.
  */
-export function EventForm({ action, uploadImage, member }: Props) {
+export function EventForm({ action, uploadImage, member, initial, withdrawAction }: Props) {
   const [tab, setTab] = useState<"write" | "preview">("write");
-  const [title, setTitle] = useState("");
-  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [coverUrl, setCoverUrl] = useState<string | null>(initial?.coverUrl ?? null);
 
   return (
     <form action={action} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
+      {initial && <input type="hidden" name="id" value={initial.id} />}
       <div className="flex gap-1 border-b pb-3 text-sm">
         <button type="button" onClick={() => setTab("write")} className={`rounded px-3 py-1.5 ${tab === "write" ? "bg-ink text-white" : "bg-gray-100"}`}>Write</button>
         <button type="button" onClick={() => setTab("preview")} className={`rounded px-3 py-1.5 ${tab === "preview" ? "bg-ink text-white" : "bg-gray-100"}`}>Preview</button>
@@ -34,31 +44,38 @@ export function EventForm({ action, uploadImage, member }: Props) {
         </div>
         <div>
           <span className="block text-sm font-medium">Description</span>
-          <RichTextEditor name="description" ariaLabel="Description" uploadImage={uploadImage} minHeightClass="min-h-32" />
+          <RichTextEditor name="description" ariaLabel="Description" uploadImage={uploadImage} minHeightClass="min-h-32" initialHtml={initial?.description} />
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label htmlFor="starts_on" className="text-sm font-medium">Starts</label>
-            <input id="starts_on" name="starts_on" type="date" required className="mt-1 w-full rounded border px-3 py-2" />
+            <input id="starts_on" name="starts_on" type="date" required defaultValue={initial?.startsOn} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
           <div>
             <label htmlFor="starts_time" className="text-sm font-medium">Time (optional)</label>
-            <input id="starts_time" name="starts_time" type="time" className="mt-1 w-full rounded border px-3 py-2" />
+            <input id="starts_time" name="starts_time" type="time" defaultValue={initial?.startsTime ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
           <div>
             <label htmlFor="ends_on" className="text-sm font-medium">Ends (optional)</label>
-            <input id="ends_on" name="ends_on" type="date" className="mt-1 w-full rounded border px-3 py-2" />
+            <input id="ends_on" name="ends_on" type="date" defaultValue={initial?.endsOn ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="location" className="text-sm font-medium">Location</label>
-            <input id="location" name="location" className="mt-1 w-full rounded border px-3 py-2" />
+            <input id="location" name="location" defaultValue={initial?.location} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
           <div>
             <label htmlFor="link" className="text-sm font-medium">Link (optional)</label>
-            <input id="link" name="link" type="url" className="mt-1 w-full rounded border px-3 py-2" />
+            <input id="link" name="link" type="url" defaultValue={initial?.link ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
+        </div>
+        <div>
+          <label htmlFor="type" className="text-sm font-medium">Type (optional)</label>
+          <select id="type" name="type" defaultValue={initial?.type ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+            <option value="">— none —</option>
+            {EVENT_TYPES.map((t) => <option key={t} value={t}>{EVENT_TYPE_LABELS[t]}</option>)}
+          </select>
         </div>
         <div>
           <label htmlFor="cover" className="text-sm font-medium">Cover image (optional)</label>
@@ -75,13 +92,20 @@ export function EventForm({ action, uploadImage, member }: Props) {
               });
             }}
           />
-          <p className="mt-1 text-xs text-gray-400">Landscape works best, JPG/PNG/WebP, max 8MB.</p>
+          <p className="mt-1 text-xs text-gray-500">Landscape works best, JPG/PNG/WebP, max 8MB.</p>
         </div>
       </div>
 
       {tab === "preview" && <EventPreview title={title} coverUrl={coverUrl} member={member} />}
 
-      <button className="rounded bg-ink px-5 py-2.5 text-white">Submit for approval</button>
+      <div className="flex items-center gap-3">
+        <button className="rounded bg-ink px-5 py-2.5 text-white">{initial ? "Save & resubmit" : "Submit for approval"}</button>
+        {initial && withdrawAction && (
+          <button type="submit" formAction={withdrawAction} className="text-sm text-gray-500 underline hover:text-red-600">
+            Withdraw
+          </button>
+        )}
+      </div>
     </form>
   );
 }
@@ -106,7 +130,7 @@ function EventPreview({ title, coverUrl, member }: { title: string; coverUrl: st
 
   return (
     <div data-testid="event-preview" className="rounded-lg border bg-paper p-5">
-      <p className="text-xs uppercase tracking-widest text-gray-400">Preview — how your event will appear</p>
+      <p className="text-xs uppercase tracking-widest text-gray-500">Preview — how your event will appear</p>
       {dateLabel && <p className="mt-4 text-xs font-semibold uppercase text-brand">{dateLabel}</p>}
       <h1 className="mt-1 text-3xl font-bold leading-tight text-ink">{title || "Untitled event"}</h1>
       {location && <p className="mt-1 text-sm text-gray-500">{location}</p>}

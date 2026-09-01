@@ -37,7 +37,7 @@ export function ArtworkSwapForm({ advertId, bookingId }: { advertId: string; boo
         </div>
       </div>
       <button className="rounded bg-ink px-4 py-2 text-white">Send for approval</button>
-      <p className="text-xs text-gray-400">The current artwork keeps running until this is approved — the dates don&apos;t change either way.</p>
+      <p className="text-xs text-gray-500">The current artwork keeps running until this is approved — the dates don&apos;t change either way.</p>
     </form>
   );
 }

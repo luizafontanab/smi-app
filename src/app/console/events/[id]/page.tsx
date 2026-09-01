@@ -4,6 +4,7 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { consoleUploadEventImage, decideEvent, saveEvent } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href={backTo} className="text-sm text-gray-400 hover:text-ink">← Events</Link>
+      <Link href={backTo} className="text-sm text-gray-500 hover:text-ink">← Events</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New event" : "Edit event"}</h1>
       {event?.status === "rejected" && (
         <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">Rejected: {event.rejected_reason}</p>
@@ -56,7 +57,7 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
             <input id="ends_on" name="ends_on" type="date" defaultValue={event?.ends_on ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label htmlFor="location" className="text-sm font-medium">Location</label>
             <input id="location" name="location" defaultValue={event?.location ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
@@ -64,6 +65,13 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
           <div>
             <label htmlFor="link" className="text-sm font-medium">Link (optional)</label>
             <input id="link" name="link" type="url" defaultValue={event?.link ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
+          </div>
+          <div>
+            <label htmlFor="type" className="text-sm font-medium">Type (optional)</label>
+            <select id="type" name="type" defaultValue={event?.type ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+              <option value="">— none —</option>
+              {EVENT_TYPES.map((t) => <option key={t} value={t}>{EVENT_TYPE_LABELS[t]}</option>)}
+            </select>
           </div>
         </div>
         <div>
@@ -77,7 +85,7 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
             <img src={cover} alt="" className="mt-2 h-32 w-auto rounded object-cover" />
           )}
           <input type="file" name="cover" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
-          <p className="mt-1 text-xs text-gray-400">Landscape, JPG/PNG/WebP, max 8MB.</p>
+          <p className="mt-1 text-xs text-gray-500">Landscape, JPG/PNG/WebP, max 8MB.</p>
         </div>
         <div>
           <label htmlFor="member_id" className="text-sm font-medium">Hosting member (adds backlink)</label>

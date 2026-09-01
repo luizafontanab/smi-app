@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { memberActivityTimeline } from "@/lib/activity";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { socialFieldName } from "@/lib/member-form";
@@ -30,7 +31,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   if (id === "new") {
     return (
       <div className="mx-auto max-w-lg">
-        <Link href="/console/members" className="text-sm text-gray-400 hover:text-ink">← Members</Link>
+        <Link href="/console/members" className="text-sm text-gray-500 hover:text-ink">← Members</Link>
         <h1 className="mt-1 text-xl font-bold text-ink">New member</h1>
         <p className="mt-1 text-sm text-gray-500">
           Creates their login and a draft company page. Category, page content and billing come next, on the edit screen.
@@ -49,7 +50,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             <div>
               <label htmlFor="password" className={label}>Password</label>
               <input id="password" name="password" type="password" required minLength={8} className={field} />
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-gray-500">
                 At least 8 characters. Pass it to them yourself — no email is sent from here.
               </p>
             </div>
@@ -71,19 +72,10 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   ]);
   if (!member) notFound();
 
-  // the renewal-call view — same merge the members list used to do inline
-  const [stories, placements, invoices, notifications] = await Promise.all([
-    db.from("stories").select("title, published_at").eq("member_id", id).eq("status", "published").order("published_at", { ascending: false }).limit(10),
-    db.from("placements").select("kind, starts_on").eq("member_id", id).order("starts_on", { ascending: false }).limit(5),
-    db.from("invoices").select("number, issued_on, status").eq("member_id", id).order("issued_on", { ascending: false }).limit(5),
-    db.from("notifications").select("kind, created_at").eq("member_id", id).order("created_at", { ascending: false }).limit(5),
-  ]);
-  const timeline = [
-    ...(stories.data ?? []).map((s) => ({ when: s.published_at ?? "", what: `Story published: ${s.title}` })),
-    ...(placements.data ?? []).map((p) => ({ when: p.starts_on, what: `Placement: ${p.kind.replace("_", " ")}` })),
-    ...(invoices.data ?? []).map((i) => ({ when: i.issued_on, what: `Invoice ${i.number} (${i.status})` })),
-    ...(notifications.data ?? []).map((n) => ({ when: n.created_at, what: `Notified: ${n.kind}` })),
-  ].sort((a, b) => (a.when < b.when ? 1 : -1)).slice(0, 15);
+  // the renewal-call view (A18) — stories, placements, invoices, notifications,
+  // advert clicks and newsletter appearances (A5.8), merged in lib/activity.ts
+  // so the CRM per-contact panel can reuse the exact same query.
+  const timeline = await memberActivityTimeline(id);
 
   const social = (member.social ?? {}) as Record<string, string>;
   const testimonials = Array.isArray(member.testimonials) ? (member.testimonials as unknown[]) : [];
@@ -95,15 +87,15 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/members" className="text-sm text-gray-400 hover:text-ink">← Members</Link>
+      <Link href="/console/members" className="text-sm text-gray-500 hover:text-ink">← Members</Link>
       <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
           {member.name} <Badge tone={STATUS_TONE[member.status]}>{member.status}</Badge>
           {member.status !== "active" && (
             isDraft && !member.paid_at && !member.comped_until ? (
-              <span className="text-xs font-normal text-gray-400">awaiting payment</span>
+              <span className="text-xs font-normal text-gray-500">awaiting payment</span>
             ) : isDraft && !member.draft_submitted_at ? (
-              <span className="text-xs font-normal text-gray-400">awaiting page</span>
+              <span className="text-xs font-normal text-gray-500">awaiting page</span>
             ) : (
               <form action={setMemberStatus}>
                 <input type="hidden" name="id" value={id} />
@@ -170,7 +162,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             <div>
               <label htmlFor="slug" className={label}>Web address</label>
               <div className="mt-1 flex items-center gap-1">
-                <span className="text-sm text-gray-400">/member/</span>
+                <span className="text-sm text-gray-500">/member/</span>
                 <input id="slug" name="slug" defaultValue={member.slug} className="w-full rounded border px-3 py-2" />
               </div>
               {!isDraft && (
@@ -225,7 +217,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 <input id="lng" name="lng" defaultValue={member.lng ?? ""} inputMode="decimal" className={field} />
               </div>
             </div>
-            <p className="-mt-2 text-xs text-gray-400">Latitude and longitude place the map on their profile. Leave both empty for no map.</p>
+            <p className="-mt-2 text-xs text-gray-500">Latitude and longitude place the map on their profile. Leave both empty for no map.</p>
             <fieldset>
               <legend className={label}>Social profiles</legend>
               <div className="mt-2 grid gap-4 sm:grid-cols-2">
@@ -245,7 +237,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 defaultValue={testimonials.filter((t) => typeof t === "string").join("\n")}
                 className={field}
               />
-              <p className="mt-1 text-xs text-gray-400">One per line.</p>
+              <p className="mt-1 text-xs text-gray-500">One per line.</p>
             </div>
           </fieldset>
         </Card>
@@ -263,7 +255,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                   <option value="lapsed">lapsed</option>
                 </select>
                 {isDraft && (
-                  <p className="mt-1 text-xs text-gray-400">
+                  <p className="mt-1 text-xs text-gray-500">
                     A draft can only go active once a payment or comp is on record.
                   </p>
                 )}
@@ -280,18 +272,18 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               <div>
                 <label htmlFor="paid_at" className={label}>Paid at</label>
                 <input id="paid_at" type="datetime-local" name="paid_at" defaultValue={member.paid_at?.slice(0, 16) ?? ""} className={field} />
-                <p className="mt-1 text-xs text-gray-400">For corrections — use “Record payment” below to raise an invoice too.</p>
+                <p className="mt-1 text-xs text-gray-500">For corrections — use “Record payment” below to raise an invoice too.</p>
               </div>
               <div><label htmlFor="comped_until" className={label}>Comped until</label><input id="comped_until" type="date" name="comped_until" defaultValue={member.comped_until ?? ""} className={field} /></div>
               <div className="sm:col-span-2">
                 <label htmlFor="contact_email" className={label}>Contact email</label>
                 <input id="contact_email" name="contact_email" type="email" defaultValue={member.contact_email ?? ""} className={field} />
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-gray-500">
                   Where their notifications go. This is not their login — changing it here does not change how they sign in.
                 </p>
               </div>
             </div>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-500">
               Page submitted: {member.draft_submitted_at?.slice(0, 10) ?? "not yet"}
               {member.stripe_customer_id && ` · Stripe customer ${member.stripe_customer_id}`}
             </p>
@@ -299,7 +291,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               <input type="checkbox" name="is_bundle_account" defaultChecked={member.is_bundle_account} className="mt-0.5" />
               <span>
                 Bundle account
-                <span className="block text-xs text-gray-400">
+                <span className="block text-xs text-gray-500">
                   Fulfilment tag only, for your own tracking — never affects which adverts rotate or how often.
                 </span>
               </span>
@@ -337,11 +329,11 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         <ul className="mt-2 space-y-1.5 text-sm">
           {timeline.map((t, i) => (
             <li key={i} className="flex gap-3 border-t pt-1.5">
-              <span className="w-24 shrink-0 text-xs text-gray-400">{t.when?.slice(0, 10)}</span>
+              <span className="w-24 shrink-0 text-xs text-gray-500">{t.when?.slice(0, 10)}</span>
               <span>{t.what}</span>
             </li>
           ))}
-          {timeline.length === 0 && <p className="text-sm text-gray-400">No activity yet.</p>}
+          {timeline.length === 0 && <p className="text-sm text-gray-500">No activity yet.</p>}
         </ul>
       </Card>
     </div>

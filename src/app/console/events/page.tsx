@@ -75,7 +75,7 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
             return (
               <div key={col.key} className="rounded-xl bg-white p-3 shadow-sm">
                 <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-                  {col.label} <span className="text-gray-300">({byStatus(col.key).length})</span>
+                  {col.label} <span className="text-gray-500">({byStatus(col.key).length})</span>
                 </h2>
                 <div className="mt-2 space-y-2">
                   {items.map((e) => (
@@ -85,7 +85,7 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
                       )}
                       <div className="min-w-0 flex-1">
                         <Link href={`/console/events/${e.id}`} className="font-medium leading-snug hover:text-graphite">{e.title}</Link>
-                        <p className="mt-1 text-xs text-gray-400">
+                        <p className="mt-1 text-xs text-gray-500">
                           {e.member?.name && <>{e.member.name} · </>}{e.source} · {new Date(e.starts_on).toLocaleDateString("en-GB", { timeZone: "UTC" })}
                         </p>
                         {e.status === "awaiting_approval" && (
@@ -101,7 +101,7 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
                       </div>
                     </div>
                   ))}
-                  {items.length === 0 && <p className="px-1 text-xs text-gray-300">Empty</p>}
+                  {items.length === 0 && <p className="px-1 text-xs text-gray-500">Empty</p>}
                 </div>
               </div>
             );

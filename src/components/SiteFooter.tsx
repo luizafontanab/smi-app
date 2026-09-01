@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SMI_SOCIAL_URLS, SOCIAL_CHANNELS } from "@/lib/social";
+import { CookieSettingsLink } from "./CookieSettingsLink";
 import { NewsletterSignup } from "./NewsletterSignup";
 
 export function SiteFooter() {
@@ -23,6 +24,9 @@ export function SiteFooter() {
             <li><Link href="/contact" className="hover:text-brand">Contact</Link></li>
             <li><Link href="/advertising" className="hover:text-brand">Advertising</Link></li>
             <li><Link href="/member" className="hover:text-brand">Find a Member</Link></li>
+            <li><Link href="/event" className="hover:text-brand">Events</Link></li>
+            <li><Link href="/featured-machine" className="hover:text-brand">Featured Machine</Link></li>
+            <li><CookieSettingsLink /></li>
           </ul>
         </div>
         <div>

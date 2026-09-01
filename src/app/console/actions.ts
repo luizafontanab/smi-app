@@ -3,11 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
+import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
+import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
+import type { SocialChannels } from "@/lib/social-channels";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
 import { meetsWcagAA } from "@/lib/contrast";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } from "@/lib/dev-tasks";
+import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
+import { canMoveStory } from "@/lib/story-board";
+import { FEATURED_SLOTS } from "@/lib/pricing";
+import { raiseInvoice } from "@/lib/invoicing";
 import { removeMedia, uploadDocument, uploadImage } from "@/lib/media";
 import { memberValuesFromForm } from "@/lib/member-form";
 import { recordRename } from "@/lib/redirects";
@@ -82,18 +89,23 @@ export async function saveStory(formData: FormData) {
 }
 
 export async function scheduleStory(formData: FormData) {
-  await requireConsole();
+  const user = await requireConsole();
   const id = String(formData.get("id"));
   const when = String(formData.get("scheduled_at") ?? "");
   const db = serviceDb();
+  const { data: story } = await db.from("stories").select("member_id, status").eq("id", id).single();
+  const wasAwaitingApproval = story?.status === "awaiting_approval";
   if (formData.get("mode") === "now") {
     // urgent override — publish immediately, social push follows on its delay
     await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", id);
-    const { data: s } = await db.from("stories").select("member_id").eq("id", id).single();
     await enqueue("social_push", { story_id: id }, new Date(Date.now() + 30 * 60_000));
-    if (s?.member_id) await enqueue("notify_member", { member_id: s.member_id, kind: "story_live", story_id: id });
+    if (story?.member_id) await enqueue("notify_member", { member_id: story.member_id, kind: "story_live", story_id: id });
   } else if (when) {
     await db.from("stories").update({ status: "scheduled", scheduled_at: new Date(when).toISOString() }).eq("id", id);
+  }
+  // scheduling from awaiting_approval is also an approval — record it same as decideStory's approve branch
+  if (wasAwaitingApproval) {
+    await db.from("approvals").insert({ kind: "story", subject_id: id, decision: "approved", reason: null, decided_by: user.userId });
   }
   revalidatePath("/console/stories");
   // come back to whichever Story Engine view the operator came from (board or
@@ -133,6 +145,48 @@ export async function pinStory(formData: FormData) {
     pinned_until: days > 0 ? new Date(Date.now() + days * 864e5).toISOString() : null,
   }).eq("id", id);
   revalidatePath("/console/stories");
+}
+
+/**
+ * Kanban drop handler — a typed server action called directly from the client
+ * board, same "not FormData" precedent as moveDevTask. Unlike moveDevTask, any
+ * move here can be illegal (see LEGAL_STORY_MOVES), so this returns {ok,error}
+ * rather than void, and re-reads the row's current status from the DB rather
+ * than trusting the client's idea of "from" — a stale drag can't apply an
+ * illegal transition.
+ */
+export async function moveStory(input: { id: string; to: string }): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const { data: story } = await db.from("stories").select("id, status, member_id").eq("id", input.id).single();
+  if (!story) return { ok: false, error: "Story not found." };
+  if (!canMoveStory(story.status, input.to)) {
+    return { ok: false, error: `Can't move a ${story.status} story straight to ${input.to}.` };
+  }
+  if (input.to === "published") {
+    await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", input.id);
+    await enqueue("social_push", { story_id: input.id }, new Date(Date.now() + 30 * 60_000));
+    if (story.member_id) await enqueue("notify_member", { member_id: story.member_id, kind: "story_live", story_id: input.id });
+    if (story.status === "awaiting_approval") {
+      // mirror decideStory's approve branch so the audit trail is identical
+      // whether an operator clicked Approve or dragged the card.
+      await db.from("approvals").insert({ kind: "story", subject_id: input.id, decision: "approved", reason: null, decided_by: user.userId });
+    }
+  } else {
+    await db.from("stories").update({ status: input.to }).eq("id", input.id);
+  }
+  revalidatePath("/console");
+  revalidatePath("/console/stories");
+  return { ok: true };
+}
+
+/** Keyboard/no-JS fallback for the story board — same shape as setDevTaskStatus. */
+export async function setStoryStatus(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const to = String(formData.get("status") ?? "");
+  if (!id || !to) return;
+  await moveStory({ id, to });
+  redirect("/console/stories");
 }
 
 /* ---------- videos ---------- */
@@ -186,18 +240,23 @@ export async function saveVideo(formData: FormData) {
 }
 
 export async function scheduleVideo(formData: FormData) {
-  await requireConsole();
+  const user = await requireConsole();
   const id = String(formData.get("id"));
   const when = String(formData.get("scheduled_at") ?? "");
   const db = serviceDb();
+  const { data: video } = await db.from("videos").select("member_id, status").eq("id", id).single();
+  const wasAwaitingApproval = video?.status === "awaiting_approval";
   if (formData.get("mode") === "now") {
     // urgent override — publish immediately, social push follows on its delay
     await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
-    const { data: v } = await db.from("videos").select("member_id").eq("id", id).single();
     await enqueue("social_push", { video_id: id }, new Date(Date.now() + 30 * 60_000));
-    if (v?.member_id) await enqueue("notify_member", { member_id: v.member_id, kind: "video_live", video_id: id });
+    if (video?.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: id });
   } else if (when) {
     await db.from("videos").update({ status: "scheduled", scheduled_at: new Date(when).toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
+  }
+  // scheduling from awaiting_approval is also an approval — record it same as decideVideo's approve branch
+  if (wasAwaitingApproval) {
+    await db.from("approvals").insert({ kind: "video", subject_id: id, decision: "approved", reason: null, decided_by: user.userId });
   }
   revalidatePath("/console/videos");
   const back = String(formData.get("return_to") ?? "");
@@ -261,6 +320,8 @@ export async function saveEvent(formData: FormData) {
     redirect(`/console/events/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
   }
 
+  const type = String(formData.get("type") ?? "");
+
   const values = {
     title,
     starts_on,
@@ -270,6 +331,7 @@ export async function saveEvent(formData: FormData) {
     link: String(formData.get("link") ?? "") || null,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     member_id: String(formData.get("member_id") ?? "") || null,
+    type: isEventType(type) ? type : null,
     updated_at: new Date().toISOString(),
     ...(cover_path ? { cover_path } : {}),
   };
@@ -338,21 +400,21 @@ export async function decideRevision(formData: FormData) {
 
 /* ---------- page layouts ---------- */
 
-const PAGE_TYPES = ["story", "member_profile", "featured_machine"] as const;
+const PAGE_TYPES = ["story", "member_profile", "featured_machine", "static_page"] as const;
 
 export async function saveLayout(formData: FormData) {
   await requireConsole();
   const pageType = String(formData.get("page_type")) as (typeof PAGE_TYPES)[number];
-  if (!PAGE_TYPES.includes(pageType)) return;
   const entityId = String(formData.get("entity_id") ?? "") || null;
+  const qs = `type=${pageType}${entityId ? `&entity=${entityId}` : ""}`;
+  if (!PAGE_TYPES.includes(pageType)) redirect(`/console/pages?${qs}&error=${encodeURIComponent("Unknown page type.")}`);
   let layout: unknown;
   try {
     layout = JSON.parse(String(formData.get("layout") ?? ""));
   } catch {
-    return;
+    redirect(`/console/pages?${qs}&error=${encodeURIComponent("Layout could not be read — try again.")}`);
   }
   const { validateLayout } = await import("@/lib/blocks/schema");
-  const qs = `type=${pageType}${entityId ? `&entity=${entityId}` : ""}`;
   const error = validateLayout(pageType, layout);
   if (error) redirect(`/console/pages?${qs}&error=${encodeURIComponent(error)}`);
   await serviceDb().from("page_layouts").upsert({
@@ -446,6 +508,47 @@ export async function saveMachinePlacement(formData: FormData) {
   revalidatePath("/featured-machine");
 }
 
+/**
+ * Featured Member: a placements row directly (no featured_machines lookup —
+ * unlike saveMachinePlacement, there is no separate "is this published" gate
+ * here, since the member picker only lists active members).
+ *
+ * Cap enforcement is an app-level count check, not a DB exclusion constraint.
+ * Unlike takeover (exactly one concurrent row, expressible as a GiST
+ * exclusion — placements_takeover_no_overlap), Featured Member allows up to
+ * FEATURED_SLOTS.cap concurrently, which a two-row exclusion cannot express.
+ * This has a benign TOCTOU race between the count and the insert; acceptable
+ * because Jas is the sole console user booking this today.
+ */
+export async function saveFeaturedMemberPlacement(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const memberId = String(formData.get("member_id"));
+  const startsOn = String(formData.get("starts_on"));
+  const endsOn = String(formData.get("ends_on"));
+
+  const { count } = await db
+    .from("placements")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", "featured_member")
+    .lte("starts_on", endsOn)
+    .gte("ends_on", startsOn); // overlap test: any existing row whose term intersects the requested one
+
+  if ((count ?? 0) >= FEATURED_SLOTS.cap) {
+    redirect(`/console/adverts/featured-member?error=${encodeURIComponent(
+      `Featured Member is full for those dates — max ${FEATURED_SLOTS.cap} at once.`,
+    )}`);
+  }
+
+  const { error } = await db.from("placements").insert({ kind: "featured_member", member_id: memberId, starts_on: startsOn, ends_on: endsOn });
+  if (error) redirect(`/console/adverts/featured-member?error=${encodeURIComponent(error.message)}`);
+
+  revalidatePath("/console/adverts");
+  revalidatePath("/console/adverts/featured-member");
+  revalidatePath("/console");
+  revalidatePath("/");
+}
+
 /* ---------- adverts ---------- */
 
 /**
@@ -457,12 +560,13 @@ export async function saveBooking(formData: FormData) {
   const user = await requireConsole();
   const db = serviceDb();
   const now = new Date().toISOString();
-  const { error } = await db.from("advert_bookings").insert({
+  const productId = String(formData.get("product_id") ?? "") || null;
+  const { data: created, error } = await db.from("advert_bookings").insert({
     advert_id: String(formData.get("advert_id")),
     starts_on: String(formData.get("starts_on")),
     ends_on: String(formData.get("ends_on")),
     notes: String(formData.get("notes") ?? "") || null,
-    product_id: String(formData.get("product_id") ?? "") || null,
+    product_id: productId,
     bundle_id: String(formData.get("bundle_id") ?? "") || null,
     status: "scheduled",
     source: "admin",
@@ -470,7 +574,7 @@ export async function saveBooking(formData: FormData) {
     submitted_at: now,
     approved_by: user.userId,
     approved_at: now,
-  });
+  }).select("id, advert:adverts(member_id)").single();
   // The overlap exclusion constraint is the likely rejection here: the same
   // artwork already has a run covering these dates.
   if (error) {
@@ -479,6 +583,13 @@ export async function saveBooking(formData: FormData) {
         ? "That advert already has a run covering those dates."
         : error.message,
     )}`);
+  }
+  // Invoice off the rate card if one was sold as a priced product; unpriced
+  // products (rate_pennies null) skip invoicing here — Jas invoices manually,
+  // same as any run booked without a product_id.
+  if (productId && created?.advert?.member_id) {
+    const { data: product } = await db.from("advert_products").select("rate_pennies").eq("id", productId).single();
+    if (product?.rate_pennies) await raiseInvoice(created.advert.member_id, product.rate_pennies, "ADV");
   }
   revalidatePath("/console/adverts");
 }
@@ -529,6 +640,82 @@ export async function endBooking(formData: FormData) {
   revalidatePath("/console/adverts");
 }
 
+/* ---------- bundles ---------- */
+
+export async function saveBundle(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id") ?? "");
+  const member_id = String(formData.get("member_id"));
+  const name = String(formData.get("name") ?? "").trim();
+  const pricePounds = String(formData.get("price_pounds") ?? "").trim();
+  if (!member_id || !name) return;
+  const values = {
+    member_id,
+    name,
+    price_pennies: pricePounds ? Math.round(Number(pricePounds) * 100) : null,
+    notes: String(formData.get("notes") ?? "").trim() || null,
+  };
+  if (id) {
+    await db.from("bundles").update(values).eq("id", id);
+    revalidatePath(`/console/adverts/bundles/${id}`);
+    return;
+  }
+  const { data } = await db.from("bundles").insert(values).select("id").single();
+  revalidatePath("/console/adverts/bundles");
+  redirect(`/console/adverts/bundles/${data!.id}`);
+}
+
+/**
+ * Book several existing pieces of artwork under one bundle_id in one atomic
+ * insert, so an overlap on one part fails the whole batch rather than leaving
+ * a half-booked bundle. Also invoices off the bundle's price if it has one —
+ * never touches src/lib/adverts.ts, bundle_id/price are display/pricing-only
+ * (the neutrality rule: no weight/priority/bid input may ever reach rotation).
+ */
+export async function saveBundleBooking(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const bundleId = String(formData.get("bundle_id"));
+  const advertIds = formData.getAll("advert_ids").map(String);
+  const startsOn = String(formData.get("starts_on"));
+  const endsOn = String(formData.get("ends_on"));
+  if (!advertIds.length) {
+    redirect(`/console/adverts/bundles/${bundleId}?error=${encodeURIComponent("Pick at least one piece of artwork.")}`);
+  }
+
+  const { data: bundle } = await db.from("bundles").select("member_id, price_pennies").eq("id", bundleId).single();
+  // Invoice once per bundle, at whichever booking is the first — not once per
+  // "add more parts later" call, or a bundle with 3 add-part sessions would
+  // raise 3 full-price invoices.
+  const { count: existingParts } = await db.from("advert_bookings").select("id", { count: "exact", head: true }).eq("bundle_id", bundleId);
+  const now = new Date().toISOString();
+  const { error } = await db.from("advert_bookings").insert(advertIds.map((advert_id) => ({
+    advert_id,
+    bundle_id: bundleId,
+    starts_on: startsOn,
+    ends_on: endsOn,
+    status: "scheduled",
+    source: "admin",
+    submitted_by: user.userId,
+    submitted_at: now,
+    approved_by: user.userId,
+    approved_at: now,
+  })));
+  if (error) {
+    redirect(`/console/adverts/bundles/${bundleId}?error=${encodeURIComponent(
+      error.message.includes("advert_bookings_no_overlap")
+        ? "One of these pieces already has a run covering those dates — the whole batch was not booked."
+        : error.message,
+    )}`);
+  }
+  if (!existingParts && bundle?.member_id && bundle.price_pennies) {
+    await raiseInvoice(bundle.member_id, bundle.price_pennies, "ADV");
+  }
+  revalidatePath("/console/adverts");
+  revalidatePath(`/console/adverts/bundles/${bundleId}`);
+}
+
 /** Approve a member-submitted run, or send it back with a reason they can read. */
 export async function decideAdvertBooking(formData: FormData) {
   const user = await requireConsole();
@@ -538,7 +725,7 @@ export async function decideAdvertBooking(formData: FormData) {
   const db = serviceDb();
   const { data: booking } = await db
     .from("advert_bookings")
-    .select("id, status, advert:adverts(member_id)")
+    .select("id, status, advert:adverts(member_id), product:advert_products(rate_pennies)")
     .eq("id", id)
     .single();
   // same idempotency guard as decideStory/decideVideo/decideEvent
@@ -565,6 +752,9 @@ export async function decideAdvertBooking(formData: FormData) {
           ? "That advert already has a run covering those dates."
           : error.message,
       )}`);
+    }
+    if (memberId && booking.product?.rate_pennies) {
+      await raiseInvoice(memberId, booking.product.rate_pennies, "ADV");
     }
     if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_scheduled", booking_id: id });
   } else {
@@ -775,10 +965,14 @@ export async function saveAdvertProduct(formData: FormData) {
     redirect(`/console/adverts/spots/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Sample upload failed.")}`);
   }
 
+  const ratePounds = String(formData.get("rate_pounds") ?? "").trim();
+  const rate_pennies = ratePounds ? Math.round(Number(ratePounds) * 100) : null;
+
   const values = {
     short_name,
     format,
     cap,
+    rate_pennies,
     description: String(formData.get("description") ?? "").trim() || null,
     updated_at: new Date().toISOString(),
     ...(sample_path ? { sample_path } : {}),
@@ -828,6 +1022,7 @@ export async function startAdvertFromInterest(formData: FormData) {
   await requireConsole();
   const db = serviceDb();
   const id = String(formData.get("id"));
+  const amountPounds = Number(formData.get("amount_pounds") ?? 0);
   const { data: request } = await db
     .from("visibility_requests")
     .select("id, member_id, product")
@@ -838,6 +1033,9 @@ export async function startAdvertFromInterest(formData: FormData) {
   // The member asked for this and was previously told nothing either way (A2.6).
   if (request.member_id) {
     await enqueue("notify_member", { member_id: request.member_id, kind: "visibility_confirmed", request_id: id });
+    // visibility_requests has no product_id/rate to invoice off automatically
+    // (just a free-text product column) — Jas quotes the amount at confirm time.
+    if (amountPounds > 0) await raiseInvoice(request.member_id, Math.round(amountPounds * 100), "VIS");
   }
   revalidatePath("/console/adverts/interest");
   // No artwork yet — that is the whole point of the interest route, so this
@@ -858,6 +1056,41 @@ export async function saveMediaPack(formData: FormData) {
   await serviceDb().from("settings").upsert({ key: "media_pack", value: { path, updated_at: new Date().toISOString() } });
   revalidatePath("/console/adverts/spots");
   revalidatePath("/advertising");
+}
+
+export async function saveAdvertFormats(formData: FormData) {
+  await requireConsole();
+  const value: AdFormat[] = AD_FORMAT_KEYS.map((key) => ({
+    key,
+    name: String(formData.get(`name_${key}`) ?? "").trim(),
+    detail: String(formData.get(`detail_${key}`) ?? "").trim(),
+  }));
+  if (value.some((f) => !f.name || !f.detail)) return;
+  await serviceDb().from("settings").upsert({ key: "advert_formats", value });
+  revalidatePath("/console/adverts/spots");
+  revalidatePath("/advertising");
+}
+
+export async function saveSocialCaps(formData: FormData) {
+  await requireConsole();
+  const value: SocialCaps = {
+    per_day: Math.max(1, Number(formData.get("per_day") ?? DEFAULT_SOCIAL_CAPS.per_day)),
+    delay_minutes: Math.max(0, Number(formData.get("delay_minutes") ?? DEFAULT_SOCIAL_CAPS.delay_minutes)),
+  };
+  await serviceDb().from("settings").upsert({ key: "social_caps", value });
+  revalidatePath("/console/stories");
+}
+
+/** GAPS B4.1: which Buffer-connected channel profiles auto-posts go to. */
+export async function saveSocialChannels(formData: FormData) {
+  await requireConsole();
+  const profileIds = String(formData.get("profile_ids") ?? "")
+    .split(/[\n,]/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const value: SocialChannels = { profileIds };
+  await serviceDb().from("settings").upsert({ key: "social_channels", value });
+  revalidatePath("/console/stories");
 }
 
 /**
@@ -930,6 +1163,14 @@ export async function declineInterest(formData: FormData) {
 
 /* ---------- newsletter ---------- */
 
+/** Turns the composer's picked stories/videos into position-ordered newsletter_items rows, stories first. */
+function newsletterItemRows(issueId: string, storyIds: string[], videoIds: string[]) {
+  return [
+    ...storyIds.map((story_id, i) => ({ issue_id: issueId, story_id, position: i })),
+    ...videoIds.map((video_id, i) => ({ issue_id: issueId, video_id, position: storyIds.length + i })),
+  ];
+}
+
 export async function createIssue(formData: FormData) {
   await requireConsole();
   const db = serviceDb();
@@ -939,11 +1180,64 @@ export async function createIssue(formData: FormData) {
   const { data } = await db.from("newsletter_issues").insert({
     number, subject, intro: String(formData.get("intro") ?? ""), web_slug: `issue-${number}`,
   }).select("id").single();
-  const storyIds = formData.getAll("stories").map(String);
-  if (storyIds.length) {
-    await db.from("newsletter_items").insert(storyIds.map((story_id, i) => ({ issue_id: data!.id, story_id, position: i })));
-  }
+  const rows = newsletterItemRows(data!.id, formData.getAll("stories").map(String), formData.getAll("videos").map(String));
+  if (rows.length) await db.from("newsletter_items").insert(rows);
   revalidatePath("/console/newsletter");
+}
+
+const ISSUE_EDITABLE_STATUSES = new Set(["draft", "scheduled", "send_failed"]);
+
+/**
+ * B5.3: no way to edit an issue after creation — subject/intro and the
+ * story/video pick were locked in at createIssue and never revisitable.
+ * Full replace of newsletter_items rather than a diff, matching createIssue's
+ * own shape; the composer's picker is small enough that this is simpler than
+ * reconciling adds/removes.
+ */
+export async function updateIssue(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", id).single();
+  if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) {
+    redirect(`/console/newsletter/${id}?error=${encodeURIComponent("This issue can no longer be edited.")}`);
+  }
+  await db.from("newsletter_issues").update({
+    subject: String(formData.get("subject") ?? ""),
+    intro: String(formData.get("intro") ?? ""),
+  }).eq("id", id);
+
+  await db.from("newsletter_items").delete().eq("issue_id", id);
+  const rows = newsletterItemRows(id, formData.getAll("stories").map(String), formData.getAll("videos").map(String));
+  if (rows.length) await db.from("newsletter_items").insert(rows);
+
+  revalidatePath(`/console/newsletter/${id}`);
+  revalidatePath("/console/newsletter");
+}
+
+/**
+ * newsletter_ads is dateless/statusless (PK just issue_id+advert_id), with no
+ * link to advert_bookings or a rate card — attach/detach is the whole write
+ * surface, one issue at a time. The PK also means a double-click race can't
+ * duplicate a row.
+ */
+export async function attachNewsletterAd(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const issueId = String(formData.get("issue_id"));
+  const advertId = String(formData.get("advert_id"));
+  const { count } = await db.from("newsletter_ads").select("*", { count: "exact", head: true }).eq("issue_id", issueId);
+  await db.from("newsletter_ads").insert({ issue_id: issueId, advert_id: advertId, position: count ?? 0 });
+  revalidatePath(`/console/newsletter/${issueId}`);
+}
+
+export async function detachNewsletterAd(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const issueId = String(formData.get("issue_id"));
+  const advertId = String(formData.get("advert_id"));
+  await db.from("newsletter_ads").delete().eq("issue_id", issueId).eq("advert_id", advertId);
+  revalidatePath(`/console/newsletter/${issueId}`);
 }
 
 export async function sendIssue(formData: FormData) {
@@ -1232,8 +1526,36 @@ export async function setMemberStatus(formData: FormData) {
 
 export async function markInboxRead(formData: FormData) {
   await requireConsole();
-  await serviceDb().from("inbox_messages").update({ read: true }).eq("id", String(formData.get("id")));
+  // existing callers (the overview card) omit "read" and always mean "mark read"
+  const read = formData.get("read") !== "0";
+  await serviceDb().from("inbox_messages").update({ read }).eq("id", String(formData.get("id")));
   revalidatePath("/console");
+  revalidatePath("/console/messages");
+}
+
+/* ---------- media library ---------- */
+
+export async function renameMedia(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await serviceDb()
+    .from("media")
+    .update({
+      original_name: String(formData.get("original_name") ?? "").trim() || null,
+      alt_text: String(formData.get("alt_text") ?? "").trim() || null,
+    })
+    .eq("id", id);
+  revalidatePath("/console/media");
+}
+
+export async function deleteMedia(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const path = String(formData.get("path") ?? "");
+  if (!id || !path || formData.get("confirm") !== "1") return;
+  await removeMedia(path);
+  revalidatePath("/console/media");
 }
 
 /* ---------- content pages ---------- */
@@ -1292,6 +1614,128 @@ export async function deleteContentPage(formData: FormData) {
   await serviceDb().from("static_pages").delete().eq("slug", slug);
   revalidatePath("/console/content-pages");
   redirect("/console/content-pages?deleted=1");
+}
+
+/* ---------- categories ---------- */
+
+export async function saveCategory(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const kind = String(formData.get("kind") ?? "");
+  if (kind !== "story" && kind !== "member") return;
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  const slug = slugify(String(formData.get("slug") ?? "").trim() || name);
+  const db = serviceDb();
+
+  if (id) {
+    await db.from("categories").update({ name, slug }).eq("id", Number(id));
+  } else {
+    const { error } = await db.from("categories").insert({ kind, name, slug });
+    if (error) {
+      redirect(
+        `/console/categories/new?kind=${kind}&error=${encodeURIComponent(
+          error.code === "23505" ? "That slug is already used for this category type." : error.message
+        )}`
+      );
+    }
+  }
+  revalidatePath("/console/categories");
+  redirect(`/console/categories?kind=${kind}&saved=1`);
+}
+
+export async function deleteCategory(formData: FormData) {
+  await requireConsole();
+  const id = Number(formData.get("id"));
+  const kind = String(formData.get("kind") ?? "");
+  if (!id || formData.get("confirm") !== "1") {
+    redirect(`/console/categories/${id}?error=${encodeURIComponent("Tick the confirm box to delete this category.")}`);
+  }
+  const { error } = await serviceDb().from("categories").delete().eq("id", id);
+  if (error) {
+    redirect(
+      `/console/categories/${id}?error=${encodeURIComponent(
+        error.code === "23503" ? "This category is still assigned to a member — recategorise them first." : error.message
+      )}`
+    );
+  }
+  revalidatePath("/console/categories");
+  redirect(`/console/categories?kind=${kind}&deleted=1`);
+}
+
+/* ---------- promo codes ---------- */
+
+export async function savePromoCode(formData: FormData) {
+  await requireConsole();
+  const code = String(formData.get("code") ?? "").trim().toUpperCase();
+  if (!code) return;
+  const months = Number(formData.get("months") || 0);
+  if (!Number.isInteger(months) || months < 1 || months > 60) {
+    redirect(`/console/promo-codes?error=${encodeURIComponent("Months must be a whole number from 1 to 60.")}`);
+  }
+  const maxUsesRaw = String(formData.get("max_uses") ?? "").trim();
+  const maxUses = maxUsesRaw ? Number(maxUsesRaw) : null;
+  if (maxUsesRaw && (!Number.isInteger(maxUses) || (maxUses as number) < 1)) {
+    redirect(`/console/promo-codes?error=${encodeURIComponent("Max uses must be a whole number, or left blank for unlimited.")}`);
+  }
+  const expiresAt = String(formData.get("expires_at") ?? "").trim() || null;
+
+  const { error } = await serviceDb().from("promo_codes").insert({ code, months, max_uses: maxUses, expires_at: expiresAt });
+  if (error) {
+    redirect(`/console/promo-codes?error=${encodeURIComponent(
+      error.code === "23505" ? "That code already exists." : error.message
+    )}`);
+  }
+  revalidatePath("/console/promo-codes");
+  redirect("/console/promo-codes?saved=1");
+}
+
+export async function setPromoCodeActive(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await serviceDb().from("promo_codes").update({ active: formData.get("active") === "1" }).eq("id", id);
+  revalidatePath("/console/promo-codes");
+}
+
+/* ---------- member resources ---------- */
+
+export async function saveResource(formData: FormData) {
+  await requireConsole();
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) return;
+  const file = formData.get("file") as File | null;
+  if (!file || file.size === 0) redirect(`/console/resources?error=${encodeURIComponent("Choose a file to upload.")}`);
+  const isPdf = file.type === "application/pdf";
+
+  let path: string | null = null;
+  try {
+    path = isPdf ? await uploadDocument(file, "resources") : await uploadImage(file, "resources");
+  } catch (e) {
+    redirect(`/console/resources?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
+  }
+  if (!path) redirect(`/console/resources?error=${encodeURIComponent("Upload failed.")}`);
+
+  const { error } = await serviceDb().from("resources").insert({ title, path, kind: isPdf ? "document" : "image" });
+  if (error) {
+    await removeMedia(path);
+    redirect(`/console/resources?error=${encodeURIComponent(error.message)}`);
+  }
+  revalidatePath("/console/resources");
+  revalidatePath("/dashboard/resources");
+  redirect("/console/resources?saved=1");
+}
+
+export async function deleteResource(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id || formData.get("confirm") !== "1") return;
+  const { data: resource } = await serviceDb().from("resources").select("path").eq("id", id).single();
+  await serviceDb().from("resources").delete().eq("id", id);
+  if (resource?.path) await removeMedia(resource.path);
+  revalidatePath("/console/resources");
+  revalidatePath("/dashboard/resources");
+  redirect("/console/resources?deleted=1");
 }
 
 /* ---------- dev board ---------- */

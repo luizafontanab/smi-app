@@ -4,196 +4,156 @@ import { dealSlots } from "@/lib/adverts";
 import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
-import { EventCard, FeaturedMemberCard, MachineCard, VideoCard } from "@/components/cards";
-import { HomeHero } from "@/components/HomeHero";
+import { FeaturedMemberCard, MachineCard, VideoCard } from "@/components/cards";
 import { JoinCta } from "@/components/JoinCta";
+import { SearchForm } from "@/components/SearchForm";
 import { MemberBadge, StoryCard } from "@/components/StoryCard";
 import { excluding, type HomeData } from "./home.data";
 
 /**
- * The grid home page: mixed vertical rails and horizontal bands, more content
- * types surfaced, and a wider spread of advert positions than forge carries.
+ * The grid home page: a 12-column rail/rail composition up top (rotating
+ * banner, member/logo/video rail, headline story, media block, ad/machine
+ * rail), then two mixed-content rows, a content spotlight and a closing ad —
+ * built from the 2026-09 homepage wireframe. No HomeHero here; the rotating
+ * banner in that slot is a real, sold advert placement (home_1) rather than
+ * an editorial hero, a deliberate exception to the usual no-ad-above-the-fold
+ * stance (requirements/DESIGN-QUOTES.md §1) made for this design.
  *
- * Commercial rules baked into the order below — these are requirements, not
- * taste (requirements/DESIGN-QUOTES.md §1, §7):
- *   · No advert above the fold. News first; the top slot is not for sale.
- *   · The first banner sits below the main stories, the others spread apart.
- *   · Rotation stays random-uniform. Nothing here reorders or filters by
- *     advertiser — dealSlots is called once and its order is used as given.
- *   · Member news is marked wherever it appears among industry news.
- *   · Videos are woven into the feed, not stacked in one band.
+ * Commercial rules still in force (requirements/DESIGN-QUOTES.md §7):
+ *   · Rotation stays random-uniform — dealSlots is called once per slot
+ *     family and its order used as given, never reordered or filtered.
+ *   · Member news is marked wherever it appears among industry news
+ *     (StoryCard does this itself off `is_member_news`).
  */
 export function GridHome({
-  heroItems, stories, memberNews, videos, events, newsletters, directory,
-  memberCount, categories, featuredMembers, featuredMachine, adverts, showPlaceholders,
+  stories, memberNews, videos, featuredMembers, featuredMachine, adverts, showPlaceholders,
 }: HomeData) {
-  // One call, this design's own positions. Grid reuses forge's key names where a
-  // position is analogous (home_1/2/3) so impression reporting stays comparable,
-  // and only invents keys for positions forge does not have.
+  // One call per slot family. home_1/2/3 match forge's banner key names so
+  // impression reporting stays comparable across designs.
   const banners = dealSlots(adverts.banner, ["home_1", "home_2", "home_3"]);
-  const boxes = dealSlots(adverts.mpu, ["home_mpu_1", "home_mpu_2"]);
-  const sky = dealSlots(adverts.skyscraper, ["home_sky"]);
-  const inFeed = dealSlots(adverts.in_feed, ["home_infeed"]);
+  const boxes = dealSlots(adverts.mpu, ["home_mpu_1"]);
+  const railLogoKeys = Array.from({ length: 8 }, (_, i) => `home_rail_${i + 1}`);
+  const railLogos = dealSlots(adverts.supplier_logo, railLogoKeys, 1);
 
-  // Compositional: grid's own counts. 5 in the lead column, 6 in the mixed grid.
-  const lead = stories.slice(0, 5);
-  const mixed = stories.slice(5, 11);
-  const placed = new Set([...lead, ...mixed].map((s) => s.id));
-  const railNews = excluding(memberNews, placed).slice(0, 4);
+  // Compositional slicing: lead story + 2 secondary rows, a content spotlight,
+  // and a small pool for the two mixed rails — all disjoint so nothing repeats.
+  const [lead, ...rest] = stories;
+  const secondary = rest.slice(0, 2);
+  const spotlight = rest[2];
+  const mixedNews = rest.slice(3, 5);
+  const placedStoryIds = new Set([lead, ...secondary, spotlight, ...mixedNews].filter(Boolean).map((s) => s!.id));
+  const railNews = excluding(memberNews, placedStoryIds);
+  const member1 = featuredMembers[0]?.member;
+  const member2 = (featuredMembers[1] ?? featuredMembers[0])?.member;
+  const machine = featuredMachine?.machine;
+
+  const trending = [
+    mixedNews[0] && { type: "News", label: mixedNews[0].title, href: `/news/${mixedNews[0].slug}` },
+    videos[6] && { type: "Video", label: videos[6].title, href: "/video" },
+    machine && { type: "Machine", label: machine.name, href: `/member/${machine.member.slug}` },
+    railNews[0] && { type: "Member", label: railNews[0].title, href: `/news/${railNews[0].slug}` },
+  ].filter((item): item is { type: string; label: string; href: string } => Boolean(item));
+
+  const forYou = [
+    mixedNews[1] && { type: "News", label: mixedNews[1].title, href: `/news/${mixedNews[1].slug}` },
+    videos[7] && { type: "Video", label: videos[7].title, href: "/video" },
+    member2 && { type: "Member", label: member2.name, href: `/member/${member2.slug}` },
+  ].filter((item): item is { type: string; label: string; href: string } => Boolean(item));
 
   return (
     <>
-      {/* data-design scopes the shorter hero in globals.css. The hero component
-          itself is untouched — only --hero-h moves. */}
-      <div data-design="grid">
-        {heroItems.length > 0 && <HomeHero items={heroItems} />}
-      </div>
-
       <div className="mx-auto max-w-6xl px-4 pb-12">
+        {/* The rotating banner is a real advert slot, not an editorial hero —
+            see the top-of-file note on the above-the-fold exception. */}
+        <div className="pt-6"><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} /></div>
+
         {/* Jas asked for the search bar on home, news, video and members — one
             universal tool, and the query log is meant to steer SEO later. */}
-        <form action="/search" className="mt-6 flex gap-2">
-          <input
-            name="q"
-            type="search"
-            aria-label="Search the site"
-            placeholder="Search news, members, machines…"
-            className="min-w-0 flex-1 rounded border border-line px-4 py-2.5 text-sm"
-          />
-          <button className="rounded bg-brand px-5 py-2.5 text-sm font-bold text-ink hover:brightness-110">Search</button>
-        </form>
+        <SearchForm />
 
         {/* ── Lead: horizontal story rows left, vertical rail right ──────── */}
-        <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_20rem]">
-          <section className="min-w-0">
+        {/* ── Rail / headline story / media block / rail ──────────────────── */}
+        <div className="mt-8 grid gap-5 lg:grid-cols-[2fr_4fr_4fr_2fr]">
+          <div className="flex flex-col gap-4">
+            {member1 && <FeaturedMemberCard member={member1} variant="compact" />}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <AdSlot slotKey="home_rail_1" adverts={railLogos.get("home_rail_1") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+              <AdSlot slotKey="home_rail_2" adverts={railLogos.get("home_rail_2") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+            </div>
+            {videos.length > 0 && (
+              <div>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-graphite">Latest videos</p>
+                <div className="flex flex-col gap-2">
+                  {videos.slice(0, 2).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <AdSlot slotKey="home_rail_3" adverts={railLogos.get("home_rail_3") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+              <AdSlot slotKey="home_rail_4" adverts={railLogos.get("home_rail_4") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+            </div>
+          </div>
+
+          <div className="min-w-0">
             <SectionHead title="Latest news" href="/news" />
+            {lead && <StoryCard story={lead} size="lg" />}
             <div className="divide-y divide-line border-t border-line">
-              {lead.map((s) => <StoryRow key={s.id} story={s} />)}
+              {secondary.map((s) => <StoryRow key={s.id} story={s} />)}
             </div>
-          </section>
-
-          <aside className="flex flex-col gap-6">
-            <section>
-              <SectionHead title="Member news" href="/news?filter=members" />
-              <ul className="space-y-3 border-t border-line pt-3">
-                {railNews.map((s) => (
-                  <li key={s.id}>
-                    <Link href={`/news/${s.slug}`} className="group flex gap-3">
-                      <span className="mt-0.5 h-10 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold leading-snug line-clamp-2 group-hover:underline">{s.title}</span>
-                        {s.member && <span className="mt-0.5 block text-xs text-graphite">{s.member.name}</span>}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-                {railNews.length === 0 && <li className="text-sm text-graphite">No member stories this week.</li>}
-              </ul>
-            </section>
-            <AdSlot slotKey="home_mpu_1" adverts={boxes.get("home_mpu_1") ?? []} shape="mpu" showPlaceholders={showPlaceholders} />
-          </aside>
-        </div>
-
-        {/* First advert on the page — below the main stories, per the brief. */}
-        <div className="mt-10"><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} /></div>
-
-        {/* ── The four-column mixed grid Jas asked for ───────────────────── */}
-        <section className="mt-10">
-          <SectionHead title="What's new. What's next" href="/news" />
-          <div className="grid grid-cols-2 gap-4 border-t border-line pt-4 lg:grid-cols-4">
-            {mixed.slice(0, 4).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
-            {videos.slice(0, 2).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
-            {featuredMachine?.machine && <MachineCard machine={featuredMachine.machine} />}
-            {featuredMembers[1]?.member && <FeaturedMemberCard member={featuredMembers[1].member} variant="compact" />}
-            {/* Native slot: a sponsored card in the rhythm of the grid, labelled. */}
-            <SponsoredCard slot={inFeed.get("home_infeed") ?? []} showPlaceholders={showPlaceholders} />
-            {mixed.slice(4).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
           </div>
-        </section>
 
-        {/* ── Videos flanked by the skyscraper ───────────────────────────── */}
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_300px]">
-          <section className="min-w-0">
+          <div className="min-w-0">
             <SectionHead title="Watch" href="/video" />
-            <div className="grid grid-cols-2 gap-4 border-t border-line pt-4 md:grid-cols-3">
-              {videos.slice(2, 8).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
-            </div>
-          </section>
-          {/* sticky so the tall creative stays with the reader down a long column */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-4">
-              <AdSlot slotKey="home_sky" adverts={sky.get("home_sky") ?? []} shape="skyscraper" showPlaceholders={showPlaceholders} />
-            </div>
-          </aside>
-        </div>
-
-        {/* ── Events, four across ────────────────────────────────────────── */}
-        <section className="mt-10">
-          <SectionHead title="Events" href="/event" />
-          <div className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2 lg:grid-cols-4">
-            {events.map((e) => <EventCard key={e.slug} event={e} size="sm" />)}
+            {videos[2] && <VideoCard video={videos[2]} size="md" />}
+            {videos.length > 3 && (
+              <>
+                <p className="mb-2 mt-3 text-[10px] font-bold uppercase tracking-widest text-graphite">More in this series</p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {videos.slice(3, 5).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
+                </div>
+              </>
+            )}
           </div>
-        </section>
+
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <AdSlot slotKey="home_rail_5" adverts={railLogos.get("home_rail_5") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+              <AdSlot slotKey="home_rail_6" adverts={railLogos.get("home_rail_6") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+            </div>
+            <AdSlot slotKey="home_mpu_1" adverts={boxes.get("home_mpu_1") ?? []} shape="mpu" showPlaceholders={showPlaceholders} />
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <AdSlot slotKey="home_rail_7" adverts={railLogos.get("home_rail_7") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+              <AdSlot slotKey="home_rail_8" adverts={railLogos.get("home_rail_8") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+            </div>
+            {machine && <MachineCard machine={machine} />}
+          </div>
+        </div>
 
         <div className="mt-10"><AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} /></div>
 
-        {/* ── Magazine + newsletters: reachable only from the footer before ── */}
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_20rem]">
-          <section className="min-w-0">
-            <SectionHead title="Newsletters &amp; magazine" href="/newsletters" />
-            <div className="grid gap-4 border-t border-line pt-4 sm:grid-cols-3">
-              {newsletters.map((n) => (
-                <Link key={n.web_slug} href={`/newsletters/${n.web_slug}`} className="group block rounded-lg border border-line p-4 hover:shadow-md">
-                  <p className="text-xs font-bold uppercase tracking-widest text-brand">Issue {n.number}</p>
-                  <p className="mt-1 font-semibold leading-snug line-clamp-3 group-hover:underline">{n.subject}</p>
-                  {n.sent_at && (
-                    <p className="mt-2 text-xs text-graphite">
-                      {new Date(n.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-                    </p>
-                  )}
-                </Link>
-              ))}
-              {newsletters.length === 0 && <p className="text-sm text-graphite">No issues sent yet.</p>}
-            </div>
-          </section>
-          <aside>
-            <AdSlot slotKey="home_mpu_2" adverts={boxes.get("home_mpu_2") ?? []} shape="mpu" showPlaceholders={showPlaceholders} />
-          </aside>
-        </div>
-
-        {/* ── Member directory, logo-forward ─────────────────────────────── */}
+        {/* ── Watch more: three video cards + a mixed trending rail ───────── */}
         <section className="mt-10">
-          <SectionHead title={`Members${memberCount ? ` · ${memberCount}` : ""}`} href="/member" />
-          <div className="grid grid-cols-3 gap-3 border-t border-line pt-4 sm:grid-cols-4 lg:grid-cols-6">
-            {directory.map((m) => (
-              <Link
-                key={m.slug}
-                href={`/member/${m.slug}`}
-                title={m.name}
-                className="flex h-20 items-center justify-center rounded-lg border border-line bg-white p-3 transition hover:shadow-md"
-              >
-                <Image src={mediaUrl(m.logo_path)!} alt={m.name} width={120} height={60} className="max-h-full w-auto object-contain" unoptimized />
-              </Link>
-            ))}
+          <SectionHead title="Watch more" href="/video" />
+          <div className="grid grid-cols-2 gap-4 border-t border-line pt-4 lg:grid-cols-4">
+            {videos.slice(5, 8).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
+            <MixedRail title="Trending now" items={trending} />
           </div>
         </section>
 
-        {/* ── Browse by topic: the discoverability borrow ────────────────── */}
-        {categories.length > 0 && (
-          <section className="mt-10">
-            <SectionHead title="Browse by topic" />
-            <ul className="flex flex-wrap gap-2 border-t border-line pt-4">
-              {categories.map((c) => (
-                <li key={c.slug}>
-                  <Link
-                    href={`/news?category=${c.slug}`}
-                    className="inline-block rounded-full border border-line px-3 py-1.5 text-sm text-graphite transition hover:border-brand hover:text-ink"
-                  >
-                    {c.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+        {/* ── For you: mixed rail + member news + a media pick ────────────── */}
+        <section className="mt-10">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <MixedRail title="For you" items={forYou} />
+            {railNews.slice(0, 2).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
+            {videos[8] && <VideoCard video={videos[8]} size="sm" />}
+          </div>
+        </section>
+
+        {/* ── Content spotlight ────────────────────────────────────────────── */}
+        {spotlight && (
+          <section className="mt-10 max-w-lg">
+            <SectionHead title="Industry insight" />
+            <StoryCard story={spotlight} size="lg" />
           </section>
         )}
 
@@ -201,9 +161,7 @@ export function GridHome({
 
         <div className="-mx-4 mt-10"><SupplierLogos adverts={adverts.supplier_logo} showPlaceholders={showPlaceholders} /></div>
 
-        {featuredMembers[0]?.member && (
-          <div className="mt-10"><FeaturedMemberCard member={featuredMembers[0].member} variant="band" /></div>
-        )}
+        {member2 && <div className="mt-10"><FeaturedMemberCard member={member2} variant="band" /></div>}
 
         <JoinCta />
       </div>
@@ -246,16 +204,31 @@ function StoryRow({ story }: { story: HomeData["stories"][number] }) {
   );
 }
 
-/**
- * In-feed advert. Labelled "Sponsored" because it borrows the shape of editorial
- * content — the label is what keeps that honest, and it is not optional.
- */
-function SponsoredCard({ slot, showPlaceholders }: { slot: Parameters<typeof AdSlot>[0]["adverts"]; showPlaceholders: boolean }) {
-  if (slot.length === 0 && !showPlaceholders) return null;
+type MixedRailItem = { type: string; label: string; href: string };
+
+const MIXED_RAIL_CHIP: Record<string, string> = {
+  News: "bg-ink/8 text-ink",
+  Video: "bg-brand/10 text-brand",
+  Machine: "bg-graphite/10 text-graphite",
+  Member: "bg-gold/15 text-ink",
+};
+
+/** A short rail of differently-typed content, each row tagged by kind. */
+function MixedRail({ title, items }: { title: string; items: MixedRailItem[] }) {
+  if (items.length === 0) return null;
   return (
-    <div className="rounded-lg border border-line p-2">
-      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-graphite">Sponsored</p>
-      <AdSlot slotKey="home_infeed" adverts={slot} shape="in_feed" showPlaceholders={showPlaceholders} />
+    <div className="rounded-lg border border-line p-3">
+      <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-graphite">{title}</p>
+      <div className="flex flex-col gap-2.5">
+        {items.map((item, i) => (
+          <Link key={i} href={item.href} className="group flex items-center gap-2">
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${MIXED_RAIL_CHIP[item.type] ?? "bg-graphite/10 text-graphite"}`}>
+              {item.type}
+            </span>
+            <span className="min-w-0 truncate text-xs font-semibold group-hover:underline">{item.label}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

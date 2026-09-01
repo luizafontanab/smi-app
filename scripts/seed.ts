@@ -58,6 +58,8 @@ async function emptyBucket(prefix = "") {
 async function main() {
   console.log("— buckets");
   await db.storage.createBucket("media", { public: true }).catch(() => {});
+  // Invoices are private: served via signed URLs only (lib/invoice-pdf.ts).
+  await db.storage.createBucket("invoices", { public: false }).catch(() => {});
   console.log("— media: clearing stale files from previous seeds");
   await emptyBucket();
 
@@ -242,6 +244,36 @@ async function main() {
     await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
 
+  // Rate card (A2.7): sample rates so local dev has priced products to book
+  // against and invoice off, instead of every rate_pennies being null.
+  await db.from("advert_products").insert([
+    { short_name: "Homepage banner", format: "banner", cap: 3, rate_pennies: 65000 },
+    { short_name: "Skyscraper", format: "skyscraper", cap: 3, rate_pennies: 55000 },
+    { short_name: "MPU box", format: "mpu", cap: 3, rate_pennies: 45000 },
+    { short_name: "In-feed card", format: "in_feed", cap: 3, rate_pennies: 40000 },
+    { short_name: "Supplier logo", format: "supplier_logo", cap: 8, rate_pennies: 10000 },
+    { short_name: "Newsletter banner", format: "newsletter_banner", cap: 3, rate_pennies: 35000 },
+    { short_name: "Association logo", format: "association_logo", cap: 3, rate_pennies: 15000 },
+  ]);
+
+  // One priced bundle (A2.3/A2.7): two formats for one member, sold together
+  // under a single bundle_id and price — so the bundle UI and its invoicing
+  // path both have something real to show in local dev.
+  console.log("— a sample bundle");
+  const bundleMember = activeMembers[20];
+  const { data: bundle } = await db.from("bundles").insert({
+    member_id: bundleMember.id, name: `${bundleMember.name} launch bundle`, price_pennies: 90000, notes: "Banner + supplier logo, sold together",
+  }).select("id").single();
+  const bBanner = await upload("panels/bundle-banner.svg", svgBanner(bundleMember.name, 1280, 170, palette[1]), "image/svg+xml");
+  const bBannerMobile = await upload("panels/bundle-banner-mobile.svg", svgBanner(bundleMember.name, 370, 280, palette[1]), "image/svg+xml");
+  const bLogo = await upload("panels/bundle-logo.svg", svgBanner(bundleMember.name.split(" ")[0], 240, 120, palette[1]), "image/svg+xml");
+  const { data: bBannerAd } = await db.from("adverts").insert({ member_id: bundleMember.id, name: `${bundleMember.name} bundle banner`, desktop_path: bBanner, mobile_path: bBannerMobile, format: "banner" }).select("id").single();
+  const { data: bLogoAd } = await db.from("adverts").insert({ member_id: bundleMember.id, name: `${bundleMember.name} bundle logo`, desktop_path: bLogo, mobile_path: bLogo, format: "supplier_logo" }).select("id").single();
+  await db.from("advert_bookings").insert([
+    { advert_id: bBannerAd!.id, bundle_id: bundle!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) },
+    { advert_id: bLogoAd!.id, bundle_id: bundle!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) },
+  ]);
+
   console.log("— placements: featured members, featured machine, grid blocks");
   const { data: fm } = await db.from("featured_machines").insert({
     member_id: activeMembers[5].id, name: "2026 Durma HD-F 3015 12kW Fibre Laser",
@@ -345,6 +377,12 @@ async function main() {
     }))
   ));
   await db.from("notification_prefs").insert(memberLogins.map((mid) => ({ member_id: mid })));
+  // The join tests (unit + e2e) redeem these; without them the promo path only
+  // works on a database an admin has hand-populated via /console/promo-codes.
+  await db.from("promo_codes").insert([
+    { code: "SMI-FREE-YEAR", months: 12, active: true },
+    { code: "SMI-FREE-MONTH", months: 1, active: true },
+  ]);
   await db.from("static_pages").insert([
     { slug: "about", title: "About SMI", body: "<p>The voice of the UK sheet metal, fabrication and welding trade since 2022.</p>" },
     { slug: "policies", title: "Policies", body: "<p>Privacy and cookie policy.</p>" },

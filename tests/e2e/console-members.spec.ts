@@ -26,7 +26,7 @@ async function createMember(page: Page, company: string, email: string) {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', PASSWORD);
   await page.click("button:has-text('Create member')");
-  await page.waitForURL(/\/console\/member\/[0-9a-f-]{36}\?created=1/, { timeout: 20_000 });
+  await page.waitForURL(/\/console\/members\/[0-9a-f-]{36}\?created=1/, { timeout: 20_000 });
   return page.url().split("?")[0];
 }
 
@@ -45,10 +45,11 @@ test.describe("console member editor", () => {
     const company = `E2E Editor Ltd ${ts}`;
     await createMember(page, company, `e2e-editor-${ts}@test.local`);
 
-    // reachable from the list, not just the URL we were redirected to
-    await page.goto("/console/members");
+    // reachable from the list, not just the URL we were redirected to — via
+    // the list's server-side search, since the list is paginated
+    await page.goto(`/console/members?q=${encodeURIComponent(company)}`);
     await page.locator("tr", { hasText: company }).getByRole("link", { name: company }).click();
-    await page.waitForURL(/\/console\/member\/[0-9a-f-]{36}$/);
+    await page.waitForURL(/\/console\/members\/[0-9a-f-]{36}/);
 
     await page.fill('input[name="phone"]', "0161 555 0100");
     await page.fill('input[name="address"]', "Unit 4, Trafford Park, Manchester");
@@ -107,7 +108,7 @@ test.describe("console member editor", () => {
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', PASSWORD);
     await page.click("button:has-text('Create member')");
-    await page.waitForURL(/\/console\/member\/new\?error=/, { timeout: 20_000 });
+    await page.waitForURL(/\/console\/members\/new\?error=/, { timeout: 20_000 });
     await expect(page.getByText(/already exists/)).toBeVisible();
 
     // "<company> Again" contains "<company>", so a second row would show up here
@@ -149,20 +150,19 @@ test.describe("console member editor", () => {
 });
 
 test.describe("console contact editing", () => {
-  /** The quick-add form at the top of the contacts card. */
-  const addForm = (page: Page) => page.locator("#contacts form").first();
-
+  // Contacts live on /console/crm — this block predated that page and still
+  // pointed at a contacts card /console/members no longer renders.
   async function addContact(page: Page, email: string, name?: string) {
-    await page.goto("/console/members");
-    await addForm(page).locator('input[name="email"]').fill(email);
-    if (name) await addForm(page).locator('input[name="name"]').fill(name);
+    await page.goto("/console/crm");
+    await page.getByLabel("Email", { exact: true }).fill(email);
+    if (name) await page.getByLabel("Name", { exact: true }).fill(name);
     await page.click("button:has-text('Add (writes through to Bigin)')");
     await expect(page.locator("tr", { hasText: email })).toBeVisible();
   }
 
   /** Opens the contact editor from a clean URL and returns the editor form. */
   async function openEditor(page: Page, email: string): Promise<Locator> {
-    await page.goto("/console/members");
+    await page.goto(`/console/crm?q=${encodeURIComponent(email)}`);
     await page.locator("tr", { hasText: email }).getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\?contact=/, { timeout: 20_000 });
     const editor = page.locator("form", { hasText: `Editing ${email}` });

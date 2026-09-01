@@ -18,7 +18,13 @@
       "Bash(tail *)",
       "Bash(head *)",
       "Bash(npx tsc --noEmit 2>&1)",
-      "Bash(supabase migration list 2>&1)"
+      "Bash(supabase migration list 2>&1)",
+      "Bash(pnpm exec vitest * 2>&1)",
+      "Bash(pnpm build 2>&1)",
+      "Bash(pnpm lint 2>&1)",
+      "Bash(pnpm check 2>&1)",
+      "Bash(pnpm test:e2e 2>&1)",
+      "Bash(pnpm vitest run *)"
     ],
     "deny": [
       "Bash(rm -rf:*)",

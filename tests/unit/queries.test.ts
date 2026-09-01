@@ -1,0 +1,303 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  activePlacements, activeTakeover, eventBySlug, headlineStory, headlineVideo, ilikeTerm, memberBySlug, memberDirectory,
+  newsletterBySlug, pastEvents, publishedStories, publishedVideos, searchSite, sentNewsletters, staticPage,
+  storyBySlug, storyCategories, storyIntros, upcomingEvents, videoBySlug,
+} from "@/lib/queries";
+import { publicDb, serviceDb } from "@/lib/db/server";
+import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { resetDbServerMocks } from "../stubs/db-server";
+
+vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+
+afterEach(() => {
+  resetDbServerMocks();
+});
+
+/** Wires publicDb()/serviceDb() to the same table-routed fake — queries.ts never mixes the two within one call. */
+function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
+  const from = fromByTable(map, () => queryBuilder(dbOk(null)));
+  const client = asDb(mockDb({ from }));
+  vi.mocked(publicDb).mockReturnValue(client);
+  vi.mocked(serviceDb).mockReturnValue(client);
+  return from;
+}
+
+describe("publishedStories", () => {
+  it("returns the rows and total count as-is", async () => {
+    db({ stories: () => queryBuilder(dbOk([{ id: "s1" }], 42)) });
+
+    const result = await publishedStories();
+
+    expect(result).toEqual({ stories: [{ id: "s1" }], total: 42 });
+  });
+
+  it("filters to member news when memberOnly is set", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    db({ stories: () => storiesBuilder });
+
+    await publishedStories({ memberOnly: true });
+
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("is_member_news", true);
+  });
+
+  it("resolves a category to its story ids and filters by them", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    db({
+      stories: () => storiesBuilder,
+      categories: () => queryBuilder(dbOk({ id: "cat1" })),
+      story_categories: () => queryBuilder(dbOk([{ story_id: "s1" }, { story_id: "s2" }])),
+    });
+
+    await publishedStories({ category: "fabrication" });
+
+    expect(storiesBuilder.in).toHaveBeenCalledWith("id", ["s1", "s2"]);
+  });
+
+  it("skips the id filter entirely for an unknown category slug", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    db({ stories: () => storiesBuilder, categories: () => queryBuilder(dbOk(null)) });
+
+    await publishedStories({ category: "bogus" });
+
+    expect(storiesBuilder.in).not.toHaveBeenCalled();
+  });
+});
+
+describe("headlineStory", () => {
+  it("prefers a pinned story over the latest published one", async () => {
+    db({ stories: () => queryBuilder(dbOk([{ id: "pinned" }], 1)) });
+
+    expect(await headlineStory()).toEqual({ id: "pinned" });
+  });
+
+  it("falls back to the latest published story when nothing is pinned", async () => {
+    let call = 0;
+    db({
+      stories: () => queryBuilder(() => (call++ === 0 ? dbOk([]) : dbOk([{ id: "latest" }], 1))),
+    });
+
+    expect(await headlineStory()).toEqual({ id: "latest" });
+  });
+
+  it("returns null on a site with no published stories at all", async () => {
+    db({ stories: () => queryBuilder(dbOk([], 0)) });
+
+    expect(await headlineStory()).toBeNull();
+  });
+});
+
+describe("storyBySlug / videoBySlug / eventBySlug / staticPage", () => {
+  it("return the row directly, or null on a miss", async () => {
+    db({ stories: () => queryBuilder(dbOk({ slug: "acme-story" })) });
+    expect(await storyBySlug("acme-story")).toEqual({ slug: "acme-story" });
+
+    db({ videos: () => queryBuilder(dbOk(null)) });
+    expect(await videoBySlug("missing")).toBeNull();
+
+    db({ static_pages: () => queryBuilder(dbOk(null)) });
+    expect(await staticPage("missing")).toBeNull();
+  });
+});
+
+describe("storyIntros", () => {
+  it("returns an empty map without querying for no ids", async () => {
+    const from = db({});
+    expect(await storyIntros([])).toEqual(new Map());
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("maps id to body", async () => {
+    db({ stories: () => queryBuilder(dbOk([{ id: "s1", body: "<p>Hi</p>" }, { id: "s2", body: null }])) });
+
+    expect(await storyIntros(["s1", "s2"])).toEqual(new Map([["s1", "<p>Hi</p>"], ["s2", null]]));
+  });
+});
+
+describe("storyCategories / activePlacements / sentNewsletters", () => {
+  it("default to an empty list rather than null", async () => {
+    db({ categories: () => queryBuilder(dbOk(null)) });
+    expect(await storyCategories()).toEqual([]);
+
+    db({ placements: () => queryBuilder(dbOk(null)) });
+    expect(await activePlacements()).toEqual([]);
+
+    db({ newsletter_issues: () => queryBuilder(dbOk(null)) });
+    expect(await sentNewsletters()).toEqual([]);
+  });
+});
+
+describe("activeTakeover", () => {
+  it("returns null when the live placement has no complete config", async () => {
+    db({ placements: () => queryBuilder(dbOk({ config: { hex: "#fff" }, member: null })) }); // missing banner_path
+    expect(await activeTakeover()).toBeNull();
+  });
+
+  it("returns null when there is no live takeover at all", async () => {
+    db({ placements: () => queryBuilder(dbOk(null)) });
+    expect(await activeTakeover()).toBeNull();
+  });
+
+  it("returns the takeover with its member slug when fully configured", async () => {
+    db({ placements: () => queryBuilder(dbOk({ config: { hex: "#112233", banner_path: "b.jpg" }, member: { slug: "acme" } })) });
+
+    expect(await activeTakeover()).toEqual({ hex: "#112233", bannerPath: "b.jpg", memberSlug: "acme" });
+  });
+});
+
+describe("publishedVideos", () => {
+  it("returns rows and total, defaulting an empty result to []", async () => {
+    db({ videos: () => queryBuilder(dbOk(null, 0)) });
+    expect(await publishedVideos()).toEqual({ videos: [], total: 0 });
+  });
+});
+
+describe("headlineVideo", () => {
+  it("returns the pinned video when one exists", async () => {
+    db({ videos: () => queryBuilder(dbOk([{ id: "pinned" }], 1)) });
+    expect(await headlineVideo()).toEqual({ id: "pinned" });
+  });
+
+  it("returns null when nothing is pinned — no fallback to latest", async () => {
+    db({ videos: () => queryBuilder(dbOk([], 0)) });
+    expect(await headlineVideo()).toBeNull();
+  });
+});
+
+describe("upcomingEvents / pastEvents / eventBySlug — location repair", () => {
+  it("repairs the location field on every row via displayLocation", async () => {
+    db({ events: () => queryBuilder(dbOk([{ slug: "e1", location: "London" }], 1)) });
+    const { events } = await upcomingEvents();
+    expect(events[0].location).toBe("London"); // plain text passes through unchanged
+
+    db({ events: () => queryBuilder(dbOk([{ slug: "e2", location: null }], 1)) });
+    const past = await pastEvents();
+    expect(past.events[0].location).toBeNull();
+
+    db({ events: () => queryBuilder(dbOk({ slug: "e3", location: "Leeds" })) });
+    expect((await eventBySlug("e3"))!.location).toBe("Leeds");
+  });
+
+  it("eventBySlug returns null on a miss without touching displayLocation's row-list shape", async () => {
+    db({ events: () => queryBuilder(dbOk(null)) });
+    expect(await eventBySlug("missing")).toBeNull();
+  });
+});
+
+describe("ilikeTerm", () => {
+  it("strips PostgREST-meaningful and ILIKE wildcard characters", () => {
+    expect(ilikeTerm("a,id.not.is.null")).toBe("a id.not.is.null");
+    expect(ilikeTerm("50% off (deal)")).toBe("50 off deal");
+    expect(ilikeTerm("under_score*star")).toBe("under score star");
+  });
+
+  it("collapses whitespace and trims", () => {
+    expect(ilikeTerm("  Acme    Ltd  ")).toBe("Acme Ltd");
+  });
+
+  it("keeps apostrophes, ampersands, dots and colons — real member-name characters", () => {
+    expect(ilikeTerm("O'Brien & Sons Ltd. (co.uk)")).toBe("O'Brien & Sons Ltd. co.uk");
+  });
+
+  it("truncates to 80 characters", () => {
+    expect(ilikeTerm("x".repeat(200)).length).toBe(80);
+  });
+});
+
+describe("memberDirectory", () => {
+  it("returns nothing for a query that sanitises away to nothing, without querying", async () => {
+    const from = db({});
+    expect(await memberDirectory({ q: "%%%" })).toEqual({ members: [], total: 0 });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("applies an OR filter across name and description for a real term", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    db({ members: () => membersBuilder });
+
+    await memberDirectory({ q: "fabrication" });
+
+    expect(membersBuilder.or).toHaveBeenCalledWith("name.ilike.%fabrication%,description.ilike.%fabrication%");
+  });
+
+  it("resolves a category slug and filters by its id", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    db({ members: () => membersBuilder, categories: () => queryBuilder(dbOk({ id: "cat1" })) });
+
+    await memberDirectory({ category: "fabrication" });
+
+    expect(membersBuilder.eq).toHaveBeenCalledWith("category_id", "cat1");
+  });
+
+  it("only paginates when a limit is given — no limit means the whole filtered set", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    db({ members: () => membersBuilder });
+    await memberDirectory({});
+    expect(membersBuilder.range).not.toHaveBeenCalled();
+
+    const paged = queryBuilder(dbOk([], 0));
+    db({ members: () => paged });
+    await memberDirectory({ limit: 20, offset: 40 });
+    expect(paged.range).toHaveBeenCalledWith(40, 59);
+  });
+});
+
+describe("memberBySlug", () => {
+  it("returns null without querying stories when the member doesn't exist", async () => {
+    const from = db({ members: () => queryBuilder(dbOk(null)) });
+    expect(await memberBySlug("missing")).toBeNull();
+    expect(from).not.toHaveBeenCalledWith("stories");
+  });
+
+  it("merges the member's published stories onto the record", async () => {
+    db({
+      members: () => queryBuilder(dbOk({ id: "m1", slug: "acme" })),
+      stories: () => queryBuilder(dbOk([{ id: "s1" }])),
+    });
+
+    expect(await memberBySlug("acme")).toEqual({ id: "m1", slug: "acme", stories: [{ id: "s1" }] });
+  });
+});
+
+describe("searchSite", () => {
+  it("returns nothing for a term that escapes away to nothing, without querying", async () => {
+    const from = db({});
+    expect(await searchSite("!!!")).toEqual({ members: [], stories: [], total: 0 });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("searches both members and stories, ranking members conceptually first in the shape returned", async () => {
+    db({
+      members: () => queryBuilder(dbOk([{ slug: "acme" }])),
+      stories: () => queryBuilder(dbOk([{ id: "s1" }], 1)),
+    });
+
+    expect(await searchSite("acme")).toEqual({ members: [{ slug: "acme" }], stories: [{ id: "s1" }], total: 1 });
+  });
+
+  it("filters stories to member news when memberOnly is set", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    db({ members: () => queryBuilder(dbOk([])), stories: () => storiesBuilder });
+
+    await searchSite("acme", { memberOnly: true });
+
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("is_member_news", true);
+  });
+});
+
+describe("newsletterBySlug", () => {
+  it("returns null without fetching items when the issue doesn't exist", async () => {
+    const from = db({ newsletter_issues: () => queryBuilder(dbOk(null)) });
+    expect(await newsletterBySlug("missing")).toBeNull();
+    expect(from).not.toHaveBeenCalledWith("newsletter_items");
+  });
+
+  it("merges the issue's items in position order", async () => {
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 4 })),
+      newsletter_items: () => queryBuilder(dbOk([{ position: 1, story: { slug: "s1" } }])),
+    });
+
+    expect(await newsletterBySlug("aug-2026")).toEqual({ id: "iss1", number: 4, items: [{ position: 1, story: { slug: "s1" } }] });
+  });
+});

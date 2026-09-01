@@ -15,7 +15,7 @@ export default async function AdvertArtworkPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/adverts" className="text-sm text-gray-400 hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-gray-500 hover:text-ink">← Adverts &amp; Inventory</Link>
       <div className="mt-1 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">Artwork</h1>
         <Link href="/console/adverts/artwork/new" className="rounded bg-ink px-4 py-2 text-sm text-white">New artwork</Link>
@@ -26,10 +26,11 @@ export default async function AdvertArtworkPage() {
       </p>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead>
-            <tr className="text-left text-xs uppercase text-gray-400">
-              <th className="py-1">Preview</th><th>Name</th><th>Member</th><th>Format</th><th>Runs</th><th />
+            <tr className="text-left text-xs uppercase text-gray-500">
+              <th scope="col" className="py-1">Preview</th><th scope="col">Name</th><th scope="col">Member</th><th scope="col">Format</th><th scope="col">Runs</th><th scope="col" />
             </tr>
           </thead>
           <tbody>
@@ -52,10 +53,11 @@ export default async function AdvertArtworkPage() {
               );
             })}
             {!adverts?.length && (
-              <tr><td colSpan={6} className="py-4 text-center text-gray-400">No artwork yet.</td></tr>
+              <tr><td colSpan={6} className="py-4 text-center text-gray-500">No artwork yet.</td></tr>
             )}
           </tbody>
         </table>
+        </div>
       </section>
     </div>
   );

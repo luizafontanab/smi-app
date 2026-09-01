@@ -3,6 +3,7 @@ import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys } from "@/lib/blocks/schema";
+import { stripTags } from "@/lib/jsonld";
 import { publishedStories, staticPage } from "@/lib/queries";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { RichText } from "@/components/RichText";
@@ -12,7 +13,14 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(props: PageProps<"/pages/[slug]">) {
   const { slug } = await props.params;
   const page = await staticPage(slug);
-  return { title: page?.title ?? "Page" };
+  const title = page?.title ?? "Page";
+  const description = page?.body ? stripTags(page.body).slice(0, 160) : undefined;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/pages/${slug}` },
+    openGraph: { url: `/pages/${slug}`, title, description },
+  };
 }
 
 export default async function StaticPage(props: PageProps<"/pages/[slug]">) {

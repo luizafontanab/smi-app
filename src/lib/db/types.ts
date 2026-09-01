@@ -240,6 +240,7 @@ export type Database = {
           description: string | null
           format: string
           id: string
+          rate_pennies: number | null
           sample_path: string | null
           short_name: string
           updated_at: string
@@ -251,6 +252,7 @@ export type Database = {
           description?: string | null
           format: string
           id?: string
+          rate_pennies?: number | null
           sample_path?: string | null
           short_name: string
           updated_at?: string
@@ -262,6 +264,7 @@ export type Database = {
           description?: string | null
           format?: string
           id?: string
+          rate_pennies?: number | null
           sample_path?: string | null
           short_name?: string
           updated_at?: string
@@ -339,6 +342,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -352,6 +356,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -365,48 +370,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
-          referrer?: string | null
-          region?: string | null
-          session_hash?: string | null
-          story_id?: string | null
-        }
-        Relationships: []
-      }
-      analytics_events_2026_05: {
-        Row: {
-          advert_id: string | null
-          company: string | null
-          id: number
-          kind: string
-          member_id: string | null
-          occurred_at: string
-          path: string | null
-          referrer: string | null
-          region: string | null
-          session_hash: string | null
-          story_id: string | null
-        }
-        Insert: {
-          advert_id?: string | null
-          company?: string | null
-          id?: never
-          kind: string
-          member_id?: string | null
-          occurred_at?: string
-          path?: string | null
-          referrer?: string | null
-          region?: string | null
-          session_hash?: string | null
-          story_id?: string | null
-        }
-        Update: {
-          advert_id?: string | null
-          company?: string | null
-          id?: never
-          kind?: string
-          member_id?: string | null
-          occurred_at?: string
-          path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -423,6 +387,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -436,6 +401,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -449,6 +415,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -465,6 +432,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -478,6 +446,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -491,6 +460,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -507,6 +477,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -520,6 +491,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -533,6 +505,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -549,6 +522,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -562,6 +536,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -575,6 +550,52 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
+          referrer?: string | null
+          region?: string | null
+          session_hash?: string | null
+          story_id?: string | null
+        }
+        Relationships: []
+      }
+      analytics_events_2026_10: {
+        Row: {
+          advert_id: string | null
+          company: string | null
+          id: number
+          kind: string
+          member_id: string | null
+          occurred_at: string
+          path: string | null
+          platform: string | null
+          referrer: string | null
+          region: string | null
+          session_hash: string | null
+          story_id: string | null
+        }
+        Insert: {
+          advert_id?: string | null
+          company?: string | null
+          id?: never
+          kind: string
+          member_id?: string | null
+          occurred_at?: string
+          path?: string | null
+          platform?: string | null
+          referrer?: string | null
+          region?: string | null
+          session_hash?: string | null
+          story_id?: string | null
+        }
+        Update: {
+          advert_id?: string | null
+          company?: string | null
+          id?: never
+          kind?: string
+          member_id?: string | null
+          occurred_at?: string
+          path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -673,6 +694,24 @@ export type Database = {
           kind?: Database["public"]["Enums"]["category_kind"]
           name?: string
           slug?: string
+        }
+        Relationships: []
+      }
+      consent_stats: {
+        Row: {
+          consented_requests: number
+          day: string
+          total_requests: number
+        }
+        Insert: {
+          consented_requests?: number
+          day: string
+          total_requests?: number
+        }
+        Update: {
+          consented_requests?: number
+          day?: string
+          total_requests?: number
         }
         Relationships: []
       }
@@ -850,6 +889,7 @@ export type Database = {
           status: Database["public"]["Enums"]["content_status"]
           submitted_by: string | null
           title: string
+          type: string | null
           updated_at: string
         }
         Insert: {
@@ -869,6 +909,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["content_status"]
           submitted_by?: string | null
           title: string
+          type?: string | null
           updated_at?: string
         }
         Update: {
@@ -888,6 +929,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["content_status"]
           submitted_by?: string | null
           title?: string
+          type?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1074,6 +1116,50 @@ export type Database = {
         }
         Relationships: []
       }
+      media: {
+        Row: {
+          alt_text: string | null
+          byte_size: number | null
+          content_type: string
+          created_at: string
+          id: string
+          kind: string
+          original_name: string | null
+          path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          alt_text?: string | null
+          byte_size?: number | null
+          content_type: string
+          created_at?: string
+          id?: string
+          kind: string
+          original_name?: string | null
+          path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          alt_text?: string | null
+          byte_size?: number | null
+          content_type?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          original_name?: string | null
+          path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       member_revisions: {
         Row: {
           created_at: string
@@ -1116,6 +1202,7 @@ export type Database = {
         Row: {
           address: string | null
           billing_mode: string
+          cancel_requested_at: string | null
           category_id: number | null
           comped_until: string | null
           contact_email: string | null
@@ -1131,6 +1218,7 @@ export type Database = {
           lng: number | null
           logo_path: string | null
           name: string
+          onboarding_seen: boolean
           paid_at: string | null
           phone: string | null
           search_tsv: unknown
@@ -1138,6 +1226,7 @@ export type Database = {
           social: Json
           status: Database["public"]["Enums"]["member_status"]
           stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           testimonials: Json
           video_url: string | null
           website: string | null
@@ -1145,6 +1234,7 @@ export type Database = {
         Insert: {
           address?: string | null
           billing_mode?: string
+          cancel_requested_at?: string | null
           category_id?: number | null
           comped_until?: string | null
           contact_email?: string | null
@@ -1160,6 +1250,7 @@ export type Database = {
           lng?: number | null
           logo_path?: string | null
           name: string
+          onboarding_seen?: boolean
           paid_at?: string | null
           phone?: string | null
           search_tsv?: unknown
@@ -1167,6 +1258,7 @@ export type Database = {
           social?: Json
           status?: Database["public"]["Enums"]["member_status"]
           stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           testimonials?: Json
           video_url?: string | null
           website?: string | null
@@ -1174,6 +1266,7 @@ export type Database = {
         Update: {
           address?: string | null
           billing_mode?: string
+          cancel_requested_at?: string | null
           category_id?: number | null
           comped_until?: string | null
           contact_email?: string | null
@@ -1189,6 +1282,7 @@ export type Database = {
           lng?: number | null
           logo_path?: string | null
           name?: string
+          onboarding_seen?: boolean
           paid_at?: string | null
           phone?: string | null
           search_tsv?: unknown
@@ -1196,6 +1290,7 @@ export type Database = {
           social?: Json
           status?: Database["public"]["Enums"]["member_status"]
           stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           testimonials?: Json
           video_url?: string | null
           website?: string | null
@@ -1245,37 +1340,49 @@ export type Database = {
       }
       newsletter_issues: {
         Row: {
+          clicks_count: number
           created_at: string
           id: string
           intro: string | null
           number: number
+          opens_count: number
+          provider_broadcast_id: string | null
           scheduled_at: string | null
           send_error: string | null
           sent_at: string | null
+          sent_count: number | null
           status: string
           subject: string
           web_slug: string | null
         }
         Insert: {
+          clicks_count?: number
           created_at?: string
           id?: string
           intro?: string | null
           number: number
+          opens_count?: number
+          provider_broadcast_id?: string | null
           scheduled_at?: string | null
           send_error?: string | null
           sent_at?: string | null
+          sent_count?: number | null
           status?: string
           subject: string
           web_slug?: string | null
         }
         Update: {
+          clicks_count?: number
           created_at?: string
           id?: string
           intro?: string | null
           number?: number
+          opens_count?: number
+          provider_broadcast_id?: string | null
           scheduled_at?: string | null
           send_error?: string | null
           sent_at?: string | null
+          sent_count?: number | null
           status?: string
           subject?: string
           web_slug?: string | null
@@ -1284,19 +1391,25 @@ export type Database = {
       }
       newsletter_items: {
         Row: {
+          id: string
           issue_id: string
           position: number
-          story_id: string
+          story_id: string | null
+          video_id: string | null
         }
         Insert: {
+          id?: string
           issue_id: string
           position: number
-          story_id: string
+          story_id?: string | null
+          video_id?: string | null
         }
         Update: {
+          id?: string
           issue_id?: string
           position?: number
-          story_id?: string
+          story_id?: string | null
+          video_id?: string | null
         }
         Relationships: [
           {
@@ -1311,6 +1424,13 @@ export type Database = {
             columns: ["story_id"]
             isOneToOne: false
             referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "newsletter_items_video_id_fkey"
+            columns: ["video_id"]
+            isOneToOne: false
+            referencedRelation: "videos"
             referencedColumns: ["id"]
           },
         ]
@@ -1368,6 +1488,7 @@ export type Database = {
           kind: string
           member_id: string
           payload: Json
+          read_at: string | null
         }
         Insert: {
           created_at?: string
@@ -1377,6 +1498,7 @@ export type Database = {
           kind: string
           member_id: string
           payload?: Json
+          read_at?: string | null
         }
         Update: {
           created_at?: string
@@ -1386,6 +1508,7 @@ export type Database = {
           kind?: string
           member_id?: string
           payload?: Json
+          read_at?: string | null
         }
         Relationships: [
           {
@@ -1511,6 +1634,39 @@ export type Database = {
           },
         ]
       }
+      promo_codes: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          months: number
+          used_count: number
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          months: number
+          used_count?: number
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          months?: number
+          used_count?: number
+        }
+        Relationships: []
+      }
       redirects: {
         Row: {
           from_path: string
@@ -1526,6 +1682,30 @@ export type Database = {
           from_path?: string
           status_code?: number
           to_path?: string
+        }
+        Relationships: []
+      }
+      resources: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          path: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          path: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          path?: string
+          title?: string
         }
         Relationships: []
       }
@@ -1553,6 +1733,30 @@ export type Database = {
           kind?: string
           member_id?: string | null
           story_id?: string | null
+        }
+        Relationships: []
+      }
+      search_queries: {
+        Row: {
+          id: number
+          occurred_at: string
+          query: string
+          results_count: number
+          session_hash: string | null
+        }
+        Insert: {
+          id?: never
+          occurred_at?: string
+          query: string
+          results_count?: number
+          session_hash?: string | null
+        }
+        Update: {
+          id?: never
+          occurred_at?: string
+          query?: string
+          results_count?: number
+          session_hash?: string | null
         }
         Relationships: []
       }
@@ -1818,6 +2022,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bump_consent_stats: { Args: { p_consented: boolean }; Returns: undefined }
+      bump_newsletter_metric: {
+        Args: { p_broadcast_id: string; p_metric: string }
+        Returns: undefined
+      }
       current_member_id: { Args: never; Returns: string }
       ensure_analytics_partition: {
         Args: { p_month: string }
@@ -1834,6 +2043,7 @@ export type Database = {
         | "scheduled"
         | "published"
         | "rejected"
+        | "withdrawn"
       member_status: "draft" | "active" | "grace" | "lapsed"
       placement_kind:
         | "featured_member"
@@ -1978,6 +2188,7 @@ export const Constants = {
         "scheduled",
         "published",
         "rejected",
+        "withdrawn",
       ],
       member_status: ["draft", "active", "grace", "lapsed"],
       placement_kind: [

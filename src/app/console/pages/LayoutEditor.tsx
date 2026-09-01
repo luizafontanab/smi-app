@@ -66,7 +66,7 @@ export function LayoutEditor({ pageType, initial }: Props) {
       </DndContext>
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5 text-sm">
-        <span className="text-xs uppercase tracking-wide text-gray-400">Add block:</span>
+        <span className="text-xs uppercase tracking-wide text-gray-500">Add block:</span>
         {DECORATIONS[pageType].map((t) => (
           <button key={t} type="button" onClick={() => addBlock(t)} className="rounded border px-2.5 py-1 text-xs hover:bg-gray-50">
             + {BLOCK_LABELS[t]}
@@ -104,7 +104,7 @@ function SortableBlock({ block, pinned, adNumber, onRemove, onProps }: {
           {...attributes}
           {...listeners}
           aria-label={`Move ${BLOCK_LABELS[block.type]}`}
-          className="cursor-grab rounded px-1.5 py-1 text-gray-400 hover:bg-gray-100 focus:outline focus:outline-2 focus:outline-ink"
+          className="cursor-grab rounded px-1.5 py-1 text-gray-500 hover:bg-gray-100 focus:outline focus:outline-2 focus:outline-ink"
         >
           ⠿
         </button>
@@ -112,7 +112,7 @@ function SortableBlock({ block, pinned, adNumber, onRemove, onProps }: {
       {pinned && <span className="px-1.5 text-brand" title="Main content — always present">📌</span>}
       <span className="font-medium text-ink">
         {BLOCK_LABELS[block.type]}
-        {adNumber !== undefined && <span className="ml-1 font-normal text-gray-400">#{adNumber} — rotation decides what shows</span>}
+        {adNumber !== undefined && <span className="ml-1 font-normal text-gray-500">#{adNumber} — rotation decides what shows</span>}
       </span>
       {block.type === "back_link" && (
         <span className="flex gap-1.5">
@@ -124,14 +124,15 @@ function SortableBlock({ block, pinned, adNumber, onRemove, onProps }: {
         <label className="flex items-center gap-1 text-xs text-gray-500">
           cards
           <input
-            type="number" min={1} max={8} value={props.limit ?? 4}
+            type="number" min={block.type === "member_news" ? 0 : 1} max={8} value={props.limit ?? 4}
             onChange={(e) => onProps({ limit: Number(e.target.value) })}
             className="w-14 rounded border px-2 py-0.5"
           />
+          {block.type === "member_news" && <span className="text-gray-500">(0 = all)</span>}
         </label>
       )}
       {!pinned && (
-        <button type="button" onClick={onRemove} aria-label="Remove block" className="ml-auto rounded px-2 py-0.5 text-gray-300 hover:bg-red-50 hover:text-red-500">
+        <button type="button" onClick={onRemove} aria-label="Remove block" className="ml-auto rounded px-2 py-0.5 text-gray-500 hover:bg-red-50 hover:text-red-500">
           ✕
         </button>
       )}

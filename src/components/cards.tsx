@@ -1,8 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { mediaUrl } from "@/lib/db/server";
+import { EVENT_TYPE_LABELS, isEventType } from "@/lib/event-types";
 import { youtubeId } from "@/lib/hero";
 import { excerptFromHtml } from "@/lib/sanitize";
+import { MemberBadge } from "@/components/StoryCard";
 
 /**
  * Content cards shared by both site designs. They live here rather than beside
@@ -17,6 +19,7 @@ export type VideoCardData = {
   title: string;
   url: string;
   thumbnail_path?: string | null;
+  source?: string;
   member?: { name: string } | null;
 };
 
@@ -36,6 +39,7 @@ export function VideoCard({ video, size = "md" }: { video: VideoCardData; size?:
       <div className={`relative ${VIDEO_HEIGHTS[size]} bg-ink`}>
         {img && <Image src={img} alt="" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover opacity-80" unoptimized />}
         <span className={`absolute inset-0 flex items-center justify-center ${PLAY_GLYPH[size]} text-white drop-shadow`}>▶</span>
+        {video.source === "member" && <MemberBadge />}
       </div>
       <div className="p-3">
         <p className={`font-semibold line-clamp-2 ${size === "sm" ? "text-sm" : ""}`}>{video.title}</p>
@@ -99,8 +103,14 @@ export type EventCardData = {
   ends_on: string | null;
   link: string | null;
   description: string | null;
+  type?: string | null;
   member?: { slug: string; name: string } | null;
 };
+
+function EventTypeBadge({ type }: { type: string | null | undefined }) {
+  if (!type || !isEventType(type)) return null;
+  return <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand">{EVENT_TYPE_LABELS[type]}</span>;
+}
 
 // starts_on/ends_on are date columns, not timestamps — format in UTC or they
 // shift a day back west of Greenwich.
@@ -124,7 +134,12 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
   if (size === "sm") {
     return (
       <Link href={`/event/${event.slug}`} className="block h-full overflow-hidden rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
-        <p className="text-xs uppercase text-brand">{eventDate(event.starts_on, false)}</p>
+        <div className="flex items-center gap-2">
+          {/* graphite, not brand: small orange text on white is 3.3:1 — the
+              exact pairing globals.css forbids for body-size text */}
+          <p className="text-xs font-semibold uppercase text-graphite">{eventDate(event.starts_on, false)}</p>
+          <EventTypeBadge type={event.type} />
+        </div>
         <p className="mt-1 font-semibold line-clamp-2">{event.title}</p>
         {event.location && <p className="mt-1 text-sm text-gray-500 line-clamp-2 break-words">{event.location}</p>}
       </Link>
@@ -133,10 +148,13 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
   const excerpt = excerptFromHtml(event.description);
   return (
     <div className="overflow-hidden rounded-lg bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase text-brand">
-        {eventDate(event.starts_on)}{event.ends_on && event.ends_on > event.starts_on && ` – ${eventDate(event.ends_on)}`}
-        {event.starts_time && `, ${eventTime(event.starts_time)}`}
-      </p>
+      <div className="flex items-center gap-2">
+        <p className="text-xs font-semibold uppercase text-graphite">
+          {eventDate(event.starts_on)}{event.ends_on && event.ends_on > event.starts_on && ` – ${eventDate(event.ends_on)}`}
+          {event.starts_time && `, ${eventTime(event.starts_time)}`}
+        </p>
+        <EventTypeBadge type={event.type} />
+      </div>
       <h2 className="mt-1 text-lg font-bold">
         <Link href={`/event/${event.slug}`} className="hover:text-graphite">{event.title}</Link>
       </h2>

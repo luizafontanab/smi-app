@@ -7,10 +7,12 @@ import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys, bodyAdSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
+import { breadcrumbLd, newsArticleLd } from "@/lib/jsonld";
 import { storyBySlug, publishedStories } from "@/lib/queries";
 import { splitAtAdBreaks } from "@/lib/sanitize";
 import { AdSlot } from "@/components/AdSlot";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
+import { JsonLd } from "@/components/JsonLd";
 import { MemberBacklink } from "@/components/MemberBacklink";
 import { ShareButtons } from "@/components/ShareButtons";
 import { StoryBody } from "@/components/StoryBody";
@@ -73,6 +75,15 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
   // then post-article blocks. Order comes from the (admin-arranged) layout.
   return (
     <div className="mx-auto max-w-4xl px-4">
+      <JsonLd
+        data={[
+          newsArticleLd({ ...story, coverUrl: cover }),
+          breadcrumbLd([
+            { name: "News", path: "/news" },
+            { name: story.title, path: `/news/${slug}` },
+          ]),
+        ]}
+      />
       <BlockRenderer
         pageType="story"
         layout={layout}
@@ -117,8 +128,10 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
                 })}
               />
               <ShareButtons />
-              {/* Member backlink + footer branding — the fixed "minor tweak" (req 02/07) */}
-              {story.member && (
+              {/* Member backlink + footer branding — the fixed "minor tweak" (req 02/07).
+                  Gated on member status: a lapsed member's page 404s (memberBySlug filters
+                  to active/grace), so linking there for anyone else would be a dead link. */}
+              {story.member && ["active", "grace"].includes(story.member.status) && (
                 <MemberBacklink name={story.member.name} slug={story.member.slug} logoUrl={mediaUrl(story.member.logo_path)} />
               )}
             </article>

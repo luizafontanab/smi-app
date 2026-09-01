@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { CONSENT_COOKIE } from "./consent";
 import { serviceDb } from "./db/server";
 
 /**
@@ -7,7 +8,16 @@ import { serviceDb } from "./db/server";
  * comes from the optional resolver adapter (stubbed until approved).
  */
 
-export type EventKind = "page_view" | "story_view" | "member_page_view" | "ad_impression" | "ad_click";
+export type EventKind =
+  | "page_view"
+  | "story_view"
+  | "member_page_view"
+  | "ad_impression"
+  | "ad_click"
+  | "outbound_click"
+  | "phone_click"
+  | "email_click"
+  | "social_click";
 
 type EventRow = {
   kind: EventKind;
@@ -19,10 +29,11 @@ type EventRow = {
   company?: string | null;
   session_hash?: string | null;
   referrer?: string | null;
+  /** Only meaningful for kind: "social_click", e.g. "linkedin". */
+  platform?: string | null;
 };
 
-/** The cookie CookieConsent.tsx writes. Kept in one place so the two agree. */
-export const CONSENT_COOKIE = "smi-consent";
+export { CONSENT_COOKIE } from "./consent";
 
 /**
  * V15: "analytics tracking respects the choice". Consent must be affirmative,
@@ -77,9 +88,67 @@ export function record(events: (EventRow & Partial<Consent>)[]): void {
     });
 }
 
+type SearchQueryRow = { query: string; results_count: number; session_hash?: string | null };
+
+/**
+ * A5.1: what readers actually search for feeds SEO / AI-search decisions
+ * (V4) — dropped entirely until now. Same fire-and-forget / consent-drop
+ * shape as record().
+ */
+export function recordSearch(entry: SearchQueryRow & Partial<Consent>): void {
+  if (entry.consented === false) return;
+  const row: SearchQueryRow = { query: entry.query, results_count: entry.results_count, session_hash: entry.session_hash };
+  void serviceDb()
+    .from("search_queries")
+    .insert(row)
+    .then(({ error }) => {
+      if (error) console.error("[analytics] search_queries insert failed:", error.message);
+    });
+}
+
+export type ReferrerBucket = "direct" | "search" | "social" | "ai" | "other";
+
+const SEARCH_HOSTS = ["google.", "bing.com", "duckduckgo.com", "yahoo.com", "ecosia.org"];
+const SOCIAL_HOSTS = ["facebook.com", "linkedin.com", "x.com", "twitter.com", "instagram.com", "youtube.com", "tiktok.com"];
+/** Best-effort, hand-maintained: catches a reader following a link an AI
+ * product surfaced (referrer = that product's own domain). Does not catch
+ * crawler/bot traffic, which is User-Agent-based and out of scope here. */
+const AI_HOSTS = ["chatgpt.com", "chat.openai.com", "perplexity.ai", "gemini.google.com", "copilot.microsoft.com", "claude.ai"];
+
+/** Buckets a raw Referer header for the admin analytics referrer-mix view. Read-time only — never stored. */
+export function classifyReferrer(referrer: string | null | undefined): ReferrerBucket {
+  if (!referrer) return "direct";
+  let host: string;
+  try {
+    host = new URL(referrer).hostname.toLowerCase();
+  } catch {
+    return "other";
+  }
+  if (AI_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return "ai";
+  if (SEARCH_HOSTS.some((h) => host.includes(h))) return "search";
+  if (SOCIAL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return "social";
+  return "other";
+}
+
+/**
+ * Fire-and-forget, no PII: one row/day, two counters. This is the
+ * measurement half of GAPS C6's disclosure — record() drops every
+ * non-consented event, so without this there is no way to say how large
+ * that undercount actually is.
+ */
+function bumpConsentStats(consented: boolean): void {
+  void serviceDb()
+    .rpc("bump_consent_stats", { p_consented: consented })
+    .then(({ error }) => {
+      if (error) console.error("[analytics] bump_consent_stats failed:", error.message);
+    });
+}
+
 /** Request context for attribution: session hash, referrer, region/company via resolver. */
 export async function requestContext(): Promise<RequestContext> {
-  if (!(await analyticsConsented())) return DECLINED;
+  const consented = await analyticsConsented();
+  bumpConsentStats(consented);
+  if (!consented) return DECLINED;
   const h = await headers();
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
   const ua = h.get("user-agent") ?? "";

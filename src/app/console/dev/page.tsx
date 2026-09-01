@@ -66,7 +66,7 @@ export default async function DevBoardPage(props: PageProps<"/console/dev">) {
       <form method="get" className="mt-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 text-sm shadow-sm">
         <input type="hidden" name="view" value={filters.view} />
         <div>
-          <label htmlFor="dev-q" className="block text-xs uppercase tracking-wide text-gray-400">
+          <label htmlFor="dev-q" className="block text-xs uppercase tracking-wide text-gray-500">
             Search
           </label>
           <input
@@ -132,14 +132,14 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
     <section className="mt-5 rounded-xl bg-white p-5 shadow-sm">
       <form action={createDevTask} className="flex flex-wrap gap-2 text-sm">
         <input name="title" placeholder="+ Add task" required className="min-w-48 flex-1 rounded border px-3 py-1.5" />
-        <select name="status" defaultValue="not_started" className="rounded border px-3 py-1.5">
+        <select name="status" defaultValue="not_started" className="max-w-full rounded border px-3 py-1.5">
           {DEV_STATUSES.map((s) => (
             <option key={s} value={s}>
               {DEV_STATUS_LABELS[s]}
             </option>
           ))}
         </select>
-        <select name="assignee" defaultValue="" className="rounded border px-3 py-1.5">
+        <select name="assignee" defaultValue="" className="max-w-full rounded border px-3 py-1.5">
           <option value="">— unassigned —</option>
           {DEV_ASSIGNEES.map((a) => (
             <option key={a} value={a}>
@@ -153,14 +153,15 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
       {sorted.length === 0 ? (
         <p className="mt-4 text-sm text-gray-500">No tasks match these filters.</p>
       ) : (
-        <table className="mt-4 w-full text-sm">
+        <div className="overflow-x-auto mt-4">
+        <table className="w-full text-sm min-w-[560px]">
           <thead>
-            <tr className="text-left text-xs uppercase text-gray-400">
-              <th className="py-1">Title</th>
-              <th>Status</th>
-              <th>Assignee</th>
-              <th>Priority</th>
-              <th>Updated</th>
+            <tr className="text-left text-xs uppercase text-gray-500">
+              <th scope="col" className="py-1">Title</th>
+              <th scope="col">Status</th>
+              <th scope="col">Assignee</th>
+              <th scope="col">Priority</th>
+              <th scope="col">Updated</th>
             </tr>
           </thead>
           <tbody>
@@ -170,8 +171,8 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
                   <Link href={`/console/dev/${t.id}${returnTo}`} className="font-medium hover:text-graphite">
                     {t.title}
                   </Link>
-                  {t.kind && <span className="ml-1.5 text-xs text-gray-400">({DEV_TASK_KIND_LABELS[t.kind]})</span>}
-                  {t.description && <p className="mt-0.5 truncate text-xs text-gray-400">{t.description}</p>}
+                  {t.kind && <span className="ml-1.5 text-xs text-gray-500">({DEV_TASK_KIND_LABELS[t.kind]})</span>}
+                  {t.description && <p className="mt-0.5 truncate text-xs text-gray-500">{t.description}</p>}
                 </td>
                 <td>
                   <Badge tone={STATUS_TONE[t.status]}>{DEV_STATUS_LABELS[t.status]}</Badge>
@@ -180,11 +181,12 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
                 <td>
                   <Badge tone={PRIORITY_TONE[t.priority]}>{t.priority}</Badge>
                 </td>
-                <td className="text-xs text-gray-400">{new Date(t.updated_at).toLocaleDateString("en-GB")}</td>
+                <td className="text-xs text-gray-500">{new Date(t.updated_at).toLocaleDateString("en-GB")}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   );

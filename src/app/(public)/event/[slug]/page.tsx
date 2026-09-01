@@ -3,7 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
+import { EVENT_TYPE_LABELS, isEventType } from "@/lib/event-types";
+import { breadcrumbLd, eventLd, stripTags } from "@/lib/jsonld";
 import { eventBySlug } from "@/lib/queries";
+import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
 import { ShareButtons } from "@/components/ShareButtons";
 
@@ -20,7 +23,20 @@ const fmtTime = (t: string) => new Date(2000, 0, 1, Number(t.split(":")[0]), Num
 export async function generateMetadata(props: PageProps<"/event/[slug]">) {
   const { slug } = await props.params;
   const event = await eventBySlug(slug);
-  return { title: event?.title ?? "Event" };
+  const title = event?.title ?? "Event";
+  const description = event?.description
+    ? stripTags(event.description).slice(0, 160)
+    : event
+      ? `${event.title}${event.location ? ` — ${event.location}` : ""}, ${event.starts_on}.`
+      : undefined;
+  const cover = mediaUrl(event?.cover_path);
+  return {
+    title,
+    description,
+    alternates: { canonical: `/event/${slug}` },
+    openGraph: { type: "website", url: `/event/${slug}`, title, description, images: cover ? [cover] : undefined },
+    twitter: { card: "summary_large_image", title, description, images: cover ? [cover] : undefined },
+  };
 }
 
 export default async function EventPage(props: PageProps<"/event/[slug]">) {
@@ -34,7 +50,16 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
 
   return (
     <div className="mx-auto max-w-3xl px-4">
-      <Link href="/event" className="mt-6 inline-block text-sm text-gray-400 hover:text-ink">← All events</Link>
+      <JsonLd
+        data={[
+          eventLd({ ...event, coverUrl: cover, memberName: event.member?.name }),
+          breadcrumbLd([
+            { name: "Events", path: "/event" },
+            { name: event.title, path: `/event/${slug}` },
+          ]),
+        ]}
+      />
+      <Link href="/event" className="mt-6 inline-block text-sm text-gray-500 hover:text-ink">← All events</Link>
 
       {cover && (
         <div className="relative mt-3 h-64 overflow-hidden rounded-lg bg-graphite/10">
@@ -42,11 +67,18 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
         </div>
       )}
 
-      <p className="mt-6 text-xs font-semibold uppercase tracking-widest text-brand">
-        {fmt(event.starts_on)}
-        {event.ends_on && event.ends_on > event.starts_on && ` – ${fmt(event.ends_on)}`}
-        {event.starts_time && `, ${fmtTime(event.starts_time)}`}
-      </p>
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        <p className="text-xs font-semibold uppercase tracking-widest text-brand">
+          {fmt(event.starts_on)}
+          {event.ends_on && event.ends_on > event.starts_on && ` – ${fmt(event.ends_on)}`}
+          {event.starts_time && `, ${fmtTime(event.starts_time)}`}
+        </p>
+        {event.type && isEventType(event.type) && (
+          <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand">
+            {EVENT_TYPE_LABELS[event.type]}
+          </span>
+        )}
+      </div>
       <h1 className="mt-1 text-2xl font-bold text-ink">{event.title}</h1>
       {event.location && <p className="mt-1 text-sm text-gray-500 break-words">{event.location}</p>}
 

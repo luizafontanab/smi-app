@@ -107,7 +107,7 @@ function DevTaskForm({
       <h2 id={titleId} className="text-lg font-bold text-ink">
         Feedback
       </h2>
-      <p className="mt-1 text-xs text-gray-400">
+      <p className="mt-1 text-xs text-gray-500">
         Filing as {reporterName}. The page, browser and any recent errors are attached automatically.
       </p>
 

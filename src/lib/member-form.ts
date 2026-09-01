@@ -2,6 +2,7 @@ import type { Database, Json } from "@/lib/db/types";
 import { activationBlocked, BILLING_MODES, MEMBER_STATUSES, slugify, type MemberStatus } from "@/lib/membership";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { mergeSocial } from "@/lib/social";
+import { EMAIL_RE, parseCoordinate } from "@/lib/validate";
 
 /**
  * Console member editor: FormData → the payload to write to `members`.
@@ -23,26 +24,11 @@ export type MemberFormResult =
   | { error: string }
   | { values: MemberUpdate; activatingDraft: boolean };
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
 const text = (formData: FormData, key: string) => String(formData.get(key) ?? "").trim();
 const nullable = (formData: FormData, key: string) => text(formData, key) || null;
 const checked = (formData: FormData, key: string) => formData.get(key) === "on";
 
-/**
- * Blank → null. Anything else must parse to a finite number inside `limit`:
- * lat/lng feed the OpenStreetMap bbox embed on the public profile, where a
- * out-of-range value renders a broken iframe rather than failing loudly.
- */
-function coordinate(formData: FormData, key: string, limit: number): number | null | { error: string } {
-  const raw = text(formData, key);
-  if (!raw) return null;
-  const value = Number(raw);
-  if (!Number.isFinite(value) || Math.abs(value) > limit) {
-    return { error: `${key === "lat" ? "Latitude" : "Longitude"} must be a number between −${limit} and ${limit}.` };
-  }
-  return value;
-}
+const coordinate = (formData: FormData, key: "lat" | "lng", limit: number) => parseCoordinate(text(formData, key), limit, key);
 
 /** `datetime-local` → ISO, so it round-trips through a timestamptz column. */
 function timestamp(formData: FormData, key: string): string | null | { error: string } {

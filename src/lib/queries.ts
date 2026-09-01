@@ -11,10 +11,10 @@ export type StoryCard = {
   cover_focus: unknown;
   published_at: string | null;
   is_member_news: boolean;
-  member: { slug: string; name: string; logo_path: string | null } | null;
+  member: { slug: string; name: string; logo_path: string | null; status: string } | null;
 };
 
-const STORY_CARD = "id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member:members(slug, name, logo_path)";
+const STORY_CARD = "id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member:members(slug, name, logo_path, status)";
 
 export async function publishedStories(opts: { limit?: number; offset?: number; category?: string; memberOnly?: boolean; order?: "desc" | "asc" } = {}) {
   const db = publicDb();
@@ -115,15 +115,36 @@ export async function activeTakeover(): Promise<ActiveTakeover | null> {
   return { hex: config.hex, bannerPath: config.banner_path, memberSlug: data?.member?.slug ?? null };
 }
 
-export async function publishedVideos(limit = 8) {
+const VIDEO_CARD = "id, slug, title, url, thumbnail_path, source, member:members(slug, name)";
+
+export async function publishedVideos(opts: { limit?: number; offset?: number } = {}) {
+  const db = publicDb();
+  const limit = opts.limit ?? 8;
+  const offset = opts.offset ?? 0;
+  const { data, count } = await db
+    .from("videos")
+    .select(VIDEO_CARD, { count: "exact" })
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  return { videos: data ?? [], total: count ?? 0 };
+}
+
+/**
+ * Pinned video wins its own featured slot on /video — unlike headlineStory()
+ * this has no "latest" fallback: the grid below it already leads with latest,
+ * so a fallback here would just duplicate that row.
+ */
+export async function headlineVideo() {
   const db = publicDb();
   const { data } = await db
     .from("videos")
-    .select("id, slug, title, url, thumbnail_path, member:members(slug, name)")
+    .select(VIDEO_CARD)
     .eq("status", "published")
-    .order("published_at", { ascending: false })
-    .limit(limit);
-  return data ?? [];
+    .gt("pinned_until", new Date().toISOString())
+    .order("pinned_until", { ascending: false })
+    .limit(1);
+  return data?.[0] ?? null;
 }
 
 export async function videoBySlug(slug: string) {
@@ -137,23 +158,25 @@ export async function videoBySlug(slug: string) {
   return data;
 }
 
-const EVENT_FIELDS = "slug, title, location, starts_on, starts_time, ends_on, link, description, cover_path, member:members(slug, name)";
+const EVENT_FIELDS = "slug, title, location, starts_on, starts_time, ends_on, link, description, cover_path, type, member:members(slug, name)";
 
 /** Shared by all three event reads: repair legacy ACF map blobs in one place. */
 function withDisplayLocation<T extends { location: string | null }>(rows: T[] | null) {
   return (rows ?? []).map((e) => ({ ...e, location: displayLocation(e.location) }));
 }
 
-export async function upcomingEvents(limit = 6) {
+export async function upcomingEvents(opts: { limit?: number; offset?: number } = {}) {
   const db = publicDb();
-  const { data } = await db
+  const limit = opts.limit ?? 6;
+  const offset = opts.offset ?? 0;
+  const { data, count } = await db
     .from("events")
-    .select(EVENT_FIELDS)
+    .select(EVENT_FIELDS, { count: "exact" })
     .eq("status", "published")
     .gte("starts_on", new Date().toISOString().slice(0, 10))
     .order("starts_on")
-    .limit(limit);
-  return withDisplayLocation(data);
+    .range(offset, offset + limit - 1);
+  return { events: withDisplayLocation(data), total: count ?? 0 };
 }
 
 /**
@@ -163,16 +186,18 @@ export async function upcomingEvents(limit = 6) {
  * past. Listing only what is upcoming silently retired each URL the morning
  * after its date, which is the one behaviour a redirect map cannot rescue.
  */
-export async function pastEvents(limit = 40) {
+export async function pastEvents(opts: { limit?: number; offset?: number } = {}) {
   const db = publicDb();
-  const { data } = await db
+  const limit = opts.limit ?? 40;
+  const offset = opts.offset ?? 0;
+  const { data, count } = await db
     .from("events")
-    .select(EVENT_FIELDS)
+    .select(EVENT_FIELDS, { count: "exact" })
     .eq("status", "published")
     .lt("starts_on", new Date().toISOString().slice(0, 10))
     .order("starts_on", { ascending: false })
-    .limit(limit);
-  return withDisplayLocation(data);
+    .range(offset, offset + limit - 1);
+  return { events: withDisplayLocation(data), total: count ?? 0 };
 }
 
 export async function eventBySlug(slug: string) {
@@ -203,16 +228,16 @@ export function ilikeTerm(raw: string): string {
     .trim();
 }
 
-export async function memberDirectory(opts: { category?: string; q?: string } = {}) {
+export async function memberDirectory(opts: { category?: string; q?: string; limit?: number; offset?: number } = {}) {
   const term = ilikeTerm(opts.q ?? "");
   // A term that sanitises away to nothing ("%%%") is unusable, not "match all" —
   // same stance as searchSite, which returns nothing for an empty tsquery.
-  if (opts.q?.trim() && !term) return [];
+  if (opts.q?.trim() && !term) return { members: [], total: 0 };
 
   const db = publicDb();
   let q = db
     .from("members")
-    .select("slug, name, logo_path, description, address, website, phone, category:categories(slug, name)")
+    .select("id, slug, name, logo_path, description, address, website, phone, contact_email, lat, lng, category:categories(slug, name)", { count: "exact" })
     .eq("status", "active")
     .order("name");
   if (opts.category) {
@@ -221,8 +246,11 @@ export async function memberDirectory(opts: { category?: string; q?: string } = 
   }
   // Separate PostgREST params are ANDed, so this is category AND (name OR description).
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
-  const { data } = await q;
-  return data ?? [];
+  // No limit means the caller wants the whole filtered set (the homepage logo
+  // wall, and the directory's map view — a map shows all matches, not a page).
+  if (opts.limit != null) q = q.range(opts.offset ?? 0, (opts.offset ?? 0) + opts.limit - 1);
+  const { data, count } = await q;
+  return { members: data ?? [], total: count ?? 0 };
 }
 
 export async function memberBySlug(slug: string) {
@@ -244,15 +272,19 @@ export async function memberBySlug(slug: string) {
 }
 
 /** Site search: members rank first (query-level ordering — not stored bias). */
-export async function searchSite(term: string) {
+export async function searchSite(term: string, opts: { memberOnly?: boolean; limit?: number; offset?: number } = {}) {
   const db = publicDb();
   const escaped = term.replace(/[!&|:'()<>]/g, " ").trim().split(/\s+/).join(" & ");
-  if (!escaped) return { members: [], stories: [] };
+  if (!escaped) return { members: [], stories: [], total: 0 };
+  const limit = opts.limit ?? 30;
+  const offset = opts.offset ?? 0;
+  let storyQuery = db.from("stories").select(STORY_CARD, { count: "exact" }).eq("status", "published").textSearch("search_tsv", escaped);
+  if (opts.memberOnly) storyQuery = storyQuery.eq("is_member_news", true);
   const [members, stories] = await Promise.all([
     db.from("members").select("slug, name, description, logo_path").eq("status", "active").textSearch("search_tsv", escaped).limit(10),
-    db.from("stories").select(STORY_CARD).eq("status", "published").textSearch("search_tsv", escaped).limit(30),
+    storyQuery.range(offset, offset + limit - 1),
   ]);
-  return { members: members.data ?? [], stories: (stories.data ?? []) as unknown as StoryCard[] };
+  return { members: members.data ?? [], stories: (stories.data ?? []) as unknown as StoryCard[], total: stories.count ?? 0 };
 }
 
 export async function sentNewsletters() {
@@ -261,7 +293,8 @@ export async function sentNewsletters() {
     .from("newsletter_issues")
     .select("number, subject, intro, web_slug, sent_at")
     .eq("status", "sent")
-    .order("number", { ascending: false });
+    .order("number", { ascending: false })
+    .limit(200); // monthly issues — a bound here is ~17 years of archive
   return data ?? [];
 }
 

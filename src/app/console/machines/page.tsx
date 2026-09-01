@@ -39,7 +39,7 @@ export default async function MachinesPage() {
             {queue.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-3 rounded bg-white p-3 text-sm shadow-sm">
                 <Link href={`/console/machines/${m.id}`} className="font-medium text-ink hover:underline">{m.name}</Link>
-                <span className="text-gray-400">{m.member?.name}</span>
+                <span className="text-gray-500">{m.member?.name}</span>
                 <div className="ml-auto flex gap-2">
                   <form action={decideMachine}>
                     <input type="hidden" name="id" value={m.id} />

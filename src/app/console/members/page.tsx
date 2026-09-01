@@ -3,28 +3,40 @@ import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { MEMBER_STATUSES } from "@/lib/membership";
+import { ilikeTerm } from "@/lib/queries";
+import { Pagination } from "@/components/Pagination";
 import { setMemberStatus } from "../actions";
 
 export const dynamic = "force-dynamic";
 
 const STATUS_FILTERS = ["all", ...MEMBER_STATUSES] as const;
+const PAGE_SIZE = 50;
 
 export default async function MembersAdminPage(props: PageProps<"/console/members">) {
   await requireConsole();
   const sp = await props.searchParams;
   // the activity timeline moved to the member's own page — keep old links working
   if (typeof sp.member === "string") redirect(`/console/members/${sp.member}`);
-  const q = typeof sp.q === "string" ? sp.q.toLowerCase() : "";
+  const q = typeof sp.q === "string" ? sp.q : "";
   const status = STATUS_FILTERS.includes(sp.status as typeof STATUS_FILTERS[number]) ? (sp.status as typeof STATUS_FILTERS[number]) : "all";
+  const page = Math.max(1, Number(sp.page) || 1);
   const db = serviceDb();
 
-  const { data: members } = await db.from("members").select("id, name, status, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, category:categories(name)").order("name");
+  // Search and filter server-side: this used to pull every member (with a
+  // category join) on each load and substring-match in JS — the search box was
+  // a client-side illusion over a full table pull. Same ilikeTerm + range
+  // pattern as /console/crm.
+  let membersQuery = db
+    .from("members")
+    .select("id, name, status, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, category:categories(name)", { count: "exact" })
+    .order("name");
+  if (status !== "all") membersQuery = membersQuery.eq("status", status);
+  const term = ilikeTerm(q);
+  if (term) membersQuery = membersQuery.ilike("name", `%${term}%`);
+  const { data: filtered, count } = await membersQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
-  const filtered = (members ?? [])
-    .filter((m) => status === "all" || m.status === status)
-    .filter((m) => !q || m.name.toLowerCase().includes(q));
-
-  const statusHref = (s: string) => `/console/members?status=${s}${q ? `&q=${q}` : ""}`;
+  const statusHref = (s: string) => `/console/members?status=${s}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -56,15 +68,16 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
 
       <div className="mt-4">
         <section className="rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="font-bold text-ink">Members ({filtered.length})</h2>
+          <h2 className="font-bold text-ink">Members ({count ?? 0})</h2>
           <div className="mt-2 max-h-[28rem] overflow-y-auto">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
               <tbody>
-                {filtered.map((m) => (
+                {(filtered ?? []).map((m) => (
                   <tr key={m.id} className="border-t">
                     <td className="py-1.5">
                       <Link href={`/console/members/${m.id}`} className="font-medium hover:text-graphite">{m.name}</Link>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-500">
                         {m.category?.name} · joined {m.joined_at} · {m.billing_mode} ·{" "}
                         <a href={`/console/pages?type=member_profile&entity=${m.id}`} className="underline hover:text-graphite">page layout</a>
                       </p>
@@ -73,10 +86,10 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                       <span className="flex items-center justify-end gap-2">
                         {m.status === "draft" && (
                           <>
-                            <span className={`rounded px-2 py-0.5 text-xs ${m.paid_at || m.comped_until ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
+                            <span className={`rounded px-2 py-0.5 text-xs ${m.paid_at || m.comped_until ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                               {m.paid_at ? "paid ✓" : m.comped_until ? `comped → ${m.comped_until}` : "unpaid"}
                             </span>
-                            <span className={`rounded px-2 py-0.5 text-xs ${m.draft_submitted_at ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
+                            <span className={`rounded px-2 py-0.5 text-xs ${m.draft_submitted_at ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                               {m.draft_submitted_at ? "page ✓" : "no page"}
                             </span>
                           </>
@@ -89,9 +102,9 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                         </span>
                         {m.status !== "active" && (
                           m.status === "draft" && !m.paid_at && !m.comped_until ? (
-                            <span className="text-xs text-gray-400">awaiting payment</span>
+                            <span className="text-xs text-gray-500">awaiting payment</span>
                           ) : m.status === "draft" && !m.draft_submitted_at ? (
-                            <span className="text-xs text-gray-400">awaiting page</span>
+                            <span className="text-xs text-gray-500">awaiting page</span>
                           ) : (
                             <form action={setMemberStatus}>
                               <input type="hidden" name="id" value={m.id} />
@@ -106,7 +119,9 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                 ))}
               </tbody>
             </table>
+        </div>
           </div>
+          <Pagination page={page} pages={pages} hrefFor={(p) => `${statusHref(status)}${p > 1 ? `&page=${p}` : ""}`} />
         </section>
       </div>
     </div>

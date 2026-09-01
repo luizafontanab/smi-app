@@ -35,6 +35,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     graceMembers,
     draftMembers,
     deadJobs,
+    oldestOpenJob,
     inbox,
     draftIssue,
     failedIssues,
@@ -55,7 +56,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     calEvents,
   ] = await Promise.all([
     db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"),
-    db.from("advert_bookings").select("advert:adverts(format, member_id), bundle:bundles(price_pennies)").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today),
+    db.from("advert_bookings").select("advert:adverts(format, member_id), product:advert_products(rate_pennies)").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today),
     db.from("stories").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
     db.from("events").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
     db.from("advert_bookings").select("id, advert:adverts(name)").eq("status", "awaiting_approval"),
@@ -65,6 +66,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     db.from("members").select("id, name").eq("status", "grace"),
     db.from("members").select("id, name, draft_submitted_at").eq("status", "draft"),
     db.from("jobs").select("id, kind, last_error").eq("status", "dead"),
+    db.from("jobs").select("due_at").in("status", ["pending", "running"]).order("due_at").limit(1),
     db.from("inbox_messages").select("id, kind, name, email, message").eq("read", false).order("created_at", { ascending: false }).limit(5),
     db.from("newsletter_issues").select("id, number").eq("status", "draft").limit(1),
     db.from("newsletter_issues").select("id, number, send_error").eq("status", "send_failed"),
@@ -105,7 +107,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
 
   const revenue = revenueByStream({
     activeMembers: members.count ?? 0,
-    liveBookings: live.map((b) => ({ format: b.advert?.format ?? null, bundlePennies: b.bundle?.price_pennies ?? null })),
+    liveBookings: live.map((b) => ({ format: b.advert?.format ?? null, productPennies: b.product?.rate_pennies ?? null })),
     featuredSold: slotsSold,
   });
   const maxStream = Math.max(revenue.membership, revenue.advertising, revenue.featured);
@@ -191,6 +193,15 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     needs.push({ label: `⚠ Newsletter issue ${issue.number} failed to send${issue.send_error ? ` — ${issue.send_error}` : ""}`, href: "/console/newsletter", urgent: true });
   }
   if (deadJobs.data?.length) needs.push({ label: `⚠ ${deadJobs.data.length} background jobs failed and need attention`, href: "#jobs", urgent: true });
+  // A job that's never picked up never fails, so it never dead-letters into the
+  // check above — this is the only signal that catches cron not running at all
+  // (e.g. CRON_SECRET unset), which the deadJobs check can't see.
+  const oldestDueAt = oldestOpenJob.data?.[0]?.due_at;
+  const STALE_JOB_MS = 15 * 60 * 1000;
+  if (oldestDueAt && now - Date.parse(oldestDueAt) > STALE_JOB_MS) {
+    const staleMinutes = Math.round((now - Date.parse(oldestDueAt)) / 60_000);
+    needs.push({ label: `⚠ Background jobs haven't run in over ${staleMinutes} minutes — check CRON_SECRET / cron config`, href: "#jobs", urgent: true });
+  }
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -207,7 +218,10 @@ export default async function CommandCentre(props: PageProps<"/console">) {
       <Card className="mt-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <SectionTitle>Revenue this month</SectionTitle>
-          <p className="text-xs text-gray-400">estimated from live bookings &amp; standard rates</p>
+          <p className="text-xs text-gray-500">
+            estimated from live bookings &amp; standard rates
+            {revenue.unpriced > 0 && ` · ${revenue.unpriced} unpriced (not counted)`}
+          </p>
         </div>
         <p className="mt-3 text-4xl font-bold text-ink">
           {pounds(revenue.total)}
@@ -245,7 +259,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
             {pipeline.map((p) => (
               <div key={p.label} className={p.value === null ? "opacity-60" : ""}>
-                <p className="text-xs uppercase tracking-wide text-gray-400">{p.label}</p>
+                <p className="text-xs uppercase tracking-wide text-gray-500">{p.label}</p>
                 <p className="mt-0.5 text-xl font-bold text-ink">{p.value === null ? "—" : p.value}</p>
                 {p.value === null && <Badge>module 6</Badge>}
               </div>
@@ -263,7 +277,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {videoPipeline.map((p) => (
               <div key={p.label}>
-                <p className="text-xs uppercase tracking-wide text-gray-400">{p.label}</p>
+                <p className="text-xs uppercase tracking-wide text-gray-500">{p.label}</p>
                 <p className="mt-0.5 text-xl font-bold text-ink">{p.value}</p>
               </div>
             ))}
@@ -300,12 +314,15 @@ export default async function CommandCentre(props: PageProps<"/console">) {
 
       {inbox.data?.length ? (
         <Card className="mt-6">
-          <SectionTitle>Inbox</SectionTitle>
+          <div className="flex items-center justify-between">
+            <SectionTitle>Inbox</SectionTitle>
+            <Link href="/console/messages" className="text-xs text-graphite underline">View all →</Link>
+          </div>
           {inbox.data.map((m) => (
             <div key={m.id} className="mt-2 rounded border p-3 text-sm">
               <div className="flex items-center justify-between">
-                <p><b>{m.name}</b> <span className="text-gray-400">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand">{m.kind}</span></p>
-                <form action={markInboxRead}><input type="hidden" name="id" value={m.id} /><button className="text-xs text-gray-400 hover:text-ink">mark read</button></form>
+                <p><b>{m.name}</b> <span className="text-gray-500">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand">{m.kind}</span></p>
+                <form action={markInboxRead}><input type="hidden" name="id" value={m.id} /><button className="text-xs text-gray-500 hover:text-ink">mark read</button></form>
               </div>
               <p className="mt-1 text-gray-600">{m.message}</p>
             </div>

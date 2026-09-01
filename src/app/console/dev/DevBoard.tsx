@@ -99,14 +99,14 @@ function Column({ status, items, extra, returnTo }: { status: DevStatus; items: 
   return (
     <div ref={setNodeRef} className="rounded-xl bg-white p-3 shadow-sm">
       <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-        {DEV_STATUS_LABELS[status]} <span className="text-gray-300">({items.length + extra})</span>
+        {DEV_STATUS_LABELS[status]} <span className="text-gray-500">({items.length + extra})</span>
       </h2>
       <SortableContext items={items.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <div className="mt-2 space-y-2">
           {items.map((t) => (
             <TaskCard key={t.id} task={t} returnTo={returnTo} />
           ))}
-          {extra > 0 && <p className="px-1 text-xs text-gray-400">+{extra} more</p>}
+          {extra > 0 && <p className="px-1 text-xs text-gray-500">+{extra} more</p>}
         </div>
       </SortableContext>
       <form action={createDevTask} className="mt-2">
@@ -115,7 +115,7 @@ function Column({ status, items, extra, returnTo }: { status: DevStatus; items: 
           name="title"
           placeholder="+ Add task"
           required
-          className="w-full rounded border px-2 py-1.5 text-sm placeholder:text-gray-400"
+          className="w-full rounded border px-2 py-1.5 text-sm placeholder:text-gray-500"
         />
       </form>
     </div>
@@ -136,7 +136,7 @@ function TaskCard({ task, returnTo }: { task: DevTask; returnTo: string }) {
           {...attributes}
           {...listeners}
           aria-label={`Move ${task.title}`}
-          className="mt-0.5 cursor-grab rounded px-1 text-gray-400 hover:bg-gray-100 focus:outline focus:outline-2 focus:outline-ink"
+          className="mt-0.5 cursor-grab rounded px-1 text-gray-500 hover:bg-gray-100 focus:outline focus:outline-2 focus:outline-ink"
         >
           ⠿
         </button>
@@ -147,7 +147,7 @@ function TaskCard({ task, returnTo }: { task: DevTask; returnTo: string }) {
       <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-6">
         <Badge tone={PRIORITY_TONE[task.priority]}>{task.priority}</Badge>
         {task.kind && <Badge tone={KIND_TONE[task.kind]}>{DEV_TASK_KIND_LABELS[task.kind]}</Badge>}
-        {task.assignee && <span className="text-xs text-gray-400">{task.assignee}</span>}
+        {task.assignee && <span className="text-xs text-gray-500">{task.assignee}</span>}
       </div>
       <form action={setDevTaskStatus} className="mt-1.5 pl-6">
         <input type="hidden" name="id" value={task.id} />
