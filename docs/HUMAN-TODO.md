@@ -242,11 +242,10 @@ signup.
 The pre-delivery security pass closed several holes locally; two of the fixes
 are inert in production until these steps run.
 
-- [ ] **8.1 — Apply migration `20260901000014_lock_down_anon_writes.sql` to
-      production** (`pnpm db:push:prod` — deploy/prod actions are
-      approval-gated). Until then, production still accepts anonymous direct
-      POSTs to `inbox_messages` / `newsletter_signups` and anonymous calls to
-      `bump_newsletter_metric` / `bump_consent_stats`.
+- [x] **8.1 — Apply migration `20260901000014_lock_down_anon_writes.sql` to
+      production** — done 1 Sep 2026 via `pnpm db:push:prod`, which applied all
+      16 pending migrations (20260831000006 → 20260901000014); remote is now in
+      sync with local.
 - [ ] **8.2 — Create the private `invoices` bucket in the hosted Supabase
       dashboard** (Storage → New bucket → name `invoices`, public **off**).
       New invoice PDFs upload there; without the bucket, PDF generation fails
