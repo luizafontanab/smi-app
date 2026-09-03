@@ -18,6 +18,7 @@
  * Run: pnpm exec tsx scripts/seed-real.ts [--stories-limit N] [--skip-media]
  *        [--no-adverts]    seed everything except the sample adverts
  *        [--adverts-only]  add sample adverts to an already-seeded DB, nothing else
+ *        [--pages-only]    upsert static pages into an already-seeded DB, nothing else
  *        [--remote]        allow a non-localhost target; also lifts the story cap
  */
 import { createClient } from "@supabase/supabase-js";
@@ -27,6 +28,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Role } from "@/lib/auth";
 import { svgBanner } from "./lib/placeholder-art";
+import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -63,6 +65,9 @@ const ADVERTS_ONLY = process.argv.includes("--adverts-only");
 // --media-only: (re)upload referenced media without touching any table — for
 // backfilling after a failed/skipped upload pass on an already-seeded DB
 const MEDIA_ONLY = process.argv.includes("--media-only");
+// --pages-only: upsert static pages into an already-seeded DB, nothing else —
+// safe on a populated target because static_pages upserts on slug
+const PAGES_ONLY = process.argv.includes("--pages-only");
 
 const seed = async <T>(name: string): Promise<T> =>
   JSON.parse(await readFile(path.join(EXTRACT_DIR, "seed", name), "utf8"));
@@ -247,6 +252,17 @@ async function main() {
   if (storyRows.length < storyRowsAll.length)
     console.log(`— stories limited to ${storyRows.length} of ${storyRowsAll.length} (newest first)`);
 
+  // Authored rows (content the extract can't produce) win over extract rows on slug.
+  const authoredSlugs = new Set(AUTHORED_STATIC_PAGES.map((p) => p.slug));
+  const allPageRows = [...pageRows.filter((p) => !authoredSlugs.has(p.slug)), ...AUTHORED_STATIC_PAGES];
+
+  if (PAGES_ONLY) {
+    console.log(`— static pages only (${allPageRows.length})`);
+    const { error } = await db.from("static_pages").upsert(allPageRows, { onConflict: "slug" });
+    if (error) throw error;
+    return;
+  }
+
   if (MEDIA_ONLY) {
     await uploadMedia(memberRows, storyRows, videoRows, eventRows, manifest);
     return;
@@ -360,8 +376,8 @@ async function main() {
   const { error: evErr } = await db.from("events").insert(eventRows);
   if (evErr) throw evErr;
 
-  console.log(`— static pages (${pageRows.length})`);
-  const { error: pgErr } = await db.from("static_pages").upsert(pageRows, { onConflict: "slug" });
+  console.log(`— static pages (${allPageRows.length})`);
+  const { error: pgErr } = await db.from("static_pages").upsert(allPageRows, { onConflict: "slug" });
   if (pgErr) throw pgErr;
 
   console.log("— infra: advert slots, settings, page layouts");

@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { faker } from "@faker-js/faker";
 import type { Role } from "@/lib/auth";
 import { svgBanner } from "./lib/placeholder-art";
+import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
 
 faker.seed(42);
@@ -384,7 +385,7 @@ async function main() {
     { code: "SMI-FREE-MONTH", months: 1, active: true },
   ]);
   await db.from("static_pages").insert([
-    { slug: "about", title: "About SMI", body: "<p>The voice of the UK sheet metal, fabrication and welding trade since 2022.</p>" },
+    ...AUTHORED_STATIC_PAGES, // real live-site copy (about) — same rows seed-real.ts merges in
     { slug: "policies", title: "Policies", body: "<p>Privacy and cookie policy.</p>" },
     { slug: "advertising", title: "Advertise with SMI", body: "<p>Formats A–F, media pack available on request.</p>" },
     { slug: "mach-publication", title: "MACH Publication", body: "<p>Our MACH show magazine.</p>" },
