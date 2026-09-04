@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
+import { geocodeAddress } from "@/lib/adapters/geocode";
 import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
 import type { SocialChannels } from "@/lib/social-channels";
@@ -12,6 +13,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } from "@/lib/dev-tasks";
 import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
+import { safeInternalPath } from "@/lib/validate";
 import { canMoveStory } from "@/lib/story-board";
 import { FEATURED_SLOTS } from "@/lib/pricing";
 import { raiseInvoice } from "@/lib/invoicing";
@@ -321,13 +323,37 @@ export async function saveEvent(formData: FormData) {
   }
 
   const type = String(formData.get("type") ?? "");
+  const location = String(formData.get("location") ?? "") || null;
+
+  // Geocode only when the location text actually changed (same guardrails as
+  // submitProfileEdit in dashboard/actions.ts): one Nominatim lookup per save
+  // at most, and a failed/empty lookup keeps whatever coords were on file
+  // rather than blanking the map pin.
+  let lat: number | null = null;
+  let lng: number | null = null;
+  const existing = id
+    ? (await db.from("events").select("location, lat, lng").eq("id", id).maybeSingle()).data
+    : null;
+  if (existing) {
+    lat = existing.lat;
+    lng = existing.lng;
+  }
+  if (location && location.trim() !== (existing?.location ?? "").trim()) {
+    const geocoded = await geocodeAddress(location);
+    if (geocoded) {
+      lat = geocoded.lat;
+      lng = geocoded.lng;
+    }
+  }
 
   const values = {
     title,
     starts_on,
     ends_on: String(formData.get("ends_on") ?? "") || null,
     starts_time: String(formData.get("starts_time") ?? "") || null,
-    location: String(formData.get("location") ?? "") || null,
+    location,
+    lat,
+    lng,
     link: String(formData.get("link") ?? "") || null,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     member_id: String(formData.get("member_id") ?? "") || null,
@@ -387,6 +413,9 @@ export async function decideRevision(formData: FormData) {
     const payload = { ...(rev.payload as MemberUpdate) };
     // revisions are member-authored and POST-reachable — never apply unsanitised markup
     if (typeof payload.description === "string") payload.description = renderableHtml(payload.description);
+    // revisions written before 20260902000003 dropped members.testimonials may
+    // still carry the key; applying it would fail on the missing column
+    delete (payload as Record<string, unknown>).testimonials;
     await db.from("members").update(payload).eq("id", rev.member_id);
     await db.from("member_revisions").update({ status: "published", decided_at: new Date().toISOString() }).eq("id", id);
     await enqueue("notify_member", { member_id: rev.member_id, kind: "page_changes_live", revision_id: id });
@@ -1060,13 +1089,32 @@ export async function saveMediaPack(formData: FormData) {
 
 export async function saveAdvertFormats(formData: FormData) {
   await requireConsole();
-  const value: AdFormat[] = AD_FORMAT_KEYS.map((key) => ({
+  // Validate before the settings read and the uploads — invalid input must
+  // touch neither the database nor the bucket (same rule as saveStory's
+  // canWrite-before-upload).
+  const fields = AD_FORMAT_KEYS.map((key) => ({
     key,
     name: String(formData.get(`name_${key}`) ?? "").trim(),
     detail: String(formData.get(`detail_${key}`) ?? "").trim(),
   }));
-  if (value.some((f) => !f.name || !f.detail)) return;
-  await serviceDb().from("settings").upsert({ key: "advert_formats", value });
+  if (fields.some((f) => !f.name || !f.detail)) return;
+  const db = serviceDb();
+  // Empty file inputs keep the stored example images, so read the current value to merge.
+  const { data: existing } = await db.from("settings").select("value").eq("key", "advert_formats").maybeSingle();
+  const currentByKey = new Map(((existing?.value as AdFormat[] | null) ?? []).map((f) => [f.key, f]));
+  let value: AdFormat[];
+  try {
+    value = await Promise.all(
+      fields.map(async (f): Promise<AdFormat> => {
+        const uploaded = await uploadImage(formData.get(`example_${f.key}`) as File | null, "advert-formats");
+        const example_path = uploaded ?? currentByKey.get(f.key)?.example_path;
+        return { ...f, ...(example_path ? { example_path } : {}) };
+      }),
+    );
+  } catch (e) {
+    redirect(`/console/adverts/spots?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
+  }
+  await db.from("settings").upsert({ key: "advert_formats", value });
   revalidatePath("/console/adverts/spots");
   revalidatePath("/advertising");
 }
@@ -1106,7 +1154,7 @@ export async function saveTakeoverPlacement(formData: FormData) {
   const member_id = String(formData.get("member_id"));
   const hex = String(formData.get("hex") ?? "").trim();
   if (!/^#[0-9a-f]{6}$/i.test(hex)) {
-    redirect(`/console/adverts/takeover?error=${encodeURIComponent("Enter a 6-digit hex colour, e.g. #fe5000.")}`);
+    redirect(`/console/adverts/takeover?error=${encodeURIComponent("Enter a 6-digit hex colour, e.g. #ac5800.")}`);
   }
   // Checked against the site's own paper background — the takeover banner and
   // top-of-page chrome sit on white, same pairing globals.css documents for brand.
@@ -1531,6 +1579,10 @@ export async function markInboxRead(formData: FormData) {
   await serviceDb().from("inbox_messages").update({ read }).eq("id", String(formData.get("id")));
   revalidatePath("/console");
   revalidatePath("/console/messages");
+  // Optional bounce — the message detail page marks itself read on render, so
+  // its "mark unread" must land back on the list or it would undo itself.
+  const next = safeInternalPath(formData.get("next"));
+  if (next) redirect(next);
 }
 
 /* ---------- media library ---------- */
@@ -1576,6 +1628,7 @@ export async function saveContentPage(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const slug = slugify(String(formData.get("slug") ?? "") || title);
   const body = sanitizeRichText(String(formData.get("body") ?? ""));
+  const collapsible = formData.get("collapsible") === "on";
 
   const fail = (message: string): never =>
     redirect(`/console/content-pages/${isNew ? "new" : originalSlug}?error=${encodeURIComponent(message)}`);
@@ -1587,12 +1640,12 @@ export async function saveContentPage(formData: FormData) {
   if (clash && slug !== originalSlug) return fail(`The web address “${slug}” is already used by another page.`);
 
   if (isNew) {
-    const { error } = await db.from("static_pages").insert({ slug, title, body });
+    const { error } = await db.from("static_pages").insert({ slug, title, body, collapsible });
     if (error) return fail(error.message);
   } else {
     const { error } = await db
       .from("static_pages")
-      .update({ slug, title, body, updated_at: new Date().toISOString() })
+      .update({ slug, title, body, collapsible, updated_at: new Date().toISOString() })
       .eq("slug", originalSlug);
     if (error) return fail(error.message);
     if (slug !== originalSlug) {

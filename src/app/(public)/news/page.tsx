@@ -1,14 +1,17 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
-import { publishedStories, publishedVideos, storyCategories } from "@/lib/queries";
+import { parseDateParam, parseViewedCats, VIEWED_CATS_COOKIE } from "@/lib/news-prefs";
+import { forYouStories, memberCategories, mostViewedStories, publishedStories, storyCategories } from "@/lib/queries";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
+import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { SearchForm } from "@/components/SearchForm";
-import { StoryCard } from "@/components/StoryCard";
-import { VideoCard } from "@/components/cards";
+import { Carousel, StoryCard } from "@/components/StoryCard";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 12;
+const RAIL_SIZE = 10;
 
 export const metadata = {
   title: "News",
@@ -20,18 +23,36 @@ export default async function NewsPage(props: PageProps<"/news">) {
   const sp = await props.searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const category = typeof sp.category === "string" ? sp.category : undefined;
+  const industry = typeof sp.industry === "string" ? sp.industry : undefined;
+  const from = parseDateParam(sp.from);
+  const to = parseDateParam(sp.to);
+  // The old top-of-page "Member news" toggle is gone (the rail + industry
+  // filters replaced it), but ?filter=members must keep working on the grid —
+  // it's linked from elsewhere (e2e flows, shared URLs).
   const memberOnly = sp.filter === "members";
+  const viewedCats = parseViewedCats((await cookies()).get(VIEWED_CATS_COOKIE)?.value);
 
-  const [{ stories, total }, { videos }, cats, banners, logos, showPlaceholders, ctx] = await Promise.all([
-    publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly }),
-    // Decorative — woven into the grid, not part of the story pagination math.
-    publishedVideos({ limit: 4 }),
+  const [{ stories: latest }, { stories: memberNews }, { stories, total }, cats, industries, banners, logos, showPlaceholders, ctx] = await Promise.all([
+    publishedStories({ limit: RAIL_SIZE }),
+    publishedStories({ limit: RAIL_SIZE, memberOnly: true }),
+    publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly, industry, from, to }),
     storyCategories(),
+    memberCategories(),
     liveAdverts("banner"),
     liveAdverts("supplier_logo"),
     showAdPlaceholders(),
     requestContext(),
   ]);
+
+  // Third rail: personalized off the viewed_cats cookie when it exists,
+  // otherwise the most-read stories of the last 30 days (rollups_daily is
+  // pre-aggregated, so the fallback is cheap). Second round trip by necessity —
+  // it excludes whatever the first two rails already show.
+  const railIds = [...new Set([...latest, ...memberNews].map((s) => s.id))];
+  const forYou = viewedCats.length > 0
+    ? await forYouStories(viewedCats, { limit: RAIL_SIZE, excludeIds: railIds })
+    : await mostViewedStories({ days: 30, limit: RAIL_SIZE, excludeIds: railIds });
+
   const slots = dealSlots(banners, ["news_mid", "footer"]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -40,54 +61,100 @@ export default async function NewsPage(props: PageProps<"/news">) {
 
   const qs = (over: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams();
-    const merged = { category, filter: sp.filter as string | undefined, page: undefined, ...over };
+    const merged = { category, industry, from, to, filter: sp.filter as string | undefined, page: undefined, ...over };
     Object.entries(merged).forEach(([k, v]) => v !== undefined && v !== "" && params.set(k, String(v)));
     const s = params.toString();
     return s ? `/news?${s}` : "/news";
   };
 
+  const hasFilters = Boolean(category || industry || from || to || memberOnly);
+
   return (
     <div className="mx-auto max-w-6xl px-4">
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-ink">Newsroom</h1>
-        <div className="flex gap-2 text-sm">
-          <Link href={qs({ filter: memberOnly ? undefined : "members" })} className={`rounded border px-3 py-1.5 ${memberOnly ? "bg-brand text-ink" : "bg-white"}`}>Member news</Link>
-        </div>
-      </div>
+      <h1 className="mt-6 text-2xl font-bold text-ink">Newsroom</h1>
 
-      <SearchForm className="mt-4 flex gap-2" />
-
-      <div className="mt-4 flex flex-wrap gap-1.5 text-xs">
-        <Link href={qs({ category: undefined })} className={`rounded-full border px-3 py-1 ${!category ? "bg-ink text-white" : "bg-white"}`}>All</Link>
-        {cats.map((c) => (
-          <Link key={c.slug} href={qs({ category: c.slug })} className={`rounded-full border px-3 py-1 ${category === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
-            {c.name}
-          </Link>
-        ))}
-      </div>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {stories.slice(0, 6).map((s) => <StoryCard key={s.id} story={s} />)}
-      </div>
-      {videos.length > 0 && (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {videos.map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
-        </div>
+      {/* ── Rails: Latest / Member news / For you ────────────────────────── */}
+      {latest.length > 0 && (
+        <Carousel title="Latest">
+          {latest.map((s) => (
+            <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} /></div>
+          ))}
+        </Carousel>
       )}
+      {memberNews.length > 0 && (
+        <Carousel title="Member news" href={qs({ filter: "members", page: undefined })}>
+          {memberNews.map((s) => (
+            <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} /></div>
+          ))}
+        </Carousel>
+      )}
+      {forYou.length > 0 && (
+        <>
+          <Carousel title="For you">
+            {forYou.map((s) => (
+              <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} /></div>
+            ))}
+          </Carousel>
+          <p className="mt-2 text-xs text-graphite">
+            {viewedCats.length > 0 ? "Based on what you’ve been reading." : "Popular with readers over the last 30 days."}
+          </p>
+        </>
+      )}
+
       {/* Rendered unconditionally — the slot is booked inventory, so it must
-          not vanish just because the listing is short. Only the split below
-          is count-dependent. */}
-      <div className="my-6"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
-      {stories.length > 6 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {stories.slice(6).map((s) => <StoryCard key={s.id} story={s} />)}
-        </div>
-      )}
-      {stories.length === 0 && <p className="mt-10 text-center text-gray-500">No stories found.</p>}
+          not vanish on quiet days. Sits between the rails and the archive. */}
+      <div className="my-8"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
+
+      {/* ── All news: search, filters, paginated grid ────────────────────── */}
+      <h2 className="text-lg font-bold uppercase tracking-wide text-ink">All news</h2>
+
+      <SearchForm className="mt-3 flex gap-2" />
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        {/* Industry pills — the member-kind list, same data as the industries
+            strip; ~69 entries, so it scrolls sideways rather than wrapping. */}
+        <nav aria-label="Filter by industry" className="flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+          <Link href={qs({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+          {industries.map((c) => (
+            <Link key={c.slug} href={qs({ industry: c.slug })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+              {c.name}
+            </Link>
+          ))}
+        </nav>
+        <CategoryCombobox
+          options={cats.map((c) => ({ slug: c.slug, name: c.name, href: qs({ category: c.slug }) }))}
+          allHref={qs({ category: undefined })}
+          selected={category}
+        />
+      </div>
+
+      {/* GET submit replaces the whole query string, hence the hidden fields */}
+      <form action="/news" className="mt-3 flex flex-wrap items-end gap-3 text-sm">
+        {category && <input type="hidden" name="category" value={category} />}
+        {industry && <input type="hidden" name="industry" value={industry} />}
+        {memberOnly && <input type="hidden" name="filter" value="members" />}
+        <label className="flex items-center gap-2">
+          <span className="text-graphite">From</span>
+          <input type="date" name="from" defaultValue={from} className="rounded border bg-white px-2 py-1.5" />
+        </label>
+        <label className="flex items-center gap-2">
+          <span className="text-graphite">To</span>
+          <input type="date" name="to" defaultValue={to} className="rounded border bg-white px-2 py-1.5" />
+        </label>
+        <button className="rounded border bg-white px-3 py-1.5 hover:border-ink">Apply dates</button>
+        {hasFilters && (
+          <Link href="/news" className="text-graphite hover:underline">Clear filters</Link>
+        )}
+      </form>
+
+      <div data-testid="all-news-grid" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {stories.map((s) => <StoryCard key={s.id} story={s} />)}
+      </div>
+      {stories.length === 0 && <p className="mt-10 text-center text-graphite">No stories found.</p>}
 
       <nav className="my-8 flex items-center justify-center gap-2 text-sm">
         {page > 1 && <Link href={qs({ page: page - 1 })} className="rounded border bg-white px-3 py-1.5">← Prev</Link>}
-        <span className="px-2 text-gray-500">Page {page} of {pages}</span>
+        <span className="px-2 text-graphite">Page {page} of {pages}</span>
         {page < pages && <Link href={qs({ page: page + 1 })} className="rounded border bg-white px-3 py-1.5">Next →</Link>}
       </nav>
 

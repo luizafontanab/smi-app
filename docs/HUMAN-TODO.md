@@ -261,6 +261,46 @@ are inert in production until these steps run.
 
 ---
 
+## 9 · Member-area rework (3 Sep) — production follow-through
+
+- [ ] **9.1 — Apply migration `20260902000003_drop_member_testimonials.sql` to
+      production** (`pnpm db:push:prod`, together with whatever else is pending).
+      Deploy the app code first or in the same release: the code no longer
+      reads or writes `members.testimonials`, and `decideRevision` strips the
+      key from old pending revisions, so code-before-migration is the safe
+      ordering. The migration also scrubs the key from stored
+      `member_revisions.payload` rows before dropping the column.
+
+---
+
+## 10 · Fix-list pass (3 Sep) — production follow-through
+
+- [ ] **10.1 — Apply migrations `20260903000001_content_page_collapsible.sql`
+      and `20260903000002_event_coords.sql` to production**
+      (`pnpm db:push:prod`, together with whatever else is pending). Both are
+      additive nullable/defaulted columns — safe in either deploy order.
+- [ ] **10.2 — Seed the FAQ page on production** (`pnpm seed:real -- --pages-only`
+      now includes it, same About-page mechanism) **and review its copy** — the
+      seven starter Q&As are my drafting, written to be plausible, not
+      authoritative; edit at `/console/content-pages/faq`.
+- [ ] **10.3 — Tick "Collapsible sections" on the production Policies page**
+      (`/console/content-pages/policies`) — the checkbox is new; prod rows
+      default to off, so the page renders exactly as before until ticked.
+- [ ] **10.4 — Upload real example images for the six advert formats** at
+      `/console/adverts/spots` (new per-format upload). Cards on `/advertising`
+      show no image until one is uploaded.
+- [ ] **10.5 — Event map pins appear as events are re-saved.** Existing events
+      have no coordinates and bulk geocoding is against Nominatim's policy, so
+      the public map stays hidden until at least one upcoming event is saved
+      (console or member form) with a location. Re-save the current upcoming
+      events once to populate it.
+- [ ] **10.6 — "For you" on `/news` personalises only for visitors who accepted
+      the full cookie banner** (same consent gate as analytics); everyone else
+      sees the popular-this-month fallback. Flagging so the behaviour isn't
+      mistaken for a bug.
+
+---
+
 ## Not in this list
 
 Other approval-gated externals — MaxMind/GeoLite2, Buffer, the

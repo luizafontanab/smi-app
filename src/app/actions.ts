@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { currentUser, isAdmin } from "@/lib/auth";
-import { serviceDb } from "@/lib/db/server";
+import { serviceDb, sessionDb } from "@/lib/db/server";
 import type { Json } from "@/lib/db/types";
 import { devTaskFromForm, renderDevTaskNotes } from "@/lib/dev-tasks";
 import { allowRequest, MINUTE } from "@/lib/rate-limit";
@@ -15,6 +16,16 @@ import { allowRequest, MINUTE } from "@/lib/rate-limit";
  * into the graph of anything referencing it. It can't live in src/lib either,
  * which is the Next-free layer by convention.
  */
+
+/**
+ * Sign-out lives here for the same reason: the public header's account menu
+ * renders on every route, and the dashboard and console layouts share it.
+ */
+export async function signOut() {
+  const db = await sessionDb();
+  await db.auth.signOut();
+  redirect("/login");
+}
 
 export type DevTaskState = { message: string; ok?: boolean };
 

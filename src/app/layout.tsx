@@ -1,22 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Allerta_Stencil, League_Spartan } from "next/font/google";
+import { League_Spartan, Source_Sans_3 } from "next/font/google";
 import { cookies } from "next/headers";
 import { DevTaskLauncher } from "@/components/dev-task/DevTaskLauncher";
 import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
-// The client's brand faces, shared by both designs. next/font requires static
-// instantiation here. League Spartan is the body and heading face; the logo
-// face is applied only to the wordmark in components/SiteHeader.tsx.
+// The brand faces, shared by both designs. next/font requires static
+// instantiation here. League Spartan is the display/heading voice; Source Sans 3
+// carries body and UI text (geometric Spartan is ambiguous at reading sizes —
+// I/l/1 — and has no tabular figures, which the console's stats need). The
+// wordmark is the supplied SVG artwork (components/Wordmark.tsx), not a font.
 const leagueSpartan = League_Spartan({
   variable: "--font-league-spartan",
   subsets: ["latin"],
 });
 
-const allertaStencil = Allerta_Stencil({
-  variable: "--font-allerta-stencil",
+const sourceSans = Source_Sans_3({
+  variable: "--font-source-sans",
   subsets: ["latin"],
-  weight: "400", // single-weight family, so next/font requires this explicitly
+  // Editorial bodies out of WordPress carry real <em>; without the italic axis
+  // the browser slants the roman instead.
+  style: ["normal", "italic"],
 });
 
 const SITE_NAME = "Sheet Metal Industries";
@@ -62,7 +66,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       data-theme={theme}
-      className={`${leagueSpartan.variable} ${allertaStencil.variable} h-full antialiased`}
+      className={`${leagueSpartan.variable} ${sourceSans.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col font-sans">
         {children}

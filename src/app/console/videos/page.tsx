@@ -54,14 +54,14 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
         <h1 className="text-2xl font-bold text-ink">Video Engine</h1>
         <Link href="/console/videos/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New video</Link>
       </div>
-      <p className="mt-1 text-sm text-gray-500">Nothing publishes without approval.</p>
+      <p className="mt-1 text-sm text-graphite">Nothing publishes without approval.</p>
 
       <div className="mt-4 flex gap-1 border-b text-sm">
         {TABS.map((t) => (
           <Link
             key={t.view}
             href={t.view === "board" ? "/console/videos" : "/console/videos?view=calendar"}
-            className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-ink" : "text-gray-500 hover:text-ink"}`}
+            className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-ink" : "text-graphite hover:text-ink"}`}
           >
             {t.label}
           </Link>
@@ -76,8 +76,8 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
             const items = byStatus(col.key).slice(0, col.key === "published" ? 10 : 30);
             return (
               <div key={col.key} className="rounded-xl bg-white p-3 shadow-sm">
-                <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-                  {col.label} <span className="text-gray-500">({byStatus(col.key).length})</span>
+                <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-graphite">
+                  {col.label} <span className="text-graphite">({byStatus(col.key).length})</span>
                 </h2>
                 <div className="mt-2 space-y-2">
                   {items.map((v) => (
@@ -87,7 +87,7 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
                       )}
                       <div className="min-w-0 flex-1">
                         <Link href={`/console/videos/${v.id}`} className="font-medium leading-snug hover:text-graphite">{v.title}</Link>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-graphite">
                           {v.member?.name && <>{v.member.name} · </>}{v.source}
                           {v.scheduled_at && v.status === "scheduled" && <> · {new Date(v.scheduled_at).toLocaleString("en-GB")}</>}
                           {v.pinned_until && new Date(v.pinned_until) > new Date() && <> · 📌 pinned</>}
@@ -97,7 +97,7 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
                             <form action={decideVideo}>
                               <input type="hidden" name="id" value={v.id} />
                               <input type="hidden" name="decision" value="approve" />
-                              <button className="rounded bg-green-600 px-2.5 py-1 text-xs text-white">Approve</button>
+                              <button className="rounded bg-success px-2.5 py-1 text-xs text-white">Approve</button>
                             </form>
                             <Link href={`/console/videos/${v.id}`} className="rounded border px-2.5 py-1 text-xs">Review</Link>
                           </div>
@@ -108,14 +108,14 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
                             {v.pinned_until && new Date(v.pinned_until) > new Date() ? (
                               <>
                                 <input type="hidden" name="days" value="0" />
-                                <button className="text-gray-500 hover:text-ink">Unpin</button>
+                                <button className="text-graphite hover:text-ink">Unpin</button>
                               </>
                             ) : (
                               <>
-                                <span className="text-gray-500">📌 Pin</span>
+                                <span className="text-graphite">📌 Pin</span>
                                 <input type="number" name="days" defaultValue={2} min={1} max={30} className="w-10 rounded border px-1 py-0.5" />
-                                <span className="text-gray-500">days</span>
-                                <button className="text-gray-500 hover:text-ink underline">Go</button>
+                                <span className="text-graphite">days</span>
+                                <button className="text-graphite hover:text-ink underline">Go</button>
                               </>
                             )}
                           </form>
@@ -123,7 +123,7 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
                       </div>
                     </div>
                   ))}
-                  {items.length === 0 && <p className="px-1 text-xs text-gray-500">Empty</p>}
+                  {items.length === 0 && <p className="px-1 text-xs text-graphite">Empty</p>}
                 </div>
               </div>
             );

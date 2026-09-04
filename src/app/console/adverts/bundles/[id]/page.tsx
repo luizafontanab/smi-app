@@ -4,6 +4,7 @@ import { requireConsole } from "@/lib/auth";
 import { bookingPhase } from "@/lib/adverts";
 import { serviceDb } from "@/lib/db/server";
 import { saveBundle, saveBundleBooking } from "../../../actions";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -26,14 +27,15 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/adverts/bundles" className="text-sm text-gray-500 hover:text-ink">← Bundles</Link>
+      <Link href="/console/adverts/bundles" className="text-sm text-graphite hover:text-ink">← Bundles</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{bundle.name}</h1>
-      <p className="mt-1 text-sm text-gray-500">{bundle.member?.name}</p>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      <p className="mt-1 text-sm text-graphite">{bundle.member?.name}</p>
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Details</h2>
         <form action={saveBundle} className="mt-3 space-y-4 text-sm">
+          <UnsavedChangesGuard />
           <input type="hidden" name="id" value={bundle.id} />
           <input type="hidden" name="member_id" value={bundle.member_id} />
           <div className="grid gap-4 sm:grid-cols-2">
@@ -58,15 +60,15 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
         <h2 className="font-bold text-ink">Parts ({parts?.length ?? 0})</h2>
         {(parts ?? []).map((p) => (
           <p key={p.id} className="mt-2 border-t pt-2 text-sm">
-            {p.advert?.name} <span className="text-gray-500">({p.advert?.format})</span> — {bookingPhase(p, today)}
+            {p.advert?.name} <span className="text-graphite">({p.advert?.format})</span> — {bookingPhase(p, today)}
           </p>
         ))}
-        {!parts?.length && <p className="mt-2 text-sm text-gray-500">Nothing booked into this bundle yet.</p>}
+        {!parts?.length && <p className="mt-2 text-sm text-graphite">Nothing booked into this bundle yet.</p>}
       </section>
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Book more parts</h2>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-graphite">
           Need another format&apos;s artwork first? <Link href={`/console/adverts/artwork/new?member_id=${bundle.member_id}`} className="underline">Add it here</Link>.
         </p>
         <form action={saveBundleBooking} className="mt-3 space-y-3 text-sm">
@@ -75,11 +77,11 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
             {available.map((a) => (
               <label key={a.id} className="flex items-center gap-2">
                 <input type="checkbox" name="advert_ids" value={a.id} />
-                {a.name} <span className="text-xs text-gray-500">({a.format})</span>
+                {a.name} <span className="text-xs text-graphite">({a.format})</span>
               </label>
             ))}
             {!available.length && (
-              <p className="text-gray-500">
+              <p className="text-graphite">
                 {memberAdverts?.length ? "Every piece of this member's artwork is already in this bundle." : "This member has no artwork yet."}
               </p>
             )}

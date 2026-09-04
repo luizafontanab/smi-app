@@ -39,7 +39,7 @@ export function DevTaskWidget({ reporterName }: { reporterName: string }) {
   return (
     <>
       {flash && (
-        <p aria-live="polite" className="fixed bottom-24 right-4 z-50 rounded bg-green-50 p-2 text-sm text-green-700 shadow-lg">
+        <p aria-live="polite" className="fixed bottom-24 right-4 z-50 rounded bg-success/10 p-2 text-sm text-success shadow-lg">
           {flash}
         </p>
       )}
@@ -107,7 +107,7 @@ function DevTaskForm({
       <h2 id={titleId} className="text-lg font-bold text-ink">
         Feedback
       </h2>
-      <p className="mt-1 text-xs text-gray-500">
+      <p className="mt-1 text-xs text-graphite">
         Filing as {reporterName}. The page, browser and any recent errors are attached automatically.
       </p>
 
@@ -160,7 +160,7 @@ function DevTaskForm({
       </div>
 
       {state.message && !state.ok && (
-        <p aria-live="polite" className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">
+        <p aria-live="polite" className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">
           {state.message}
         </p>
       )}

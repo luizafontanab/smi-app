@@ -40,7 +40,7 @@ export default async function VideosPage(props: PageProps<"/video">) {
       <SearchForm className="mt-4 flex gap-2" />
       {headline && (
         <div className="mt-6">
-          <p className="text-xs uppercase tracking-widest text-gray-500">Featured</p>
+          <p className="text-xs uppercase tracking-widest text-graphite">Featured</p>
           <div className="mt-2 max-w-sm">
             <VideoCard video={headline} />
           </div>
@@ -58,7 +58,7 @@ export default async function VideosPage(props: PageProps<"/video">) {
           {gridVideos.slice(6).map((v) => <VideoCard key={v.id} video={v} />)}
         </div>
       )}
-      {videos.length === 0 && <p className="mt-10 text-center text-gray-500">No videos found.</p>}
+      {videos.length === 0 && <p className="mt-10 text-center text-graphite">No videos found.</p>}
       <Pagination page={page} pages={pages} hrefFor={qs} />
       <div className="my-10" />
     </div>

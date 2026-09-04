@@ -8,7 +8,7 @@ export function MemberBacklink({ name, slug, logoUrl }: { name: string; slug: st
       <div className="flex items-center gap-4">
         {logoUrl && <Image src={logoUrl} alt="" width={56} height={56} className="rounded" unoptimized />}
         <div>
-          <p className="text-xs uppercase tracking-wide text-gray-500">This story features an SMI member</p>
+          <p className="text-xs uppercase tracking-wide text-graphite">This story features an SMI member</p>
           <Link href={`/member/${slug}`} className="text-lg font-bold text-ink hover:underline">
             {name} →
           </Link>

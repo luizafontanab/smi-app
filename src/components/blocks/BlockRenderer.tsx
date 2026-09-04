@@ -50,7 +50,7 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
             const { label, href } = block.props as { label: string; href: string };
             return (
               <div key={block.id} className="mt-6">
-                <Link href={href} className="text-sm text-gray-500 hover:text-ink">← {label}</Link>
+                <Link href={href} className="text-sm text-graphite hover:text-ink">← {label}</Link>
               </div>
             );
           }

@@ -28,7 +28,7 @@ test.describe("login ?next= open-redirect", () => {
   });
 
   test("a legitimate internal next still works", async ({ page }) => {
-    await signInWithNext(page, "/dashboard/billing");
-    await page.waitForURL("**/dashboard/billing", { timeout: 20_000 });
+    await signInWithNext(page, "/dashboard/settings/billing");
+    await page.waitForURL("**/dashboard/settings/billing", { timeout: 20_000 });
   });
 });

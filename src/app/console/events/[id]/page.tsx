@@ -5,6 +5,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { consoleUploadEventImage, decideEvent, saveEvent } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -31,13 +32,14 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href={backTo} className="text-sm text-gray-500 hover:text-ink">← Events</Link>
+      <Link href={backTo} className="text-sm text-graphite hover:text-ink">← Events</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New event" : "Edit event"}</h1>
       {event?.status === "rejected" && (
-        <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">Rejected: {event.rejected_reason}</p>
+        <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">Rejected: {event.rejected_reason}</p>
       )}
 
       <form action={saveEvent} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
+        <UnsavedChangesGuard />
         {!isNew && <input type="hidden" name="id" value={id} />}
         <div>
           <label htmlFor="title" className="text-sm font-medium">Title</label>
@@ -85,7 +87,7 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
             <img src={cover} alt="" className="mt-2 h-32 w-auto rounded object-cover" />
           )}
           <input type="file" name="cover" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
-          <p className="mt-1 text-xs text-gray-500">Landscape, JPG/PNG/WebP, max 8MB.</p>
+          <p className="mt-1 text-xs text-graphite">Landscape, JPG/PNG/WebP, max 8MB.</p>
         </div>
         <div>
           <label htmlFor="member_id" className="text-sm font-medium">Hosting member (adds backlink)</label>
@@ -102,19 +104,19 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
           {event.status === "awaiting_approval" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Approval</h2>
-              <p className="mt-1 text-xs text-gray-500">Edit above first if needed, then approve or reject.</p>
+              <p className="mt-1 text-xs text-graphite">Edit above first if needed, then approve or reject.</p>
               <div className="mt-3 flex gap-2">
                 <form action={decideEvent}>
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="approve" />
-                  <button className="rounded bg-green-600 px-4 py-2 text-sm text-white">Approve & publish</button>
+                  <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
                 </form>
               </div>
               <form action={decideEvent} className="mt-3 flex gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="reject" />
                 <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600">Reject</button>
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
               </form>
             </div>
           )}

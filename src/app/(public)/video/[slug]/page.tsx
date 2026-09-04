@@ -50,7 +50,7 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
           ]),
         ]}
       />
-      <Link href="/video" className="mt-6 inline-block text-sm text-gray-500 hover:text-ink">← All videos</Link>
+      <Link href="/video" className="mt-6 inline-block text-sm text-graphite hover:text-ink">← All videos</Link>
 
       {/* youtube-nocookie so an embed does not set advertising cookies before the
           visitor has answered the consent banner. frame-src in next.config.ts
@@ -72,7 +72,7 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
       </div>
 
       <h1 className="mt-6 text-2xl font-bold text-ink">{video.title}</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         {video.member && (
           <>
             Posted by <Link href={`/member/${video.member.slug}`} className="text-graphite underline">{video.member.name}</Link>
@@ -82,7 +82,7 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
         {published}
       </p>
 
-      {video.description && <RichText html={video.description} className="mt-4 text-gray-700" />}
+      {video.description && <RichText html={video.description} className="mt-4 text-ink" />}
 
       <ShareButtons />
       <div className="my-10" />

@@ -95,7 +95,7 @@ async function main() {
       address: `${faker.location.streetAddress()}, ${faker.helpers.arrayElement(UK_REGIONS)}`,
       lat: faker.location.latitude({ min: 50.5, max: 55.5 }),
       lng: faker.location.longitude({ min: -4.5, max: 1.5 }),
-      phone: faker.phone.number(),
+      phone: faker.phone.number({ style: "international" }),
       website: `https://www.${slugify(name)}.co.uk`,
       social: { linkedin: `company/${slugify(name)}`, x: slugify(name).slice(0, 15) },
       billing_mode: i % 10 === 0 ? "invoice" : "card",
@@ -291,8 +291,11 @@ async function main() {
 
   console.log("— events, videos");
   await db.from("events").insert([
-    { slug: "smi-golf-challenge-2026", title: "SMI Golf Challenge 2026", location: "Belfry, West Midlands", starts_on: "2026-09-17", status: "published", description: "The annual SMI golf day." },
-    { slug: "euroblech-2026", title: "EuroBLECH 2026", location: "Hanover, Germany", starts_on: "2026-10-20", ends_on: "2026-10-23", status: "published", link: "https://www.euroblech.com" },
+    // lat/lng are hardcoded literals (Belfry resort / Hanover fairground) so the
+    // /event map has pins in local dev — real rows get coords geocoded on save,
+    // and seeds must never call Nominatim (usage policy: one lookup per save).
+    { slug: "smi-golf-challenge-2026", title: "SMI Golf Challenge 2026", location: "Belfry, West Midlands", lat: 52.5623, lng: -1.7259, starts_on: "2026-09-17", status: "published", description: "The annual SMI golf day.", type: "golf_challenge" },
+    { slug: "euroblech-2026", title: "EuroBLECH 2026", location: "Hanover, Germany", lat: 52.3207, lng: 9.8106, starts_on: "2026-10-20", ends_on: "2026-10-23", status: "published", link: "https://www.euroblech.com", type: "exhibition" },
     { slug: "open-house-bending-demo", title: "Open house: bending cell demo", location: faker.location.city(), starts_on: iso(new Date(today.getTime() + 30 * 864e5)), status: "awaiting_approval", member_id: memberLogins[0] },
     // past and published — the archive on /event and the "already taken place"
     // notice on /event/[slug] are otherwise unreachable from seed data
@@ -384,9 +387,13 @@ async function main() {
     { code: "SMI-FREE-YEAR", months: 12, active: true },
     { code: "SMI-FREE-MONTH", months: 1, active: true },
   ]);
+  // PostgREST bulk inserts need uniform keys across rows, so default the
+  // per-row `collapsible` flag explicitly rather than omitting it.
+  const pageRow = (p: { slug: string; title: string; body: string; collapsible?: boolean }) =>
+    ({ collapsible: false, ...p });
   await db.from("static_pages").insert([
-    ...AUTHORED_STATIC_PAGES, // real live-site copy (about) — same rows seed-real.ts merges in
-    { slug: "policies", title: "Policies", body: "<p>Privacy and cookie policy.</p>" },
+    ...AUTHORED_STATIC_PAGES, // real live-site copy (about, faq) — same rows seed-real.ts merges in
+    { slug: "policies", title: "Policies", body: "<h2>Privacy</h2><p>Privacy policy.</p><h2>Cookies</h2><p>Cookie policy.</p>", collapsible: true },
     { slug: "advertising", title: "Advertise with SMI", body: "<p>Formats A–F, media pack available on request.</p>" },
     { slug: "mach-publication", title: "MACH Publication", body: "<p>Our MACH show magazine.</p>" },
     // The standalone pages the live site has and we did not. Slugs are flat, so
@@ -400,7 +407,7 @@ async function main() {
     { slug: "welcome-to-the-smi-golf-challenge", title: "Welcome to the SMI Golf Challenge", body: "<p>About the annual golf challenge.</p>" },
     { slug: "plans-in-place-for-future-growth", title: "Plans in place for future growth", body: "<p>Where SMI is heading.</p>" },
     { slug: "newsletter-archive", title: "Newsletter archive", body: "<p>Every issue we have sent.</p>" },
-  ]);
+  ].map(pageRow));
   await db.from("settings").insert([
     { key: "grid", value: { blocks: 12, mix: { news: 6, video: 2, member_news: 2, featured_member: 1, featured_machine: 1 } } },
     { key: "social_caps", value: { per_day: 3, delay_minutes: 30 } },
@@ -420,12 +427,12 @@ async function main() {
       page_path: "/join/account", created_by: jasId, reporter_email: "jas@smi.local" },
     { title: "Improve the empty state on the members search", status: "not_started", assignee: "Luiza", priority: "low", sort_order: 1,
       kind: "idea", description: "\"No results\" reads a bit bare — could suggest clearing filters." },
-    { title: "Typo in the About page footer", status: "in_progress", assignee: "Luiza", priority: "medium", sort_order: 0,
+    { title: "Typo in the About page footer", status: "coding", assignee: "Luiza", priority: "medium", sort_order: 0,
       kind: "copy", description: "\"buisness\" should be \"business\"." },
-    { title: "Add pagination to the news archive", status: "blocked", assignee: "Rishi", priority: "medium", sort_order: 0,
-      description: "Blocked on the new /news route's data layer landing first." },
-    { title: "Wire up the newsletter unsubscribe link", status: "in_staging", assignee: "Harsh", priority: "high", sort_order: 0 },
-    { title: "Audit alt text across the member directory", status: "done", assignee: "Dan", priority: "low", sort_order: 0 },
+    { title: "Add pagination to the news archive", status: "coding", assignee: "Rishi", priority: "medium", sort_order: 1,
+      description: "Waiting on the new /news route's data layer landing first." },
+    { title: "Wire up the newsletter unsubscribe link", status: "in_staging", assignee: "Jas", priority: "high", sort_order: 0 },
+    { title: "Audit alt text across the member directory", status: "done", assignee: "Rishi", priority: "low", sort_order: 0 },
     { title: "Spike: image CDN options", status: "done", assignee: "Jas", priority: "low", sort_order: 1 },
     { title: "Old machine listing importer", status: "canceled", assignee: null, priority: "low", sort_order: 0 },
   ]);

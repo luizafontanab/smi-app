@@ -49,7 +49,7 @@ test("wide console tables scroll inside their own container, not the page", asyn
 
 test("member billing table is reachable and contained", async ({ page }) => {
   await login(page, "member1@smi.local");
-  await page.goto("/dashboard/billing");
+  await page.goto("/dashboard/settings/billing");
   await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
   const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(pageOverflow).toBeLessThanOrEqual(0);

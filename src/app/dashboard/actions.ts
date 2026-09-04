@@ -5,12 +5,11 @@ import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { geocodeAddress } from "@/lib/adapters/geocode";
 import { mediaUrl, serviceDb, sessionDb } from "@/lib/db/server";
-import type { Json } from "@/lib/db/types";
 import { isEventType } from "@/lib/event-types";
 import { removeMedia, uploadImage } from "@/lib/media";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { mergeSocial } from "@/lib/social";
-import { EMAIL_RE } from "@/lib/validate";
+import { EMAIL_RE, parsePhone } from "@/lib/validate";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -218,11 +217,17 @@ export async function submitEvent(formData: FormData) {
   const cover = await uploadImage(formData.get("cover") as File | null, "events");
   const typeInput = String(formData.get("type") ?? "");
   const eventType = isEventType(typeInput) ? typeInput : null;
+  const location = String(formData.get("location") ?? "");
+  // New row, so any non-empty location is "changed" — one lookup per save,
+  // failure just means no map pin (same guardrails as submitProfileEdit).
+  const coords = location.trim() ? await geocodeAddress(location) : null;
   await serviceDb().from("events").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
     title,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
-    location: String(formData.get("location") ?? ""),
+    location,
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
     starts_on: String(formData.get("starts_on")),
     starts_time: String(formData.get("starts_time") ?? "") || null,
     ends_on: String(formData.get("ends_on") ?? "") || null,
@@ -260,10 +265,25 @@ export async function editEvent(formData: FormData) {
   const cover = await uploadImage(formData.get("cover") as File | null, "events");
   const typeInput = String(formData.get("type") ?? "");
   const eventType = isEventType(typeInput) ? typeInput : null;
+  const location = String(formData.get("location") ?? "");
+  // Re-geocode only when the location text changed; a failed lookup keeps the
+  // coords already on file (same guardrails as submitProfileEdit above).
+  const { data: existingEvent } = await db.from("events").select("location, lat, lng").eq("id", id).single();
+  let lat = existingEvent?.lat ?? null;
+  let lng = existingEvent?.lng ?? null;
+  if (location.trim() && location.trim() !== (existingEvent?.location ?? "").trim()) {
+    const geocoded = await geocodeAddress(location);
+    if (geocoded) {
+      lat = geocoded.lat;
+      lng = geocoded.lng;
+    }
+  }
   await db.from("events").update({
     title,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
-    location: String(formData.get("location") ?? ""),
+    location,
+    lat,
+    lng,
     starts_on: String(formData.get("starts_on")),
     starts_time: String(formData.get("starts_time") ?? "") || null,
     ends_on: String(formData.get("ends_on") ?? "") || null,
@@ -301,10 +321,10 @@ export async function submitProfileEdit(formData: FormData) {
     redirect(`/dashboard/profile?error=${encodeURIComponent("Contact email is not a valid address.")}`);
   }
 
-  const testimonials = String(formData.get("testimonials") ?? "")
-    .split("\n")
-    .map((t) => t.trim())
-    .filter(Boolean);
+  const phone = parsePhone(String(formData.get("phone") ?? ""));
+  if (phone && typeof phone === "object") {
+    redirect(`/dashboard/profile?error=${encodeURIComponent(phone.error)}`);
+  }
 
   const address = String(formData.get("address") ?? "");
   // Re-geocode only when the address actually changed — a fresh Nominatim
@@ -326,11 +346,10 @@ export async function submitProfileEdit(formData: FormData) {
     ...(logoPath ? { logo_path: logoPath } : {}),
     ...(heroPath ? { hero_path: heroPath } : {}),
     address,
-    phone: String(formData.get("phone") ?? ""),
+    phone,
     website: String(formData.get("website") ?? ""),
     video_url: String(formData.get("video_url") ?? "") || null,
     social,
-    testimonials: testimonials as Json,
     category_id: Number(formData.get("category_id")) || null,
     contact_email,
     lat,
@@ -427,6 +446,30 @@ export async function requestVisibility(formData: FormData) {
   redirect("/dashboard?submitted=buy");
 }
 
+/**
+ * Help page (fix list item 15) — a member's direct line to Jas. Lands in the
+ * console inbox as kind 'membership' and emails him, via the same
+ * notifyAdminFunnel path the join funnel uses.
+ */
+export async function sendMemberMessage(formData: FormData) {
+  const user = await requireMember();
+  const message = String(formData.get("message") ?? "").trim();
+  if (!message) redirect(`/dashboard/help?error=${encodeURIComponent("Write a message first.")}`);
+  const { allowRequest, HOUR } = await import("@/lib/rate-limit");
+  if (!(await allowRequest("member-help", 5, HOUR))) {
+    redirect(`/dashboard/help?error=${encodeURIComponent("Too many messages just now — please try again shortly.")}`);
+  }
+  const { data: member } = await serviceDb().from("members").select("name").eq("id", user.memberId).single();
+  const { notifyAdminFunnel } = await import("@/lib/notify-admin");
+  await notifyAdminFunnel({
+    name: member?.name ?? user.displayName ?? user.email,
+    email: user.email,
+    message,
+    emailSubject: `Member message from ${member?.name ?? user.email}`,
+  });
+  redirect("/dashboard/help?sent=1");
+}
+
 export async function markNotificationRead(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
@@ -459,23 +502,23 @@ export async function changePassword(formData: FormData) {
   await requireMember();
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
-  if (password.length < PASSWORD_MIN_LENGTH) redirect("/dashboard/settings?perror=short");
-  if (password !== confirm) redirect("/dashboard/settings?perror=mismatch");
+  if (password.length < PASSWORD_MIN_LENGTH) redirect("/dashboard/settings/security?perror=short");
+  if (password !== confirm) redirect("/dashboard/settings/security?perror=mismatch");
 
   const db = await sessionDb();
   const { error } = await db.auth.updateUser({ password });
-  if (error) redirect("/dashboard/settings?perror=failed");
+  if (error) redirect("/dashboard/settings/security?perror=failed");
 
-  redirect("/dashboard/settings?psaved=1");
+  redirect("/dashboard/settings/security?psaved=1");
 }
 
-/** GAPS B1.5 — member-side subscription cancellation, requested from /dashboard/billing. */
+/** GAPS B1.5 — member-side subscription cancellation, requested from /dashboard/settings/billing. */
 export async function cancelMembership() {
   const user = await requireMember();
   const { requestCancellation } = await import("@/lib/membership");
   const result = await requestCancellation(user.memberId);
-  revalidatePath("/dashboard/billing");
-  redirect(result.ok ? "/dashboard/billing?cancelled=1" : `/dashboard/billing?cerror=${encodeURIComponent(result.error)}`);
+  revalidatePath("/dashboard/settings/billing");
+  redirect(result.ok ? "/dashboard/settings/billing?cancelled=1" : `/dashboard/settings/billing?cerror=${encodeURIComponent(result.error)}`);
 }
 
 export async function savePrefs(formData: FormData) {
@@ -512,10 +555,10 @@ export async function submitAdvert(formData: FormData) {
     desktop_path = await uploadImage(formData.get("desktop") as File | null, `panels/${user.memberId}`);
     mobile_path = await uploadImage(formData.get("mobile") as File | null, `panels/${user.memberId}`);
   } catch (e) {
-    redirect(`/dashboard/advert/new?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
+    redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
   }
   if (!desktop_path || !mobile_path) {
-    redirect(`/dashboard/advert/new?error=${encodeURIComponent("Both a desktop and a mobile image are required.")}`);
+    redirect(`/dashboard/advertising/buy?error=${encodeURIComponent("Both a desktop and a mobile image are required.")}`);
   }
 
   const db = serviceDb();
@@ -531,7 +574,7 @@ export async function submitAdvert(formData: FormData) {
     // Nothing was written, so the just-uploaded artwork would otherwise be
     // orphaned storage with no row pointing at it.
     await Promise.all([removeMedia(desktop_path), removeMedia(mobile_path)]);
-    redirect(`/dashboard/advert/new?error=${encodeURIComponent(advertError?.message ?? "Could not save the advert.")}`);
+    redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(advertError?.message ?? "Could not save the advert.")}`);
   }
 
   const { error: bookingError } = await db.from("advert_bookings").insert({
@@ -550,7 +593,7 @@ export async function submitAdvert(formData: FormData) {
     // artwork up rather than leaving an orphan and redirecting to "success".
     await Promise.all([removeMedia(desktop_path), removeMedia(mobile_path)]);
     await db.from("adverts").delete().eq("id", advert.id);
-    redirect(`/dashboard/advert/new?error=${encodeURIComponent(
+    redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(
       bookingError.message.includes("ends_on")
         ? "The run must end on or after its start date."
         : bookingError.message,

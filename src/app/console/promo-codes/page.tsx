@@ -2,6 +2,7 @@ import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { Card, SectionTitle } from "@/components/console/ui";
 import { savePromoCode, setPromoCodeActive } from "../actions";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Promo codes" };
@@ -16,15 +17,16 @@ export default async function PromoCodesPage(props: PageProps<"/console/promo-co
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-xl font-bold text-ink">Promo codes</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Comp membership months via a shareable code — the join flow and /dashboard/pay both redeem here.
       </p>
-      {sp.saved && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Code created.</p>}
-      {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {sp.saved && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Code created.</p>}
+      {typeof sp.error === "string" && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <Card className="mt-4">
         <SectionTitle>New code</SectionTitle>
         <form action={savePromoCode} className="mt-3 grid gap-4 sm:grid-cols-4">
+          <UnsavedChangesGuard />
           <div className="sm:col-span-2">
             <label htmlFor="code" className="text-sm font-medium">Code</label>
             <input id="code" name="code" required className="mt-1 w-full rounded border px-3 py-2" placeholder="SMI-FREE-MONTH" />
@@ -52,7 +54,7 @@ export default async function PromoCodesPage(props: PageProps<"/console/promo-co
         <div className="overflow-x-auto mt-3">
         <table className="w-full text-sm min-w-[560px]">
           <thead>
-            <tr className="text-left text-xs uppercase text-gray-500">
+            <tr className="text-left text-xs uppercase text-graphite">
               <th scope="col" className="py-1">Code</th><th scope="col">Months</th><th scope="col">Uses</th><th scope="col">Expires</th><th scope="col">Status</th><th scope="col" />
             </tr>
           </thead>
@@ -63,7 +65,7 @@ export default async function PromoCodesPage(props: PageProps<"/console/promo-co
                 <td>{c.months}</td>
                 <td>{c.used_count}{c.max_uses ? ` / ${c.max_uses}` : ""}</td>
                 <td>{c.expires_at ?? "—"}</td>
-                <td>{c.active ? <span className="text-green-600">active</span> : <span className="text-gray-500">inactive</span>}</td>
+                <td>{c.active ? <span className="text-success">active</span> : <span className="text-graphite">inactive</span>}</td>
                 <td className="text-right">
                   <form action={setPromoCodeActive}>
                     <input type="hidden" name="id" value={c.id} />
@@ -73,7 +75,7 @@ export default async function PromoCodesPage(props: PageProps<"/console/promo-co
                 </td>
               </tr>
             ))}
-            {(codes ?? []).length === 0 && <tr><td colSpan={6} className="py-3 text-gray-500">No promo codes yet.</td></tr>}
+            {(codes ?? []).length === 0 && <tr><td colSpan={6} className="py-3 text-graphite">No promo codes yet.</td></tr>}
           </tbody>
         </table>
         </div>

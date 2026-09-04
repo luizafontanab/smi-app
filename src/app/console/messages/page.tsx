@@ -58,7 +58,8 @@ export default async function MessagesPage(props: PageProps<"/console/messages">
             <Link
               key={t.key}
               href={qs({ filter: t.key, page: undefined })}
-              className={`rounded-t px-4 py-2 ${t.key === filter ? "border border-b-0 bg-white font-semibold text-ink" : "text-gray-500 hover:text-ink"}`}
+              aria-current={t.key === filter ? "true" : undefined}
+              className={`rounded-t px-4 py-2 ${t.key === filter ? "border border-b-0 bg-white font-semibold text-ink" : "text-graphite hover:text-ink"}`}
             >
               {t.label}
             </Link>
@@ -69,7 +70,8 @@ export default async function MessagesPage(props: PageProps<"/console/messages">
             <Link
               key={t.key}
               href={qs({ kind: t.key === "all" ? undefined : t.key, page: undefined })}
-              className={`rounded px-3 py-1 ${(kind ?? "all") === t.key ? "bg-ink text-white" : "bg-white text-gray-500 hover:text-ink"}`}
+              aria-current={(kind ?? "all") === t.key ? "true" : undefined}
+              className={`rounded px-3 py-1 ${(kind ?? "all") === t.key ? "bg-ink text-white" : "bg-white text-graphite hover:text-ink"}`}
             >
               {t.label}
             </Link>
@@ -78,24 +80,29 @@ export default async function MessagesPage(props: PageProps<"/console/messages">
       </div>
 
       <div className="mt-4 overflow-hidden rounded-b-xl rounded-tr-xl bg-white shadow-sm">
-        {(messages ?? []).length === 0 && <p className="p-5 text-sm text-gray-500">No messages.</p>}
+        {(messages ?? []).length === 0 && <p className="p-5 text-sm text-graphite">No messages.</p>}
         <ul className="divide-y">
           {(messages ?? []).map((m) => (
-            <li key={m.id} className="p-4 text-sm">
+            <li key={m.id} className="relative p-4 text-sm transition hover:bg-shade/50">
               <div className="flex flex-wrap items-center gap-x-2">
-                <span className="text-xs uppercase text-brand">{m.kind}</span>
+                <span className="text-xs uppercase text-brand-text">{m.kind}</span>
                 <b>{m.name}</b>
-                <a href={`mailto:${m.email}`} className="text-gray-500 hover:text-ink">&lt;{m.email}&gt;</a>
-                <span className="ml-auto text-xs text-gray-500">{fmt(m.created_at)}</span>
-                <form action={markInboxRead}>
+                <span className="text-graphite">&lt;{m.email}&gt;</span>
+                <span className="ml-auto text-xs text-graphite">{fmt(m.created_at)}</span>
+                {/* z-10 keeps the button clickable above the row's stretched link */}
+                <form action={markInboxRead} className="z-10">
                   <input type="hidden" name="id" value={m.id} />
                   <input type="hidden" name="read" value={m.read ? "0" : "1"} />
-                  <button className="text-xs text-gray-500 underline hover:text-ink">
+                  <button className="relative text-xs text-graphite underline hover:text-ink">
                     {m.read ? "mark unread" : "mark read"}
                   </button>
                 </form>
               </div>
-              <p className="mt-1 text-gray-600">{m.message}</p>
+              {/* The whole row opens the message — full text and reply live there. */}
+              <Link href={`/console/messages/${m.id}`} className="mt-1 block text-graphite after:absolute after:inset-0">
+                <span className="line-clamp-2">{m.message}</span>
+                <span className="sr-only"> — open message from {m.name}</span>
+              </Link>
             </li>
           ))}
         </ul>

@@ -93,8 +93,8 @@ function PlaceholderLabel({ slotKey, size }: { slotKey?: string; size: string })
   return (
     <>
       <p className="text-xs font-bold uppercase tracking-widest text-graphite">Advert space</p>
-      <p className="font-mono text-[11px] text-gray-500">{slotKey ? `${slotKey} · ${size}` : size}</p>
-      <p className="text-[11px] text-gray-500">No advertiser owns this space</p>
+      <p className="font-mono text-[11px] text-graphite">{slotKey ? `${slotKey} · ${size}` : size}</p>
+      <p className="text-[11px] text-graphite">No advertiser owns this space</p>
     </>
   );
 }
@@ -104,7 +104,7 @@ export function SupplierLogos({ adverts, showPlaceholders = false }: { adverts: 
   return (
     <section className="border-t bg-white py-6">
       <div className="mx-auto max-w-6xl px-4">
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-gray-500">Suppliers</h2>
+        <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-graphite">Suppliers</h2>
         <div className="flex flex-wrap items-center gap-6">
           {adverts.length > 0
             ? adverts.map((ad) => (
@@ -116,7 +116,7 @@ export function SupplierLogos({ adverts, showPlaceholders = false }: { adverts: 
                 <div
                   key={i}
                   aria-hidden="true"
-                  className="flex h-12 w-28 items-center justify-center rounded border-2 border-dashed border-graphite/40 bg-graphite/5 text-[10px] font-bold uppercase tracking-widest text-graphite"
+                  className="flex h-12 w-28 items-center justify-center rounded border-2 border-dashed border-graphite/40 bg-graphite/5 text-[11px] font-bold uppercase tracking-widest text-graphite"
                 >
                   Logo
                 </div>

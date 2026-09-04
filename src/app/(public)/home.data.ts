@@ -2,7 +2,7 @@ import "server-only";
 import { liveAdvertsByFormat, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { buildHero, withIntros } from "@/lib/hero";
-import { activePlacements, headlineStory, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
+import { activePlacements, featuredMemberPlacements, headlineStory, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
 
 /** Every advert format either design places on the home page. */
 const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_feed"] as const;
@@ -60,7 +60,9 @@ export async function loadHome() {
     memberNews: memberNews.filter((s) => !hero.storyIds.has(s.id)),
     videos: videos.filter((v) => !hero.videoIds.has(v.id)),
     events,
-    featuredMembers: placements.filter((p) => p.kind === "featured_member"),
+    // Shared filter (queries.ts) — the member directory's featured strip uses
+    // the same definition via featuredMembers().
+    featuredMembers: featuredMemberPlacements(placements),
     featuredMachine: placements.find((p) => p.kind === "featured_machine"),
     newsletters: newsletters.slice(0, 3),
     // Logo wall, not a directory listing — members without a logo have nothing

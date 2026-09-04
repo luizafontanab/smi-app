@@ -36,6 +36,18 @@ describe("meetsWcagAA", () => {
     expect(meetsWcagAA("#fe5000", "#ffffff", { largeText: true })).toBe(true);
   });
 
+  it("matches the documented small-label pairings: brand-text on paper and brand on ink both pass normal text", () => {
+    expect(meetsWcagAA("#c84000", "#ffffff")).toBe(true);
+    expect(meetsWcagAA("#fe5000", "#111418")).toBe(true);
+  });
+
+  it("matches the semantic status tokens: danger and success pass normal text on paper, and white on both", () => {
+    expect(meetsWcagAA("#b91c1c", "#ffffff")).toBe(true);
+    expect(meetsWcagAA("#15803d", "#ffffff")).toBe(true);
+    expect(meetsWcagAA("#ffffff", "#b91c1c")).toBe(true);
+    expect(meetsWcagAA("#ffffff", "#15803d")).toBe(true);
+  });
+
   it("rejects a malformed hex rather than silently treating it as black", () => {
     expect(() => meetsWcagAA("not-a-colour", "#ffffff")).toThrow();
   });

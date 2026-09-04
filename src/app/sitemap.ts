@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const db = publicDb();
-  const [stories, members, videos, events, newsletters, pages] = await Promise.all([
+  const [stories, members, videos, events, newsletters, pages, industries] = await Promise.all([
     db.from("stories").select("slug, updated_at").eq("status", "published").limit(5000),
     db.from("members").select("slug").eq("status", "active"),
     db.from("videos").select("slug").eq("status", "published"),
@@ -37,6 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     db.from("events").select("slug").eq("status", "published"),
     db.from("newsletter_issues").select("web_slug").eq("status", "sent"),
     db.from("static_pages").select("slug, updated_at"),
+    db.from("categories").select("slug").eq("kind", "member"),
   ]);
 
   return [
@@ -47,5 +48,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...(events.data ?? []).map((e) => ({ url: `${BASE}/event/${e.slug}`, priority: 0.5 })),
     ...(newsletters.data ?? []).map((n) => ({ url: `${BASE}/newsletters/${n.web_slug}`, priority: 0.4 })),
     ...(pages.data ?? []).map((p) => ({ url: `${BASE}/pages/${p.slug}`, lastModified: p.updated_at, priority: 0.4 })),
+    ...(industries.data ?? []).map((c) => ({ url: `${BASE}/industry/${c.slug}`, changeFrequency: "daily" as const, priority: 0.6 })),
   ];
 }

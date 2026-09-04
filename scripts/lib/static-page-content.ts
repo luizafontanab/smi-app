@@ -9,7 +9,26 @@
  * Bodies must stick to RICH_TEXT_ALLOWLIST (src/lib/sanitize.ts) and carry
  * their own <p> tags — the sanitiser never paragraph-wraps HTML-looking input.
  */
-export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string }[] = [
+export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string; collapsible?: boolean }[] = [
+  {
+    slug: "faq",
+    title: "Frequently asked questions",
+    collapsible: true,
+    body: `<h2>What is SMI membership and what does it include?</h2>
+<p>SMI membership gives your company a page in the member directory, the ability to publish your news, videos and events on SMI's channels, quarterly stats on how your content performs, and a backlink from every story we publish about you. Membership is £40/month.</p>
+<h2>How do I join?</h2>
+<p>Use the Become a Member button at the top of any page. You create an account, set up your company page, and our team reviews and activates it — usually within a working day.</p>
+<h2>How do I publish news on SMI?</h2>
+<p>Members submit stories, videos and events from their member area. Everything goes live after a quick editorial check, and we email you when it's published.</p>
+<h2>Can I advertise without being a member?</h2>
+<p>Yes — banner, rail and newsletter advertising are open to any company in the trade. See the Advertising page for formats and the media pack, or send us a message and we'll help you pick the right format.</p>
+<h2>How does advert rotation work?</h2>
+<p>No one can buy position on SMI. Every live advert in a slot rotates with equal visibility, so a smaller advertiser gets the same exposure as a larger one.</p>
+<h2>How do I update or cancel my membership?</h2>
+<p>Everything is self-service from your member area under Settings — update your details, change your password, view invoices, or cancel. Your page and stories stay live until the end of the period you've paid for.</p>
+<h2>Who do I contact for anything else?</h2>
+<p>Use the Contact page and we'll come back to you — usually the same day.</p>`,
+  },
   {
     slug: "about",
     title: "About",

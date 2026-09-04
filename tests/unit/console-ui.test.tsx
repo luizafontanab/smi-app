@@ -24,8 +24,8 @@ describe("console/ui", () => {
 
   it("Badge applies the tone-specific class", () => {
     const { rerender } = render(<Badge tone="green">Live</Badge>);
-    expect(screen.getByText("Live")).toHaveClass("text-green-700");
+    expect(screen.getByText("Live")).toHaveClass("text-success");
     rerender(<Badge tone="red">Ended</Badge>);
-    expect(screen.getByText("Ended")).toHaveClass("text-red-700");
+    expect(screen.getByText("Ended")).toHaveClass("text-danger");
   });
 });

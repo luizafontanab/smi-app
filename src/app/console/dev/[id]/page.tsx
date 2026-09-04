@@ -32,17 +32,17 @@ export default async function DevTaskEditor(props: PageProps<"/console/dev/[id]"
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href={returnTo} className="text-sm text-gray-500 hover:text-ink">
+      <Link href={returnTo} className="text-sm text-graphite hover:text-ink">
         ← Dev Board
       </Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New task" : task!.title}</h1>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       {!isNew && task!.notes && (
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Reported from the site</h2>
-          {task!.page_path && <p className="mt-1 text-xs text-gray-500">Page: {task!.page_path}</p>}
-          {task!.reporter_email && <p className="text-xs text-gray-500">Reported by: {task!.reporter_email}</p>}
+          {task!.page_path && <p className="mt-1 text-xs text-graphite">Page: {task!.page_path}</p>}
+          {task!.reporter_email && <p className="text-xs text-graphite">Reported by: {task!.reporter_email}</p>}
           <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-paper p-3 text-xs">{task!.notes}</pre>
         </section>
       )}
@@ -136,22 +136,22 @@ export default async function DevTaskEditor(props: PageProps<"/console/dev/[id]"
         </SubmitButton>
 
         {!isNew && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-graphite">
             Created {new Date(task!.created_at).toLocaleString("en-GB")} · Last updated {new Date(task!.updated_at).toLocaleString("en-GB")}
           </p>
         )}
       </form>
 
       {!isNew && (
-        <form action={deleteDevTask} className="mt-4 rounded-xl border border-red-200 bg-white p-5 shadow-sm">
+        <form action={deleteDevTask} className="mt-4 rounded-xl border border-danger/30 bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Delete task</h2>
-          <p className="mt-1 text-xs text-gray-500">Permanent. Use the &quot;Canceled&quot; status instead if you just want it off the board.</p>
+          <p className="mt-1 text-xs text-graphite">Permanent. Use the &quot;Canceled&quot; status instead if you just want it off the board.</p>
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="return_to" value={returnTo} />
           <label className="mt-3 flex items-center gap-2 text-sm">
             <input type="checkbox" name="confirm" value="1" /> Yes, delete this task permanently
           </label>
-          <button className="mt-3 rounded border border-red-300 px-3 py-1.5 text-sm text-red-600">Delete</button>
+          <button className="mt-3 rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Delete</button>
         </form>
       )}
     </div>

@@ -35,3 +35,19 @@ export function parseCoordinate(raw: string, limit: number, label: "lat" | "lng"
   }
   return value;
 }
+
+/**
+ * Blank → null. Otherwise a lenient phone shape: optional leading +, then
+ * digits with spaces, hyphens or parentheses, 7–15 digits in total — loose
+ * enough for "0161 555 0100" and "+44 (0)161 5550100", strict enough that the
+ * stored value always yields a working `tel:` link (see app/go/[memberId]).
+ */
+export function parsePhone(raw: string): string | null | { error: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const digits = trimmed.replace(/\D/g, "");
+  if (!/^\+?[\d()\s-]+$/.test(trimmed) || digits.length < 7 || digits.length > 15) {
+    return { error: "Phone number can only contain digits, spaces, +, ( ) and -, with 7 to 15 digits." };
+  }
+  return trimmed;
+}

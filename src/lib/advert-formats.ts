@@ -1,4 +1,10 @@
-export type AdFormat = { key: string; name: string; detail: string };
+export type AdFormat = {
+  key: string;
+  name: string;
+  detail: string;
+  /** Storage path of an example advert image, shown on the public /advertising card (render via mediaUrl). */
+  example_path?: string;
+};
 
 export const AD_FORMAT_KEYS = ["A", "B", "C", "D", "E", "F"] as const;
 

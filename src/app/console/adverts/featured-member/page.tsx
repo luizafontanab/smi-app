@@ -20,12 +20,12 @@ export default async function FeaturedMemberPage(props: PageProps<"/console/adve
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/adverts" className="text-sm text-gray-500 hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Featured Member</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Homepage carousel slot, by the month. Up to {FEATURED_SLOTS.cap} can run at once — {liveCount} live today.
       </p>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Book a slot</h2>
@@ -48,17 +48,17 @@ export default async function FeaturedMemberPage(props: PageProps<"/console/adve
         <h2 className="font-bold text-ink">Booked</h2>
         <div className="overflow-x-auto mt-2">
         <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Member</th><th scope="col">From</th><th scope="col">To</th><th scope="col" /></tr></thead>
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Member</th><th scope="col">From</th><th scope="col">To</th><th scope="col" /></tr></thead>
           <tbody>
             {(booked ?? []).map((p) => (
               <tr key={p.id} className="border-t">
                 <td className="py-2">{p.member?.name}</td>
                 <td>{p.starts_on}</td>
                 <td>{p.ends_on}</td>
-                <td className="text-right">{p.starts_on <= today && p.ends_on >= today && <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">live</span>}</td>
+                <td className="text-right">{p.starts_on <= today && p.ends_on >= today && <span className="rounded bg-success/10 px-2 py-0.5 text-xs text-success">live</span>}</td>
               </tr>
             ))}
-            {!booked?.length && <tr><td colSpan={4} className="py-4 text-center text-gray-500">None booked yet.</td></tr>}
+            {!booked?.length && <tr><td colSpan={4} className="py-4 text-center text-graphite">None booked yet.</td></tr>}
           </tbody>
         </table>
         </div>

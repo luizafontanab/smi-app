@@ -3,14 +3,24 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 
 /**
- * The desktop header's Media dropdown. CSS hover/focus-within alone left the
- * trigger button a no-op — no `aria-expanded`, nothing on Enter/Space, no
- * Escape — so keyboard and screen-reader users had a popup button that never
- * visibly popped. Click now toggles it, Escape closes and returns focus to
- * the trigger, and focus leaving the widget closes it; the CSS hover path
- * stays for mouse users.
+ * A desktop header dropdown (originally just "Media", now parameterized so
+ * "Members" can share it). CSS hover/focus-within alone left the trigger
+ * button a no-op — no `aria-expanded`, nothing on Enter/Space, no Escape —
+ * so keyboard and screen-reader users had a popup button that never visibly
+ * popped. Click toggles it, Escape closes and returns focus to the trigger,
+ * and focus leaving the widget closes it. Hover also goes through the same
+ * state (not a CSS :hover class) so aria-expanded always matches what's on
+ * screen.
+ *
+ * `className` carries the caller's responsive-visibility classes (e.g.
+ * "hidden lg:block") so each dropdown keeps the breakpoint its plain-link
+ * predecessor had; `relative` stays baked in for the popup's positioning.
  */
-export function MediaMenu({ items }: { items: { href: string; label: string }[] }) {
+export function MediaMenu({ label, items, className = "hidden lg:block" }: {
+  label: string;
+  items: { href: string; label: string }[];
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -18,7 +28,9 @@ export function MediaMenu({ items }: { items: { href: string; label: string }[] 
   return (
     <div
       ref={wrapper}
-      className="group relative hidden lg:block"
+      className={`relative ${className}`}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
       onKeyDown={(e) => {
         if (e.key === "Escape" && open) {
           setOpen(false);
@@ -37,10 +49,10 @@ export function MediaMenu({ items }: { items: { href: string; label: string }[] 
         onClick={() => setOpen((v) => !v)}
         className="rounded px-3 py-2 hover:bg-chrome-hover"
       >
-        Media <span aria-hidden="true">▾</span>
+        {label} <span aria-hidden="true">▾</span>
       </button>
       <div
-        className={`absolute left-0 z-20 w-44 rounded-b bg-chrome py-1 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 ${
+        className={`absolute left-0 z-20 w-44 rounded-b bg-chrome py-1 shadow-lg transition ${
           open ? "visible opacity-100" : "invisible opacity-0"
         }`}
       >

@@ -48,26 +48,26 @@ export default async function AdvertsPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="text-2xl font-bold text-ink">Adverts &amp; Inventory</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Rotation is random-uniform — no advertiser can buy position. Impressions are the headline metric.
       </p>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl bg-white p-4 shadow-sm">
-          <p className="text-xs uppercase text-gray-500">Live bookings</p>
+          <p className="text-xs uppercase text-graphite">Live bookings</p>
           <p className="text-2xl font-bold text-ink">{live.length}</p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-graphite">
             {liveFormats.length ? liveFormats.map(([f, n]) => `${n} ${f.replace(/_/g, " ")}`).join(" · ") : "nothing booked"}
           </p>
         </div>
         <div className="rounded-xl bg-white p-4 shadow-sm">
-          <p className="text-xs uppercase text-gray-500">Formats sold</p>
+          <p className="text-xs uppercase text-graphite">Formats sold</p>
           <p className="text-2xl font-bold text-ink">{liveFormats.length}</p>
-          <p className="mt-1 text-xs text-gray-500">of 7 bookable</p>
+          <p className="mt-1 text-xs text-graphite">of 7 bookable</p>
         </div>
-        <div className="rounded-xl bg-white p-4 shadow-sm"><p className="text-xs uppercase text-gray-500">Interest</p>
+        <div className="rounded-xl bg-white p-4 shadow-sm"><p className="text-xs uppercase text-graphite">Interest</p>
           <p className="text-2xl font-bold text-ink">{openInterest ?? 0}</p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-graphite">
             <Link href="/console/adverts/interest" className="underline">members waiting to hear back</Link>
           </p>
         </div>
@@ -77,7 +77,7 @@ export default async function AdvertsPage() {
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Slot inventory</h2>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-graphite">
           How many adverts each position holds. Guidance for selling — it never affects rotation, which stays random-uniform.
         </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -85,7 +85,7 @@ export default async function AdvertsPage() {
             <form key={s.key} action={saveSlotCap} className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm">
               <input type="hidden" name="key" value={s.key} />
               <span className="grow truncate" title={s.label}>{s.label}</span>
-              <input name="cap" type="number" min={0} defaultValue={s.cap} className="w-16 rounded border px-2 py-1 text-right" />
+              <input name="cap" type="number" min={0} defaultValue={s.cap} aria-label={`Capacity for ${s.label}`} className="w-16 rounded border px-2 py-1 text-right" />
               <button className="text-xs text-graphite hover:underline">save</button>
             </form>
           ))}
@@ -96,7 +96,7 @@ export default async function AdvertsPage() {
         <h2 className="font-bold text-ink">Bookings</h2>
         <div className="overflow-x-auto mt-2">
         <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Advert</th><th scope="col">Format</th><th scope="col">Start</th><th scope="col">End</th><th scope="col" /><th scope="col" /></tr></thead>
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Advert</th><th scope="col">Format</th><th scope="col">Start</th><th scope="col">End</th><th scope="col" /><th scope="col" /></tr></thead>
           <tbody>
             {(bookings ?? []).map((b) => {
               // Phase, not raw dates: a draft or sent-back booking whose dates
@@ -109,14 +109,14 @@ export default async function AdvertsPage() {
                   <td className="py-2">
                     <Link href={`/console/adverts/${b.id}`} className="hover:underline">{b.advert?.name}</Link>
                   </td>
-                  <td className="text-gray-500">{b.advert?.format}</td>
+                  <td className="text-graphite">{b.advert?.format}</td>
                   <td>{b.starts_on}</td>
-                  <td className={expiring ? "font-semibold text-brand" : ""}>{b.ends_on}{expiring && " ⚠"}</td>
+                  <td className={expiring ? "font-semibold text-brand-text" : ""}>{b.ends_on}{expiring && " ⚠"}</td>
                   <td>
                     {phase === "live"
-                      ? <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">live</span>
+                      ? <span className="rounded bg-success/10 px-2 py-0.5 text-xs text-success">live</span>
                       : phase === "awaiting"
-                      ? <span className="rounded bg-brand/15 px-2 py-0.5 text-xs font-semibold text-brand">awaiting approval</span>
+                      ? <span className="rounded bg-brand/15 px-2 py-0.5 text-xs font-semibold text-brand-text">awaiting approval</span>
                       : PHASE_LABELS[phase]}
                   </td>
                   <td className="text-right">
@@ -149,7 +149,7 @@ export default async function AdvertsPage() {
           <label className="block grow">Notes<input name="notes" className="mt-1 block w-full rounded border px-3 py-2" placeholder="rate, PO ref…" /></label>
           <button className="rounded bg-ink px-4 py-2 text-white">Book</button>
         </form>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-graphite">
           Booking it here approves it — it goes live on its start date. Artwork is swappable mid-run from{" "}
           <Link href="/console/adverts/artwork" className="underline">Artwork</Link>; the dates stay put.
         </p>
@@ -166,7 +166,7 @@ export default async function AdvertsPage() {
         </div>
         <div className="overflow-x-auto mt-2">
         <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Kind</th><th scope="col">Who / what</th><th scope="col">Position</th><th scope="col">From</th><th scope="col">To</th></tr></thead>
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Kind</th><th scope="col">Who / what</th><th scope="col">Position</th><th scope="col">From</th><th scope="col">To</th></tr></thead>
           <tbody>
             {(placements ?? []).map((p) => (
               <tr key={p.id} className="border-t">
@@ -192,7 +192,7 @@ export default async function AdvertsPage() {
               {/* h-auto matters now the formats differ in aspect: without it the
                   width/height attributes squash a 300×600 skyscraper to a strip. */}
               <Image src={mediaUrl(a.desktop_path)!} alt={a.name} width={640} height={85} className="h-auto w-full rounded" unoptimized />
-              <p className="mt-1 text-xs text-gray-500">{a.name} · {a.member?.name} · {a.format}</p>
+              <p className="mt-1 text-xs text-graphite">{a.name} · {a.member?.name} · {a.format}</p>
             </div>
           ))}
         </div>

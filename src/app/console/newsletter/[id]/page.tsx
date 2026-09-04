@@ -4,6 +4,7 @@ import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { renderIssueHtml } from "@/lib/adapters/newsletter";
 import { attachNewsletterAd, detachNewsletterAd, updateIssue } from "../../actions";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -42,20 +43,20 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/newsletter" className="text-sm text-gray-500 hover:text-ink">← Newsletter</Link>
+      <Link href="/console/newsletter" className="text-sm text-graphite hover:text-ink">← Newsletter</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">#{issue.number} — {issue.subject}</h1>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       {issue.status === "sent" && (
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Performance</h2>
           <div className="mt-2 grid grid-cols-3 gap-4 text-sm">
-            <div><p className="text-xs uppercase tracking-wide text-gray-500">Sent</p><p className="text-lg font-bold text-ink">{issue.sent_count ?? "—"}</p></div>
-            <div><p className="text-xs uppercase tracking-wide text-gray-500">Opens</p><p className="text-lg font-bold text-ink">{issue.opens_count}</p></div>
-            <div><p className="text-xs uppercase tracking-wide text-gray-500">Clicks</p><p className="text-lg font-bold text-ink">{issue.clicks_count}</p></div>
+            <div><p className="text-xs uppercase tracking-wide text-graphite">Sent</p><p className="text-lg font-bold text-ink">{issue.sent_count ?? "—"}</p></div>
+            <div><p className="text-xs uppercase tracking-wide text-graphite">Opens</p><p className="text-lg font-bold text-ink">{issue.opens_count}</p></div>
+            <div><p className="text-xs uppercase tracking-wide text-graphite">Clicks</p><p className="text-lg font-bold text-ink">{issue.clicks_count}</p></div>
           </div>
           {issue.opens_count === 0 && issue.clicks_count === 0 && (
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-graphite">
               No opens or clicks recorded yet — this also reads 0 if the Resend account isn&apos;t live, since local sends use the logging stub.
             </p>
           )}
@@ -64,7 +65,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Content ({(items ?? []).length})</h2>
-        <ul className="mt-2 space-y-1 text-sm text-gray-600">
+        <ul className="mt-2 space-y-1 text-sm text-graphite">
           {(items ?? []).map((it, i) => (
             <li key={i}>{it.story?.title ?? (it.video && `${it.video.title} (video)`)}</li>
           ))}
@@ -75,29 +76,30 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Edit issue</h2>
           <form action={updateIssue} className="mt-3 space-y-3 text-sm">
+            <UnsavedChangesGuard />
             <input type="hidden" name="id" value={id} />
             <input name="subject" defaultValue={issue.subject} required className="w-full rounded border px-3 py-2" />
             <textarea name="intro" defaultValue={issue.intro ?? ""} placeholder="Intro paragraph" rows={2} className="w-full rounded border px-3 py-2" />
-            <p className="text-xs uppercase tracking-wide text-gray-500">Stories</p>
+            <p className="text-xs uppercase tracking-wide text-graphite">Stories</p>
             <div className="max-h-56 space-y-1 overflow-y-auto rounded border p-2">
               {(allStories ?? []).map((s) => (
                 <label key={s.id} className="flex items-center gap-2">
                   <input type="checkbox" name="stories" value={s.id} defaultChecked={pickedStoryIds.has(s.id)} />
                   <span>{s.title}</span>
-                  <span className="text-xs text-gray-500">{s.published_at?.slice(0, 10)}</span>
+                  <span className="text-xs text-graphite">{s.published_at?.slice(0, 10)}</span>
                 </label>
               ))}
             </div>
-            <p className="text-xs uppercase tracking-wide text-gray-500">Video (optional)</p>
+            <p className="text-xs uppercase tracking-wide text-graphite">Video (optional)</p>
             <div className="max-h-40 space-y-1 overflow-y-auto rounded border p-2">
               {(allVideos ?? []).map((v) => (
                 <label key={v.id} className="flex items-center gap-2">
                   <input type="checkbox" name="videos" value={v.id} defaultChecked={pickedVideoIds.has(v.id)} />
                   <span>{v.title}</span>
-                  <span className="text-xs text-gray-500">{v.published_at?.slice(0, 10)}</span>
+                  <span className="text-xs text-graphite">{v.published_at?.slice(0, 10)}</span>
                 </label>
               ))}
-              {!allVideos?.length && <p className="text-xs text-gray-500">No published videos yet.</p>}
+              {!allVideos?.length && <p className="text-xs text-graphite">No published videos yet.</p>}
             </div>
             <button className="rounded bg-ink px-4 py-2 text-white">Save changes</button>
           </form>
@@ -108,7 +110,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <details>
             <summary className="cursor-pointer font-bold text-ink">Preview email</summary>
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-graphite">
               This is the actual HTML the send job would build right now — the same proof a member would receive.
             </p>
             {/* sandbox blocks scripts/top navigation from anything a story excerpt or advert link_url might contain */}
@@ -126,24 +128,24 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
         <h2 className="font-bold text-ink">Advert slots ({(ads ?? []).length} · ~2–3 recommended)</h2>
         {(ads ?? []).map((a) => (
           <div key={a.advert_id} className="mt-2 flex items-center justify-between border-t pt-2 text-sm">
-            <span>{a.advert?.name} — {a.advert?.member?.name} <span className="text-gray-500">({a.advert?.format.replace(/_/g, " ")})</span></span>
+            <span>{a.advert?.name} — {a.advert?.member?.name} <span className="text-graphite">({a.advert?.format.replace(/_/g, " ")})</span></span>
             {editable && (
               <form action={detachNewsletterAd}>
                 <input type="hidden" name="issue_id" value={id} />
                 <input type="hidden" name="advert_id" value={a.advert_id} />
-                <button className="text-xs text-red-500 hover:underline">remove</button>
+                <button className="text-xs text-danger hover:underline">remove</button>
               </form>
             )}
           </div>
         ))}
-        {!ads?.length && <p className="mt-2 text-sm text-gray-500">Nothing attached yet.</p>}
+        {!ads?.length && <p className="mt-2 text-sm text-graphite">Nothing attached yet.</p>}
 
         {editable && (
           <>
-            <h3 className="mt-4 text-xs font-bold uppercase text-gray-500">Add</h3>
+            <h3 className="mt-4 text-xs font-bold uppercase text-graphite">Add</h3>
             {available.map((a) => (
               <div key={a.id} className="mt-2 flex items-center justify-between border-t pt-2 text-sm">
-                <span>{a.name} — {a.member?.name} <span className="text-gray-500">({a.format.replace(/_/g, " ")})</span></span>
+                <span>{a.name} — {a.member?.name} <span className="text-graphite">({a.format.replace(/_/g, " ")})</span></span>
                 <form action={attachNewsletterAd}>
                   <input type="hidden" name="issue_id" value={id} />
                   <input type="hidden" name="advert_id" value={a.id} />
@@ -151,7 +153,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
                 </form>
               </div>
             ))}
-            {!available.length && <p className="mt-2 text-sm text-gray-500">No newsletter-format artwork available — add some from Artwork.</p>}
+            {!available.length && <p className="mt-2 text-sm text-graphite">No newsletter-format artwork available — add some from Artwork.</p>}
           </>
         )}
       </section>

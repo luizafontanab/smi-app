@@ -15,7 +15,7 @@ export default function ConsoleError({ error, retry }: { error: Error & { digest
   return (
     <div className="mx-auto max-w-xl py-20 text-center">
       <h1 className="text-xl font-bold text-ink">This screen failed to load</h1>
-      <p className="mt-3 text-sm text-gray-600">
+      <p className="mt-3 text-sm text-graphite">
         Nothing has been saved or lost — the page just couldn&apos;t finish loading its data.
       </p>
       <button
@@ -24,7 +24,7 @@ export default function ConsoleError({ error, retry }: { error: Error & { digest
       >
         Try again
       </button>
-      {error.digest && <p className="mt-6 text-xs text-gray-500">Reference {error.digest}</p>}
+      {error.digest && <p className="mt-6 text-xs text-graphite">Reference {error.digest}</p>}
     </div>
   );
 }

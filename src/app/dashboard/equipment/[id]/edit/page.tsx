@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
@@ -23,12 +22,11 @@ export default async function EditMemberMachine(props: PageProps<"/dashboard/equ
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">Edit your equipment listing</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Saving sends it back for approval{machine.status === "rejected" ? "." : " — this replaces your earlier submission."}
       </p>
-      {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <form action={editMachine} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
         <input type="hidden" name="id" value={machine.id} />
         <div>
@@ -51,12 +49,12 @@ export default async function EditMemberMachine(props: PageProps<"/dashboard/equ
               <img src={mediaUrl(machine.image_path) ?? undefined} alt="" className="mt-1 h-16 rounded border" />
             )}
             <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
-            <p className="mt-1 text-xs text-gray-500">Landscape, JPG/PNG, max 8MB. Leave empty to keep the current photo.</p>
+            <p className="mt-1 text-xs text-graphite">Landscape, JPG/PNG, max 8MB. Leave empty to keep the current photo.</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button className="rounded bg-ink px-5 py-2.5 text-white">Save & resubmit</button>
-          <button type="submit" formAction={withdrawMachine} className="text-sm text-gray-500 underline hover:text-red-600">
+          <button type="submit" formAction={withdrawMachine} className="text-sm text-graphite underline hover:text-danger">
             Withdraw
           </button>
         </div>

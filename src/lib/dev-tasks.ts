@@ -13,13 +13,13 @@ import type { Database, Json } from "@/lib/db/types";
  * `kind` badge is the only thing that visually tells them apart.
  */
 
-export const DEV_STATUSES = ["not_started", "in_progress", "blocked", "in_staging", "done", "canceled"] as const;
+export const DEV_STATUSES = ["not_started", "coding", "testing", "in_staging", "done", "canceled"] as const;
 export type DevStatus = (typeof DEV_STATUSES)[number];
 
 export const DEV_STATUS_LABELS: Record<DevStatus, string> = {
   not_started: "Not started",
-  in_progress: "In progress",
-  blocked: "Blocked",
+  coding: "Coding",
+  testing: "Testing",
   in_staging: "In staging",
   done: "Done",
   canceled: "Canceled",
@@ -28,7 +28,7 @@ export const DEV_STATUS_LABELS: Record<DevStatus, string> = {
 // canceled is a list-view-only state — it has no column on the board.
 export const BOARD_STATUSES: readonly DevStatus[] = DEV_STATUSES.filter((s) => s !== "canceled");
 
-export const DEV_ASSIGNEES = ["Jas", "Rishi", "Luiza", "Harsh", "Dan"] as const;
+export const DEV_ASSIGNEES = ["Jas", "Rishi", "Luiza"] as const;
 export type DevAssignee = (typeof DEV_ASSIGNEES)[number];
 
 export const DEV_PRIORITIES = ["low", "medium", "high"] as const;
@@ -51,8 +51,8 @@ type BadgeTone = "neutral" | "brand" | "green" | "red";
 
 export const STATUS_TONE: Record<DevStatus, BadgeTone> = {
   not_started: "neutral",
-  in_progress: "brand",
-  blocked: "red",
+  coding: "brand",
+  testing: "brand",
   in_staging: "brand",
   done: "green",
   canceled: "neutral",

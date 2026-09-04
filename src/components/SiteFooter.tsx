@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { SMI_SOCIAL_URLS, SOCIAL_CHANNELS } from "@/lib/social";
 import { CookieSettingsLink } from "./CookieSettingsLink";
@@ -8,7 +9,16 @@ export function SiteFooter() {
     <footer className="mt-12 bg-chrome text-white">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-3">
         <div>
-          <p className="font-logo text-lg">Sheet Metal <span className="text-brand">Industries</span></p>
+          {/* The stacked lockup (from the supplied 500×500 "Deep orange" JPG,
+              white canvas keyed out and trimmed to 500×172), not the header's
+              wide SVG — the footer column suits the squarer shape. */}
+          <Image
+            src="/logo-stacked.png"
+            alt="Sheet Metal Industries"
+            width={500}
+            height={172}
+            className="h-20 w-auto"
+          />
           <p className="mt-2 text-sm text-white/70">The voice of the UK sheet metal, fabrication and welding trade.</p>
           <div className="mt-4 flex gap-3 text-xs text-white/70">
             {SOCIAL_CHANNELS.map((c) => (
@@ -21,6 +31,7 @@ export function SiteFooter() {
           <ul className="space-y-1 text-white/80">
             <li><Link href="/pages/about" className="hover:text-brand">About</Link></li>
             <li><Link href="/pages/policies" className="hover:text-brand">Policies</Link></li>
+            <li><Link href="/pages/faq" className="hover:text-brand">FAQ</Link></li>
             <li><Link href="/contact" className="hover:text-brand">Contact</Link></li>
             <li><Link href="/advertising" className="hover:text-brand">Advertising</Link></li>
             <li><Link href="/member" className="hover:text-brand">Find a Member</Link></li>
@@ -34,7 +45,7 @@ export function SiteFooter() {
           <NewsletterSignup />
         </div>
       </div>
-      <div className="border-t border-white/10 py-4 text-center text-xs text-white/50">
+      <div className="border-t border-white/10 py-4 text-center text-xs text-white/70">
         © {new Date().getFullYear()} Sheet Metal Industries. All rights reserved.
       </div>
     </footer>

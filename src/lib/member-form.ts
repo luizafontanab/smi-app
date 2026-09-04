@@ -2,7 +2,7 @@ import type { Database, Json } from "@/lib/db/types";
 import { activationBlocked, BILLING_MODES, MEMBER_STATUSES, slugify, type MemberStatus } from "@/lib/membership";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { mergeSocial } from "@/lib/social";
-import { EMAIL_RE, parseCoordinate } from "@/lib/validate";
+import { EMAIL_RE, parseCoordinate, parsePhone } from "@/lib/validate";
 
 /**
  * Console member editor: FormData → the payload to write to `members`.
@@ -68,16 +68,13 @@ export function memberValuesFromForm(
   const paid_at = timestamp(formData, "paid_at");
   if (paid_at && typeof paid_at === "object") return paid_at;
 
+  const phone = parsePhone(text(formData, "phone"));
+  if (phone && typeof phone === "object") return phone;
+
   const comped_until = nullable(formData, "comped_until");
 
   const blocked = activationBlocked(existing, { status, paid_at, comped_until });
   if (blocked) return { error: blocked };
-
-  // one line per testimonial — the only editor these have anywhere in the app
-  const testimonials = text(formData, "testimonials")
-    .split("\n")
-    .map((t) => t.trim())
-    .filter(Boolean);
 
   // prefixed names: bare social keys would collide with `name` and `status`
   const social = mergeSocial(existing.social, (key) => String(formData.get(`social_${key}`) ?? ""));
@@ -93,7 +90,7 @@ export function memberValuesFromForm(
     category_id: Number(formData.get("category_id")) || null,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     address: nullable(formData, "address"),
-    phone: nullable(formData, "phone"),
+    phone,
     website: nullable(formData, "website"),
     video_url: nullable(formData, "video_url"),
     contact_email,
@@ -104,7 +101,6 @@ export function memberValuesFromForm(
     comped_until,
     paid_at,
     social,
-    testimonials: testimonials as Json,
     // fulfilment tag only — see the neutrality note on the column's migration
     // and the source-grep test in tests/unit/adverts.test.ts
     is_bundle_account: checked(formData, "is_bundle_account"),

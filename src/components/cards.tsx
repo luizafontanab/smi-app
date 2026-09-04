@@ -43,7 +43,7 @@ export function VideoCard({ video, size = "md" }: { video: VideoCardData; size?:
       </div>
       <div className="p-3">
         <p className={`font-semibold line-clamp-2 ${size === "sm" ? "text-sm" : ""}`}>{video.title}</p>
-        {video.member && <p className="mt-1 text-xs text-gray-500">{video.member.name}</p>}
+        {video.member && <p className="mt-1 text-xs text-graphite">{video.member.name}</p>}
       </div>
     </Link>
   );
@@ -72,8 +72,8 @@ export function FeaturedMemberCard({ member, variant = "card" }: { member: Featu
         )}
         <div className="min-w-0">
           <p className="text-lg font-bold">{member.name}</p>
-          {member.category && <p className="text-xs uppercase tracking-wide text-gray-500">{member.category.name}</p>}
-          {member.description && <p className="mt-1 text-sm text-gray-600 line-clamp-2">{member.description}</p>}
+          {member.category && <p className="text-xs uppercase tracking-wide text-graphite">{member.category.name}</p>}
+          {member.description && <p className="mt-1 text-sm text-graphite line-clamp-2">{member.description}</p>}
         </div>
         <span className="ml-auto hidden shrink-0 text-sm text-graphite group-hover:underline md:block">View member page →</span>
       </Link>
@@ -86,10 +86,10 @@ export function FeaturedMemberCard({ member, variant = "card" }: { member: Featu
         {member.logo_path && <Image src={mediaUrl(member.logo_path)!} alt="" width={48} height={48} className="rounded" unoptimized />}
         <div>
           <p className="font-bold">{member.name}</p>
-          {member.category && <p className="text-xs text-gray-500">{member.category.name}</p>}
+          {member.category && <p className="text-xs text-graphite">{member.category.name}</p>}
         </div>
       </div>
-      {variant !== "compact" && member.description && <p className="mt-2 text-sm text-gray-600 line-clamp-3">{member.description}</p>}
+      {variant !== "compact" && member.description && <p className="mt-2 text-sm text-graphite line-clamp-3">{member.description}</p>}
     </Link>
   );
 }
@@ -109,7 +109,7 @@ export type EventCardData = {
 
 function EventTypeBadge({ type }: { type: string | null | undefined }) {
   if (!type || !isEventType(type)) return null;
-  return <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand">{EVENT_TYPE_LABELS[type]}</span>;
+  return <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand-text">{EVENT_TYPE_LABELS[type]}</span>;
 }
 
 // starts_on/ends_on are date columns, not timestamps — format in UTC or they
@@ -141,7 +141,7 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
           <EventTypeBadge type={event.type} />
         </div>
         <p className="mt-1 font-semibold line-clamp-2">{event.title}</p>
-        {event.location && <p className="mt-1 text-sm text-gray-500 line-clamp-2 break-words">{event.location}</p>}
+        {event.location && <p className="mt-1 text-sm text-graphite line-clamp-2 break-words">{event.location}</p>}
       </Link>
     );
   }
@@ -158,12 +158,12 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
       <h2 className="mt-1 text-lg font-bold">
         <Link href={`/event/${event.slug}`} className="hover:text-graphite">{event.title}</Link>
       </h2>
-      {event.location && <p className="text-sm text-gray-500 break-words">{event.location}</p>}
-      {excerpt && <p className="mt-2 text-sm text-gray-600">{excerpt}</p>}
+      {event.location && <p className="text-sm text-graphite break-words">{event.location}</p>}
+      {excerpt && <p className="mt-2 text-sm text-graphite">{excerpt}</p>}
       <div className="mt-2 flex gap-3 text-sm text-graphite">
         <Link href={`/event/${event.slug}`} className="hover:underline">Details →</Link>
         {event.link && <a href={event.link} target="_blank" rel="noopener" className="hover:underline">Event website →</a>}
-        {event.member && <span className="text-gray-500">Hosted by {event.member.name}</span>}
+        {event.member && <span className="text-graphite">Hosted by {event.member.name}</span>}
       </div>
     </div>
   );
@@ -185,7 +185,7 @@ export function MachineCard({ machine }: { machine: MachineCardData }) {
       </div>
       <div className="p-3">
         <p className="text-sm font-semibold line-clamp-2">{machine.name}</p>
-        {machine.member && <p className="mt-1 text-xs text-gray-500">{machine.member.name}</p>}
+        {machine.member && <p className="mt-1 text-xs text-graphite">{machine.member.name}</p>}
       </div>
     </Link>
   );

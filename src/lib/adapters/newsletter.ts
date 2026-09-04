@@ -156,7 +156,7 @@ export async function renderIssueHtml(issueId: string): Promise<{ subject: strin
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #e4e6e9;border-radius:6px;overflow:hidden;font-family:'League Spartan',Helvetica,Arial,sans-serif;">
         <tr><td style="background:#0b0d10;padding:20px 28px;">
-          <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#fe5000;">SMI Monthly · Issue ${issue.number}</p>
+          <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#ff8200;">SMI Monthly · Issue ${issue.number}</p>
           <p style="margin:6px 0 0;font-size:21px;font-weight:700;color:#ffffff;">${escapeHtml(issue.subject)}</p>
           ${issue.intro ? `<p style="margin:8px 0 0;font-size:15px;line-height:1.5;color:#ffffff;opacity:0.8;">${escapeHtml(issue.intro)}</p>` : ""}
         </td></tr>

@@ -44,7 +44,7 @@ export default async function NewsletterIssuePage(props: PageProps<"/newsletters
             )}
             <div>
               <p className="font-semibold leading-snug">{story.title}</p>
-              {story.excerpt && <p className="mt-1 text-xs text-gray-500 line-clamp-2">{story.excerpt}</p>}
+              {story.excerpt && <p className="mt-1 text-xs text-graphite line-clamp-2">{story.excerpt}</p>}
             </div>
           </Link>
         ))}

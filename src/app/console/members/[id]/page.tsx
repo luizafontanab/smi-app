@@ -10,6 +10,7 @@ import { SOCIAL_CHANNELS } from "@/lib/social";
 import { Badge, Card, SectionTitle } from "@/components/console/ui";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { SubmitButton } from "@/components/SubmitButton";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import {
   consoleUploadImage, createMember, decideRevision, recordMemberPayment, saveMember, setMemberStatus,
 } from "../../actions";
@@ -31,14 +32,15 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   if (id === "new") {
     return (
       <div className="mx-auto max-w-lg">
-        <Link href="/console/members" className="text-sm text-gray-500 hover:text-ink">← Members</Link>
+        <Link href="/console/members" className="text-sm text-graphite hover:text-ink">← Members</Link>
         <h1 className="mt-1 text-xl font-bold text-ink">New member</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-graphite">
           Creates their login and a draft company page. Category, page content and billing come next, on the edit screen.
         </p>
-        {error && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+        {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
         <Card className="mt-4">
           <form action={createMember} className="space-y-4">
+            <UnsavedChangesGuard />
             <div>
               <label htmlFor="company" className={label}>Company name</label>
               <input id="company" name="company" required className={field} />
@@ -50,7 +52,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             <div>
               <label htmlFor="password" className={label}>Password</label>
               <input id="password" name="password" type="password" required minLength={8} className={field} />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-graphite">
                 At least 8 characters. Pass it to them yourself — no email is sent from here.
               </p>
             </div>
@@ -65,7 +67,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
   const [{ data: member }, { data: cats }, { data: revisions }] = await Promise.all([
     db.from("members").select(
-      "id, slug, name, status, category_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, testimonials, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
+      "id, slug, name, status, category_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
     ).eq("id", id).single(),
     db.from("categories").select("id, name").eq("kind", "member").order("name"),
     db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1),
@@ -78,7 +80,6 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   const timeline = await memberActivityTimeline(id);
 
   const social = (member.social ?? {}) as Record<string, string>;
-  const testimonials = Array.isArray(member.testimonials) ? (member.testimonials as unknown[]) : [];
   const logo = mediaUrl(member.logo_path);
   const hero = mediaUrl(member.hero_path);
   const isDraft = member.status === "draft";
@@ -87,20 +88,20 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/members" className="text-sm text-gray-500 hover:text-ink">← Members</Link>
+      <Link href="/console/members" className="text-sm text-graphite hover:text-ink">← Members</Link>
       <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
           {member.name} <Badge tone={STATUS_TONE[member.status]}>{member.status}</Badge>
           {member.status !== "active" && (
             isDraft && !member.paid_at && !member.comped_until ? (
-              <span className="text-xs font-normal text-gray-500">awaiting payment</span>
+              <span className="text-xs font-normal text-graphite">awaiting payment</span>
             ) : isDraft && !member.draft_submitted_at ? (
-              <span className="text-xs font-normal text-gray-500">awaiting page</span>
+              <span className="text-xs font-normal text-graphite">awaiting page</span>
             ) : (
               <form action={setMemberStatus}>
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="status" value="active" />
-                <button className="rounded bg-green-600 px-3 py-1 text-xs font-semibold text-white">Activate</button>
+                <button className="rounded bg-success px-3 py-1 text-xs font-semibold text-white">Activate</button>
               </form>
             )
           )}
@@ -112,15 +113,15 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
       </div>
 
       {typeof sp.created === "string" && (
-        <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Member created — finish their details below.</p>
+        <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Member created — finish their details below.</p>
       )}
-      {typeof sp.saved === "string" && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Saved.</p>}
-      {error && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {typeof sp.saved === "string" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
 
       {pendingRevision && (
         <Card className="mt-4 border-brand/40 bg-brand/5">
           <SectionTitle>Changes awaiting approval</SectionTitle>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-graphite">
             This member submitted edits on {pendingRevision.created_at.slice(0, 10)}. Approving applies their whole
             submission and will overwrite anything you change here — decide this first.
           </p>
@@ -128,19 +129,20 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             <form action={decideRevision}>
               <input type="hidden" name="id" value={pendingRevision.id} />
               <input type="hidden" name="decision" value="approve" />
-              <button className="rounded bg-green-600 px-4 py-2 text-sm text-white">Approve &amp; apply</button>
+              <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve &amp; apply</button>
             </form>
             <form action={decideRevision} className="flex flex-1 gap-2">
               <input type="hidden" name="id" value={pendingRevision.id} />
               <input type="hidden" name="decision" value="reject" />
               <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-              <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600">Reject</button>
+              <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
             </form>
           </div>
         </Card>
       )}
 
       <form action={saveMember} className="mt-4 space-y-4">
+        <UnsavedChangesGuard />
         <input type="hidden" name="id" value={id} />
 
         <Card>
@@ -162,11 +164,11 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             <div>
               <label htmlFor="slug" className={label}>Web address</label>
               <div className="mt-1 flex items-center gap-1">
-                <span className="text-sm text-gray-500">/member/</span>
+                <span className="text-sm text-graphite">/member/</span>
                 <input id="slug" name="slug" defaultValue={member.slug} className="w-full rounded border px-3 py-2" />
               </div>
               {!isDraft && (
-                <label className="mt-1.5 flex items-center gap-2 text-xs text-gray-500">
+                <label className="mt-1.5 flex items-center gap-2 text-xs text-graphite">
                   <input type="checkbox" name="confirm_slug" />
                   Changing this changes their public URL — old links will be redirected automatically.
                 </label>
@@ -187,7 +189,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 {logo && <Image src={logo} alt="" width={64} height={64} className="mt-1 rounded border" unoptimized />}
                 <input id="logo" type="file" name="logo" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
                 {logo && (
-                  <label className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                  <label className="mt-1 flex items-center gap-2 text-xs text-graphite">
                     <input type="checkbox" name="remove_logo" /> Remove the current logo
                   </label>
                 )}
@@ -197,7 +199,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 {hero && <Image src={hero} alt="" width={128} height={64} className="mt-1 rounded border object-cover" unoptimized />}
                 <input id="hero" type="file" name="hero" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
                 {hero && (
-                  <label className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                  <label className="mt-1 flex items-center gap-2 text-xs text-graphite">
                     <input type="checkbox" name="remove_hero" /> Remove the current cover
                   </label>
                 )}
@@ -205,7 +207,11 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div><label htmlFor="address" className={label}>Address</label><input id="address" name="address" defaultValue={member.address ?? ""} className={field} /></div>
-              <div><label htmlFor="phone" className={label}>Phone</label><input id="phone" name="phone" defaultValue={member.phone ?? ""} className={field} /></div>
+              <div>
+                <label htmlFor="phone" className={label}>Phone</label>
+                <input id="phone" name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ""} className={field} />
+                <p className="mt-1 text-xs text-graphite">Digits, spaces, +, ( ) and - only.</p>
+              </div>
               <div><label htmlFor="website" className={label}>Website</label><input id="website" name="website" defaultValue={member.website ?? ""} className={field} /></div>
               <div><label htmlFor="video_url" className={label}>YouTube video URL</label><input id="video_url" name="video_url" defaultValue={member.video_url ?? ""} className={field} /></div>
               <div>
@@ -217,28 +223,18 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 <input id="lng" name="lng" defaultValue={member.lng ?? ""} inputMode="decimal" className={field} />
               </div>
             </div>
-            <p className="-mt-2 text-xs text-gray-500">Latitude and longitude place the map on their profile. Leave both empty for no map.</p>
+            <p className="-mt-2 text-xs text-graphite">Latitude and longitude place the map on their profile. Leave both empty for no map.</p>
             <fieldset>
               <legend className={label}>Social profiles</legend>
               <div className="mt-2 grid gap-4 sm:grid-cols-2">
                 {SOCIAL_CHANNELS.map((c) => (
                   <label key={c.key} className="text-sm">
-                    <span className="text-gray-500">{c.label}</span>
+                    <span className="text-graphite">{c.label}</span>
                     <input name={socialFieldName(c.key)} defaultValue={social[c.key] ?? ""} placeholder={c.placeholder} className={field} />
                   </label>
                 ))}
               </div>
             </fieldset>
-            <div>
-              <label htmlFor="testimonials" className={label}>Testimonials</label>
-              <textarea id="testimonials"
-                name="testimonials"
-                rows={3}
-                defaultValue={testimonials.filter((t) => typeof t === "string").join("\n")}
-                className={field}
-              />
-              <p className="mt-1 text-xs text-gray-500">One per line.</p>
-            </div>
           </fieldset>
         </Card>
 
@@ -255,7 +251,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                   <option value="lapsed">lapsed</option>
                 </select>
                 {isDraft && (
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-graphite">
                     A draft can only go active once a payment or comp is on record.
                   </p>
                 )}
@@ -272,18 +268,18 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               <div>
                 <label htmlFor="paid_at" className={label}>Paid at</label>
                 <input id="paid_at" type="datetime-local" name="paid_at" defaultValue={member.paid_at?.slice(0, 16) ?? ""} className={field} />
-                <p className="mt-1 text-xs text-gray-500">For corrections — use “Record payment” below to raise an invoice too.</p>
+                <p className="mt-1 text-xs text-graphite">For corrections — use “Record payment” below to raise an invoice too.</p>
               </div>
               <div><label htmlFor="comped_until" className={label}>Comped until</label><input id="comped_until" type="date" name="comped_until" defaultValue={member.comped_until ?? ""} className={field} /></div>
               <div className="sm:col-span-2">
                 <label htmlFor="contact_email" className={label}>Contact email</label>
                 <input id="contact_email" name="contact_email" type="email" defaultValue={member.contact_email ?? ""} className={field} />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-graphite">
                   Where their notifications go. This is not their login — changing it here does not change how they sign in.
                 </p>
               </div>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-graphite">
               Page submitted: {member.draft_submitted_at?.slice(0, 10) ?? "not yet"}
               {member.stripe_customer_id && ` · Stripe customer ${member.stripe_customer_id}`}
             </p>
@@ -291,7 +287,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               <input type="checkbox" name="is_bundle_account" defaultChecked={member.is_bundle_account} className="mt-0.5" />
               <span>
                 Bundle account
-                <span className="block text-xs text-gray-500">
+                <span className="block text-xs text-graphite">
                   Fulfilment tag only, for your own tracking — never affects which adverts rotate or how often.
                 </span>
               </span>
@@ -306,7 +302,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
       <Card className="mt-4">
         <SectionTitle>Record a payment</SectionTitle>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-graphite">
           For payments taken offline. A payment raises the £40 invoice the member sees under Billing; a comp just extends their free period.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-4">
@@ -329,11 +325,11 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         <ul className="mt-2 space-y-1.5 text-sm">
           {timeline.map((t, i) => (
             <li key={i} className="flex gap-3 border-t pt-1.5">
-              <span className="w-24 shrink-0 text-xs text-gray-500">{t.when?.slice(0, 10)}</span>
+              <span className="w-24 shrink-0 text-xs text-graphite">{t.when?.slice(0, 10)}</span>
               <span>{t.what}</span>
             </li>
           ))}
-          {timeline.length === 0 && <p className="text-sm text-gray-500">No activity yet.</p>}
+          {timeline.length === 0 && <p className="text-sm text-graphite">No activity yet.</p>}
         </ul>
       </Card>
     </div>

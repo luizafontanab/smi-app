@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { notificationLabel } from "@/lib/email/templates";
@@ -27,7 +26,6 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-ink">
           Notifications{Boolean(unread) && <span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-ink">{unread} unread</span>}
@@ -39,20 +37,20 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
         )}
       </div>
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
-        {(notifications ?? []).length === 0 && <p className="text-sm text-gray-500">No notifications yet.</p>}
+        {(notifications ?? []).length === 0 && <p className="text-sm text-graphite">No notifications yet.</p>}
         {(notifications ?? []).map((n) => (
           <div key={n.id} className="flex items-center justify-between gap-3 border-t py-3 text-sm first:border-t-0 first:pt-0">
             <div>
               {!n.read_at && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-brand" aria-label="unread" />}
-              <span className={n.read_at ? "text-gray-600" : "font-semibold text-ink"}>
+              <span className={n.read_at ? "text-graphite" : "font-semibold text-ink"}>
                 {n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind)}
               </span>
-              <span className="ml-2 text-xs text-gray-500">{n.created_at.slice(0, 10)}</span>
+              <span className="ml-2 text-xs text-graphite">{n.created_at.slice(0, 10)}</span>
             </div>
             {!n.read_at && (
               <form action={markNotificationRead}>
                 <input type="hidden" name="id" value={n.id} />
-                <button type="submit" className="text-xs text-gray-500 underline hover:text-ink">Mark read</button>
+                <button type="submit" className="text-xs text-graphite underline hover:text-ink">Mark read</button>
               </form>
             )}
           </div>

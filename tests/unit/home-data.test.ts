@@ -21,7 +21,10 @@ const {
   requestContext: vi.fn(async () => ({ session_hash: null as string | null, referrer: null as string | null, region: null as string | null, company: null as string | null, consented: false })),
   record: vi.fn(() => {}),
 }));
-vi.mock("@/lib/queries", () => ({
+// Spread the real module first: featuredMemberPlacements is a pure filter that
+// loadHome applies to the mocked activePlacements() result — keep it real.
+vi.mock("@/lib/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/queries")>()),
   headlineStory, publishedStories, publishedVideos, upcomingEvents, activePlacements, sentNewsletters,
   memberDirectory, storyCategories, storyIntros,
 }));

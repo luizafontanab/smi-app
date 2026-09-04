@@ -34,7 +34,7 @@ export default async function FeaturedMachinePage() {
   const machineMain = (
     <>
       <h1 className="mt-6 text-2xl font-bold text-ink">Featured Machine</h1>
-      {machines.length === 0 && <p className="mt-6 text-gray-500">No featured machine this month.</p>}
+      {machines.length === 0 && <p className="mt-6 text-graphite">No featured machine this month.</p>}
       {machines.map(({ machine }) => machine && (
         <article key={machine.id} className="mt-6 overflow-hidden rounded-xl bg-white shadow-sm">
           {machine.image_path && (
@@ -43,14 +43,14 @@ export default async function FeaturedMachinePage() {
             </div>
           )}
           <div className="p-6">
-            <p className="text-xs uppercase tracking-widest text-brand">Machine of the month</p>
+            <p className="text-xs uppercase tracking-widest text-brand-text">Machine of the month</p>
             <h2 className="mt-1 text-2xl font-bold text-ink">{machine.name}</h2>
             {machine.member && (
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-graphite">
                 Offered by <Link href={`/member/${machine.member.slug}`} className="text-graphite underline">{machine.member.name}</Link>
               </p>
             )}
-            <RichText html={machine.description} className="mt-4 text-gray-700" />
+            <RichText html={machine.description} className="mt-4 text-ink" />
             <div className="mt-6 flex flex-wrap gap-3">
               {machine.external_url && (
                 <a href={machine.external_url} target="_blank" rel="noopener" className="rounded bg-ink px-5 py-2.5 text-white">

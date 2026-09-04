@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { ChannelBreakdown } from "@/components/ChannelBreakdown";
@@ -134,9 +133,8 @@ export default async function MemberStatsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">Your statistics</h1>
-      <p className="mt-1 text-sm text-gray-500">Real, unpadded numbers, measured on SMI&apos;s own platform.</p>
+      <p className="mt-1 text-sm text-graphite">Real, unpadded numbers, measured on SMI&apos;s own platform.</p>
 
       <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat
@@ -153,13 +151,13 @@ export default async function MemberStatsPage() {
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Clicks by channel</h2>
-        <p className="mt-1 text-xs text-gray-500">Last 12 months.</p>
+        <p className="mt-1 text-xs text-graphite">Last 12 months.</p>
         <div className="mt-3">
           <ChannelBreakdown rows={[...channelCounts.entries()].map(([label, count]) => ({ label, count }))} />
         </div>
       </section>
       {acceptRatePct !== null && (
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-graphite">
           These counts only include visits where the reader accepted analytics cookies — about {acceptRatePct}% of
           site traffic in the last 30 days. Treat every number above as a floor, not a total.
         </p>
@@ -167,7 +165,7 @@ export default async function MemberStatsPage() {
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Newsletter value</h2>
-        <p className="mt-1 text-sm text-gray-600">
+        <p className="mt-1 text-sm text-graphite">
           Your stories featured in <b>{featuredIn}</b> newsletter issue{featuredIn === 1 ? "" : "s"} this year, reaching
           ~{readerEstimate.toLocaleString()} trade readers each.
           {newsletterClicks > 0 && <> Your newsletter adverts have been clicked <b>{newsletterClicks}</b> time{newsletterClicks === 1 ? "" : "s"}.</>}
@@ -176,23 +174,23 @@ export default async function MemberStatsPage() {
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Who&apos;s engaging</h2>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-graphite">
           Company and region attribution isn&apos;t switched on yet — that layer is parked for a later phase, not a
           per-visit lookup that came back empty. The dates and view counts below are real.
         </p>
         <div className="overflow-x-auto mt-3">
         <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Date</th><th scope="col">Who</th><th scope="col">Where</th><th scope="col">Views</th></tr></thead>
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Date</th><th scope="col">Who</th><th scope="col">Where</th><th scope="col">Views</th></tr></thead>
           <tbody>
             {(audit.data ?? []).map((a, i) => (
               <tr key={i} className="border-t">
-                <td className="py-1.5 text-gray-500">{a.occurred_on}</td>
-                <td className="font-medium">{a.company ?? <span className="font-normal text-gray-500">Not available yet</span>}</td>
-                <td>{a.region ?? <span className="text-gray-500">Not available yet</span>}</td>
+                <td className="py-1.5 text-graphite">{a.occurred_on}</td>
+                <td className="font-medium">{a.company ?? <span className="font-normal text-graphite">Not available yet</span>}</td>
+                <td>{a.region ?? <span className="text-graphite">Not available yet</span>}</td>
                 <td>{a.views}</td>
               </tr>
             ))}
-            {(audit.data ?? []).length === 0 && <tr><td colSpan={4} className="py-3 text-gray-500">No engagement recorded yet.</td></tr>}
+            {(audit.data ?? []).length === 0 && <tr><td colSpan={4} className="py-3 text-graphite">No engagement recorded yet.</td></tr>}
           </tbody>
         </table>
         </div>
@@ -204,9 +202,9 @@ export default async function MemberStatsPage() {
 function Stat({ label, value, sub, children }: { label: string; value: number; sub: string; children?: React.ReactNode }) {
   return (
     <div className="rounded-xl bg-white p-4 shadow-sm">
-      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="text-xs uppercase tracking-wide text-graphite">{label}</p>
       <p className="mt-1 text-2xl font-bold text-ink">{value.toLocaleString()}</p>
-      <p className="text-xs text-gray-500">{sub}</p>
+      <p className="text-xs text-graphite">{sub}</p>
       {children}
     </div>
   );

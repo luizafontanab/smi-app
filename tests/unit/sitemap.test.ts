@@ -29,6 +29,7 @@ describe("sitemap", () => {
       events: () => queryBuilder(dbOk([{ slug: "acme-event" }])),
       newsletter_issues: () => queryBuilder(dbOk([{ web_slug: "issue-47" }])),
       static_pages: () => queryBuilder(dbOk([{ slug: "about", updated_at: "2026-02-01" }])),
+      categories: () => queryBuilder(dbOk([{ slug: "laser-cutting" }])),
     });
 
     const entries = await sitemap();
@@ -40,5 +41,6 @@ describe("sitemap", () => {
     expect(paths.some((u) => u.endsWith("/event/acme-event"))).toBe(true);
     expect(paths.some((u) => u.endsWith("/newsletters/issue-47"))).toBe(true);
     expect(paths.some((u) => u.endsWith("/pages/about"))).toBe(true);
+    expect(paths.some((u) => u.endsWith("/industry/laser-cutting"))).toBe(true);
   });
 });

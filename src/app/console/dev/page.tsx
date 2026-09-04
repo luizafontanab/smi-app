@@ -28,8 +28,8 @@ const SELECT =
   "id, title, description, notes, triage_notes, context, kind, status, assignee, priority, sort_order, page_path, created_by, reporter_email, created_at, updated_at";
 
 // board order, canceled last — used to sort the list view the same way the
-// board reads, since a plain alphabetical/status sort would scatter blocked
-// tasks away from in_progress.
+// board reads, since a plain alphabetical/status sort would scatter coding
+// tasks away from testing.
 const STATUS_RANK: Record<string, number> = Object.fromEntries(DEV_STATUSES.map((s, i) => [s, i]));
 
 export default async function DevBoardPage(props: PageProps<"/console/dev">) {
@@ -56,7 +56,7 @@ export default async function DevBoardPage(props: PageProps<"/console/dev">) {
           <Link
             key={t.view}
             href={devQs(filters, { view: t.view })}
-            className={`rounded-t px-4 py-2 ${t.view === filters.view ? "border border-b-0 bg-white font-semibold text-ink" : "text-gray-500 hover:text-ink"}`}
+            className={`rounded-t px-4 py-2 ${t.view === filters.view ? "border border-b-0 bg-white font-semibold text-ink" : "text-graphite hover:text-ink"}`}
           >
             {t.label}
           </Link>
@@ -66,7 +66,7 @@ export default async function DevBoardPage(props: PageProps<"/console/dev">) {
       <form method="get" className="mt-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 text-sm shadow-sm">
         <input type="hidden" name="view" value={filters.view} />
         <div>
-          <label htmlFor="dev-q" className="block text-xs uppercase tracking-wide text-gray-500">
+          <label htmlFor="dev-q" className="block text-xs uppercase tracking-wide text-graphite">
             Search
           </label>
           <input
@@ -97,21 +97,21 @@ export default async function DevBoardPage(props: PageProps<"/console/dev">) {
             </label>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-xs text-gray-500">
+        <label className="flex items-center gap-2 text-xs text-graphite">
           <input type="checkbox" name="show" value="all" defaultChecked={filters.showClosed} />
           Show done &amp; canceled
         </label>
         <div className="flex gap-2">
           <button className="rounded bg-ink px-4 py-1.5 text-white">Apply</button>
-          <Link href={`?view=${filters.view}`} className="rounded border px-4 py-1.5 text-gray-500">
+          <Link href={`?view=${filters.view}`} className="rounded border px-4 py-1.5 text-graphite">
             Clear
           </Link>
         </div>
       </form>
 
-      {typeof sp.deleted === "string" && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Task deleted.</p>}
-      {typeof sp.saved === "string" && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Saved.</p>}
-      {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.deleted === "string" && <p role="status" className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Task deleted.</p>}
+      {typeof sp.saved === "string" && <p role="status" className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       {filters.view === "board" ? (
         // The "show done & canceled" toggle is list-only — Done is a real
@@ -131,15 +131,15 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
   return (
     <section className="mt-5 rounded-xl bg-white p-5 shadow-sm">
       <form action={createDevTask} className="flex flex-wrap gap-2 text-sm">
-        <input name="title" placeholder="+ Add task" required className="min-w-48 flex-1 rounded border px-3 py-1.5" />
-        <select name="status" defaultValue="not_started" className="max-w-full rounded border px-3 py-1.5">
+        <input name="title" placeholder="+ Add task" aria-label="New task title" required className="min-w-48 flex-1 rounded border px-3 py-1.5" />
+        <select name="status" defaultValue="not_started" aria-label="Status" className="max-w-full rounded border px-3 py-1.5">
           {DEV_STATUSES.map((s) => (
             <option key={s} value={s}>
               {DEV_STATUS_LABELS[s]}
             </option>
           ))}
         </select>
-        <select name="assignee" defaultValue="" className="max-w-full rounded border px-3 py-1.5">
+        <select name="assignee" defaultValue="" aria-label="Assignee" className="max-w-full rounded border px-3 py-1.5">
           <option value="">— unassigned —</option>
           {DEV_ASSIGNEES.map((a) => (
             <option key={a} value={a}>
@@ -151,12 +151,12 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
       </form>
 
       {sorted.length === 0 ? (
-        <p className="mt-4 text-sm text-gray-500">No tasks match these filters.</p>
+        <p className="mt-4 text-sm text-graphite">No tasks match these filters.</p>
       ) : (
         <div className="overflow-x-auto mt-4">
         <table className="w-full text-sm min-w-[560px]">
           <thead>
-            <tr className="text-left text-xs uppercase text-gray-500">
+            <tr className="text-left text-xs uppercase text-graphite">
               <th scope="col" className="py-1">Title</th>
               <th scope="col">Status</th>
               <th scope="col">Assignee</th>
@@ -171,17 +171,17 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
                   <Link href={`/console/dev/${t.id}${returnTo}`} className="font-medium hover:text-graphite">
                     {t.title}
                   </Link>
-                  {t.kind && <span className="ml-1.5 text-xs text-gray-500">({DEV_TASK_KIND_LABELS[t.kind]})</span>}
-                  {t.description && <p className="mt-0.5 truncate text-xs text-gray-500">{t.description}</p>}
+                  {t.kind && <span className="ml-1.5 text-xs text-graphite">({DEV_TASK_KIND_LABELS[t.kind]})</span>}
+                  {t.description && <p className="mt-0.5 truncate text-xs text-graphite">{t.description}</p>}
                 </td>
                 <td>
                   <Badge tone={STATUS_TONE[t.status]}>{DEV_STATUS_LABELS[t.status]}</Badge>
                 </td>
-                <td className="text-gray-500">{t.assignee ?? "—"}</td>
+                <td className="text-graphite">{t.assignee ?? "—"}</td>
                 <td>
                   <Badge tone={PRIORITY_TONE[t.priority]}>{t.priority}</Badge>
                 </td>
-                <td className="text-xs text-gray-500">{new Date(t.updated_at).toLocaleDateString("en-GB")}</td>
+                <td className="text-xs text-graphite">{new Date(t.updated_at).toLocaleDateString("en-GB")}</td>
               </tr>
             ))}
           </tbody>

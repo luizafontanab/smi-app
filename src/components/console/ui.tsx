@@ -25,9 +25,9 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 export function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-xl border border-black/5 bg-white p-4 shadow-sm">
-      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-ink">{value}</p>
-      {sub && <p className="text-xs text-gray-500">{sub}</p>}
+      <p className="text-xs uppercase tracking-wide text-graphite">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-ink tabular-nums">{value}</p>
+      {sub && <p className="text-xs text-graphite">{sub}</p>}
     </div>
   );
 }
@@ -35,8 +35,8 @@ export function Stat({ label, value, sub }: { label: string; value: string; sub?
 const BADGE_TONES = {
   neutral: "bg-ink/10 text-ink",
   brand: "bg-brand/20 text-ink",
-  green: "bg-green-100 text-green-700",
-  red: "bg-red-100 text-red-700",
+  green: "bg-success/10 text-success",
+  red: "bg-danger/10 text-danger",
 } as const;
 
 export function Badge({ tone = "neutral", children }: { tone?: keyof typeof BADGE_TONES; children: ReactNode }) {

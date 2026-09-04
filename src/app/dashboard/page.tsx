@@ -1,33 +1,23 @@
 import Link from "next/link";
 import { requireMember } from "@/lib/auth";
-import { bookingPhase } from "@/lib/adverts";
 import { serviceDb } from "@/lib/db/server";
 import { notificationLabel } from "@/lib/email/templates";
 import { dismissOnboarding, withdrawEvent, withdrawMachine, withdrawStory, withdrawVideo } from "./actions";
+import { IconBuilding, IconChart, IconMegaphone, IconNewspaper, IconReceipt } from "@/components/icons";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { WelcomePanel } from "./WelcomePanel";
 
 export const dynamic = "force-dynamic";
 
-const ADVERT_PHASE: Record<string, { label: string; className: string }> = {
-  draft: { label: "draft, not sent", className: "text-gray-500" },
-  awaiting: { label: "awaiting approval", className: "text-brand" },
-  changes_needed: { label: "needs a change", className: "text-red-600" },
-  upcoming: { label: "scheduled", className: "text-graphite" },
-  live: { label: "live now", className: "text-green-600" },
-  ended: { label: "ended — run it again?", className: "text-gray-500" },
-};
-
+// Equipment self-submission is hidden for now (fix list item 9) — the routes,
+// actions and the submissions list below stay live so in-flight machines can
+// still be edited or withdrawn.
 const CARDS = [
-  { href: "/dashboard/profile", icon: "🏢", title: "Update your page", sub: "Description, images, video, socials" },
-  { href: "/dashboard/story/new", icon: "📰", title: "Add a story", sub: "Your news on SMI's channels" },
-  { href: "/dashboard/video/new", icon: "🎬", title: "Add a video", sub: "Your video on SMI's channels" },
-  { href: "/dashboard/event/new", icon: "📅", title: "Add an event", sub: "Open days, shows, launches" },
-  { href: "/dashboard/equipment/new", icon: "⚙️", title: "Add equipment", sub: "Machines for sale, linked to your site" },
-  { href: "/dashboard/stats", icon: "📈", title: "View statistics", sub: "Who's engaging with you" },
-  { href: "/dashboard/advert/new", icon: "📣", title: "Advertise", sub: "Your banner in the rotation" },
-  { href: "/dashboard/buy", icon: "⭐", title: "Buy visibility", sub: "Featured slots & newsletter" },
-  { href: "/dashboard/billing", icon: "🧾", title: "Billing", sub: "Invoices & membership" },
+  { href: "/dashboard/profile", Icon: IconBuilding, title: "Update your page", sub: "Description, images, video, socials" },
+  { href: "/dashboard/content", Icon: IconNewspaper, title: "Add content", sub: "Stories, videos, events" },
+  { href: "/dashboard/advertising", Icon: IconMegaphone, title: "Advertising", sub: "Adverts, featured slots & newsletter" },
+  { href: "/dashboard/stats", Icon: IconChart, title: "View statistics", sub: "Who's engaging with you" },
+  { href: "/dashboard/settings/billing", Icon: IconReceipt, title: "Billing", sub: "Invoices & membership" },
 ];
 
 export default async function MemberDashboard(props: PageProps<"/dashboard">) {
@@ -38,7 +28,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
   const pendingCols = "id, title, status, rejected_reason";
   const [
     { data: lastStory }, { data: pendingStories }, { data: pendingVideos }, { data: pendingEvents }, { data: pendingMachines },
-    { data: notifications }, { count: unreadNotifications }, { data: member }, { data: advertBookings },
+    { data: notifications }, { count: unreadNotifications }, { data: member },
   ] = await Promise.all([
     db.from("stories").select("published_at").eq("member_id", user.memberId).eq("status", "published").order("published_at", { ascending: false }).limit(1).maybeSingle(),
     db.from("stories").select(pendingCols).eq("member_id", user.memberId).in("status", ["awaiting_approval", "rejected"]).order("created_at", { ascending: false }).limit(3),
@@ -48,15 +38,6 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
     db.from("notifications").select("kind, payload, created_at").eq("member_id", user.memberId).order("created_at", { ascending: false }).limit(4),
     db.from("notifications").select("*", { count: "exact", head: true }).eq("member_id", user.memberId).is("read_at", null),
     db.from("members").select("status, paid_at, comped_until, draft_submitted_at, onboarding_seen").eq("id", user.memberId).single(),
-    // Adverts belong to the member, and their run carries the state — so this
-    // asks the bookings table, filtered through the member's own artwork.
-    // Unfiltered by status (A2.5): scheduled/live/ended runs need to reach
-    // the member too, not just the pre-approval statuses.
-    db.from("advert_bookings")
-      .select("id, status, review_reason, starts_on, ends_on, advert:adverts!inner(name, member_id)")
-      .eq("advert.member_id", user.memberId)
-      .order("created_at", { ascending: false })
-      .limit(5),
   ]);
 
   // A4.17 — one pre-approval submission list across all four content types,
@@ -74,7 +55,6 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
   // nudge: "the last time you posted a story was six months ago"
   // eslint-disable-next-line react-hooks/purity -- per-request render
   const now = Date.now();
-  const today = new Date(now).toISOString().slice(0, 10);
   const monthsSince = lastStory?.published_at
     ? Math.floor((now - new Date(lastStory.published_at).getTime()) / (30 * 864e5))
     : null;
@@ -84,7 +64,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
   return (
     <div>
       {submitted && (
-        <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+        <p className="mb-4 rounded-lg bg-success/10 p-3 text-sm text-success">
           {submitted === "paid" && "Payment sorted — now build your company page and submit it for approval."}
           {submitted === "page" && "Page submitted — Jas reviews it and you'll be live in the directory once approved."}
           {submitted === "story" && "Story submitted — it goes live once the editor approves it, and we'll email you."}
@@ -120,9 +100,9 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
       <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3">
         {CARDS.map((c) => (
           <Link key={c.href} href={c.href} className="rounded-xl bg-white p-5 text-center shadow-sm transition hover:shadow-md">
-            <span className="text-3xl">{c.icon}</span>
+            <c.Icon className="mx-auto text-graphite" />
             <p className="mt-2 font-bold text-ink">{c.title}</p>
-            <p className="mt-1 text-xs text-gray-500">{c.sub}</p>
+            <p className="mt-1 text-xs text-graphite">{c.sub}</p>
           </Link>
         ))}
       </div>
@@ -135,38 +115,18 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
               <p>
                 {s.title} —{" "}
                 {s.status === "awaiting_approval"
-                  ? <span className="text-brand">awaiting approval</span>
-                  : <span className="text-red-600">not published{s.rejected_reason && `: ${s.rejected_reason}`}</span>}
+                  ? <span className="text-brand-text">awaiting approval</span>
+                  : <span className="text-danger">not published{s.rejected_reason && `: ${s.rejected_reason}`}</span>}
               </p>
               <div className="flex items-center gap-3 text-xs">
-                <Link href={s.editHref} className="text-graphite underline">Edit</Link>
+                <Link href={s.editHref} className="tap px-1 text-graphite underline">Edit</Link>
                 <form action={s.withdrawAction}>
                   <input type="hidden" name="id" value={s.id} />
-                  <button type="submit" className="text-gray-500 underline hover:text-red-600">Withdraw</button>
+                  <button type="submit" className="tap px-1 text-graphite underline hover:text-danger">Withdraw</button>
                 </form>
               </div>
             </div>
           ))}
-        </section>
-      )}
-
-      {(advertBookings ?? []).length > 0 && (
-        <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="font-bold text-ink">Your adverts</h2>
-          {/* Every phase links to its own page — /dashboard/advert/[id] already
-              handles artwork-swap (upcoming/live) and "Run it again" (ended). */}
-          {(advertBookings ?? []).map((b) => {
-            const phase = bookingPhase(b, today);
-            const p = ADVERT_PHASE[phase];
-            return (
-              <p key={b.id} className="mt-2 border-t pt-2 text-sm">
-                <Link href={`/dashboard/advert/${b.id}`} className="hover:underline">{b.advert?.name}</Link> —{" "}
-                <span className={p.className}>
-                  {p.label}{phase === "changes_needed" && b.review_reason && `: ${b.review_reason}`}
-                </span>
-              </p>
-            );
-          })}
         </section>
       )}
 
@@ -179,14 +139,14 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
             <Link href="/dashboard/notifications" className="text-sm text-graphite underline">See all →</Link>
           </div>
           {(notifications ?? []).map((n, i) => (
-            <p key={i} className="mt-2 border-t pt-2 text-sm text-gray-600">
+            <p key={i} className="mt-2 border-t pt-2 text-sm text-graphite">
               {n.created_at.slice(0, 10)} — {n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind)}
             </p>
           ))}
         </section>
       )}
 
-      <p className="mt-6 text-center text-xs text-gray-500">
+      <p className="mt-6 text-center text-xs text-graphite">
         <Link href="/dashboard/resources" className="underline">Download your &quot;proud member&quot; graphic</Link> · <Link href="/dashboard/settings" className="underline">Notification settings</Link>
       </p>
     </div>

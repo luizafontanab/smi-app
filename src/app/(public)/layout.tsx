@@ -7,10 +7,11 @@ import { SkipLink } from "@/components/SkipLink";
 import { currentUser } from "@/lib/auth";
 import { mediaUrl } from "@/lib/db/server";
 import { organizationLd, webSiteLd } from "@/lib/jsonld";
-import { activeTakeover } from "@/lib/queries";
+import { activeTakeover, memberCategories } from "@/lib/queries";
+import { IndustryBar } from "@/components/IndustryBar";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  const [user, takeover] = await Promise.all([currentUser(), activeTakeover()]);
+  const [user, takeover, industries] = await Promise.all([currentUser(), activeTakeover(), memberCategories()]);
 
   // Site-wide by design (V17 names home/news/videos; this is a deliberate
   // superset — one shared layout, not a per-route check). --smi-brand is the
@@ -29,7 +30,7 @@ export default async function PublicLayout({ children }: { children: React.React
       <SkipLink />
       {takeover && (
         bannerHref ? (
-          <Link href={bannerHref}>
+          <Link href={bannerHref} aria-label="Advertisement — visit the takeover sponsor">
             {/* eslint-disable-next-line @next/next/no-img-element -- full-bleed takeover banner, not a fixed-ratio card image */}
             <img src={mediaUrl(takeover.bannerPath)!} alt="" className="w-full" />
           </Link>
@@ -38,6 +39,7 @@ export default async function PublicLayout({ children }: { children: React.React
           <img src={mediaUrl(takeover.bannerPath)!} alt="" className="w-full" />
         )
       )}
+      <IndustryBar industries={industries} />
       <SiteHeader user={user} />
       <main id="main" className="flex-1">{children}</main>
       <SiteFooter />

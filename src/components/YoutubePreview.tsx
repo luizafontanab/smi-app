@@ -36,7 +36,7 @@ export function YoutubePreview({ name, defaultValue = "" }: { name: string; defa
             />
           </div>
         ) : (
-          <p className="mt-1 text-xs text-red-600">
+          <p className="mt-1 text-xs text-danger">
             Doesn&apos;t look like a YouTube watch URL — it&apos;ll save, but won&apos;t embed or get a thumbnail fallback.
           </p>
         )

@@ -27,7 +27,8 @@ test.describe("reader (V1/V2)", () => {
 
   test("story page carries the member backlink block when member news", async ({ page }) => {
     await page.goto("/news?filter=members");
-    await page.locator('a[href^="/news/"]:has(h3)').first().click();
+    // scoped to the filtered All-news grid — the rails above it are unfiltered
+    await page.locator('[data-testid="all-news-grid"] a[href^="/news/"]:has(h3)').first().click();
     await expect(page.locator("text=This story features an SMI member")).toBeVisible();
   });
 
@@ -124,32 +125,38 @@ test.describe("public header follows the session", () => {
     await expect(page.getByRole("main").getByRole("link", { name: "Become a Member", exact: true })).toBeVisible();
   });
 
-  test("signed-in member sees their name linking to the member area, and no join CTA", async ({ page }) => {
+  test("signed-in member gets the account menu with member links, and no join CTA", async ({ page }) => {
     await login(page, "member2@smi.local");
     // the member area header shows the company name — that's what the public header should echo
-    const company = (await page.locator("header span.text-white\\/60").first().textContent())!.trim();
+    const company = (await page.getByTestId("member-name").textContent())!.trim();
 
     await page.goto("/");
     const header = page.locator("header").first();
     await expect(header.getByRole("link", { name: "Become a Member", exact: true })).toHaveCount(0);
     await expect(header.getByRole("link", { name: "Login" })).toHaveCount(0);
-    const chip = header.getByRole("link", { name: company, exact: true });
-    await expect(chip).toBeVisible();
-    await expect(chip).toHaveAttribute("href", "/dashboard");
+    const trigger = header.getByRole("button", { name: `Account: ${company}` });
+    await expect(trigger).toBeVisible();
 
     // the navy "Become a Member" band is gone for signed-in visitors too
     await expect(page.getByRole("link", { name: "Become a Member", exact: true })).toHaveCount(0);
 
-    await chip.click();
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await expect(header.getByRole("link", { name: "Notifications" })).toBeVisible();
+    await expect(header.getByRole("link", { name: "Help" })).toBeVisible();
+    await header.getByRole("link", { name: "Member area" }).click();
     await page.waitForURL("**/dashboard");
   });
 
-  test("console user gets a console link, not a member one", async ({ page }) => {
+  test("console user gets console entries in the account menu, not member ones", async ({ page }) => {
     await login(page, "jas@smi.local");
     await page.goto("/");
-    const chip = page.locator("header").first().getByRole("link", { name: "Jas", exact: true });
-    await expect(chip).toBeVisible();
-    await expect(chip).toHaveAttribute("href", "/console");
+    const header = page.locator("header").first();
+    const trigger = header.getByRole("button", { name: "Account: Jas" });
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+    await expect(header.getByRole("link", { name: "Admin console" })).toHaveAttribute("href", "/console");
+    await expect(header.getByRole("link", { name: "Help" })).toHaveCount(0);
   });
 
   test("previously-static pages render the session too", async ({ page }) => {
@@ -166,6 +173,9 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
   const title = `E2E loop ${Date.now()}`;
 
   test("WYSIWYG story survives the approval gate; preview shows branding; XSS stays inert", async ({ page }) => {
+    // Nine navigations across two logins — legitimately ~50s on the dev
+    // server, so triple the budget rather than trim the coverage.
+    test.slow();
     // member writes in the WYSIWYG editor
     await login(page, "member2@smi.local");
     await page.goto("/dashboard/story/new");
@@ -192,8 +202,9 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
     await page.goto("/news");
     await expect(page.locator(`text=${title}`)).toHaveCount(0);
 
-    // sign out (from the member area header), editor approves
+    // sign out (from the member area header's account menu), editor approves
     await page.goto("/dashboard");
+    await page.locator('header button[aria-label^="Account:"]').click();
     await page.locator("header form button:has-text('Sign out')").click();
     await page.waitForURL("**/login");
     await login(page, "jas@smi.local");
@@ -216,6 +227,9 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
 test.describe("member equipment → approval (equipment write page)", () => {
   const machine = `E2E machine ${Date.now()}`;
 
+  // The dashboard card for /dashboard/equipment/new is hidden (fix list item 9)
+  // but the route is deliberately still live — this covers the whole
+  // machine-approval pipeline, which the console still uses.
   test("submitted machine reaches the console queue and publishes on approval", async ({ page }) => {
     await login(page, "member2@smi.local");
     await page.goto("/dashboard/equipment/new");
@@ -226,6 +240,7 @@ test.describe("member equipment → approval (equipment write page)", () => {
     await page.waitForURL("**/dashboard?submitted=machine");
 
     await page.goto("/dashboard");
+    await page.locator('header button[aria-label^="Account:"]').click();
     await page.locator("header form button:has-text('Sign out')").click();
     await page.waitForURL("**/login");
     await login(page, "jas@smi.local");
@@ -277,16 +292,29 @@ test.describe("admin block layouts (drag-and-drop, per-page override)", () => {
     await page.click("button:has-text('Save layout')");
     await page.waitForURL("**saved=1**");
 
-    // the overridden story renders no adverts; other stories keep the default's adverts
+    // the overridden story renders no adverts; other stories keep the default's
+    // adverts. Navigate by href rather than clicking the card — a click racing
+    // /news hydration is occasionally swallowed under the runner's tracing
+    // overhead (flake), and click-through from /news is already covered by the
+    // WYSIWYG test above.
     await page.goto("/news");
-    await page.locator(`a[href^="/news/"]`, { hasText: overrideTitle }).first().click();
+    const overrideHref = await page
+      .locator(`a[href^="/news/"]`, { hasText: overrideTitle })
+      .first()
+      .getAttribute("href");
+    await page.goto(overrideHref!);
     await expect(page.locator("h1", { hasText: overrideTitle })).toBeVisible();
     await expect(page.locator('a[aria-label^="Advert:"]')).toHaveCount(0);
 
-    const otherLink = page.locator('a[href^="/news/"]:has(h3)').filter({ hasNotText: overrideTitle });
     await page.goto("/news");
-    await otherLink.first().click();
-    expect(await page.locator('a[aria-label^="Advert:"]').count()).toBeGreaterThan(0);
+    const otherHref = await page
+      .locator('a[href^="/news/"]:has(h3)')
+      .filter({ hasNotText: overrideTitle })
+      .first()
+      .getAttribute("href");
+    await page.goto(otherHref!);
+    await expect(page.locator("h1")).toBeVisible(); // story page rendered…
+    await expect(page.locator('a[aria-label^="Advert:"]').first()).toBeVisible(); // …with its adverts
 
     // clean up: drop the override so reruns start from the default
     await page.goto(`/console/pages?type=story&entity=${storyId}`);
@@ -313,15 +341,16 @@ test.describe("admin (A1/A4)", () => {
     // pipeline strip links to the story engine
     await expect(page.locator('a[href="/console/stories"]', { hasText: "Story pipeline" })).toBeVisible();
     // nav: current module order first, active state on the current page
-    // (the nav was reorganised after the original wireframe — Messages and
-    // Analytics were added, and the engines grouped under CMS)
+    // (the nav was reorganised after the original wireframe — Analytics was
+    // added, the engines grouped under Content, and Messages moved to the
+    // header bell)
     const labels = await page.locator("header nav a").allTextContents();
     expect(labels.slice(0, 5)).toEqual([
       "Command Centre",
-      "Messages",
       "Analytics",
-      "CMS",
+      "Content",
       "Adverts & Inventory",
+      "Members & CRM",
     ]);
     await expect(page.locator('header nav a[aria-current="page"]')).toHaveText("Command Centre");
   });

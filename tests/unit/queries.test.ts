@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  activePlacements, activeTakeover, eventBySlug, headlineStory, headlineVideo, ilikeTerm, memberBySlug, memberDirectory,
-  newsletterBySlug, pastEvents, publishedStories, publishedVideos, searchSite, sentNewsletters, staticPage,
-  storyBySlug, storyCategories, storyIntros, upcomingEvents, videoBySlug,
+  activePlacements, activeTakeover, eventBySlug, headlineStory, headlineVideo, ilikeTerm, memberBySlug, memberCategories,
+  memberDirectory, newsletterBySlug, pastEvents, publishedStories, publishedVideos, searchSite, sentNewsletters, staticPage,
+  storiesByMemberCategory, storyBySlug, storyCategories, storyIntros, upcomingEvents, videoBySlug,
 } from "@/lib/queries";
 import { publicDb, serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -41,26 +41,29 @@ describe("publishedStories", () => {
     expect(storiesBuilder.eq).toHaveBeenCalledWith("is_member_news", true);
   });
 
-  it("resolves a category to its story ids and filters by them", async () => {
+  it("resolves a category and filters through the link-table inner join", async () => {
     const storiesBuilder = queryBuilder(dbOk([], 0));
     db({
       stories: () => storiesBuilder,
       categories: () => queryBuilder(dbOk({ id: "cat1" })),
-      story_categories: () => queryBuilder(dbOk([{ story_id: "s1" }, { story_id: "s2" }])),
     });
 
     await publishedStories({ category: "fabrication" });
 
-    expect(storiesBuilder.in).toHaveBeenCalledWith("id", ["s1", "s2"]);
+    // inner join, not a pre-fetched id list — the old `.in("id", [...])` pulled
+    // every story_categories row for the category first
+    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.stringContaining("story_categories!inner"), { count: "exact" });
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("story_categories.category_id", "cat1");
   });
 
-  it("skips the id filter entirely for an unknown category slug", async () => {
+  it("skips the category filter entirely for an unknown category slug", async () => {
     const storiesBuilder = queryBuilder(dbOk([], 0));
     db({ stories: () => storiesBuilder, categories: () => queryBuilder(dbOk(null)) });
 
     await publishedStories({ category: "bogus" });
 
-    expect(storiesBuilder.in).not.toHaveBeenCalled();
+    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.not.stringContaining("story_categories"), { count: "exact" });
+    expect(storiesBuilder.eq).not.toHaveBeenCalledWith("story_categories.category_id", expect.anything());
   });
 });
 
@@ -124,6 +127,42 @@ describe("storyCategories / activePlacements / sentNewsletters", () => {
 
     db({ newsletter_issues: () => queryBuilder(dbOk(null)) });
     expect(await sentNewsletters()).toEqual([]);
+  });
+});
+
+describe("memberCategories", () => {
+  it("fetches member-kind categories, defaulting to an empty list", async () => {
+    const catsBuilder = queryBuilder(dbOk([{ slug: "welding", name: "Welding" }]));
+    db({ categories: () => catsBuilder });
+    expect(await memberCategories()).toEqual([{ slug: "welding", name: "Welding" }]);
+    expect(catsBuilder.eq).toHaveBeenCalledWith("kind", "member");
+
+    db({ categories: () => queryBuilder(dbOk(null)) });
+    expect(await memberCategories()).toEqual([]);
+  });
+});
+
+describe("storiesByMemberCategory", () => {
+  it("returns null for an unknown slug without querying stories", async () => {
+    const from = db({ categories: () => queryBuilder(dbOk(null)) });
+    expect(await storiesByMemberCategory("bogus")).toBeNull();
+    expect(from).not.toHaveBeenCalledWith("stories");
+  });
+
+  it("filters through the member inner join on the resolved category id", async () => {
+    const storiesBuilder = queryBuilder(dbOk([{ id: "s1" }], 7));
+    db({
+      stories: () => storiesBuilder,
+      categories: () => queryBuilder(dbOk({ id: "cat1", slug: "welding", name: "Welding" })),
+    });
+
+    const result = await storiesByMemberCategory("welding", { limit: 12, offset: 12 });
+
+    // guards the STORY_CARD.replace() building the inner-join projection
+    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.stringContaining("member:members!inner("), { count: "exact" });
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("member.category_id", "cat1");
+    expect(storiesBuilder.range).toHaveBeenCalledWith(12, 23);
+    expect(result).toEqual({ category: { slug: "welding", name: "Welding" }, stories: [{ id: "s1" }], total: 7 });
   });
 });
 
@@ -229,16 +268,39 @@ describe("memberDirectory", () => {
     expect(membersBuilder.eq).toHaveBeenCalledWith("category_id", "cat1");
   });
 
-  it("only paginates when a limit is given — no limit means the whole filtered set", async () => {
-    const membersBuilder = queryBuilder(dbOk([], 0));
-    db({ members: () => membersBuilder });
-    await memberDirectory({});
-    expect(membersBuilder.range).not.toHaveBeenCalled();
+  it("fetches the whole set (no SQL range) and slices offset/limit in JS after the seeded shuffle", async () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}`, name: `Member ${i}` }));
 
-    const paged = queryBuilder(dbOk([], 0));
+    // No limit: the whole filtered set comes back (homepage logo wall).
+    const whole = queryBuilder(dbOk(rows, rows.length));
+    db({ members: () => whole });
+    expect((await memberDirectory({})).members).toHaveLength(10);
+    expect(whole.range).not.toHaveBeenCalled();
+
+    // Pagination happens in JS — no .range even with a limit.
+    const paged = queryBuilder(dbOk(rows, rows.length));
     db({ members: () => paged });
-    await memberDirectory({ limit: 20, offset: 40 });
-    expect(paged.range).toHaveBeenCalledWith(40, 59);
+    const page1 = await memberDirectory({ limit: 4, offset: 0 });
+    expect(paged.range).not.toHaveBeenCalled();
+    expect(page1.members).toHaveLength(4);
+    expect(page1.total).toBe(10);
+  });
+
+  it("orders by a day-stable seeded shuffle, so pages tile the set without repeats or gaps", async () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}`, name: `Member ${i}` }));
+    const pageOf = async (offset: number) => {
+      db({ members: () => queryBuilder(dbOk(rows, rows.length)) });
+      return (await memberDirectory({ limit: 4, offset })).members.map((m) => m.id as string);
+    };
+
+    const [p1, p2, p3] = [await pageOf(0), await pageOf(4), await pageOf(8)];
+
+    // Same request repeated (same UTC day + filters) → identical order …
+    expect(await pageOf(0)).toEqual(p1);
+    // … and consecutive pages partition the full set: every member exactly once.
+    const ids = [...p1, ...p2, ...p3];
+    expect(ids).toHaveLength(10);
+    expect([...ids].sort()).toEqual(rows.map((r) => r.id).sort());
   });
 });
 

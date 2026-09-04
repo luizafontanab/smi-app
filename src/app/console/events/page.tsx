@@ -52,14 +52,14 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
         <h1 className="text-2xl font-bold text-ink">Events</h1>
         <Link href="/console/events/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New event</Link>
       </div>
-      <p className="mt-1 text-sm text-gray-500">Nothing publishes without approval.</p>
+      <p className="mt-1 text-sm text-graphite">Nothing publishes without approval.</p>
 
       <div className="mt-4 flex gap-1 border-b text-sm">
         {TABS.map((t) => (
           <Link
             key={t.view}
             href={t.view === "board" ? "/console/events" : "/console/events?view=calendar"}
-            className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-ink" : "text-gray-500 hover:text-ink"}`}
+            className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-ink" : "text-graphite hover:text-ink"}`}
           >
             {t.label}
           </Link>
@@ -74,8 +74,8 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
             const items = byStatus(col.key).slice(0, col.key === "published" ? 10 : 30);
             return (
               <div key={col.key} className="rounded-xl bg-white p-3 shadow-sm">
-                <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-                  {col.label} <span className="text-gray-500">({byStatus(col.key).length})</span>
+                <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-graphite">
+                  {col.label} <span className="text-graphite">({byStatus(col.key).length})</span>
                 </h2>
                 <div className="mt-2 space-y-2">
                   {items.map((e) => (
@@ -85,7 +85,7 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
                       )}
                       <div className="min-w-0 flex-1">
                         <Link href={`/console/events/${e.id}`} className="font-medium leading-snug hover:text-graphite">{e.title}</Link>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-graphite">
                           {e.member?.name && <>{e.member.name} · </>}{e.source} · {new Date(e.starts_on).toLocaleDateString("en-GB", { timeZone: "UTC" })}
                         </p>
                         {e.status === "awaiting_approval" && (
@@ -93,7 +93,7 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
                             <form action={decideEvent}>
                               <input type="hidden" name="id" value={e.id} />
                               <input type="hidden" name="decision" value="approve" />
-                              <button className="rounded bg-green-600 px-2.5 py-1 text-xs text-white">Approve</button>
+                              <button className="rounded bg-success px-2.5 py-1 text-xs text-white">Approve</button>
                             </form>
                             <Link href={`/console/events/${e.id}`} className="rounded border px-2.5 py-1 text-xs">Review</Link>
                           </div>
@@ -101,7 +101,7 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
                       </div>
                     </div>
                   ))}
-                  {items.length === 0 && <p className="px-1 text-xs text-gray-500">Empty</p>}
+                  {items.length === 0 && <p className="px-1 text-xs text-graphite">Empty</p>}
                 </div>
               </div>
             );

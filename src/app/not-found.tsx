@@ -17,9 +17,9 @@ export default function NotFound() {
         </Link>
       </header>
       <main id="main" className="mx-auto flex max-w-2xl flex-1 flex-col justify-center px-4 py-20 text-center">
-        <p className="text-sm font-semibold uppercase tracking-wide text-brand">404</p>
+        <p className="text-sm font-semibold uppercase tracking-wide text-brand-text">404</p>
         <h1 className="mt-2 text-3xl font-bold text-ink">That page doesn&apos;t exist</h1>
-        <p className="mt-4 text-gray-600">
+        <p className="mt-4 text-graphite">
           The address may be mistyped, or the page may have been removed.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">

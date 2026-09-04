@@ -33,14 +33,17 @@ const supabaseOrigin = (() => {
  * style-src needs 'unsafe-inline' for Tailwind's injected styles and the
  * per-element styles in global-error.tsx.
  */
+// Dev-only allowance so impeccable live mode can load. Guarded by NODE_ENV.
+const __impeccableLiveDev = isDev ? " http://localhost:8400" : "";
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${__impeccableLiveDev}`,
   "style-src 'self' 'unsafe-inline'",
   // tile.openstreetmap.org: the raster tiles behind MemberMap's Leaflet view (A6.4).
   `img-src 'self' data: blob: https://*.tile.openstreetmap.org${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
   "font-src 'self' data:",
-  `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}${__impeccableLiveDev}`,
   "media-src 'self' https:",
   // nocookie is what /video/[slug] embeds — same player, no ad cookies before consent
   "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
@@ -146,6 +149,10 @@ const nextConfig: NextConfig = {
     return [
       // join flow became multi-step; the old single-form checkout URL retires
       { source: "/join/checkout", destination: "/join/account", permanent: true },
+      // advertise + buy-visibility merged into the advertising hub (fix list item 10);
+      // non-permanent — member-area IA, not SEO
+      { source: "/dashboard/buy", destination: "/dashboard/advertising/buy", permanent: false },
+      { source: "/dashboard/advert/new", destination: "/dashboard/advertising/buy", permanent: false },
       ...legacyRedirects,
     ];
   },

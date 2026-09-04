@@ -88,9 +88,9 @@ describe("memberValuesFromForm", () => {
     expect(values.social).toEqual({ linkedin: "https://www.linkedin.com/company/acme-new" });
   });
 
-  it("splits testimonials one per line and drops blanks", () => {
-    const { values } = ok(memberValuesFromForm(form({ testimonials: "Great work.\n\n  Fast turnaround.  \n" }), existing));
-    expect(values.testimonials).toEqual(["Great work.", "Fast turnaround."]);
+  it("rejects a malformed phone number", () => {
+    expect(memberValuesFromForm(form({ phone: "call me" }), existing)).toMatchObject({ error: /Phone number/ });
+    expect(ok(memberValuesFromForm(form({ phone: "0161 555 0100" }), existing)).values.phone).toBe("0161 555 0100");
   });
 
   it("sanitises the description on the way in", () => {

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
@@ -24,12 +23,11 @@ export default async function EditMemberEvent(props: PageProps<"/dashboard/event
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">Edit your event</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Saving sends it back for approval{event.status === "rejected" ? "." : " — this replaces your earlier submission."}
       </p>
-      {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <EventForm
         action={editEvent}
         withdrawAction={withdrawEvent}

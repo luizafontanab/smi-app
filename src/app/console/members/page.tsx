@@ -48,14 +48,14 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <form>
           {status !== "all" && <input type="hidden" name="status" value={status} />}
-          <input name="q" defaultValue={q} placeholder="Search members…" className="w-72 rounded border bg-white px-3 py-2 text-sm" />
+          <input name="q" defaultValue={q} placeholder="Search members…" aria-label="Search members" className="w-72 rounded border bg-white px-3 py-2 text-sm" />
         </form>
         <div className="flex gap-1 text-sm">
           {STATUS_FILTERS.map((s) => (
             <Link
               key={s}
               href={statusHref(s)}
-              className={`rounded px-2.5 py-1.5 ${s === status ? "bg-ink font-semibold text-white" : "bg-white text-gray-500 hover:text-ink"}`}
+              className={`rounded px-2.5 py-1.5 ${s === status ? "bg-ink font-semibold text-white" : "bg-white text-graphite hover:text-ink"}`}
             >
               {s === "all" ? "All" : s}
             </Link>
@@ -63,8 +63,8 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
         </div>
       </div>
 
-      {typeof sp.saved === "string" && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Saved.</p>}
-      {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.saved === "string" && <p role="status" className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <div className="mt-4">
         <section className="rounded-xl bg-white p-5 shadow-sm">
@@ -72,12 +72,18 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
           <div className="mt-2 max-h-[28rem] overflow-y-auto">
             <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr className="text-left text-xs uppercase text-graphite">
+                  <th scope="col" className="py-1">Member</th>
+                  <th scope="col" className="text-right">Status</th>
+                </tr>
+              </thead>
               <tbody>
                 {(filtered ?? []).map((m) => (
                   <tr key={m.id} className="border-t">
                     <td className="py-1.5">
                       <Link href={`/console/members/${m.id}`} className="font-medium hover:text-graphite">{m.name}</Link>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-graphite">
                         {m.category?.name} · joined {m.joined_at} · {m.billing_mode} ·{" "}
                         <a href={`/console/pages?type=member_profile&entity=${m.id}`} className="underline hover:text-graphite">page layout</a>
                       </p>
@@ -86,30 +92,30 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                       <span className="flex items-center justify-end gap-2">
                         {m.status === "draft" && (
                           <>
-                            <span className={`rounded px-2 py-0.5 text-xs ${m.paid_at || m.comped_until ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                            <span className={`rounded px-2 py-0.5 text-xs ${m.paid_at || m.comped_until ? "bg-success/10 text-success" : "bg-shade text-ink/70"}`}>
                               {m.paid_at ? "paid ✓" : m.comped_until ? `comped → ${m.comped_until}` : "unpaid"}
                             </span>
-                            <span className={`rounded px-2 py-0.5 text-xs ${m.draft_submitted_at ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                            <span className={`rounded px-2 py-0.5 text-xs ${m.draft_submitted_at ? "bg-success/10 text-success" : "bg-shade text-ink/70"}`}>
                               {m.draft_submitted_at ? "page ✓" : "no page"}
                             </span>
                           </>
                         )}
                         <span className={`rounded px-2 py-0.5 text-xs ${
-                          m.status === "active" ? "bg-green-100 text-green-700" :
+                          m.status === "active" ? "bg-success/10 text-success" :
                           m.status === "grace" ? "bg-brand/20 text-brand" :
-                          m.status === "lapsed" ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-500"}`}>
+                          m.status === "lapsed" ? "bg-danger/10 text-danger" : "bg-shade text-ink/70"}`}>
                           {m.status}
                         </span>
                         {m.status !== "active" && (
                           m.status === "draft" && !m.paid_at && !m.comped_until ? (
-                            <span className="text-xs text-gray-500">awaiting payment</span>
+                            <span className="text-xs text-graphite">awaiting payment</span>
                           ) : m.status === "draft" && !m.draft_submitted_at ? (
-                            <span className="text-xs text-gray-500">awaiting page</span>
+                            <span className="text-xs text-graphite">awaiting page</span>
                           ) : (
                             <form action={setMemberStatus}>
                               <input type="hidden" name="id" value={m.id} />
                               <input type="hidden" name="status" value="active" />
-                              <button className="rounded bg-green-600 px-2 py-0.5 text-xs text-white">Activate</button>
+                              <button className="rounded bg-success px-2 py-0.5 text-xs text-white">Activate</button>
                             </form>
                           )
                         )}

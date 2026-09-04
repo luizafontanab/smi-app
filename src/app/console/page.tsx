@@ -204,140 +204,152 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <h1 className="text-2xl font-bold text-ink">Command Centre</h1>
-      <p className="mt-1 text-sm text-gray-500">{dateLabel}</p>
+    // col-reverse puts the sidebar's urgent items first on small screens.
+    <div className="mx-auto flex max-w-6xl flex-col-reverse gap-6 lg:flex-row">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-2xl font-bold text-ink">Command Centre</h1>
+        <p className="mt-1 text-sm text-graphite">{dateLabel}</p>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Active members" value={String(members.count ?? 0)} sub={`${pounds(MEMBERSHIP_MONTHLY_PENNIES)}/mo each`} />
-        <Stat label="Live advertisers" value={String(advertisers)} sub={`${liveBanners} banners · ${liveLogos} supplier logos`} />
-        <Stat label="Newsletter subscribers" value={String(subscribers.count ?? 0)} sub={issueSent ? `issue ${issueSent.number} sent ${String(issueSent.sent_at).slice(0, 10)}` : "clean list"} />
-        <Stat label="Site users (12 mo)" value={siteUsers === null ? "—" : siteUsers.toLocaleString("en-GB")} sub="distinct sessions, rolling year" />
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat label="Active members" value={String(members.count ?? 0)} sub={`${pounds(MEMBERSHIP_MONTHLY_PENNIES)}/mo each`} />
+          <Stat label="Live advertisers" value={String(advertisers)} sub={`${liveBanners} banners · ${liveLogos} supplier logos`} />
+          <Stat label="Newsletter subscribers" value={String(subscribers.count ?? 0)} sub={issueSent ? `issue ${issueSent.number} sent ${String(issueSent.sent_at).slice(0, 10)}` : "clean list"} />
+          <Stat label="Site users (12 mo)" value={siteUsers === null ? "—" : siteUsers.toLocaleString("en-GB")} sub="distinct sessions, rolling year" />
+        </div>
+
+        <Card className="mt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <SectionTitle>Revenue this month</SectionTitle>
+            <p className="text-xs text-graphite">
+              estimated from live bookings &amp; standard rates
+              {revenue.unpriced > 0 && ` · ${revenue.unpriced} unpriced (not counted)`}
+            </p>
+          </div>
+          <p className="mt-3 text-4xl font-bold text-ink">
+            {pounds(revenue.total)}
+            <span className="text-base font-normal text-graphite"> / month</span>
+          </p>
+          <div className="mt-5 space-y-4">
+            <RevenueBar label="Memberships" pennies={revenue.membership} max={maxStream} sub={`${members.count ?? 0} members × ${pounds(MEMBERSHIP_MONTHLY_PENNIES)}/mo`} />
+            <RevenueBar label="Advertising" pennies={revenue.advertising} max={maxStream} sub={`${live.length} live bookings`} />
+            <RevenueBar label="Featured member slots" pennies={revenue.featured} max={maxStream} sub={`${slotsSold} slot${slotsSold === 1 ? "" : "s"} sold`} />
+          </div>
+          <div className="mt-5 border-t border-black/5 pt-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <span className="text-ink">Featured slot occupancy</span>
+              <span className="text-xs text-graphite">{slotsSold} of {FEATURED_SLOTS.cap} sold · {pounds(FEATURED_SLOTS.pennies)}/slot</span>
+            </div>
+            <div className="mt-2 flex gap-1.5">
+              {Array.from({ length: FEATURED_SLOTS.cap }, (_, i) => (
+                <div key={i} className={`h-2.5 flex-1 rounded-full ${i < slotsSold ? "bg-brand" : "bg-ink/10"}`} />
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card className="mt-6">
+          <SectionTitle>This month</SectionTitle>
+          <OverviewCalendar month={month} items={overviewItems} />
+        </Card>
+
+        <Link href="/console/stories" className="group mt-6 block">
+          <Card className="transition group-hover:shadow-md">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <SectionTitle>Story pipeline</SectionTitle>
+              <span className="text-xs text-graphite group-hover:underline">Open Story Engine →</span>
+            </div>
+            {/* Placeholder columns signal via "—" + the badge, not opacity —
+                dimming the 12px label drops it below WCAG AA contrast. */}
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {pipeline.map((p) => (
+                <div key={p.label}>
+                  <p className="text-xs uppercase tracking-wide text-graphite">{p.label}</p>
+                  <p className="mt-0.5 text-xl font-bold text-ink">{p.value === null ? "—" : p.value}</p>
+                  {p.value === null && <Badge>module 6</Badge>}
+                </div>
+              ))}
+            </div>
+          </Card>
+        </Link>
+
+        <Link href="/console/videos" className="group mt-6 block">
+          <Card className="transition group-hover:shadow-md">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <SectionTitle>Video pipeline</SectionTitle>
+              <span className="text-xs text-graphite group-hover:underline">Open Video Engine →</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {videoPipeline.map((p) => (
+                <div key={p.label}>
+                  <p className="text-xs uppercase tracking-wide text-graphite">{p.label}</p>
+                  <p className="mt-0.5 text-xl font-bold text-ink">{p.value}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </Link>
+
+        {inbox.data?.length ? (
+          <Card className="mt-6">
+            <div className="flex items-center justify-between">
+              <SectionTitle>Inbox</SectionTitle>
+              <Link href="/console/messages" className="text-xs text-graphite underline">View all →</Link>
+            </div>
+            {inbox.data.map((m) => (
+              <div key={m.id} className="relative mt-2 rounded border p-3 text-sm transition hover:bg-shade/50">
+                <div className="flex items-center justify-between">
+                  <p><b>{m.name}</b> <span className="text-graphite">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand-text">{m.kind}</span></p>
+                  {/* z-10 keeps the button clickable above the row's stretched link */}
+                  <form action={markInboxRead} className="z-10"><input type="hidden" name="id" value={m.id} /><button className="relative text-xs text-graphite hover:text-ink">mark read</button></form>
+                </div>
+                {/* The whole row opens the message — full text and reply live there. */}
+                <Link href={`/console/messages/${m.id}`} className="mt-1 block text-graphite after:absolute after:inset-0">
+                  <span className="line-clamp-2">{m.message}</span>
+                  <span className="sr-only"> — open message from {m.name}</span>
+                </Link>
+              </div>
+            ))}
+          </Card>
+        ) : null}
+
+        {deadJobs.data?.length ? (
+          <section id="jobs" className="mt-6 rounded-xl border-2 border-danger/30 bg-white p-5 shadow-sm">
+            <h2 className="font-bold text-danger">Failed background jobs</h2>
+            {deadJobs.data.map((j) => (
+              <p key={j.id} className="mt-1 text-sm text-graphite"><b>{j.kind}</b>: {j.last_error}</p>
+            ))}
+          </section>
+        ) : null}
       </div>
 
-      <Card className="mt-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <SectionTitle>Revenue this month</SectionTitle>
-          <p className="text-xs text-gray-500">
-            estimated from live bookings &amp; standard rates
-            {revenue.unpriced > 0 && ` · ${revenue.unpriced} unpriced (not counted)`}
-          </p>
-        </div>
-        <p className="mt-3 text-4xl font-bold text-ink">
-          {pounds(revenue.total)}
-          <span className="text-base font-normal text-gray-500"> / month</span>
-        </p>
-        <div className="mt-5 space-y-4">
-          <RevenueBar label="Memberships" pennies={revenue.membership} max={maxStream} sub={`${members.count ?? 0} members × ${pounds(MEMBERSHIP_MONTHLY_PENNIES)}/mo`} />
-          <RevenueBar label="Advertising" pennies={revenue.advertising} max={maxStream} sub={`${live.length} live bookings`} />
-          <RevenueBar label="Featured member slots" pennies={revenue.featured} max={maxStream} sub={`${slotsSold} slot${slotsSold === 1 ? "" : "s"} sold`} />
-        </div>
-        <div className="mt-5 border-t border-black/5 pt-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <span className="text-ink">Featured slot occupancy</span>
-            <span className="text-xs text-gray-500">{slotsSold} of {FEATURED_SLOTS.cap} sold · {pounds(FEATURED_SLOTS.pennies)}/slot</span>
-          </div>
-          <div className="mt-2 flex gap-1.5">
-            {Array.from({ length: FEATURED_SLOTS.cap }, (_, i) => (
-              <div key={i} className={`h-2.5 flex-1 rounded-full ${i < slotsSold ? "bg-brand" : "bg-ink/10"}`} />
+      <aside className="shrink-0 lg:w-80">
+        <Card>
+          <SectionTitle>Needs you today</SectionTitle>
+          {needs.length === 0 && <p className="mt-2 text-sm text-graphite">Nothing urgent. Enjoy the moon. 🌕</p>}
+          <ul className="mt-2 space-y-1.5">
+            {needs.map((n) => (
+              <li key={n.label}>
+                <Link href={n.href} className={`text-sm hover:underline ${n.urgent ? "font-semibold text-danger" : "text-graphite"}`}>→ {n.label}</Link>
+              </li>
             ))}
-          </div>
-        </div>
-      </Card>
+          </ul>
+        </Card>
 
-      <Card className="mt-6">
-        <SectionTitle>This month</SectionTitle>
-        <OverviewCalendar month={month} items={overviewItems} />
-      </Card>
-
-      <Link href="/console/stories" className="group mt-6 block">
-        <Card className="transition group-hover:shadow-md">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <SectionTitle>Story pipeline</SectionTitle>
-            <span className="text-xs text-graphite group-hover:underline">Open Story Engine →</span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {pipeline.map((p) => (
-              <div key={p.label} className={p.value === null ? "opacity-60" : ""}>
-                <p className="text-xs uppercase tracking-wide text-gray-500">{p.label}</p>
-                <p className="mt-0.5 text-xl font-bold text-ink">{p.value === null ? "—" : p.value}</p>
-                {p.value === null && <Badge>module 6</Badge>}
+        {pendingRevisions.data?.length ? (
+          <Card id="approvals" className="mt-6">
+            <SectionTitle>Quick approvals</SectionTitle>
+            {pendingRevisions.data?.map((r) => (
+              <div key={r.id} className="mt-2 flex items-center justify-between gap-3 rounded border p-3 text-sm">
+                <span>Page edit from <b>{r.member?.name}</b></span>
+                <span className="flex gap-2">
+                  <form action={decideRevision}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="decision" value="approve" /><button className="rounded bg-success px-3 py-1 text-white">Approve</button></form>
+                  <form action={decideRevision}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="decision" value="reject" /><button className="rounded border px-3 py-1">Reject</button></form>
+                </span>
               </div>
             ))}
-          </div>
-        </Card>
-      </Link>
-
-      <Link href="/console/videos" className="group mt-6 block">
-        <Card className="transition group-hover:shadow-md">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <SectionTitle>Video pipeline</SectionTitle>
-            <span className="text-xs text-graphite group-hover:underline">Open Video Engine →</span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {videoPipeline.map((p) => (
-              <div key={p.label}>
-                <p className="text-xs uppercase tracking-wide text-gray-500">{p.label}</p>
-                <p className="mt-0.5 text-xl font-bold text-ink">{p.value}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </Link>
-
-      <Card className="mt-6">
-        <SectionTitle>Needs you today</SectionTitle>
-        {needs.length === 0 && <p className="mt-2 text-sm text-gray-500">Nothing urgent. Enjoy the moon. 🌕</p>}
-        <ul className="mt-2 space-y-1.5">
-          {needs.map((n) => (
-            <li key={n.label}>
-              <Link href={n.href} className={`text-sm hover:underline ${n.urgent ? "font-semibold text-red-600" : "text-graphite"}`}>→ {n.label}</Link>
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      {pendingRevisions.data?.length ? (
-        <Card id="approvals" className="mt-6">
-          <SectionTitle>Quick approvals</SectionTitle>
-          {pendingRevisions.data?.map((r) => (
-            <div key={r.id} className="mt-2 flex items-center justify-between gap-3 rounded border p-3 text-sm">
-              <span>Page edit from <b>{r.member?.name}</b></span>
-              <span className="flex gap-2">
-                <form action={decideRevision}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="decision" value="approve" /><button className="rounded bg-green-600 px-3 py-1 text-white">Approve</button></form>
-                <form action={decideRevision}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="decision" value="reject" /><button className="rounded border px-3 py-1">Reject</button></form>
-              </span>
-            </div>
-          ))}
-        </Card>
-      ) : null}
-
-      {inbox.data?.length ? (
-        <Card className="mt-6">
-          <div className="flex items-center justify-between">
-            <SectionTitle>Inbox</SectionTitle>
-            <Link href="/console/messages" className="text-xs text-graphite underline">View all →</Link>
-          </div>
-          {inbox.data.map((m) => (
-            <div key={m.id} className="mt-2 rounded border p-3 text-sm">
-              <div className="flex items-center justify-between">
-                <p><b>{m.name}</b> <span className="text-gray-500">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand">{m.kind}</span></p>
-                <form action={markInboxRead}><input type="hidden" name="id" value={m.id} /><button className="text-xs text-gray-500 hover:text-ink">mark read</button></form>
-              </div>
-              <p className="mt-1 text-gray-600">{m.message}</p>
-            </div>
-          ))}
-        </Card>
-      ) : null}
-
-      {deadJobs.data?.length ? (
-        <section id="jobs" className="mt-6 rounded-xl border-2 border-red-200 bg-white p-5 shadow-sm">
-          <h2 className="font-bold text-red-600">Failed background jobs</h2>
-          {deadJobs.data.map((j) => (
-            <p key={j.id} className="mt-1 text-sm text-gray-600"><b>{j.kind}</b>: {j.last_error}</p>
-          ))}
-        </section>
-      ) : null}
+          </Card>
+        ) : null}
+      </aside>
     </div>
   );
 }
@@ -354,7 +366,7 @@ function RevenueBar({ label, sub, pennies, max }: { label: string; sub: string; 
       <div className="mt-1 h-2.5 rounded-full bg-ink/10">
         <div className="h-2.5 rounded-full bg-ink/80" style={{ width: `${pct}%` }} />
       </div>
-      <p className="mt-0.5 text-xs text-gray-500">{sub}</p>
+      <p className="mt-0.5 text-xs text-graphite">{sub}</p>
     </div>
   );
 }

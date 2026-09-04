@@ -21,12 +21,12 @@ export default async function AdvertSpotsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/adverts" className="text-sm text-gray-500 hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
       <div className="mt-1 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">Ad Spots</h1>
         <Link href="/console/adverts/spots/new" className="rounded bg-ink px-4 py-2 text-sm text-white">New spot</Link>
       </div>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         The rate-card catalog of sellable ad products — not a booking. Book an advertiser into a format from{" "}
         <Link href="/console/adverts" className="underline">Bookings</Link>.
       </p>
@@ -35,7 +35,7 @@ export default async function AdvertSpotsPage() {
         <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[560px]">
           <thead>
-            <tr className="text-left text-xs uppercase text-gray-500">
+            <tr className="text-left text-xs uppercase text-graphite">
               <th scope="col" className="py-1">Sample</th>
               <th scope="col">Short name</th>
               <th scope="col">Format</th>
@@ -54,18 +54,18 @@ export default async function AdvertSpotsPage() {
                     {sample ? (
                       <Image src={sample} alt={s.short_name} width={48} height={48} className="h-10 w-10 rounded object-cover" unoptimized />
                     ) : (
-                      <span className="text-xs text-gray-500">—</span>
+                      <span className="text-xs text-graphite">—</span>
                     )}
                   </td>
                   <td className="font-medium text-ink">{s.short_name}</td>
-                  <td className="text-gray-500">{s.format.replace(/_/g, " ")}</td>
+                  <td className="text-graphite">{s.format.replace(/_/g, " ")}</td>
                   <td>{s.cap}</td>
-                  <td className="max-w-xs truncate text-gray-500">{s.description}</td>
+                  <td className="max-w-xs truncate text-graphite">{s.description}</td>
                   <td className="text-right"><Link href={`/console/adverts/spots/${s.id}`} className="text-xs text-ink hover:underline">edit</Link></td>
                   <td className="text-right">
                     <form action={deleteAdvertProduct}>
                       <input type="hidden" name="id" value={s.id} />
-                      <button className="text-xs text-red-500 hover:underline">delete</button>
+                      <button className="text-xs text-danger hover:underline">delete</button>
                     </form>
                   </td>
                 </tr>
@@ -78,7 +78,7 @@ export default async function AdvertSpotsPage() {
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Media pack</h2>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-graphite">
           The PDF offered on the public advertising page. Upload a new one whenever the rates or specs change.
         </p>
         {packPath && (
@@ -94,12 +94,13 @@ export default async function AdvertSpotsPage() {
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Format copy</h2>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-graphite">
           The six format cards shown on the public advertising page. Specs are free text — leave blank rather than guess.
         </p>
         <form action={saveAdvertFormats} className="mt-3 space-y-4">
           {AD_FORMAT_KEYS.map((key) => {
             const f = formatByKey.get(key);
+            const example = mediaUrl(f?.example_path ?? null);
             return (
               <div key={key} className="rounded-lg border p-3">
                 <p className="text-xs font-bold uppercase text-brand">Format {key}</p>
@@ -107,6 +108,7 @@ export default async function AdvertSpotsPage() {
                   name={`name_${key}`}
                   defaultValue={f?.name ?? ""}
                   placeholder="Name"
+                  aria-label={`Format ${key} name`}
                   required
                   className="mt-2 w-full rounded border px-3 py-1.5 text-sm font-medium"
                 />
@@ -114,10 +116,25 @@ export default async function AdvertSpotsPage() {
                   name={`detail_${key}`}
                   defaultValue={f?.detail ?? ""}
                   placeholder="Description and specs"
+                  aria-label={`Format ${key} description and specs`}
                   required
                   rows={2}
                   className="mt-2 w-full rounded border px-3 py-1.5 text-sm"
                 />
+                {example && (
+                  <Image
+                    src={example}
+                    alt={`Current example ${f?.name ?? `format ${key}`} advert`}
+                    width={320}
+                    height={160}
+                    className="mt-2 max-h-24 w-auto rounded border object-contain"
+                    unoptimized
+                  />
+                )}
+                <label className="mt-2 block text-xs text-graphite">
+                  Example image shown on the public card{example ? " — leave empty to keep the current one" : ""}
+                  <input type="file" name={`example_${key}`} accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="mt-1 block text-sm" />
+                </label>
               </div>
             );
           })}

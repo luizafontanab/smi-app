@@ -53,6 +53,7 @@ export function DevBoard({ tasks: initial, returnTo }: { tasks: DevTask[]; retur
     setPrevInitial(initial);
     setTasks(initial);
   }
+  const [announcement, setAnnouncement] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -76,6 +77,8 @@ export function DevBoard({ tasks: initial, returnTo }: { tasks: DevTask[]; retur
 
     const { tasks: next, orderedIds } = applyMove(tasks, String(active.id), targetStatus, overTask ? overId : null);
     setTasks(next);
+    const moved = tasks.find((t) => t.id === String(active.id));
+    if (moved) setAnnouncement(`${moved.title} moved to ${DEV_STATUS_LABELS[targetStatus]}`);
     startTransition(() => {
       void moveDevTask({ id: String(active.id), status: targetStatus, orderedIds });
     });
@@ -83,6 +86,7 @@ export function DevBoard({ tasks: initial, returnTo }: { tasks: DevTask[]; retur
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
+      <p aria-live="polite" className="sr-only">{announcement}</p>
       <div className="mt-5 grid gap-4 lg:grid-cols-5">
         {BOARD_STATUSES.map((status) => {
           const items = columnOf(status);
@@ -98,15 +102,15 @@ function Column({ status, items, extra, returnTo }: { status: DevStatus; items: 
   const { setNodeRef } = useDroppable({ id: status });
   return (
     <div ref={setNodeRef} className="rounded-xl bg-white p-3 shadow-sm">
-      <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-        {DEV_STATUS_LABELS[status]} <span className="text-gray-500">({items.length + extra})</span>
+      <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-graphite">
+        {DEV_STATUS_LABELS[status]} <span className="text-graphite">({items.length + extra})</span>
       </h2>
       <SortableContext items={items.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <div className="mt-2 space-y-2">
           {items.map((t) => (
             <TaskCard key={t.id} task={t} returnTo={returnTo} />
           ))}
-          {extra > 0 && <p className="px-1 text-xs text-gray-500">+{extra} more</p>}
+          {extra > 0 && <p className="px-1 text-xs text-graphite">+{extra} more</p>}
         </div>
       </SortableContext>
       <form action={createDevTask} className="mt-2">
@@ -114,8 +118,9 @@ function Column({ status, items, extra, returnTo }: { status: DevStatus; items: 
         <input
           name="title"
           placeholder="+ Add task"
+          aria-label={`Add task to ${DEV_STATUS_LABELS[status]}`}
           required
-          className="w-full rounded border px-2 py-1.5 text-sm placeholder:text-gray-500"
+          className="w-full rounded border px-2 py-1.5 text-sm placeholder:text-graphite"
         />
       </form>
     </div>
@@ -136,7 +141,7 @@ function TaskCard({ task, returnTo }: { task: DevTask; returnTo: string }) {
           {...attributes}
           {...listeners}
           aria-label={`Move ${task.title}`}
-          className="mt-0.5 cursor-grab rounded px-1 text-gray-500 hover:bg-gray-100 focus:outline focus:outline-2 focus:outline-ink"
+          className="mt-0.5 cursor-grab rounded px-1 text-graphite hover:bg-shade focus:outline focus:outline-2 focus:outline-ink"
         >
           ⠿
         </button>
@@ -147,13 +152,14 @@ function TaskCard({ task, returnTo }: { task: DevTask; returnTo: string }) {
       <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-6">
         <Badge tone={PRIORITY_TONE[task.priority]}>{task.priority}</Badge>
         {task.kind && <Badge tone={KIND_TONE[task.kind]}>{DEV_TASK_KIND_LABELS[task.kind]}</Badge>}
-        {task.assignee && <span className="text-xs text-gray-500">{task.assignee}</span>}
+        {task.assignee && <span className="text-xs text-graphite">{task.assignee}</span>}
       </div>
       <form action={setDevTaskStatus} className="mt-1.5 pl-6">
         <input type="hidden" name="id" value={task.id} />
         <select
           name="status"
           defaultValue={task.status}
+          aria-label={`Move ${task.title} to column`}
           className="w-full rounded border px-1.5 py-0.5 text-xs"
           onChange={(e) => e.currentTarget.form?.requestSubmit()}
         >

@@ -21,8 +21,8 @@ export function CookieConsent() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 text-sm">
         <p>We use cookies for anonymous readership stats that help our members see who&apos;s engaging.</p>
         <div className="flex gap-2">
-          <button onClick={() => choose("essential")} className="rounded border px-3 py-1.5">Essential only</button>
-          <button onClick={() => choose("all")} className="rounded bg-ink px-3 py-1.5 text-white">Accept</button>
+          <button onClick={() => choose("essential")} className="tap rounded border px-3 py-1.5">Essential only</button>
+          <button onClick={() => choose("all")} className="tap rounded bg-ink px-3 py-1.5 text-white">Accept</button>
         </div>
       </div>
     </div>

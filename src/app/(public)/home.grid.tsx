@@ -63,6 +63,9 @@ export function GridHome({
   return (
     <>
       <div className="mx-auto max-w-6xl px-4 pb-12">
+        {/* Grid has no editorial hero, so the page's h1 is visually the
+            wordmark in the header — but the document still needs one. */}
+        <h1 className="sr-only">Sheet Metal Industries — UK sheet metal, fabrication and welding news</h1>
         {/* The rotating banner is a real advert slot, not an editorial hero —
             see the top-of-file note on the above-the-fold exception. */}
         <div className="pt-6"><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} /></div>
@@ -82,7 +85,7 @@ export function GridHome({
             </div>
             {videos.length > 0 && (
               <div>
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-graphite">Latest videos</p>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-graphite">Latest videos</p>
                 <div className="flex flex-col gap-2">
                   {videos.slice(0, 2).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
                 </div>
@@ -107,7 +110,7 @@ export function GridHome({
             {videos[2] && <VideoCard video={videos[2]} size="md" />}
             {videos.length > 3 && (
               <>
-                <p className="mb-2 mt-3 text-[10px] font-bold uppercase tracking-widest text-graphite">More in this series</p>
+                <p className="mb-2 mt-3 text-[11px] font-bold uppercase tracking-widest text-graphite">More in this series</p>
                 <div className="grid grid-cols-2 gap-2.5">
                   {videos.slice(3, 5).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
                 </div>
@@ -208,7 +211,7 @@ type MixedRailItem = { type: string; label: string; href: string };
 
 const MIXED_RAIL_CHIP: Record<string, string> = {
   News: "bg-ink/8 text-ink",
-  Video: "bg-brand/10 text-brand",
+  Video: "bg-brand/10 text-brand-text",
   Machine: "bg-graphite/10 text-graphite",
   Member: "bg-gold/15 text-ink",
 };
@@ -218,11 +221,11 @@ function MixedRail({ title, items }: { title: string; items: MixedRailItem[] }) 
   if (items.length === 0) return null;
   return (
     <div className="rounded-lg border border-line p-3">
-      <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-graphite">{title}</p>
+      <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-graphite">{title}</p>
       <div className="flex flex-col gap-2.5">
         {items.map((item, i) => (
           <Link key={i} href={item.href} className="group flex items-center gap-2">
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${MIXED_RAIL_CHIP[item.type] ?? "bg-graphite/10 text-graphite"}`}>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${MIXED_RAIL_CHIP[item.type] ?? "bg-graphite/10 text-graphite"}`}>
               {item.type}
             </span>
             <span className="min-w-0 truncate text-xs font-semibold group-hover:underline">{item.label}</span>

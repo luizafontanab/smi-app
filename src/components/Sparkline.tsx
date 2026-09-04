@@ -50,7 +50,7 @@ export function Sparkline({ values, width = 120, height = 32 }: { values: number
 
 /** Larger single-series line for the admin analytics page. No hover/tooltip layer — deliberately kept simple. */
 export function TrendChart({ values, labels, height = 140 }: { values: number[]; labels: string[]; height?: number }) {
-  if (values.length < 2) return <p className="text-sm text-gray-500">Not enough data yet.</p>;
+  if (values.length < 2) return <p className="text-sm text-graphite">Not enough data yet.</p>;
   const width = 600;
   const pad = 8;
   const line = points(values, width, height, pad);

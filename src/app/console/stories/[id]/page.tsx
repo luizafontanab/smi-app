@@ -9,6 +9,7 @@ import { parseFocus, focusStyle } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { StoryBody } from "@/components/StoryBody";
 import { MemberBacklink } from "@/components/MemberBacklink";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href={backTo} className="text-sm text-gray-500 hover:text-ink">← Story Engine</Link>
+      <Link href={backTo} className="text-sm text-graphite hover:text-ink">← Story Engine</Link>
       <div className="flex items-baseline justify-between">
         <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New story" : "Edit story"}</h1>
         {!isNew && (
@@ -52,11 +53,12 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
         )}
       </div>
       {story?.status === "rejected" && (
-        <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">Rejected: {story.rejected_reason}</p>
+        <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">Rejected: {story.rejected_reason}</p>
       )}
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <form action={saveStory} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
+        <UnsavedChangesGuard />
         {!isNew && <input type="hidden" name="id" value={id} />}
         <div>
           <label htmlFor="title" className="text-sm font-medium">Title</label>
@@ -103,19 +105,19 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           {story.status === "awaiting_approval" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Approval</h2>
-              <p className="mt-1 text-xs text-gray-500">Publishes immediately. To approve for a later date instead, use Schedule below.</p>
+              <p className="mt-1 text-xs text-graphite">Publishes immediately. To approve for a later date instead, use Schedule below.</p>
               <div className="mt-3 flex gap-2">
                 <form action={decideStory}>
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="approve" />
-                  <button className="rounded bg-green-600 px-4 py-2 text-sm text-white">Approve & publish</button>
+                  <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
                 </form>
               </div>
               <form action={decideStory} className="mt-3 flex gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="reject" />
                 <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600">Reject</button>
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
               </form>
             </div>
           )}
@@ -129,7 +131,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>
                 <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
               </form>
-              <p className="mt-2 text-xs text-gray-500">
+              <p className="mt-2 text-xs text-graphite">
                 {story.status === "awaiting_approval" && "Scheduling or publishing here also approves the story. "}
                 Social push follows publication after the configured delay; daily cap applies.
               </p>
@@ -138,19 +140,19 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           {story.status === "published" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Pin to headline</h2>
-              <p className="mt-1 text-xs text-gray-500">Pinned stories take over the homepage headline slot.</p>
+              <p className="mt-1 text-xs text-graphite">Pinned stories take over the homepage headline slot.</p>
               <form action={pinStory} className="mt-3 flex flex-wrap items-center gap-2 text-sm">
                 <input type="hidden" name="id" value={id} />
                 {isPinned ? (
                   <>
-                    <p className="text-xs text-gray-500">Pinned until {new Date(story.pinned_until!).toLocaleString("en-GB")}</p>
+                    <p className="text-xs text-graphite">Pinned until {new Date(story.pinned_until!).toLocaleString("en-GB")}</p>
                     <input type="hidden" name="days" value="0" />
                     <button className="rounded border px-3 py-1.5">Unpin</button>
                   </>
                 ) : (
                   <>
                     <input type="number" name="days" defaultValue={2} min={1} max={30} className="w-16 rounded border px-2 py-1.5" />
-                    <span className="text-xs text-gray-500">days</span>
+                    <span className="text-xs text-graphite">days</span>
                     <button className="rounded bg-ink px-3 py-1.5 text-white">Pin</button>
                   </>
                 )}
@@ -160,7 +162,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           {story.member && (
             <div className="rounded-xl bg-white p-5 shadow-sm text-sm sm:col-span-2">
               <h2 className="font-bold text-ink">Member preview</h2>
-              <p className="mt-1 text-xs text-gray-500">How this story will look once published.</p>
+              <p className="mt-1 text-xs text-graphite">How this story will look once published.</p>
               <div className="mt-3 rounded-lg border bg-paper p-4">
                 <h3 className="text-lg font-bold leading-tight text-ink">{story.title}</h3>
                 {cover && (

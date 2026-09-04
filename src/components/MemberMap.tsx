@@ -1,18 +1,14 @@
-"use client";
+import { PinMap } from "./PinMap";
 
-import dynamic from "next/dynamic";
-import type { MapMember } from "./MemberMapImpl";
-
-// Leaflet touches `window`/`navigator` at import time (browser detection in
-// its own core), which throws during SSR — `ssr: false` is only legal inside
-// a Client Component, hence this thin wrapper around the real implementation.
-const Map = dynamic(() => import("./MemberMapImpl").then((m) => m.MemberMap), {
-  ssr: false,
-  loading: () => <div className="h-[32rem] animate-pulse rounded-lg bg-graphite/10" />,
-});
-
-export type { MapMember };
+// Thin adapter over the generalised PinMap (which owns the ssr:false dynamic
+// import) — /member's API is unchanged: it still passes MapMember rows.
+export type MapMember = { slug: string; name: string; lat: number; lng: number };
 
 export function MemberMap({ members }: { members: MapMember[] }) {
-  return <Map members={members} />;
+  return (
+    <PinMap
+      ariaLabel="Map of member locations"
+      pins={members.map((m) => ({ href: `/member/${m.slug}`, label: m.name, lat: m.lat, lng: m.lng }))}
+    />
+  );
 }

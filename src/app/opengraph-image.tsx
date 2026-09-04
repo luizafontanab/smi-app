@@ -29,12 +29,12 @@ export default function Image() {
       >
         <div style={{ display: "flex", fontSize: 72, fontWeight: 700, lineHeight: 1.1 }}>
           <span>Sheet Metal&nbsp;</span>
-          <span style={{ color: "#fe5000" }}>Industries</span>
+          <span style={{ color: "#ff8200" }}>Industries</span>
         </div>
         <div style={{ display: "flex", marginTop: 28, fontSize: 32, color: "#c9ced6" }}>
           The voice of the UK sheet metal, fabrication &amp; welding trade
         </div>
-        <div style={{ display: "flex", marginTop: 60, width: 220, height: 10, background: "#fe5000" }} />
+        <div style={{ display: "flex", marginTop: 60, width: 220, height: 10, background: "#ff8200" }} />
       </div>
     ),
     { ...size }

@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { mediaUrl, publicDb, serviceDb } from "@/lib/db/server";
+import { AddContentTabs } from "@/components/dashboard/AddContentTabs";
 import { memberUploadImage, submitStory } from "../../actions";
 import { StoryForm } from "./StoryForm";
 
@@ -16,13 +16,13 @@ export default async function NewMemberStory(props: PageProps<"/dashboard/story/
   ]);
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
-      <h1 className="mt-1 text-xl font-bold text-ink">Add a story</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <AddContentTabs active="story" />
+      <h1 className="mt-4 text-xl font-bold text-ink">Add a story</h1>
+      <p className="mt-1 text-sm text-graphite">
         The editor reviews every story before it goes live. Once approved it&apos;s published with a link back to
         your page and shared on SMI&apos;s social channels.
       </p>
-      {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <StoryForm
         action={submitStory}
         uploadImage={memberUploadImage}

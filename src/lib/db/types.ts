@@ -878,7 +878,9 @@ export type Database = {
           description: string | null
           ends_on: string | null
           id: string
+          lat: number | null
           link: string | null
+          lng: number | null
           location: string | null
           member_id: string | null
           rejected_reason: string | null
@@ -898,7 +900,9 @@ export type Database = {
           description?: string | null
           ends_on?: string | null
           id?: string
+          lat?: number | null
           link?: string | null
+          lng?: number | null
           location?: string | null
           member_id?: string | null
           rejected_reason?: string | null
@@ -918,7 +922,9 @@ export type Database = {
           description?: string | null
           ends_on?: string | null
           id?: string
+          lat?: number | null
           link?: string | null
+          lng?: number | null
           location?: string | null
           member_id?: string | null
           rejected_reason?: string | null
@@ -1227,7 +1233,6 @@ export type Database = {
           status: Database["public"]["Enums"]["member_status"]
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
-          testimonials: Json
           video_url: string | null
           website: string | null
         }
@@ -1259,7 +1264,6 @@ export type Database = {
           status?: Database["public"]["Enums"]["member_status"]
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
-          testimonials?: Json
           video_url?: string | null
           website?: string | null
         }
@@ -1291,7 +1295,6 @@ export type Database = {
           status?: Database["public"]["Enums"]["member_status"]
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
-          testimonials?: Json
           video_url?: string | null
           website?: string | null
         }
@@ -1778,6 +1781,7 @@ export type Database = {
       static_pages: {
         Row: {
           body: string
+          collapsible: boolean
           id: string
           slug: string
           title: string
@@ -1785,6 +1789,7 @@ export type Database = {
         }
         Insert: {
           body?: string
+          collapsible?: boolean
           id?: string
           slug: string
           title: string
@@ -1792,6 +1797,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          collapsible?: boolean
           id?: string
           slug?: string
           title?: string

@@ -57,6 +57,7 @@ export function StoryBoard({ stories: initial }: { stories: BoardStory[] }) {
     setStories(initial);
   }
   const [error, setError] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -89,6 +90,8 @@ export function StoryBoard({ stories: initial }: { stories: BoardStory[] }) {
         if (!res.ok) {
           if (isBoardStatus(fromStatus)) applyStatus(story.id, fromStatus);
           setError(res.error ?? "That move isn't allowed.");
+        } else {
+          setAnnouncement(`${story.title} moved to ${COLUMN_LABELS[targetStatus]}`);
         }
       });
     });
@@ -97,10 +100,11 @@ export function StoryBoard({ stories: initial }: { stories: BoardStory[] }) {
   return (
     <div>
       {error && (
-        <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">
+        <p role="alert" className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">
           {error} <button type="button" onClick={() => setError(null)} className="underline">dismiss</button>
         </p>
       )}
+      <p aria-live="polite" className="sr-only">{announcement}</p>
       {/*
         Explicit id: dnd-kit's aria-describedby id otherwise falls back to a
         module-level counter (@dnd-kit/utilities' useUniqueId) that isn't
@@ -127,14 +131,14 @@ function Column({ status, items, total }: { status: BoardStatus; items: BoardSto
   const { setNodeRef } = useDroppable({ id: status });
   return (
     <div ref={setNodeRef} className="rounded-xl bg-white p-3 shadow-sm">
-      <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-        {COLUMN_LABELS[status]} <span className="text-gray-500">({total})</span>
+      <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-graphite">
+        {COLUMN_LABELS[status]} <span className="text-graphite">({total})</span>
       </h2>
       <SortableContext items={items.map((s) => s.id)} strategy={verticalListSortingStrategy}>
         <div className="mt-2 space-y-2">
           {items.map((s) => <StoryCard key={s.id} story={s} />)}
-          {items.length === 0 && <p className="px-1 text-xs text-gray-500">Empty</p>}
-          {total > items.length && <p className="px-1 text-xs text-gray-500">+{total - items.length} more</p>}
+          {items.length === 0 && <p className="px-1 text-xs text-graphite">Empty</p>}
+          {total > items.length && <p className="px-1 text-xs text-graphite">+{total - items.length} more</p>}
         </div>
       </SortableContext>
     </div>
@@ -158,7 +162,7 @@ function StoryCard({ story }: { story: BoardStory }) {
           {...attributes}
           {...listeners}
           aria-label={`Move ${story.title}`}
-          className="mt-0.5 cursor-grab rounded px-1 text-gray-500 hover:bg-gray-100 focus:outline focus:outline-2 focus:outline-ink"
+          className="mt-0.5 cursor-grab rounded px-1 text-graphite hover:bg-shade focus:outline focus:outline-2 focus:outline-ink"
         >
           ⠿
         </button>
@@ -166,7 +170,7 @@ function StoryCard({ story }: { story: BoardStory }) {
           {story.title}
         </Link>
       </div>
-      <p className="mt-1 pl-6 text-xs text-gray-500">
+      <p className="mt-1 pl-6 text-xs text-graphite">
         {story.member?.name && <>{story.member.name} · </>}{story.source}
         {story.scheduled_at && story.status === "scheduled" && <> · {new Date(story.scheduled_at).toLocaleString("en-GB")}</>}
         {isPinned && <> · 📌 pinned</>}
@@ -177,7 +181,7 @@ function StoryCard({ story }: { story: BoardStory }) {
           <form action={decideStory}>
             <input type="hidden" name="id" value={story.id} />
             <input type="hidden" name="decision" value="approve" />
-            <button className="rounded bg-green-600 px-2.5 py-1 text-xs text-white">Approve</button>
+            <button className="rounded bg-success px-2.5 py-1 text-xs text-white">Approve</button>
           </form>
           <Link href={`/console/stories/${story.id}`} className="rounded border px-2.5 py-1 text-xs">Review</Link>
         </div>
@@ -188,14 +192,14 @@ function StoryCard({ story }: { story: BoardStory }) {
           {isPinned ? (
             <>
               <input type="hidden" name="days" value="0" />
-              <button className="text-gray-500 hover:text-ink">Unpin</button>
+              <button className="text-graphite hover:text-ink">Unpin</button>
             </>
           ) : (
             <>
-              <span className="text-gray-500">📌 Pin</span>
-              <input type="number" name="days" defaultValue={2} min={1} max={30} className="w-10 rounded border px-1 py-0.5" />
-              <span className="text-gray-500">days</span>
-              <button className="text-gray-500 hover:text-ink underline">Go</button>
+              <span className="text-graphite">📌 Pin</span>
+              <input type="number" name="days" defaultValue={2} min={1} max={30} aria-label="Days to pin" className="w-10 rounded border px-1 py-0.5" />
+              <span className="text-graphite">days</span>
+              <button className="text-graphite hover:text-ink underline">Go</button>
             </>
           )}
         </form>
@@ -206,6 +210,7 @@ function StoryCard({ story }: { story: BoardStory }) {
         <select
           name="status"
           defaultValue={status}
+          aria-label={`Move ${story.title} to column`}
           className="w-full rounded border px-1.5 py-0.5 text-xs"
           onChange={(e) => e.currentTarget.form?.requestSubmit()}
         >

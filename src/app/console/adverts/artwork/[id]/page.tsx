@@ -37,9 +37,9 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/console/adverts/artwork" className="text-sm text-gray-500 hover:text-ink">← Artwork</Link>
+      <Link href="/console/adverts/artwork" className="text-sm text-graphite hover:text-ink">← Artwork</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New artwork" : "Edit artwork"}</h1>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       {sp.from === "interest" && (
         <p className="mt-2 rounded bg-brand/10 p-2 text-sm text-ink">
           Started from an interest request — add the artwork they sent you, then book its dates.
@@ -70,7 +70,7 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
         <div>
           <label htmlFor="link_url" className="text-sm font-medium">Link (optional)</label>
           <input id="link_url" name="link_url" type="url" defaultValue={advert?.link_url ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
-          <p className="mt-1 text-xs text-gray-500">Leave blank to send clicks to their member page.</p>
+          <p className="mt-1 text-xs text-graphite">Leave blank to send clicks to their member page.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -86,7 +86,7 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
             <input type="file" name="mobile" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" required={isNew} />
           </div>
         </div>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-graphite">
           JPG/PNG/WebP, max 8MB. Editing leaves the existing image in place unless you choose a new one — and a swap applies to every run of this artwork.
         </p>
         <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>

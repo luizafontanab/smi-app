@@ -53,17 +53,17 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
 
         {done ? (
           <>
-            <p className="mt-3 text-sm text-gray-600">
+            <p className="mt-3 text-sm text-graphite">
               That address is unsubscribed from the SMI newsletter. You won&apos;t receive any further issues.
             </p>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-graphite">
               Emails about your own membership — approvals, advert runs and account notices — are separate and will still be sent.
             </p>
             <p className="mt-5 text-sm"><Link href="/" className="underline">Back to Sheet Metal Industries</Link></p>
           </>
         ) : (
           <form action={unsubscribe}>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-graphite">
               Enter the address you receive the SMI newsletter at and we&apos;ll take it off the list.
             </p>
             <label htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
@@ -74,7 +74,7 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
             <div className="mt-5">
               <SubmitButton pendingLabel="Unsubscribing…">Unsubscribe</SubmitButton>
             </div>
-            <p className="mt-3 text-xs text-gray-500">
+            <p className="mt-3 text-xs text-graphite">
               This only stops the newsletter. Notices about your own membership are sent separately.
             </p>
           </form>

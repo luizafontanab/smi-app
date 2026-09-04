@@ -50,9 +50,9 @@ describe("createDevTask", () => {
     const builder = queryBuilder(dbOk({ sort_order: 4 }));
     db({ dev_tasks: () => builder });
 
-    await createDevTask(form({ title: "Fix the thing", status: "in_progress" }));
+    await createDevTask(form({ title: "Fix the thing", status: "coding" }));
 
-    expect(builder.insert).toHaveBeenCalledWith(expect.objectContaining({ sort_order: 5, status: "in_progress" }));
+    expect(builder.insert).toHaveBeenCalledWith(expect.objectContaining({ sort_order: 5, status: "coding" }));
   });
 });
 
@@ -128,7 +128,7 @@ describe("moveDevTask", () => {
     const builder = queryBuilder(dbOk([{ id: "t1" }, { id: "t2" }])); // t3 doesn't exist
     db({ dev_tasks: () => builder });
 
-    await moveDevTask({ id: "t3", status: "in_progress", orderedIds: ["t1", "t3", "t2"] });
+    await moveDevTask({ id: "t3", status: "coding", orderedIds: ["t1", "t3", "t2"] });
 
     expect(builder.update).not.toHaveBeenCalled();
   });
@@ -137,11 +137,11 @@ describe("moveDevTask", () => {
     const builder = queryBuilder(dbOk([{ id: "t1" }, { id: "t2" }, { id: "t3" }])); // t4 doesn't exist
     db({ dev_tasks: () => builder });
 
-    await moveDevTask({ id: "t2", status: "in_progress", orderedIds: ["t1", "t4", "t2", "t3"] });
+    await moveDevTask({ id: "t2", status: "coding", orderedIds: ["t1", "t4", "t2", "t3"] });
 
     expect(builder.update).toHaveBeenCalledTimes(3);
-    expect(builder.update).toHaveBeenCalledWith({ status: "in_progress", sort_order: 0 });
-    expect(builder.update).toHaveBeenCalledWith({ status: "in_progress", sort_order: 1 });
-    expect(builder.update).toHaveBeenCalledWith({ status: "in_progress", sort_order: 2 });
+    expect(builder.update).toHaveBeenCalledWith({ status: "coding", sort_order: 0 });
+    expect(builder.update).toHaveBeenCalledWith({ status: "coding", sort_order: 1 });
+    expect(builder.update).toHaveBeenCalledWith({ status: "coding", sort_order: 2 });
   });
 });

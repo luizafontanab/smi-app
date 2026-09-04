@@ -25,11 +25,11 @@ export default function JoinPage() {
     <div className="mx-auto max-w-4xl px-4">
       <div className="mt-8 text-center">
         <h1 className="text-3xl font-bold text-ink">Become a Member</h1>
-        <p className="mx-auto mt-3 max-w-xl text-gray-600">
+        <p className="mx-auto mt-3 max-w-xl text-graphite">
           <span className="text-2xl font-bold text-ink">£40/month</span> — no tiers, no seat licences, cancel anytime.
           The price is the price, stated up front.
         </p>
-        <p className="mx-auto mt-2 max-w-xl text-sm text-gray-500">
+        <p className="mx-auto mt-2 max-w-xl text-sm text-graphite">
           Join 85+ UK sheet metal companies reaching thousands of trade readers every month.
         </p>
       </div>
@@ -37,7 +37,7 @@ export default function JoinPage() {
         {BENEFITS.map(([title, detail]) => (
           <div key={title} className="rounded-lg bg-white p-5 shadow-sm">
             <h2 className="font-bold text-ink">{title}</h2>
-            <p className="mt-1 text-sm text-gray-600">{detail}</p>
+            <p className="mt-1 text-sm text-graphite">{detail}</p>
           </div>
         ))}
       </div>

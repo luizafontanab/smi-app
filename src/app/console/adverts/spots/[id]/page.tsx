@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { saveAdvertProduct } from "../../../actions";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +33,12 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/console/adverts/spots" className="text-sm text-gray-500 hover:text-ink">← Ad Spots</Link>
+      <Link href="/console/adverts/spots" className="text-sm text-graphite hover:text-ink">← Ad Spots</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New ad spot" : "Edit ad spot"}</h1>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <form action={saveAdvertProduct} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
+        <UnsavedChangesGuard />
         {!isNew && <input type="hidden" name="id" value={id} />}
         <div>
           <label htmlFor="short_name" className="text-sm font-medium">Short name</label>
@@ -56,7 +58,7 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
           <div>
             <label htmlFor="cap" className="text-sm font-medium">Allowable spots</label>
             <input id="cap" name="cap" type="number" min={1} defaultValue={spot?.cap ?? 1} required className="mt-1 w-full rounded border px-3 py-2" />
-            <p className="mt-1 text-xs text-gray-500">How many advertisers can hold this spot at once.</p>
+            <p className="mt-1 text-xs text-graphite">How many advertisers can hold this spot at once.</p>
           </div>
         </div>
         <div>
@@ -66,7 +68,7 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
             defaultValue={spot?.rate_pennies != null ? (spot.rate_pennies / 100).toFixed(2) : ""}
             className="mt-1 w-full rounded border px-3 py-2"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-graphite">
             Raises an invoice automatically when a booking sold as this product is approved. Leave blank to invoice manually.
           </p>
         </div>
@@ -77,7 +79,7 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
             <img src={sample} alt="" className="mt-2 h-24 w-auto rounded object-cover" />
           )}
           <input type="file" name="sample" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
-          <p className="mt-1 text-xs text-gray-500">JPG/PNG/WebP, max 8MB.</p>
+          <p className="mt-1 text-xs text-graphite">JPG/PNG/WebP, max 8MB.</p>
         </div>
         <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
       </form>

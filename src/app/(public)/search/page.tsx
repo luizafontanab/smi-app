@@ -64,14 +64,14 @@ export default async function SearchPage(props: PageProps<"/search">) {
       {/* Members always rank first — the hierarchy rule */}
       {members.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-brand">Members</h2>
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-brand-text">Members</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {members.map((m) => (
               <Link key={m.slug} href={`/member/${m.slug}`} className="flex items-center gap-3 rounded-lg border-2 border-brand/40 bg-white p-3 shadow-sm hover:border-brand">
                 {m.logo_path && <Image src={mediaUrl(m.logo_path)!} alt="" width={40} height={40} className="rounded" unoptimized />}
                 <div>
                   <p className="font-semibold text-ink">{m.name}</p>
-                  <p className="text-xs text-gray-500 line-clamp-1">{m.description}</p>
+                  <p className="text-xs text-graphite line-clamp-1">{m.description}</p>
                 </div>
               </Link>
             ))}
@@ -95,7 +95,7 @@ export default async function SearchPage(props: PageProps<"/search">) {
       )}
 
       {q && members.length === 0 && stories.length === 0 && (
-        <p className="mt-10 text-gray-500">Nothing found for “{q}”.</p>
+        <p className="mt-10 text-graphite">Nothing found for “{q}”.</p>
       )}
       <div className="my-10" />
     </div>

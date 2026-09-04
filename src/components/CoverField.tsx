@@ -142,8 +142,8 @@ export function CoverField({
         onChange={onChange}
         className="mt-1 w-full text-sm"
       />
-      <p className="mt-1 text-xs text-gray-500">{hint}</p>
-      {note && <p className="mt-1 text-xs text-gray-500">{note}</p>}
+      <p className="mt-1 text-xs text-graphite">{hint}</p>
+      {note && <p className="mt-1 text-xs text-graphite">{note}</p>}
       {preview && (
         <>
           <p className="mt-3 text-sm font-medium" id="focus-picker-label">Crop focus (click to set the focal point, slide to zoom)</p>

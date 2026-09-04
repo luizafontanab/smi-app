@@ -16,9 +16,9 @@ export default async function BundlesPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/adverts" className="text-sm text-gray-500 hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Bundles</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Several ad formats sold together to one member under a single price. Add the artwork first via{" "}
         <Link href="/console/adverts/artwork" className="underline">Artwork</Link>, then book it into a bundle here.
       </p>
@@ -54,7 +54,7 @@ export default async function BundlesPage() {
         <h2 className="font-bold text-ink">Existing bundles</h2>
         <div className="overflow-x-auto mt-2">
         <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Member</th><th scope="col">Name</th><th scope="col">Price</th><th scope="col">Parts</th></tr></thead>
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Member</th><th scope="col">Name</th><th scope="col">Price</th><th scope="col">Parts</th></tr></thead>
           <tbody>
             {(bundles ?? []).map((b) => (
               <tr key={b.id} className="border-t">
@@ -64,7 +64,7 @@ export default async function BundlesPage() {
                 <td>{b.parts?.[0]?.count ?? 0}</td>
               </tr>
             ))}
-            {!bundles?.length && <tr><td colSpan={4} className="py-4 text-center text-gray-500">None yet.</td></tr>}
+            {!bundles?.length && <tr><td colSpan={4} className="py-4 text-center text-graphite">None yet.</td></tr>}
           </tbody>
         </table>
         </div>

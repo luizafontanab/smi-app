@@ -1,0 +1,3 @@
+- Advertise submenu should go under content or under members?
+- Logo colour and Pantone® Orange 021 mentioned in branding don't match. which takes precedence?
+- telephone format, should it allow for extensions or only accept standard telephone format?

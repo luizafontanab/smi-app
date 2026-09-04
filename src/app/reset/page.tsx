@@ -46,7 +46,7 @@ export default async function ResetPage(props: PageProps<"/reset">) {
 
         {sent ? (
           <>
-            <p className="mt-4 rounded bg-green-50 p-3 text-center text-sm text-green-800">
+            <p className="mt-4 rounded bg-success/10 p-3 text-center text-sm text-success">
               If that address has an account, a reset link is on its way. The link is valid for one hour.
             </p>
             <p className="mt-4 text-center text-sm">
@@ -55,7 +55,7 @@ export default async function ResetPage(props: PageProps<"/reset">) {
           </>
         ) : (
           <form action={requestReset}>
-            <p className="mt-1 text-center text-sm text-gray-500">
+            <p className="mt-1 text-center text-sm text-graphite">
               Enter your email and we&apos;ll send you a link to set a new password.
             </p>
             <label htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
@@ -64,7 +64,7 @@ export default async function ResetPage(props: PageProps<"/reset">) {
               <SubmitButton pendingLabel="Sending…">Send reset link</SubmitButton>
             </div>
             <p className="mt-3 text-center text-sm">
-              <Link href="/login" className="underline text-gray-500">Back to sign in</Link>
+              <Link href="/login" className="underline text-graphite">Back to sign in</Link>
             </p>
           </form>
         )}

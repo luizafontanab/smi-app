@@ -22,12 +22,12 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/adverts" className="text-sm text-gray-500 hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Homepage takeover</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         One advertiser&apos;s colours and top banner across the whole public site for a paid period — reverts on its own once the dates end.
       </p>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Book a takeover</h2>
@@ -55,7 +55,7 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
         <h2 className="font-bold text-ink">Booked</h2>
         <div className="overflow-x-auto mt-2">
         <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Advertiser</th><th scope="col">Colour</th><th scope="col">From</th><th scope="col">To</th><th scope="col" /></tr></thead>
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Advertiser</th><th scope="col">Colour</th><th scope="col">From</th><th scope="col">To</th><th scope="col" /></tr></thead>
           <tbody>
             {(takeovers ?? []).map((t) => {
               const config = t.config as { hex?: string; banner_path?: string };
@@ -71,12 +71,12 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
                   </td>
                   <td>{t.starts_on}</td>
                   <td>{t.ends_on}</td>
-                  <td className="text-right">{isLive && <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">live</span>}</td>
+                  <td className="text-right">{isLive && <span className="rounded bg-success/10 px-2 py-0.5 text-xs text-success">live</span>}</td>
                 </tr>
               );
             })}
             {!takeovers?.length && (
-              <tr><td colSpan={5} className="py-4 text-center text-gray-500">None booked yet.</td></tr>
+              <tr><td colSpan={5} className="py-4 text-center text-graphite">None booked yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -84,7 +84,7 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
       </section>
 
       {liveBanner && (
-        <p className="mt-3 text-xs text-gray-500">
+        <p className="mt-3 text-xs text-graphite">
           Preview:
           <Image src={liveBanner} alt="" width={1280} height={170} className="mt-2 h-auto w-full rounded border" unoptimized />
         </p>

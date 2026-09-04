@@ -36,6 +36,8 @@ async function login(page: import("@playwright/test").Page, email: string) {
 }
 
 async function signOut(page: import("@playwright/test").Page) {
+  // Sign out lives inside the header's account menu everywhere now
+  await page.locator('header button[aria-label^="Account:"]').click();
   await page.locator("header form button:has-text('Sign out')").click();
   await page.waitForURL("**/login");
 }
@@ -120,7 +122,7 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
     await createAccount(page, `E2E Card Ltd ${ts}`, `e2e-card-${ts}@test.local`);
     await page.click("button:has-text('Pay £40/month')"); // no promo → simulated card payment
     await page.waitForURL("**/dashboard?submitted=paid");
-    await page.goto("/dashboard/billing");
+    await page.goto("/dashboard/settings/billing");
     await expect(page.locator("text=SMI-JOIN-").first()).toBeVisible();
   });
 

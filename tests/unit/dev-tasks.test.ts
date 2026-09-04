@@ -64,7 +64,7 @@ describe("parseDevFilters", () => {
 
   it("accepts a single value or an array for repeated checkbox params", () => {
     expect(parseDevFilters({ status: "done" }).statuses).toEqual(["done"]);
-    expect(parseDevFilters({ status: ["done", "blocked"] }).statuses).toEqual(["done", "blocked"]);
+    expect(parseDevFilters({ status: ["done", "testing"] }).statuses).toEqual(["done", "testing"]);
     expect(parseDevFilters({ assignee: ["Luiza", "Jas"] }).assignees).toEqual(["Luiza", "Jas"]);
   });
 
@@ -85,7 +85,7 @@ describe("parseDevFilters", () => {
 describe("filterDevTasks", () => {
   const tasks = [
     task({ id: "a", title: "Broken login button", description: "nothing", status: "not_started", assignee: "Jas" }),
-    task({ id: "b", title: "Improve copy", description: "the login page reads oddly", status: "in_progress", assignee: "Luiza" }),
+    task({ id: "b", title: "Improve copy", description: "the login page reads oddly", status: "coding", assignee: "Luiza" }),
     task({ id: "c", title: "Old task", description: "n/a", status: "done", assignee: null }),
     task({ id: "d", title: "Cancelled work", description: "n/a", status: "canceled", assignee: "Rishi" }),
     task({ id: "e", title: "Has a login stack trace", description: "n/a", status: "not_started", triage_notes: "login failed here", notes: "login diagnostics" }),
@@ -116,7 +116,7 @@ describe("filterDevTasks", () => {
   });
 
   it("treats multiple selected statuses/assignees as OR within one dimension", () => {
-    const result = filterDevTasks(tasks, { view: "board", q: "", statuses: ["not_started", "in_progress"], assignees: [], showClosed: true });
+    const result = filterDevTasks(tasks, { view: "board", q: "", statuses: ["not_started", "coding"], assignees: [], showClosed: true });
     expect(result.map((t) => t.id).sort()).toEqual(["a", "b", "e"]);
   });
 
@@ -130,27 +130,27 @@ describe("applyMove", () => {
   const col = (status: DevTask["status"], ids: string[]) => ids.map((id, i) => task({ id, status, sort_order: i }));
 
   it("reorders within the same column, inserting before the target card", () => {
-    const tasks = col("in_progress", ["a", "b", "c"]);
-    const { orderedIds } = applyMove(tasks, "a", "in_progress", "c");
+    const tasks = col("coding", ["a", "b", "c"]);
+    const { orderedIds } = applyMove(tasks, "a", "coding", "c");
     expect(orderedIds).toEqual(["b", "a", "c"]);
   });
 
   it("moves a card across columns, inserting before the target card", () => {
-    const tasks = [...col("not_started", ["a"]), ...col("in_progress", ["b", "c"])];
-    const { tasks: next, orderedIds } = applyMove(tasks, "a", "in_progress", "c");
+    const tasks = [...col("not_started", ["a"]), ...col("coding", ["b", "c"])];
+    const { tasks: next, orderedIds } = applyMove(tasks, "a", "coding", "c");
     expect(orderedIds).toEqual(["b", "a", "c"]);
-    expect(next.find((t) => t.id === "a")!.status).toBe("in_progress");
+    expect(next.find((t) => t.id === "a")!.status).toBe("coding");
   });
 
   it("drops onto an empty column", () => {
     const tasks = col("not_started", ["a", "b"]);
-    const { orderedIds } = applyMove(tasks, "a", "blocked", null);
+    const { orderedIds } = applyMove(tasks, "a", "testing", null);
     expect(orderedIds).toEqual(["a"]);
   });
 
   it("produces dense, duplicate-free ids in the destination column", () => {
-    const tasks = [...col("not_started", ["a", "b"]), ...col("in_progress", ["c", "d", "e"])];
-    const { orderedIds } = applyMove(tasks, "b", "in_progress", "d");
+    const tasks = [...col("not_started", ["a", "b"]), ...col("coding", ["c", "d", "e"])];
+    const { orderedIds } = applyMove(tasks, "b", "coding", "d");
     expect(new Set(orderedIds).size).toBe(orderedIds.length);
     expect(orderedIds).toEqual(["c", "b", "d", "e"]);
   });

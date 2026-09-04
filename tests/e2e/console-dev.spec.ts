@@ -98,18 +98,18 @@ test.describe("filing a report and working it on the board", () => {
     // Triage it: reclassify, leave a scratchpad note, move it along.
     await page.locator("#kind").selectOption("idea");
     await page.locator("#triage_notes").fill("Not a bug — reclassified during triage.");
-    await page.locator("#status").selectOption("in_progress");
+    await page.locator("#status").selectOption("coding");
     await page.getByRole("button", { name: "Save" }).click();
     // Save returns to the (filtered) board, not the detail page.
     await page.waitForURL(/\/console\/dev\?.*saved=1/, { timeout: 20_000 });
 
     // The card moved columns.
-    await expect(column(page, "In progress").getByRole("link", { name: title, exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(column(page, "Coding").getByRole("link", { name: title, exact: true })).toBeVisible({ timeout: 20_000 });
 
     // Re-open the detail page: every field persisted.
     await page.goto(detailUrl);
     await expect(page.locator("#kind")).toHaveValue("idea");
-    await expect(page.locator("#status")).toHaveValue("in_progress");
+    await expect(page.locator("#status")).toHaveValue("coding");
     await expect(page.locator("#triage_notes")).toHaveValue("Not a bug — reclassified during triage.");
 
     // A manually quick-added task on the same board carries no kind badge —

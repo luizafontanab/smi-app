@@ -31,13 +31,13 @@ export default async function MediaLibraryPage(props: PageProps<"/console/media"
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="text-xl font-bold text-ink">Media Library</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Everything uploaded through a form in this app, going forward. Nothing links this back to where it&apos;s used —
         deleting a file removes it everywhere it&apos;s shown.
       </p>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {(media ?? []).length === 0 && <p className="text-sm text-gray-500">No uploads recorded yet.</p>}
+        {(media ?? []).length === 0 && <p className="text-sm text-graphite">No uploads recorded yet.</p>}
         {(media ?? []).map((m) => {
           const url = mediaUrl(m.path)!;
           return (
@@ -45,12 +45,12 @@ export default async function MediaLibraryPage(props: PageProps<"/console/media"
               {m.kind === "image" ? (
                 <Image src={url} alt={m.alt_text ?? m.original_name ?? ""} width={300} height={160} className="h-32 w-full rounded object-cover" unoptimized />
               ) : (
-                <div className="flex h-32 w-full items-center justify-center rounded bg-gray-50 text-3xl text-gray-300">📄</div>
+                <div className="flex h-32 w-full items-center justify-center rounded bg-shade text-3xl text-graphite/40">📄</div>
               )}
               <p className="mt-2 truncate text-sm font-medium text-ink" title={m.original_name ?? m.path}>
                 {m.original_name ?? m.path}
               </p>
-              <p className="mt-0.5 text-xs text-gray-500">{kb(m.byte_size)} · {fmt(m.created_at)}</p>
+              <p className="mt-0.5 text-xs text-graphite">{kb(m.byte_size)} · {fmt(m.created_at)}</p>
 
               <form action={renameMedia} className="mt-2 space-y-1.5">
                 <input type="hidden" name="id" value={m.id} />
@@ -74,11 +74,11 @@ export default async function MediaLibraryPage(props: PageProps<"/console/media"
                 <form action={deleteMedia} className="flex items-center gap-1.5">
                   <input type="hidden" name="id" value={m.id} />
                   <input type="hidden" name="path" value={m.path} />
-                  <label className="flex items-center gap-1 text-xs text-gray-500" title="Anything using this file will show a broken image">
+                  <label className="flex items-center gap-1 text-xs text-graphite" title="Anything using this file will show a broken image">
                     <input type="checkbox" name="confirm" value="1" required />
                     confirm
                   </label>
-                  <button className="text-xs text-red-500 hover:underline">Delete</button>
+                  <button className="text-xs text-danger hover:underline">Delete</button>
                 </form>
               </div>
             </div>

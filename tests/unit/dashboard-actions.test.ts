@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  editEvent, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
+  cancelMembership, editEvent, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
   memberUploadImage, memberUploadVideoImage, proposeOwnArtworkSwap, renewAdvertBooking, requestVisibility,
   resubmitAdvert, savePrefs, submitAdvert, submitEvent, submitMachine, submitProfileEdit, submitStory, submitVideo,
   withdrawEvent, withdrawMachine, withdrawStory, withdrawVideo,
@@ -26,6 +26,16 @@ vi.mock("@/lib/auth", () => ({ requireMember }));
 vi.mock("@/lib/media", () => ({ uploadImage, removeMedia }));
 vi.mock("@/lib/notify-admin", () => ({ notifyAdminFunnel }));
 vi.mock("@/lib/adapters/geocode", () => ({ geocodeAddress }));
+
+// cancelMembership loads @/lib/membership dynamically; keep the module's other
+// exports real so anything else in this graph (statuses, slugify) still works.
+const { requestCancellation } = vi.hoisted(() => ({
+  requestCancellation: vi.fn<(memberId: string) => Promise<{ ok: true } | { ok: false; error: string }>>(),
+}));
+vi.mock("@/lib/membership", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  requestCancellation,
+}));
 
 afterEach(() => {
   resetDbServerMocks();
@@ -183,6 +193,14 @@ describe("submitProfileEdit", () => {
     expect(from).not.toHaveBeenCalledWith("member_revisions");
   });
 
+  it("rejects a malformed phone number before writing anything", async () => {
+    const from = db({ members: () => queryBuilder(dbOk({ name: "Acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
+
+    await expect(submitProfileEdit(form({ phone: "call me" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/profile\?error=Phone/);
+    expect(from).not.toHaveBeenCalledWith("member_revisions");
+  });
+
   it("re-geocodes only when the address actually changed, and keeps the old coordinates on a failed lookup", async () => {
     const revisionsBuilder = queryBuilder(dbOk(null));
     db({
@@ -204,6 +222,23 @@ describe("submitProfileEdit", () => {
     await expect(submitProfileEdit(form({ address: "1 Old Rd" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(geocodeAddress).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelMembership", () => {
+  it("requests cancellation for the signed-in member and confirms", async () => {
+    requestCancellation.mockResolvedValue({ ok: true });
+
+    await expect(cancelMembership()).rejects.toThrow("NEXT_REDIRECT:/dashboard/settings/billing?cancelled=1");
+
+    expect(requestCancellation).toHaveBeenCalledWith("mem1");
+    expect(revalidatePath).toHaveBeenCalledWith("/dashboard/settings/billing");
+  });
+
+  it("surfaces a failed cancellation via the cerror param", async () => {
+    requestCancellation.mockResolvedValue({ ok: false, error: "No active subscription on record — contact SMI to cancel." });
+
+    await expect(cancelMembership()).rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/settings\/billing\?cerror=No%20active%20subscription/);
   });
 });
 

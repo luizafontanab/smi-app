@@ -12,7 +12,9 @@
 export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", background: "#f7f7f5", color: "#0f2942" }}>
+      {/* Literal token values (ink/graphite/shade), not vars: this page renders
+          without globals.css, so the palette has to be baked in. */}
+      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", background: "#f4f5f6", color: "#111418" }}>
         <title>Something went wrong — Sheet Metal Industries</title>
         <main
           id="main"
@@ -31,7 +33,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
               fontSize: "1rem",
               fontWeight: 600,
               color: "#fff",
-              background: "#0f2942",
+              background: "#111418",
               border: 0,
               borderRadius: "0.25rem",
               cursor: "pointer",
@@ -40,7 +42,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
             Try again
           </button>
           {error.digest && (
-            <p style={{ marginTop: "2rem", fontSize: "0.75rem", color: "#6b7280" }}>
+            <p style={{ marginTop: "2rem", fontSize: "0.75rem", color: "#5a6068" }}>
               Reference <code>{error.digest}</code>
             </p>
           )}

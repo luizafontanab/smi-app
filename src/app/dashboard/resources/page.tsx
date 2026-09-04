@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 
@@ -22,13 +21,12 @@ export default async function ResourcesPage() {
   );
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">Resources</h1>
-      <p className="mt-1 text-sm text-gray-500">Brand assets and downloadables for your own channels.</p>
+      <p className="mt-1 text-sm text-graphite">Brand assets and downloadables for your own channels.</p>
 
       <div className="mt-5 rounded-xl bg-white p-6 shadow-sm">
         <p className="font-medium text-ink">Your &quot;proud member&quot; graphic</p>
-        <p className="mt-1 text-sm text-gray-500">Links readers back to your SMI page.</p>
+        <p className="mt-1 text-sm text-graphite">Links readers back to your SMI page.</p>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`data:image/svg+xml,${svg}`} alt="Proud member graphic" className="mt-3 w-full rounded border" />
         <a

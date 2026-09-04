@@ -44,15 +44,15 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard" className="text-sm text-gray-500 hover:text-ink">← Dashboard</Link>
+      <Link href="/dashboard/advertising/manage" className="text-sm text-graphite hover:text-ink">← Manage adverts</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{booking.advert?.name}</h1>
-      <p className="mt-1 text-sm text-gray-500">{STATUS_COPY[phase]}</p>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      <p className="mt-1 text-sm text-graphite">{STATUS_COPY[phase]}</p>
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       {booking.review_reason && (
         <div className="mt-4 rounded-xl border-2 border-brand bg-brand/5 p-4">
           <p className="text-sm font-semibold text-ink">What needs changing</p>
-          <p className="mt-1 text-sm text-gray-700">{booking.review_reason}</p>
+          <p className="mt-1 text-sm text-ink">{booking.review_reason}</p>
         </div>
       )}
 
@@ -74,8 +74,8 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
       ) : (
         <section className="mt-5 rounded-xl bg-white p-6 shadow-sm">
           <dl className="grid grid-cols-2 gap-3 text-sm">
-            <dt className="text-gray-500">Format</dt><dd>{booking.advert?.format.replace(/_/g, " ")}</dd>
-            <dt className="text-gray-500">Runs</dt><dd>{booking.starts_on} → {booking.ends_on}</dd>
+            <dt className="text-graphite">Format</dt><dd>{booking.advert?.format.replace(/_/g, " ")}</dd>
+            <dt className="text-graphite">Runs</dt><dd>{booking.starts_on} → {booking.ends_on}</dd>
           </dl>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={mediaUrl(booking.advert?.desktop_path)!} alt="" className="mt-4 w-full rounded border" />
@@ -86,13 +86,13 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Swap the artwork</h2>
           {pendingSwap ? (
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-graphite">
               New artwork sent on {pendingSwap.submitted_at.slice(0, 10)} is with us for approval. The dates and the
               artwork above stay as they are until we decide.
             </p>
           ) : (
             <>
-              <p className="mt-1 text-xs text-gray-500">Same run, same dates — just new images, once we&apos;ve approved them.</p>
+              <p className="mt-1 text-xs text-graphite">Same run, same dates — just new images, once we&apos;ve approved them.</p>
               <ArtworkSwapForm advertId={booking.advert!.id} bookingId={id} />
             </>
           )}
@@ -102,7 +102,7 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
       {phase === "ended" && (
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Run it again</h2>
-          <p className="mt-1 text-xs text-gray-500">Same artwork, new dates. It goes back to us for approval.</p>
+          <p className="mt-1 text-xs text-graphite">Same artwork, new dates. It goes back to us for approval.</p>
           <form action={renewAdvertBooking} className="mt-3 flex flex-wrap items-end gap-3 text-sm">
             <input type="hidden" name="id" value={id} />
             <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block rounded border px-3 py-2" /></label>

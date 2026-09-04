@@ -41,10 +41,19 @@ describe("MobileNav", () => {
     expect(screen.getByRole("dialog", { hidden: true })).not.toHaveAttribute("open");
   });
 
-  it("shows the account pill instead of join/login links once opened for a signed-in user", () => {
-    render(<MobileNav user={{ userId: "u1", email: "member@acme.test", role: "member", memberId: "m1", displayName: "Acme Co" }} />);
+  it("shows the account links instead of join/login links once opened for a signed-in user", () => {
+    render(<MobileNav
+      user={{ userId: "u1", email: "member@acme.test", role: "member", memberId: "m1", displayName: "Acme Co" }}
+      accountLinks={[
+        { href: "/dashboard", label: "Member area" },
+        { href: "/dashboard/help", label: "Help" },
+      ]}
+      signOutAction={async () => {}}
+    />);
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
-    expect(screen.getByRole("link", { name: "Acme Co" })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("link", { name: "Member area" })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("link", { name: "Help" })).toHaveAttribute("href", "/dashboard/help");
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Become a Member" })).not.toBeInTheDocument();
   });
 });

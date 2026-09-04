@@ -19,7 +19,9 @@ export type CalendarIssue = {
 
 const MAX_PER_DAY = 3;
 
-const navLink = "rounded border px-2.5 py-1 text-sm text-gray-500 hover:border-ink hover:text-ink";
+const navLink = "rounded border px-2.5 py-1 text-sm text-graphite hover:border-ink hover:text-ink";
+
+const longDate = (d: Date) => d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
 export function CalendarView({ month, issues }: { month: Date; issues: CalendarIssue[] }) {
   const { days } = monthGrid(month);
@@ -46,7 +48,7 @@ export function CalendarView({ month, issues }: { month: Date; issues: CalendarI
         </h2>
         <Link href={`/console/newsletter?view=calendar&month=${monthKey(shiftMonth(month, 1))}`} className={navLink} aria-label="Next month">›</Link>
         <Link href="/console/newsletter?view=calendar" className={`${navLink} ml-1`}>Today</Link>
-        <p className="ml-auto flex items-center gap-3 text-xs text-gray-500">
+        <p className="ml-auto flex items-center gap-3 text-xs text-graphite">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-ink" /> Sent
           </span>
@@ -59,11 +61,15 @@ export function CalendarView({ month, issues }: { month: Date; issues: CalendarI
       <div className="mt-3 overflow-x-auto rounded-xl bg-white p-3 shadow-sm">
         <div className="min-w-[720px]">
           <div className="grid grid-cols-7 gap-px">
-            {WEEKDAYS.map((d) => (
-              <div key={d} className="px-2 pb-1 text-xs font-bold uppercase tracking-wide text-gray-500">{d}</div>
+            {WEEKDAYS.map((d, i) => (
+              <div key={d} className="px-2 pb-1 text-xs font-bold uppercase tracking-wide text-graphite">
+                <span aria-hidden="true">{d}</span>
+                {/* days[0..6] is the grid's first week, so index i lands on that weekday */}
+                <span className="sr-only">{days[i].toLocaleDateString("en-GB", { weekday: "long" })}</span>
+              </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-px bg-gray-100">
+          <div className="grid grid-cols-7 gap-px bg-shade">
             {days.map((day) => {
               const key = dayKey(day);
               const items = byDay.get(key) ?? [];
@@ -71,10 +77,11 @@ export function CalendarView({ month, issues }: { month: Date; issues: CalendarI
               return (
                 <div
                   key={key}
-                  className={`min-h-24 p-1.5 ${outside ? "bg-gray-50/70" : "bg-white"} ${key === today ? "ring-2 ring-inset ring-brand" : ""}`}
+                  className={`min-h-24 p-1.5 ${outside ? "bg-shade/70" : "bg-white"} ${key === today ? "ring-2 ring-inset ring-brand" : ""}`}
                 >
-                  <div className={`px-0.5 text-xs ${key === today ? "font-bold text-ink" : outside ? "text-gray-500" : "text-gray-600"}`}>
-                    {day.getDate()}
+                  <div className={`px-0.5 text-xs ${key === today ? "font-bold text-ink" : outside ? "text-graphite" : "text-graphite"}`}>
+                    <span aria-hidden="true">{day.getDate()}</span>
+                    <span className="sr-only">{longDate(day)}</span>
                   </div>
                   <div className={`mt-1 space-y-1 ${outside ? "opacity-55" : ""}`}>
                     {items.slice(0, MAX_PER_DAY).map(({ issue, at }) => (
@@ -92,10 +99,11 @@ export function CalendarView({ month, issues }: { month: Date; issues: CalendarI
                           {at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                         </span>{" "}
                         {issue.subject}
+                        <span className="sr-only">, {longDate(day)}</span>
                       </Link>
                     ))}
                     {items.length > MAX_PER_DAY && (
-                      <p className="px-1.5 text-xs text-gray-500">+{items.length - MAX_PER_DAY} more</p>
+                      <p className="px-1.5 text-xs text-graphite">+{items.length - MAX_PER_DAY} more</p>
                     )}
                   </div>
                 </div>
@@ -106,7 +114,7 @@ export function CalendarView({ month, issues }: { month: Date; issues: CalendarI
       </div>
 
       {issues.length === 0 && (
-        <p className="mt-3 text-sm text-gray-500">
+        <p className="mt-3 text-sm text-graphite">
           Nothing scheduled or sent this month. Schedule a draft from the board.
         </p>
       )}

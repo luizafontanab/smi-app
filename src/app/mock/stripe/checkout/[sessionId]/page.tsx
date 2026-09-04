@@ -23,20 +23,20 @@ export default async function MockStripeCheckout(props: PageProps<"/mock/stripe/
       <div className="rounded-xl border border-dashed border-amber-400 bg-amber-50 p-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Mock Stripe checkout</p>
         <h1 className="mt-1 text-xl font-bold text-ink">£40.00/month subscription</h1>
-        <p className="mt-1 text-sm text-gray-600">{session.email}</p>
-        <p className="mt-4 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-graphite">{session.email}</p>
+        <p className="mt-4 text-sm text-graphite">
           This is a stand-in for Stripe&apos;s hosted checkout, used only in Preview deployments. No card is charged.
         </p>
         <div className="mt-6 flex flex-col gap-2">
           <a
             href={`/api/mock/stripe/simulate?sessionId=${encodeURIComponent(sessionId)}&outcome=completed`}
-            className="rounded bg-brand px-4 py-2 text-center text-sm font-semibold text-white"
+            className="rounded bg-brand px-4 py-2 text-center text-sm font-semibold text-ink"
           >
             Simulate successful payment
           </a>
           <a
             href={`/api/mock/stripe/simulate?sessionId=${encodeURIComponent(sessionId)}&outcome=failed`}
-            className="rounded border border-gray-300 px-4 py-2 text-center text-sm font-semibold text-gray-700"
+            className="rounded border border-line px-4 py-2 text-center text-sm font-semibold text-ink"
           >
             Simulate card decline
           </a>

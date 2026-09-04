@@ -90,9 +90,9 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
       <header className={`${hero ? "mt-4" : "mt-6"} flex flex-wrap items-center gap-5 rounded-xl bg-white p-6 shadow-sm`}>
         {member.logo_path && <Image src={mediaUrl(member.logo_path)!} alt="" width={80} height={80} className="rounded-lg" unoptimized />}
         <div className="min-w-0 flex-1">
-          <p className="text-xs uppercase tracking-widest text-brand">SMI Member{member.category ? ` · ${member.category.name}` : ""}</p>
+          <p className="text-xs uppercase tracking-widest text-brand-text">SMI Member{member.category ? ` · ${member.category.name}` : ""}</p>
           <h1 className="text-2xl font-bold text-ink">{member.name}</h1>
-          <p className="text-sm text-gray-500">{member.address}</p>
+          <p className="text-sm text-graphite">{member.address}</p>
         </div>
         <div className="flex gap-2 text-sm">
           {member.website && <a href={`/go/${member.id}?kind=website`} target="_blank" rel="noopener" className="rounded bg-ink px-4 py-2 text-white">Website</a>}
@@ -104,7 +104,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
         <div className="lg:col-span-2">
           <section className="rounded-lg bg-white p-6 shadow-sm">
             <h2 className="font-bold text-ink">About</h2>
-            <RichText html={member.description} className="mt-2 text-sm text-gray-700" />
+            <RichText html={member.description} className="mt-2 text-ink" />
           </section>
           {yt && (
             <section className="mt-6 overflow-hidden rounded-lg bg-white shadow-sm">
@@ -120,7 +120,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
                 src={`https://www.openstreetmap.org/export/embed.html?bbox=${member.lng - 0.05}%2C${member.lat - 0.03}%2C${member.lng + 0.05}%2C${member.lat + 0.03}&layer=mapnik&marker=${member.lat}%2C${member.lng}`}
                 title="Location map"
               />
-              <p className="p-3 text-xs text-gray-500">{member.address}</p>
+              <p className="p-3 text-xs text-graphite">{member.address}</p>
             </div>
           )}
           {socials.length > 0 && (
@@ -130,7 +130,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
                 {socials.map((s) => (
                   <li key={s.key} className="break-words">
                     {!s.href ? (
-                      <>{s.label}: <span className="text-gray-500">{s.value}</span></>
+                      <>{s.label}: <span className="text-graphite">{s.value}</span></>
                     ) : s.handle ? (
                       <>{s.label}: <a href={`/go/${member.id}?kind=social&platform=${s.key}`} target="_blank" rel="noopener" className="hover:underline">{s.handle}</a></>
                     ) : (
@@ -141,12 +141,6 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
               </ul>
             </div>
           )}
-          {(member.testimonials as string[] | null)?.length ? (
-            <div className="rounded-lg bg-white p-4 shadow-sm text-sm">
-              <h3 className="font-bold text-ink">Testimonials</h3>
-              {(member.testimonials as string[]).map((t, i) => <p key={i} className="mt-2 italic text-gray-600">“{t}”</p>)}
-            </div>
-          ) : null}
         </aside>
       </div>
     </>

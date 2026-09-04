@@ -47,26 +47,26 @@ export default async function CategoriesPage(props: PageProps<"/console/categori
           <Link
             key={t.kind}
             href={`/console/categories?kind=${t.kind}`}
-            className={`rounded-t px-4 py-2 ${t.kind === kind ? "border border-b-0 bg-white font-semibold text-ink" : "text-gray-500 hover:text-ink"}`}
+            className={`rounded-t px-4 py-2 ${t.kind === kind ? "border border-b-0 bg-white font-semibold text-ink" : "text-graphite hover:text-ink"}`}
           >
             {t.label}
           </Link>
         ))}
       </div>
 
-      {sp.saved && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Category saved.</p>}
-      {sp.deleted && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Category deleted.</p>}
+      {sp.saved && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Category saved.</p>}
+      {sp.deleted && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Category deleted.</p>}
 
       <div className="mt-4 overflow-hidden rounded-b-xl rounded-tr-xl bg-white shadow-sm">
-        {(cats ?? []).length === 0 && <p className="p-5 text-sm text-gray-500">No categories yet.</p>}
+        {(cats ?? []).length === 0 && <p className="p-5 text-sm text-graphite">No categories yet.</p>}
         <ul className="divide-y">
           {(cats ?? []).map((c) => (
             <li key={c.id} className="flex flex-wrap items-baseline gap-x-3 px-5 py-3">
               <Link href={`/console/categories/${c.id}`} className="font-medium text-ink hover:text-graphite">
                 {c.name}
               </Link>
-              <code className="text-xs text-gray-500">{c.slug}</code>
-              <span className="ml-auto text-xs text-gray-500">{usageLabel(kind, counts.get(c.id) ?? 0)}</span>
+              <code className="text-xs text-graphite">{c.slug}</code>
+              <span className="ml-auto text-xs text-graphite">{usageLabel(kind, counts.get(c.id) ?? 0)}</span>
             </li>
           ))}
         </ul>

@@ -50,8 +50,8 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
     <div className="mx-auto max-w-5xl">
       <h1 className="text-2xl font-bold text-ink">CRM</h1>
 
-      {typeof sp.saved === "string" && <p className="mt-3 rounded bg-green-50 p-2 text-sm text-green-700">Saved.</p>}
-      {typeof sp.error === "string" && <p className="mt-3 rounded bg-red-50 p-2 text-sm text-red-600">{sp.error}</p>}
+      {typeof sp.saved === "string" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -77,7 +77,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
         {editing && (
           <form action={saveContact} className="mt-4 grid gap-2 rounded border border-graphite/30 bg-graphite/5 p-3 text-sm sm:grid-cols-2">
             <input type="hidden" name="id" value={editing.id} />
-            <p className="sm:col-span-2 text-xs uppercase tracking-wide text-gray-500">Editing {editing.email}</p>
+            <p className="sm:col-span-2 text-xs uppercase tracking-wide text-graphite">Editing {editing.email}</p>
             <label htmlFor="crm-edit-name" className="sr-only">Name</label>
             <input id="crm-edit-name" name="name" defaultValue={editing.name ?? ""} placeholder="name" className="rounded border px-3 py-1.5" />
             <label htmlFor="crm-edit-email" className="sr-only">Email</label>
@@ -94,48 +94,48 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
               <option value="unsubscribed">unsubscribed</option>
             </select>
             {editing.unsubscribed_at && (
-              <label className="flex items-center gap-2 text-xs text-gray-500 sm:col-span-2">
+              <label className="flex items-center gap-2 text-xs text-graphite sm:col-span-2">
                 <input type="checkbox" name="re_opt_in" />
                 They have asked to go back on the list — unsubscribes are permanent without this.
               </label>
             )}
             <div className="flex items-center gap-3 sm:col-span-2">
               <button className="rounded bg-ink px-4 py-1.5 text-white">Save contact</button>
-              <Link href="/console/crm" className="text-xs text-gray-500 hover:text-ink">Cancel</Link>
+              <Link href="/console/crm" className="text-xs text-graphite hover:text-ink">Cancel</Link>
             </div>
           </form>
         )}
         {editing?.member_id && (
           <div className="mt-3 rounded border border-graphite/20 bg-white p-3 text-sm">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-gray-500">Site activity</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-graphite">Site activity</h3>
             <ul className="mt-2 space-y-1.5">
               {activity.map((a, i) => (
                 <li key={i} className="flex gap-3 border-t pt-1.5 text-sm">
-                  <span className="w-24 shrink-0 text-xs text-gray-500">{a.when?.slice(0, 10)}</span>
+                  <span className="w-24 shrink-0 text-xs text-graphite">{a.when?.slice(0, 10)}</span>
                   <span>{a.what}</span>
                 </li>
               ))}
-              {activity.length === 0 && <p className="text-sm text-gray-500">No activity yet.</p>}
+              {activity.length === 0 && <p className="text-sm text-graphite">No activity yet.</p>}
             </ul>
           </div>
         )}
         <div className="mt-3 max-h-80 overflow-y-auto">
           <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[560px]">
-            <thead><tr className="text-left text-xs uppercase text-gray-500"><th scope="col" className="py-1">Contact</th><th scope="col">Company</th><th scope="col">Newsletter</th><th scope="col">Synced</th><th scope="col" /></tr></thead>
+            <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Contact</th><th scope="col">Company</th><th scope="col">Newsletter</th><th scope="col">Synced</th><th scope="col" /></tr></thead>
             <tbody>
               {(contacts ?? []).map((c) => (
                 <tr key={c.id} className="border-t align-top">
-                  <td className="py-1.5">{c.name ?? "—"} <span className="text-xs text-gray-500">{c.email}</span></td>
-                  <td className="text-gray-500">{c.member?.name ?? c.company ?? "—"}</td>
+                  <td className="py-1.5">{c.name ?? "—"} <span className="text-xs text-graphite">{c.email}</span></td>
+                  <td className="text-graphite">{c.member?.name ?? c.company ?? "—"}</td>
                   <td>
                     {c.unsubscribed_at
-                      ? <span className="text-xs text-red-500">unsubscribed {c.unsubscribed_at.slice(0, 10)} (permanent)</span>
-                      : c.subscribed ? <span className="text-xs text-green-600">subscribed</span> : <span className="text-xs text-gray-500">no</span>}
+                      ? <span className="text-xs text-danger">unsubscribed {c.unsubscribed_at.slice(0, 10)} (permanent)</span>
+                      : c.subscribed ? <span className="text-xs text-success">subscribed</span> : <span className="text-xs text-graphite">no</span>}
                   </td>
-                  <td className="text-xs text-gray-500">{c.last_synced_at?.slice(0, 16).replace("T", " ") ?? "never"}</td>
+                  <td className="text-xs text-graphite">{c.last_synced_at?.slice(0, 16).replace("T", " ") ?? "never"}</td>
                   <td className="text-right">
-                    <Link href={`?contact=${c.id}`} className="text-xs text-gray-500 hover:text-graphite">Edit</Link>
+                    <Link href={`?contact=${c.id}`} className="text-xs text-graphite hover:text-graphite">Edit</Link>
                   </td>
                 </tr>
               ))}

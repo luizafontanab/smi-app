@@ -5,7 +5,7 @@ import { sessionDb } from "@/lib/db/server";
 import { provisionMember } from "@/lib/membership";
 import { notifyAdminFunnel } from "@/lib/notify-admin";
 import { allowRequest, HOUR } from "@/lib/rate-limit";
-import { EMAIL_RE } from "@/lib/validate";
+import { EMAIL_RE, parsePhone } from "@/lib/validate";
 
 /**
  * V13 step 1 of 4 — account + draft company page. Payment is step 2
@@ -23,6 +23,8 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
   if (!EMAIL_RE.test(email)) return { message: "Please enter a valid email." };
   if (password.length < 8) return { message: "Password needs at least 8 characters." };
   if (!company) return { message: "Company name is required." };
+  const parsedPhone = parsePhone(phone);
+  if (parsedPhone && typeof parsedPhone === "object") return { message: parsedPhone.error };
   // This creates a real auth user and a draft member row; unthrottled it is a
   // free account-and-record generator for anyone who finds the page.
   if (!(await allowRequest("join", 3, HOUR))) {

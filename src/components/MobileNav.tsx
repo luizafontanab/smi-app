@@ -10,7 +10,9 @@ const LINKS = [
   { href: "/newsletters", label: "Newsletters" },
   { href: "/pages/mach-publication", label: "Magazine" },
   { href: "/advertising", label: "Advertising" },
-  { href: "/member", label: "Members" },
+  // The header's Members dropdown, flattened like the Media one above.
+  { href: "/member", label: "Find a member" },
+  { href: "/join", label: "Join" },
   { href: "/featured-machine", label: "Featured Machine" },
   { href: "/event", label: "Events" },
 ];
@@ -22,10 +24,13 @@ const LINKS = [
  * the same reason: focus trap, Escape-to-close and an inert background for
  * free, and the top layer sidesteps a z-index fight with CookieConsent (z-50).
  */
-export function MobileNav({ user }: { user: CurrentUser | null }) {
+export function MobileNav({ user, accountLinks = [], signOutAction }: {
+  user: CurrentUser | null;
+  accountLinks?: { href: string; label: string }[];
+  signOutAction?: () => Promise<void>;
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const dashboard = user?.role === "member" ? "/dashboard" : "/console";
   const name = user ? user.displayName ?? user.email : "";
 
   function open() {
@@ -75,9 +80,19 @@ export function MobileNav({ user }: { user: CurrentUser | null }) {
           </div>
           <div className="mt-auto flex flex-col gap-2 border-t border-white/10 pt-4">
             {user ? (
-              <Link href={dashboard} onClick={close} title={name} className="truncate rounded bg-brand px-3 py-2.5 text-center font-semibold text-ink">
-                {name}
-              </Link>
+              <>
+                <p className="truncate px-3 text-xs text-white/60">{name}</p>
+                {accountLinks.map((l) => (
+                  <Link key={l.href} href={l.href} onClick={close} className="block rounded px-3 py-2.5 hover:bg-chrome-hover">
+                    {l.label}
+                  </Link>
+                ))}
+                {signOutAction && (
+                  <form action={signOutAction}>
+                    <button type="submit" className="block w-full rounded px-3 py-2.5 text-left hover:bg-chrome-hover">Sign out</button>
+                  </form>
+                )}
+              </>
             ) : (
               <>
                 <Link href="/join" onClick={close} className="rounded bg-brand px-3 py-2.5 text-center font-semibold text-ink">

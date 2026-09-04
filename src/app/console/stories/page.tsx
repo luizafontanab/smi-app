@@ -52,7 +52,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
         <h1 className="text-2xl font-bold text-ink">Story Engine</h1>
         <Link href="/console/stories/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New story</Link>
       </div>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Nothing publishes without approval. The &quot;suggested&quot; column arrives with the Content OS (module 6).
       </p>
 
@@ -61,7 +61,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
           <Link
             key={t.view}
             href={t.view === "board" ? "/console/stories" : "/console/stories?view=calendar"}
-            className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-ink" : "text-gray-500 hover:text-ink"}`}
+            className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-ink" : "text-graphite hover:text-ink"}`}
           >
             {t.label}
           </Link>
@@ -76,7 +76,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
 
       <section className="mt-6 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="text-sm font-bold text-ink">Social push settings</h2>
-        <p className="mt-1 text-xs text-gray-500">Caps how many auto-posts go out a day, and how long after publish the first one waits.</p>
+        <p className="mt-1 text-xs text-graphite">Caps how many auto-posts go out a day, and how long after publish the first one waits.</p>
         <form action={saveSocialCaps} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
           <label className="flex flex-col">
             Per day
@@ -90,7 +90,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
         </form>
 
         <h2 className="mt-5 text-sm font-bold text-ink">Buffer channels</h2>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-graphite">
           Which connected Buffer profiles auto-posts go to — Buffer has no &quot;post everywhere&quot; default, so this must be set before any post can send.
         </p>
         <form action={saveSocialChannels} className="mt-2 flex flex-wrap items-end gap-3 text-sm">

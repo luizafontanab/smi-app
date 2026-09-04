@@ -253,8 +253,11 @@ async function main() {
     console.log(`— stories limited to ${storyRows.length} of ${storyRowsAll.length} (newest first)`);
 
   // Authored rows (content the extract can't produce) win over extract rows on slug.
+  // PostgREST bulk upserts need uniform keys across rows, so default the
+  // per-row `collapsible` flag (only some authored rows set it) explicitly.
   const authoredSlugs = new Set(AUTHORED_STATIC_PAGES.map((p) => p.slug));
-  const allPageRows = [...pageRows.filter((p) => !authoredSlugs.has(p.slug)), ...AUTHORED_STATIC_PAGES];
+  const allPageRows = [...pageRows.filter((p) => !authoredSlugs.has(p.slug)), ...AUTHORED_STATIC_PAGES]
+    .map((p) => ({ collapsible: false, ...p }));
 
   if (PAGES_ONLY) {
     console.log(`— static pages only (${allPageRows.length})`);

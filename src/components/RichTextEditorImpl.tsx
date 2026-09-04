@@ -42,7 +42,7 @@ function ToolbarButton({ label, title, active, onRun, disabled }: {
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault() /* keep editor selection/focus */}
       onClick={onRun}
-      className={`rounded px-2 py-1 text-sm ${active ? "bg-ink text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"} disabled:opacity-40`}
+      className={`rounded px-2 py-1 text-sm ${active ? "bg-ink text-white" : "bg-shade text-ink hover:bg-line"} disabled:opacity-40`}
     >
       {label}
     </button>
@@ -76,7 +76,10 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
         class: `story-body ${minHeightClass} w-full rounded-b border border-t-0 px-3 py-2 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-ink`,
         // The editing surface is a contenteditable, not a form control, so a
         // <label htmlFor> cannot reach it — callers pass their visible caption
-        // here so it still has an accessible name.
+        // here so it still has an accessible name. role=textbox is required
+        // for aria-label to be permitted on the div (axe aria-prohibited-attr).
+        role: "textbox",
+        "aria-multiline": "true",
         "aria-label": ariaLabel,
       },
     },
@@ -101,12 +104,12 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
   };
 
   if (!editor) {
-    return <div className={`mt-1 ${minHeightClass} w-full animate-pulse rounded border bg-gray-50`} />;
+    return <div className={`mt-1 ${minHeightClass} w-full animate-pulse rounded border bg-shade`} />;
   }
 
   return (
     <div className="mt-1">
-      <div className="flex flex-wrap gap-1 rounded-t border bg-gray-50 p-1.5">
+      <div className="flex flex-wrap gap-1 rounded-t border bg-shade p-1.5">
         <ToolbarButton label="B" title="Bold" active={editor.isActive("bold")} onRun={() => editor.chain().focus().toggleBold().run()} />
         <ToolbarButton label="I" title="Italic" active={editor.isActive("italic")} onRun={() => editor.chain().focus().toggleItalic().run()} />
         <ToolbarButton label="H2" title="Heading" active={editor.isActive("heading", { level: 2 })} onRun={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />

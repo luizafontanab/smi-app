@@ -6,7 +6,7 @@ import { TakeoverColorPicker } from "@/components/console/TakeoverColorPicker";
 describe("TakeoverColorPicker", () => {
   it("starts from the brand default and shows its ratio against white", () => {
     render(<TakeoverColorPicker />);
-    expect(screen.getByLabelText("Brand colour (hex)")).toHaveValue("#fe5000");
+    expect(screen.getByLabelText("Brand colour (hex)")).toHaveValue("#ff8200");
     expect(screen.getByText(/:1 against white/)).toBeInTheDocument();
   });
 

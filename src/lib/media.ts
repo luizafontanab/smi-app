@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { serviceDb } from "@/lib/db/server";
 
 /**
@@ -21,6 +22,40 @@ const ALLOWED_TYPES: Record<string, string> = {
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 /**
+ * Stored images are served byte-for-byte (next/image runs `unoptimized`; see
+ * CACHE_CONTROL below), so the only place bytes can be bounded is here at
+ * upload. 2560px covers the widest slot in the app (the 1280px takeover at 2×)
+ * with headroom; an editor's straight-off-the-camera 6000px JPEG was otherwise
+ * the LCP on every phone that loaded it.
+ */
+const MAX_DIMENSION = 2560;
+
+/**
+ * Cap dimensions and bake in EXIF orientation, keeping the original format.
+ * Best-effort by the same rule as everything else in this file: a sharp
+ * failure falls back to the original bytes rather than failing the upload.
+ * GIFs pass through untouched — sharp would flatten the animation.
+ */
+async function normalizeImage(file: File, ext: string): Promise<{ body: File | Buffer; byteSize: number }> {
+  if (ext === "gif") return { body: file, byteSize: file.size };
+  try {
+    const input = Buffer.from(await file.arrayBuffer());
+    const img = sharp(input, { failOn: "none" }).rotate();
+    const meta = await img.metadata();
+    const within =
+      (meta.width ?? 0) <= MAX_DIMENSION && (meta.height ?? 0) <= MAX_DIMENSION && (meta.orientation ?? 1) === 1;
+    if (within) return { body: file, byteSize: file.size };
+    const out = await img
+      .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: "inside", withoutEnlargement: true })
+      .toBuffer();
+    return { body: out, byteSize: out.length };
+  } catch (err) {
+    console.warn(`[media] resize skipped: ${err instanceof Error ? err.message : err}`);
+    return { body: file, byteSize: file.size };
+  }
+}
+
+/**
  * A year. Safe because every upload takes a fresh timestamped path and nothing
  * overwrites one — a replaced image is a new URL, so a stored object is
  * immutable in practice. next/image runs `unoptimized` here, so these bytes are
@@ -33,12 +68,12 @@ const CACHE_CONTROL = "31536000";
  * failure here must never break the actual upload/save it's recording — the
  * library is a convenience index (A1.4), not the source of truth.
  */
-async function recordMedia(db: ReturnType<typeof serviceDb>, path: string, kind: "image" | "document", file: File) {
+async function recordMedia(db: ReturnType<typeof serviceDb>, path: string, kind: "image" | "document", file: File, byteSize = file.size) {
   const { error } = await db.from("media").insert({
     path,
     kind,
     content_type: file.type,
-    byte_size: file.size,
+    byte_size: byteSize,
     original_name: file.name || null,
   });
   if (error) console.warn(`[media] could not record ${path}: ${error.message}`);
@@ -52,9 +87,10 @@ export async function uploadImage(file: File | null, prefix: string): Promise<st
   if (!ext) throw new Error("Images only — JPEG, PNG, WebP, GIF or AVIF.");
   const db = serviceDb();
   const path = `${prefix}/${Date.now().toString(36)}.${ext}`;
-  const { error } = await db.storage.from("media").upload(path, file, { contentType: file.type, cacheControl: CACHE_CONTROL });
+  const { body, byteSize } = await normalizeImage(file, ext);
+  const { error } = await db.storage.from("media").upload(path, body, { contentType: file.type, cacheControl: CACHE_CONTROL });
   if (error) throw new Error(error.message);
-  await recordMedia(db, path, "image", file);
+  await recordMedia(db, path, "image", file, byteSize);
   return path;
 }
 

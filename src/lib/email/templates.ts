@@ -278,7 +278,7 @@ function escapeHtml(value: string): string {
 
 const INK = "#111418";
 const GRAPHITE = "#5a6068";
-const BRAND = "#fe5000";
+const BRAND = "#ff8200";
 const CHROME = "#0b0d10";
 const LINE = "#e4e6e9";
 

@@ -89,7 +89,7 @@ export default async function AnalyticsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <h1 className="text-2xl font-bold text-ink">Analytics</h1>
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-graphite">
         Last {WINDOW_DAYS} days. Traffic and most-read figures come from the nightly rollup; referrer mix, clicks-by-channel
         and search are read from a recent sample of raw events, so they&apos;re directional rather than exhaustive.
       </p>
@@ -120,7 +120,7 @@ export default async function AnalyticsPage() {
                 </li>
               );
             })}
-            {byStory.size === 0 && <p className="text-sm text-gray-500">No story views yet.</p>}
+            {byStory.size === 0 && <p className="text-sm text-graphite">No story views yet.</p>}
           </ol>
         </Card>
 
@@ -151,7 +151,7 @@ export default async function AnalyticsPage() {
                 <span className="shrink-0 font-semibold text-ink">{count}</span>
               </li>
             ))}
-            {topQueries.length === 0 && <p className="text-sm text-gray-500">No searches yet.</p>}
+            {topQueries.length === 0 && <p className="text-sm text-graphite">No searches yet.</p>}
           </ol>
         </Card>
 
@@ -161,10 +161,10 @@ export default async function AnalyticsPage() {
             {zeroResult.map((q, i) => (
               <li key={i} className="flex justify-between gap-3 border-t pt-1.5">
                 <span className="truncate">{q.query}</span>
-                <span className="shrink-0 text-xs text-gray-500">{q.occurred_at.slice(0, 10)}</span>
+                <span className="shrink-0 text-xs text-graphite">{q.occurred_at.slice(0, 10)}</span>
               </li>
             ))}
-            {zeroResult.length === 0 && <p className="text-sm text-gray-500">None in this window.</p>}
+            {zeroResult.length === 0 && <p className="text-sm text-graphite">None in this window.</p>}
           </ul>
         </Card>
       </div>
