@@ -3,11 +3,15 @@ import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
-import { featuredMembers, memberCategories, memberDirectory, memberPins } from "@/lib/queries";
+import { featuredMembers, memberCategories, memberDirectory, memberPins, membershipTypes } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
-import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { MemberMap } from "@/components/MemberMap";
+import { MultiSelectCombobox } from "@/components/MultiSelectCombobox";
 import { Pagination } from "@/components/Pagination";
+
+/** A searchParams value is `string | string[] | undefined` — normalise either shape to an array. */
+const asArray = (v: string | string[] | undefined): string[] => (Array.isArray(v) ? v : v ? [v] : []);
+const toggled = (arr: string[], slug: string) => (arr.includes(slug) ? arr.filter((s) => s !== slug) : [...arr, slug]);
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 12;
@@ -20,7 +24,8 @@ export const metadata = {
 
 export default async function MembersPage(props: PageProps<"/member">) {
   const sp = await props.searchParams;
-  const category = typeof sp.category === "string" ? sp.category : undefined;
+  const categories = asArray(sp.category);
+  const services = asArray(sp.service);
   const rawQ = typeof sp.q === "string" ? sp.q : "";
   const q = rawQ.trim() || undefined;
   const page = Math.max(1, Number(sp.page) || 1);
@@ -31,10 +36,11 @@ export default async function MembersPage(props: PageProps<"/member">) {
   // (slug/name/lat/lng) instead of paging the full directory rows.
   const isMap = view === "map";
 
-  const [dir, pins, cats, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
-    isMap ? null : memberDirectory({ category, q, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
-    isMap ? memberPins({ category, q }) : null,
+  const [dir, pins, cats, services_, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
+    isMap ? null : memberDirectory({ categories, services, q, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+    isMap ? memberPins({ categories, services, q }) : null,
     memberCategories(),
+    membershipTypes(),
     featuredMembers(),
     liveAdverts("banner"),
     showAdPlaceholders(),
@@ -47,20 +53,24 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   record([{ kind: "page_view", path: "/member", ...ctx }]);
 
-  // Same shape as news/page.tsx — one builder so category/q/view always survive
-  // each other. Never emits a trailing slash: the e2e suite selects a[href^='/member/'].
-  const qs = (over: Record<string, string | number | undefined>) => {
+  // Same shape as news/page.tsx — one builder so category/service/q/view always
+  // survive each other. Never emits a trailing slash: e2e selects a[href^='/member/'].
+  const qs = (over: Record<string, string | string[] | number | undefined>) => {
     const params = new URLSearchParams();
-    const merged: Record<string, string | number | undefined> = {
-      category, q, view: view === "map" ? "map" : undefined, page: undefined, ...over,
+    const merged: Record<string, string | string[] | number | undefined> = {
+      category: categories, service: services, q, view: view === "map" ? "map" : undefined, page: undefined, ...over,
     };
-    Object.entries(merged).forEach(([k, v]) => v !== undefined && v !== "" && params.set(k, String(v)));
+    Object.entries(merged).forEach(([k, v]) => {
+      if (v === undefined || v === "") return;
+      if (Array.isArray(v)) v.forEach((item) => item && params.append(k, item));
+      else params.set(k, String(v));
+    });
     const s = params.toString();
     return s ? `/member?${s}` : "/member";
   };
 
   const categoryList = cats;
-  const activeCat = categoryList.find((c) => c.slug === category);
+  const activeCats = categoryList.filter((c) => categories.includes(c.slug));
   const withCoords = pinRows.filter((m): m is typeof m & { lat: number; lng: number } => m.lat != null && m.lng != null);
 
   // A member can hold overlapping featured placements — show each member once.
@@ -95,11 +105,12 @@ export default async function MembersPage(props: PageProps<"/member">) {
         </section>
       )}
 
-      <h2 className="mt-10 text-lg font-bold text-ink">All members</h2>
+      <h2 className="mt-16 text-lg font-bold text-ink">All members</h2>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-        {/* GET submit replaces the whole query string, hence the hidden category */}
+        {/* GET submit replaces the whole query string, hence the hidden category/service */}
         <form action="/member" role="search" className="flex min-w-0 flex-1 gap-2">
-          {category && <input type="hidden" name="category" value={category} />}
+          {categories.map((c) => <input key={c} type="hidden" name="category" value={c} />)}
+          {services.map((s) => <input key={s} type="hidden" name="service" value={s} />)}
           {view === "map" && <input type="hidden" name="view" value="map" />}
           <input
             name="q"
@@ -112,20 +123,28 @@ export default async function MembersPage(props: PageProps<"/member">) {
           <button className="shrink-0 rounded bg-ink px-4 py-2 text-sm text-white">Search</button>
         </form>
 
-        <CategoryCombobox
-          options={categoryList.map((c) => ({ slug: c.slug, name: c.name, href: qs({ category: c.slug }) }))}
-          allHref={qs({ category: undefined })}
-          selected={category}
+        <MultiSelectCombobox
+          label="Categories"
+          options={categoryList.map((c) => ({ slug: c.slug, name: c.name, href: qs({ category: toggled(categories, c.slug) }) }))}
+          clearHref={qs({ category: undefined })}
+          selectedSlugs={categories}
+        />
+        <MultiSelectCombobox
+          label="Services"
+          options={services_.map((s) => ({ slug: s.slug, name: s.name, href: qs({ service: toggled(services, s.slug) }) }))}
+          clearHref={qs({ service: undefined })}
+          selectedSlugs={services}
         />
       </div>
 
-      {/* Keeps the category links in the HTML for crawlers and no-JS users. Inert
-          when scripting is on, so it doesn't affect the combobox or e2e counts. */}
+      {/* Keeps the category links in the HTML for crawlers and no-JS users (single-
+          select only, without the js-driven combobox's toggling). Inert when
+          scripting is on, so it doesn't affect the combobox or e2e counts. */}
       <noscript>
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
           <a href={qs({ category: undefined })} className="rounded-full border bg-white px-3 py-1">All</a>
           {categoryList.map((c) => (
-            <a key={c.slug} href={qs({ category: c.slug })} className="rounded-full border bg-white px-3 py-1">{c.name}</a>
+            <a key={c.slug} href={qs({ category: [c.slug] })} className="rounded-full border bg-white px-3 py-1">{c.name}</a>
           ))}
         </div>
       </noscript>
@@ -134,9 +153,11 @@ export default async function MembersPage(props: PageProps<"/member">) {
         {/* aria-live: a soft router.push transition doesn't announce itself */}
         <p aria-live="polite" className="text-sm text-graphite">
           {total} {total === 1 ? "member" : "members"}
-          {activeCat && <> in {activeCat.name}</>}
+          {activeCats.length > 0 && <> in {activeCats.map((c) => c.name).join(", ")}</>}
           {q && <> matching “{q}”</>}
-          {(q || category) && <> · <Link href={qs({ category: undefined, q: undefined })} className="text-graphite hover:underline">Clear filters</Link></>}
+          {(q || categories.length > 0 || services.length > 0) && (
+            <> · <Link href={qs({ category: undefined, service: undefined, q: undefined })} className="text-graphite hover:underline">Clear filters</Link></>
+          )}
         </p>
         <div className="flex gap-2 text-sm">
           <Link href={qs({ view: undefined })} aria-current={view === "list" ? "true" : undefined} className={`tap rounded border px-3 py-1.5 ${view === "list" ? "bg-ink text-white" : "bg-white"}`}>List</Link>
@@ -187,9 +208,9 @@ function MemberCard({ member: m }: { member: Awaited<ReturnType<typeof memberDir
     <Link href={`/member/${m.slug}`} className="block rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
       <div className="flex items-center gap-4">
         {m.logo_path ? (
-          <Image src={mediaUrl(m.logo_path)!} alt="" width={96} height={96} className="h-24 w-24 shrink-0 rounded-lg object-contain" unoptimized />
+          <Image src={mediaUrl(m.logo_path)!} alt="" width={128} height={128} className="h-32 w-32 shrink-0 rounded-lg object-contain" unoptimized />
         ) : (
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30">⚙</div>
+          <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30">⚙</div>
         )}
         <div className="min-w-0">
           <p className="font-bold text-ink">{m.name}</p>

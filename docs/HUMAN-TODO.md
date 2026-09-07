@@ -289,15 +289,36 @@ are inert in production until these steps run.
 - [ ] **10.4 — Upload real example images for the six advert formats** at
       `/console/adverts/spots` (new per-format upload). Cards on `/advertising`
       show no image until one is uploaded.
-- [ ] **10.5 — Event map pins appear as events are re-saved.** Existing events
+- [ x ] **10.5 — Event map pins appear as events are re-saved.** Existing events
       have no coordinates and bulk geocoding is against Nominatim's policy, so
       the public map stays hidden until at least one upcoming event is saved
       (console or member form) with a location. Re-save the current upcoming
       events once to populate it.
-- [ ] **10.6 — "For you" on `/news` personalises only for visitors who accepted
+- [ x ] **10.6 — "For you" on `/news` personalises only for visitors who accepted
       the full cookie banner** (same consent gate as analytics); everyone else
       sees the popular-this-month fallback. Flagging so the behaviour isn't
       mistaken for a bug.
+- [ x ] **10.7 — Remove the advert block from production's member-profile page
+      layout** (fix-list item 27). The default layout for new members no longer
+      carries one, and the local DB's `page_layouts` row (`page_type =
+      'member_profile', entity_id is null`) was edited directly to match — that's
+      row data, not a migration, so `db:push:prod` won't carry it. On prod, either
+      edit the same row directly or re-save the layout from
+      `/console/pages?type=member_profile` with the advert block removed.
+      Note: the new `profile_video` block is a required anchor (fix-list item
+      28), so a prod row that predates it fails validation and `getLayout`
+      already falls back to the code default (no advert, video included) —
+      the public page is effectively right on deploy; re-saving from the
+      console just replaces the stale row with a valid one.
+- [ ] **10.8 — Re-seed real story categories on production** (fix-list item 31).
+      The live site's actual ~30-category taxonomy turned out to live in WP's
+      `/tags`, not `/categories` (which is almost entirely "Uncategorized") —
+      `scripts/seed.ts` was fetching the wrong one. Prod's `categories` table has
+      the same gap this local DB had; there's no migration for it since it's
+      content, not schema. Either run the corrected fetch against prod (same
+      `fetch("https://sheetmetalindustries.com/wp-json/wp/v2/tags?per_page=50&orderby=count&order=desc")`
+      → upsert into `categories` with `kind: "story"`, top 30 by count) or add
+      them by hand at `/console/categories`.
 
 ---
 

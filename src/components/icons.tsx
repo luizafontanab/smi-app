@@ -106,3 +106,24 @@ export function IconSearch(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+/** Help: a question mark in a circle. */
+export function IconHelp(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.3a2.5 2.5 0 0 1 4.8 1c0 1.7-2.3 2-2.3 3.7" />
+      <path d="M12 17.2h.01" />
+    </svg>
+  );
+}
+
+/** Settings: a gear. */
+export function IconSettings(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v2.2M12 18.8V21M4.9 4.9l1.55 1.55M17.55 17.55 19.1 19.1M3 12h2.2M18.8 12H21M4.9 19.1l1.55-1.55M17.55 6.45 19.1 4.9" />
+    </svg>
+  );
+}

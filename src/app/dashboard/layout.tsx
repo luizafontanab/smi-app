@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 const NAV: NavSection[] = [
   { key: "overview", href: "/dashboard", label: "Dashboard" },
   { key: "profile", href: "/dashboard/profile", label: "My page" },
-  { key: "content", href: "/dashboard/content", label: "Add content" },
+  { key: "content", href: "/dashboard/story/new", label: "Add content" },
   { key: "advertising", href: "/dashboard/advertising", label: "Advertising" },
   { key: "stats", href: "/dashboard/stats", label: "Stats" },
   { key: "help", href: "/dashboard/help", label: "Help" },

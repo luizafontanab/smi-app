@@ -259,13 +259,13 @@ describe("memberDirectory", () => {
     expect(membersBuilder.or).toHaveBeenCalledWith("name.ilike.%fabrication%,description.ilike.%fabrication%");
   });
 
-  it("resolves a category slug and filters by its id", async () => {
+  it("resolves category slugs and filters by their ids", async () => {
     const membersBuilder = queryBuilder(dbOk([], 0));
-    db({ members: () => membersBuilder, categories: () => queryBuilder(dbOk({ id: "cat1" })) });
+    db({ members: () => membersBuilder, categories: () => queryBuilder(dbOk([{ id: "cat1" }])) });
 
-    await memberDirectory({ category: "fabrication" });
+    await memberDirectory({ categories: ["fabrication"] });
 
-    expect(membersBuilder.eq).toHaveBeenCalledWith("category_id", "cat1");
+    expect(membersBuilder.in).toHaveBeenCalledWith("category_id", ["cat1"]);
   });
 
   it("fetches the whole set (no SQL range) and slices offset/limit in JS after the seeded shuffle", async () => {
@@ -317,7 +317,27 @@ describe("memberBySlug", () => {
       stories: () => queryBuilder(dbOk([{ id: "s1" }])),
     });
 
-    expect(await memberBySlug("acme")).toEqual({ id: "m1", slug: "acme", stories: [{ id: "s1" }] });
+    expect(await memberBySlug("acme")).toEqual({ id: "m1", slug: "acme", services: [], stories: [{ id: "s1" }] });
+  });
+
+  it("flattens the membership-types join into a plain services list", async () => {
+    db({
+      members: () => queryBuilder(dbOk({
+        id: "m1",
+        slug: "acme",
+        member_membership_types: [
+          { membership_type: { slug: "software", name: "Software" } },
+          { membership_type: { slug: "it-services", name: "IT Services" } },
+          { membership_type: null }, // a dangling join row must not crash the flatten
+        ],
+      })),
+      stories: () => queryBuilder(dbOk([])),
+    });
+
+    expect((await memberBySlug("acme"))?.services).toEqual([
+      { slug: "software", name: "Software" },
+      { slug: "it-services", name: "IT Services" },
+    ]);
   });
 });
 

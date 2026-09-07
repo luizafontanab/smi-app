@@ -124,6 +124,17 @@ export async function memberCategories() {
   return data ?? [];
 }
 
+/**
+ * Fixed membership-type tags (GAPS A8.1) — distinct from `categories`: a
+ * member's industry is a single FK, but a member can hold several of these
+ * (Equipment Supplier, Service Provider, …), so it's a join table instead.
+ */
+export async function membershipTypes() {
+  const db = publicDb();
+  const { data } = await db.from("membership_types").select("slug, name").order("sort_order");
+  return data ?? [];
+}
+
 // Same projection with the member embed as an inner join, so the industry
 // filter can apply to it; stories with no member_id drop out, by design.
 const STORY_CARD_MEMBER_INNER = STORY_CARD.replace("member:members(", "member:members!inner(");
@@ -435,13 +446,48 @@ export function ilikeTerm(raw: string): string {
     .trim();
 }
 
-export async function memberDirectory(opts: { category?: string; q?: string; limit?: number; offset?: number } = {}) {
+type MemberFilterOpts = { categories?: string[]; services?: string[] };
+
+/**
+ * Resolves the category (single FK, OR-matched across the selected slugs)
+ * and services (many-to-many join table) filters to id lists memberDirectory
+ * and memberPins can both apply with `.in()`. Null means "not filtering on
+ * this axis"; an empty array means "filtered to nothing matches".
+ */
+async function memberFilterIds(db: ReturnType<typeof publicDb>, opts: MemberFilterOpts) {
+  const [catRows, typeRows] = await Promise.all([
+    opts.categories?.length
+      ? db.from("categories").select("id").eq("kind", "member").in("slug", opts.categories)
+      : Promise.resolve({ data: null }),
+    opts.services?.length
+      ? db.from("membership_types").select("id").in("slug", opts.services)
+      : Promise.resolve({ data: null }),
+  ]);
+  const categoryIds = catRows.data ? catRows.data.map((c) => c.id) : null;
+
+  let serviceMemberIds: string[] | null = null;
+  if (typeRows.data) {
+    const typeIds = typeRows.data.map((t) => t.id);
+    const { data: links } = typeIds.length
+      ? await db.from("member_membership_types").select("member_id").in("membership_type_id", typeIds)
+      : { data: [] };
+    serviceMemberIds = [...new Set((links ?? []).map((l) => l.member_id))];
+  }
+  return { categoryIds, serviceMemberIds };
+}
+
+// members.id is a uuid — this never matches a real row, so an empty
+// serviceMemberIds list correctly filters the result to nothing.
+const NO_MATCH_UUID = "00000000-0000-0000-0000-000000000000";
+
+export async function memberDirectory(opts: MemberFilterOpts & { q?: string; limit?: number; offset?: number } = {}) {
   const term = ilikeTerm(opts.q ?? "");
   // A term that sanitises away to nothing ("%%%") is unusable, not "match all" —
   // same stance as searchSite, which returns nothing for an empty tsquery.
   if (opts.q?.trim() && !term) return { members: [], total: 0 };
 
   const db = publicDb();
+  const { categoryIds, serviceMemberIds } = await memberFilterIds(db, opts);
   // `.order("name")` is NOT the display order — it pins the shuffle's input so
   // the same seed always permutes the same sequence (a DB with no ORDER BY may
   // return rows in a different order per query, which would break pagination).
@@ -450,11 +496,9 @@ export async function memberDirectory(opts: { category?: string; q?: string; lim
     .select("id, slug, name, logo_path, description, address, website, phone, contact_email, lat, lng, category:categories(slug, name)", { count: "exact" })
     .eq("status", "active")
     .order("name");
-  if (opts.category) {
-    const { data: cat } = await db.from("categories").select("id").eq("kind", "member").eq("slug", opts.category).single();
-    if (cat) q = q.eq("category_id", cat.id);
-  }
-  // Separate PostgREST params are ANDed, so this is category AND (name OR description).
+  if (categoryIds) q = q.in("category_id", categoryIds.length ? categoryIds : [-1]);
+  if (serviceMemberIds) q = q.in("id", serviceMemberIds.length ? serviceMemberIds : [NO_MATCH_UUID]);
+  // Separate PostgREST params are ANDed, so this is category AND services AND (name OR description).
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data, count } = await q;
 
@@ -465,7 +509,7 @@ export async function memberDirectory(opts: { category?: string; q?: string; lim
   // whole and offset/limit are sliced here in JS, after the shuffle) while
   // rotating it daily and per filter. memberPins stays alphabetical — a map's
   // ordering is spatial, so it has nothing to rotate.
-  const seed = `${new Date().toISOString().slice(0, 10)}|${opts.category ?? ""}|${opts.q ?? ""}`;
+  const seed = `${new Date().toISOString().slice(0, 10)}|${(opts.categories ?? []).join(",")}|${(opts.services ?? []).join(",")}|${opts.q ?? ""}`;
   let members = seededShuffle(data ?? [], seed);
   // No limit means the caller wants the whole filtered set (the homepage logo wall).
   if (opts.limit != null) members = members.slice(opts.offset ?? 0, (opts.offset ?? 0) + opts.limit);
@@ -480,15 +524,14 @@ export async function memberDirectory(opts: { category?: string; q?: string; lim
  * Null-coordinate rows are kept: the page reports "X of Y with a known
  * location" and needs the real Y.
  */
-export async function memberPins(opts: { category?: string; q?: string } = {}) {
+export async function memberPins(opts: MemberFilterOpts & { q?: string } = {}) {
   const term = ilikeTerm(opts.q ?? "");
   if (opts.q?.trim() && !term) return { members: [], total: 0 };
   const db = publicDb();
+  const { categoryIds, serviceMemberIds } = await memberFilterIds(db, opts);
   let q = db.from("members").select("slug, name, lat, lng", { count: "exact" }).eq("status", "active").order("name");
-  if (opts.category) {
-    const { data: cat } = await db.from("categories").select("id").eq("kind", "member").eq("slug", opts.category).single();
-    if (cat) q = q.eq("category_id", cat.id);
-  }
+  if (categoryIds) q = q.in("category_id", categoryIds.length ? categoryIds : [-1]);
+  if (serviceMemberIds) q = q.in("id", serviceMemberIds.length ? serviceMemberIds : [NO_MATCH_UUID]);
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data, count } = await q;
   return { members: data ?? [], total: count ?? 0 };
@@ -498,7 +541,9 @@ export async function memberBySlug(slug: string) {
   const db = publicDb();
   const { data: member } = await db
     .from("members")
-    .select("id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, category:categories(name)")
+    .select(
+      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, category:categories(name), member_membership_types(membership_type:membership_types(slug, name))",
+    )
     .in("status", ["active", "grace"])
     .eq("slug", slug)
     .single();
@@ -509,7 +554,10 @@ export async function memberBySlug(slug: string) {
     .eq("status", "published")
     .eq("member_id", member.id)
     .order("published_at", { ascending: false });
-  return { ...member, stories: (stories ?? []) as unknown as StoryCard[] };
+  // Flatten the join row — the page only ever wants "this member's services".
+  const { member_membership_types, ...rest } = member;
+  const services = (member_membership_types ?? []).flatMap((r) => (r.membership_type ? [r.membership_type] : []));
+  return { ...rest, services, stories: (stories ?? []) as unknown as StoryCard[] };
 }
 
 /** Site search: members rank first (query-level ordering — not stored bias). */

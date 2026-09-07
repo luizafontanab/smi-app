@@ -65,14 +65,17 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
     );
   }
 
-  const [{ data: member }, { data: cats }, { data: revisions }] = await Promise.all([
+  const [{ data: member }, { data: cats }, { data: revisions }, { data: types }, { data: memberTypes }] = await Promise.all([
     db.from("members").select(
       "id, slug, name, status, category_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
     ).eq("id", id).single(),
     db.from("categories").select("id, name").eq("kind", "member").order("name"),
     db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1),
+    db.from("membership_types").select("id, name").order("sort_order"),
+    db.from("member_membership_types").select("membership_type_id").eq("member_id", id),
   ]);
   if (!member) notFound();
+  const memberTypeIds = new Set((memberTypes ?? []).map((t) => t.membership_type_id));
 
   // the renewal-call view (A18) — stories, placements, invoices, notifications,
   // advert clicks and newsletter appearances (A5.8), merged in lib/activity.ts
@@ -161,6 +164,18 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 </select>
               </div>
             </div>
+            <fieldset>
+              <legend className={label}>Membership types</legend>
+              <p className="text-xs text-graphite">Shown on the public directory as a filter — distinct from Category above.</p>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+                {(types ?? []).map((t) => (
+                  <label key={t.id} className="flex items-center gap-1.5 text-sm">
+                    <input type="checkbox" name="membership_types" value={t.id} defaultChecked={memberTypeIds.has(t.id)} />
+                    {t.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <div>
               <label htmlFor="slug" className={label}>Web address</label>
               <div className="mt-1 flex items-center gap-1">

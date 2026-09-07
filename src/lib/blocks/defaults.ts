@@ -17,13 +17,15 @@ export const DEFAULT_LAYOUTS: Record<PageType, PageLayout> = {
       { id: "newsletter", type: "newsletter_signup" },
     ],
   },
-  // Profile → member's news → rotating banners → CTA
+  // Profile → member's news → video (big, below the news — fix list) → CTA.
+  // No advert (fix list) — a member's own page shouldn't carry rotating
+  // banner inventory for other advertisers.
   member_profile: {
     version: 1,
     blocks: [
       { id: "main", type: "profile_main" },
       { id: "news", type: "member_news", props: { limit: 4 } },
-      { id: "ad-1", type: "ad_banner" },
+      { id: "video", type: "profile_video" },
       { id: "join", type: "join_cta" },
     ],
   },

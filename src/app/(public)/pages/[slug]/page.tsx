@@ -62,7 +62,7 @@ export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
   );
 
   return (
-    <div className="mx-auto max-w-5xl px-4">
+    <div className="mx-auto max-w-6xl px-4">
       <BlockRenderer
         pageType="static_page"
         layout={layout}

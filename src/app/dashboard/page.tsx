@@ -3,7 +3,7 @@ import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { notificationLabel } from "@/lib/email/templates";
 import { dismissOnboarding, withdrawEvent, withdrawMachine, withdrawStory, withdrawVideo } from "./actions";
-import { IconBuilding, IconChart, IconMegaphone, IconNewspaper, IconReceipt } from "@/components/icons";
+import { IconBuilding, IconChart, IconHelp, IconMegaphone, IconNewspaper, IconSettings } from "@/components/icons";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { WelcomePanel } from "./WelcomePanel";
 
@@ -12,12 +12,16 @@ export const dynamic = "force-dynamic";
 // Equipment self-submission is hidden for now (fix list item 9) — the routes,
 // actions and the submissions list below stay live so in-flight machines can
 // still be edited or withdrawn.
+// Order and set fixed by the fix list: content, advertising, stats, page,
+// help, settings — "Add content" skips the icon-grid hub and goes straight to
+// the tabbed Story form (fix list item 6); Billing is now a Settings tab.
 const CARDS = [
-  { href: "/dashboard/profile", Icon: IconBuilding, title: "Update your page", sub: "Description, images, video, socials" },
-  { href: "/dashboard/content", Icon: IconNewspaper, title: "Add content", sub: "Stories, videos, events" },
+  { href: "/dashboard/story/new", Icon: IconNewspaper, title: "Add content", sub: "Stories, videos, events" },
   { href: "/dashboard/advertising", Icon: IconMegaphone, title: "Advertising", sub: "Adverts, featured slots & newsletter" },
-  { href: "/dashboard/stats", Icon: IconChart, title: "View statistics", sub: "Who's engaging with you" },
-  { href: "/dashboard/settings/billing", Icon: IconReceipt, title: "Billing", sub: "Invoices & membership" },
+  { href: "/dashboard/stats", Icon: IconChart, title: "Statistics", sub: "Who's engaging with you" },
+  { href: "/dashboard/profile", Icon: IconBuilding, title: "Your page", sub: "Description, images, video, socials" },
+  { href: "/dashboard/help", Icon: IconHelp, title: "Help", sub: "Guides and support" },
+  { href: "/dashboard/settings", Icon: IconSettings, title: "Settings", sub: "Notifications, security & billing" },
 ];
 
 export default async function MemberDashboard(props: PageProps<"/dashboard">) {
@@ -109,7 +113,9 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
 
       {pending.length > 0 && (
         <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="font-bold text-ink">Your submissions</h2>
+          <h2 className="font-bold text-ink">
+            Your submissions<span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-ink">{pending.length}</span>
+          </h2>
           {pending.map((s) => (
             <div key={s.editHref} className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-2 text-sm">
               <p>

@@ -83,16 +83,36 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
         ]}
       />
       {hero && (
-        <div className="relative mt-6 h-56 overflow-hidden rounded-xl">
+        <div className="relative mt-6 h-64 overflow-hidden rounded-t-xl">
           <Image src={hero} alt="" fill sizes="100vw" className="object-cover" unoptimized />
         </div>
       )}
-      <header className={`${hero ? "mt-4" : "mt-6"} flex flex-wrap items-center gap-5 rounded-xl bg-white p-6 shadow-sm`}>
-        {member.logo_path && <Image src={mediaUrl(member.logo_path)!} alt="" width={80} height={80} className="rounded-lg" unoptimized />}
+      <header className={`${hero ? "rounded-b-xl" : "mt-6 rounded-xl"} flex flex-wrap items-center gap-5 bg-white p-6 shadow-sm`}>
+        {/* Logo overlaps up into the hero (a -mt-16 pull, not absolute — flex-wrap
+            keeps this sane if there's no room beside the name). Prominent
+            position per fix list; the white ring reads against any hero photo. */}
+        <div className={hero ? "-mt-16 shrink-0" : "shrink-0"}>
+          {member.logo_path ? (
+            <Image
+              src={mediaUrl(member.logo_path)!} alt="" width={112} height={112}
+              className={`rounded-xl bg-white object-contain ${hero ? "border-4 border-white shadow-md" : ""}`}
+              unoptimized
+            />
+          ) : hero ? (
+            <div className="flex h-28 w-28 items-center justify-center rounded-xl border-4 border-white bg-graphite/10 text-4xl text-graphite/30 shadow-md">⚙</div>
+          ) : null}
+        </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs uppercase tracking-widest text-brand-text">SMI Member{member.category ? ` · ${member.category.name}` : ""}</p>
           <h1 className="text-2xl font-bold text-ink">{member.name}</h1>
           <p className="text-sm text-graphite">{member.address}</p>
+          {member.services.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {member.services.map((s) => (
+                <span key={s.slug} className="rounded-full bg-graphite/10 px-2.5 py-0.5 text-xs font-medium text-graphite">{s.name}</span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex gap-2 text-sm">
           {member.website && <a href={`/go/${member.id}?kind=website`} target="_blank" rel="noopener" className="rounded bg-ink px-4 py-2 text-white">Website</a>}
@@ -106,11 +126,6 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
             <h2 className="font-bold text-ink">About</h2>
             <RichText html={member.description} className="mt-2 text-ink" />
           </section>
-          {yt && (
-            <section className="mt-6 overflow-hidden rounded-lg bg-white shadow-sm">
-              <iframe className="aspect-video w-full" src={`https://www.youtube-nocookie.com/embed/${yt}`} title="Company video" allowFullScreen />
-            </section>
-          )}
         </div>
         <aside className="flex flex-col gap-4">
           {member.lat && member.lng && (
@@ -146,6 +161,18 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
     </>
   );
 
+  // Its own anchor rather than living inside profileMain (fix list): "big,
+  // below the member's news" — only one video_url per member today, so this
+  // is exactly one video, never a carousel (see docs/GAPS.md).
+  const profileVideo = yt ? (
+    <section className="mt-10">
+      <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">Company video</h2>
+      <div className="overflow-hidden rounded-xl bg-white shadow-sm">
+        <iframe className="aspect-video w-full" src={`https://www.youtube-nocookie.com/embed/${yt}`} title="Company video" allowFullScreen />
+      </div>
+    </section>
+  ) : null;
+
   return (
     <div className="mx-auto max-w-6xl px-4">
       <BlockRenderer
@@ -157,7 +184,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
         memberName={member.name}
         supplierLogos={logos}
         showPlaceholders={showPlaceholders}
-        anchors={{ profile_main: profileMain }}
+        anchors={{ profile_main: profileMain, profile_video: profileVideo }}
       />
       <div className="my-10" />
     </div>

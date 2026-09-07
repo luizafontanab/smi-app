@@ -82,6 +82,8 @@ type Props = {
   onPreview?: (url: string | null) => void;
   label?: string;
   hint?: string;
+  /** Only enforced while there's no cover already on file — a resubmit that keeps its existing one isn't blocked. */
+  required?: boolean;
 };
 
 export function CoverField({
@@ -90,6 +92,7 @@ export function CoverField({
   onPreview,
   label = "Cover image",
   hint = "Landscape works best: at least 1200×675px (16:9), JPG/PNG/WebP, max 8MB. Keep faces and key detail near the centre.",
+  required = false,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const objectUrl = useRef<string | null>(null);
@@ -132,12 +135,15 @@ export function CoverField({
 
   return (
     <div>
-      <label htmlFor="cover" className="block text-sm font-medium">{label}</label>
+      <label htmlFor="cover" className="block text-sm font-medium">
+        {label}{required && !cover && <span aria-hidden> *</span>}
+      </label>
       <input
         ref={inputRef}
         id="cover"
         type="file"
         name="cover"
+        required={required && !cover}
         accept="image/jpeg,image/png,image/webp"
         onChange={onChange}
         className="mt-1 w-full text-sm"

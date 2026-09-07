@@ -10,9 +10,9 @@ export type AddContentTab = (typeof TABS)[number]["key"];
 
 /**
  * Story / Video / Event strip on the three add-content forms (fix list item
- * 20) — lets a member hop between content types without going back through
- * the /dashboard/content hub. The hub itself keeps its three cards and no
- * strip: the same three links twice on one screen would be redundant.
+ * 20). It is the only way between content types now: the old /dashboard/content
+ * card hub was removed (fix list item 30), so "Add content" in the nav and on
+ * the dashboard both land straight on the Story form with this strip.
  */
 export function AddContentTabs({ active }: { active: AddContentTab }) {
   return <SectionTabs items={TABS} active={active} ariaLabel="Content types" />;

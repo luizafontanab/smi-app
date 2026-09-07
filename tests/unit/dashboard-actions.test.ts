@@ -93,6 +93,7 @@ describe("submitStory", () => {
   });
 
   it("inserts as a member submission awaiting approval, links the category, and redirects", async () => {
+    uploadImage.mockResolvedValue("stories/mem1/cover.jpg");
     const storiesBuilder = queryBuilder(dbOk({ id: "s1" }));
     const categoriesLinkBuilder = queryBuilder(dbOk(null));
     db({ stories: () => storiesBuilder, story_categories: () => categoriesLinkBuilder });
@@ -102,12 +103,14 @@ describe("submitStory", () => {
 
     expect(storiesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
       title: "My Story!", status: "awaiting_approval", source: "member", is_member_news: true, member_id: "mem1", submitted_by: "u1",
+      cover_path: "stories/mem1/cover.jpg",
     }));
     expect(categoriesLinkBuilder.insert).toHaveBeenCalledWith({ story_id: "s1", category_id: 3 });
     expect(revalidatePath).toHaveBeenCalledWith("/dashboard");
   });
 
   it("attaches a cover_focus box only when focus_x was supplied", async () => {
+    uploadImage.mockResolvedValue("stories/mem1/cover.jpg");
     const storiesBuilder = queryBuilder(dbOk({ id: "s1" }));
     db({ stories: () => storiesBuilder });
 
@@ -115,6 +118,14 @@ describe("submitStory", () => {
       .rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(storiesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ cover_focus: { x: 0.5, y: 0.25, scale: 1 } }));
+  });
+
+  it("requires a cover image — redirects without inserting when none was uploaded", async () => {
+    const from = db({});
+
+    await expect(submitStory(form({ title: "My story" })))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/story/new?error=A%20cover%20image%20is%20required.");
+    expect(from).not.toHaveBeenCalled();
   });
 });
 
@@ -271,7 +282,8 @@ describe("withdrawStory / editStory", () => {
   });
 
   it("editStory resubmits, clearing the prior rejection reason", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "rejected", member_id: "mem1" }));
+    // cover_path already on file — a resubmit isn't forced to re-upload one
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "rejected", member_id: "mem1", cover_path: "stories/mem1/existing.jpg" }));
     db({ stories: () => storiesBuilder });
 
     await expect(editStory(form({ id: "s1", title: "Fixed title" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
@@ -279,6 +291,15 @@ describe("withdrawStory / editStory", () => {
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({
       title: "Fixed title", status: "awaiting_approval", rejected_reason: null,
     }));
+  });
+
+  it("editStory requires a cover on a legacy story that has neither an existing one nor a new upload", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "rejected", member_id: "mem1", cover_path: null }));
+    db({ stories: () => storiesBuilder });
+
+    await expect(editStory(form({ id: "s1", title: "Fixed title" })))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/story/s1/edit?error=A%20cover%20image%20is%20required.");
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
   });
 });
 

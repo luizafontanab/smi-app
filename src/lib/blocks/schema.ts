@@ -3,7 +3,7 @@ export type PageType = "story" | "member_profile" | "featured_machine" | "static
 export type BlockType =
   // anchors — the page's main content; admins position them, members write into them
   | "story_header" | "story_hero" | "story_body"
-  | "profile_main" | "machine_main" | "page_main"
+  | "profile_main" | "profile_video" | "machine_main" | "page_main"
   // decoration blocks admins may add/remove/reorder
   | "ad_banner"
   | "latest_news"
@@ -19,7 +19,10 @@ export type PageLayout = { version: 1; blocks: Block[] };
 /** Anchors per page type, in their one canonical relative order. */
 export const ANCHORS: Record<PageType, BlockType[]> = {
   story: ["story_header", "story_hero", "story_body"],
-  member_profile: ["profile_main"],
+  // profile_video is a fixed anchor, not a decoration: it's driven by the
+  // member's own video_url, same as profile_main, not admin-added/removed —
+  // but positioned separately from it (fix list: big, below the news block).
+  member_profile: ["profile_main", "profile_video"],
   featured_machine: ["machine_main"],
   static_page: ["page_main"],
 };
@@ -38,6 +41,7 @@ export const BLOCK_LABELS: Record<BlockType, string> = {
   story_hero: "Cover image (fixed)",
   story_body: "Article body (fixed)",
   profile_main: "Member profile (fixed)",
+  profile_video: "Company video (fixed)",
   machine_main: "Machine listing (fixed)",
   page_main: "Page content (fixed)",
   ad_banner: "Advert slot (rotates)",

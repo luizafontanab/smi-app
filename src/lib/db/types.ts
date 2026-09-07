@@ -1166,6 +1166,36 @@ export type Database = {
           },
         ]
       }
+      member_membership_types: {
+        Row: {
+          member_id: string
+          membership_type_id: number
+        }
+        Insert: {
+          member_id: string
+          membership_type_id: number
+        }
+        Update: {
+          member_id?: string
+          membership_type_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_membership_types_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_membership_types_membership_type_id_fkey"
+            columns: ["membership_type_id"]
+            isOneToOne: false
+            referencedRelation: "membership_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_revisions: {
         Row: {
           created_at: string
@@ -1307,6 +1337,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      membership_types: {
+        Row: {
+          id: number
+          name: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          id?: number
+          name: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          id?: number
+          name?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
       }
       newsletter_ads: {
         Row: {

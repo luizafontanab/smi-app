@@ -34,16 +34,25 @@ describe("collapseSections", () => {
     expect(out).toContain("<p>Body with <em>emphasis</em>.</p>");
   });
 
-  it("treats h3s as flat top-level sections — no nesting inside an h2 section", () => {
-    // Documented choice: every h2 OR h3 starts a new section, so the h3 here
-    // ends the h2's card and gets its own rather than nesting inside it.
+  it("nests h3 sections inside their parent h2's details, not as siblings", () => {
     const out = collapseSections("<h2>Policy</h2><p>Intro.</p><h3>Detail</h3><p>Fine print.</p>");
     expect(out.match(/<details/g)).toHaveLength(2);
     expect(out.match(/<\/details>/g)).toHaveLength(2);
     expect(out).toContain(">Policy</summary>");
     expect(out).toContain(">Detail</summary>");
-    // the h2 section closes before the h3 section opens
-    expect(out.indexOf("</details>")).toBeLessThan(out.indexOf(">Detail</summary>"));
+    // "Detail" opens (and closes) before the outer "Policy" section closes —
+    // it's nested inside, not a sibling that comes after.
+    expect(out.indexOf(">Detail</summary>")).toBeGreaterThan(out.indexOf(">Policy</summary>"));
+    expect(out.lastIndexOf("</details>")).toBe(out.length - "</details>".length);
+    expect(out.indexOf("</details>")).toBeLessThan(out.lastIndexOf("</details>"));
+    expect(out.indexOf(">Detail</summary>")).toBeLessThan(out.indexOf("</details>"));
+  });
+
+  it("keeps a flat page (no h3s) collapsing exactly as single-level sections — FAQ's shape", () => {
+    const out = collapseSections("<h2>One</h2><p>A.</p><h2>Two</h2><p>B.</p>");
+    expect(out.match(/<details/g)).toHaveLength(2);
+    // no nested-details styling appears when there's nothing to nest
+    expect(out).not.toContain("bg-paper");
   });
 
   it("emits no empty content wrapper for a heading with nothing under it", () => {

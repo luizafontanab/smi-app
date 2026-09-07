@@ -6,6 +6,7 @@ import { parseDateParam, parseViewedCats, VIEWED_CATS_COOKIE } from "@/lib/news-
 import { forYouStories, memberCategories, mostViewedStories, publishedStories, storyCategories } from "@/lib/queries";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { ScrollToHash } from "@/components/ScrollToHash";
 import { SearchForm } from "@/components/SearchForm";
 import { Carousel, StoryCard } from "@/components/StoryCard";
 
@@ -59,12 +60,15 @@ export default async function NewsPage(props: PageProps<"/news">) {
   // impressions come from the browser once seen — see AdCreative / /api/seen
   record([{ kind: "page_view", path: "/news", ...ctx }]);
 
+  // #all-news: every one of these is a filter/page control for that section —
+  // a full-page GET reload must land back where the visitor was acting, not
+  // scroll them back up past the three rails they already scrolled past.
   const qs = (over: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams();
     const merged = { category, industry, from, to, filter: sp.filter as string | undefined, page: undefined, ...over };
     Object.entries(merged).forEach(([k, v]) => v !== undefined && v !== "" && params.set(k, String(v)));
     const s = params.toString();
-    return s ? `/news?${s}` : "/news";
+    return `${s ? `/news?${s}` : "/news"}#all-news`;
   };
 
   const hasFilters = Boolean(category || industry || from || to || memberOnly);
@@ -77,14 +81,14 @@ export default async function NewsPage(props: PageProps<"/news">) {
       {latest.length > 0 && (
         <Carousel title="Latest">
           {latest.map((s) => (
-            <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} /></div>
+            <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} showExcerpt={false} /></div>
           ))}
         </Carousel>
       )}
       {memberNews.length > 0 && (
         <Carousel title="Member news" href={qs({ filter: "members", page: undefined })}>
           {memberNews.map((s) => (
-            <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} /></div>
+            <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} showExcerpt={false} /></div>
           ))}
         </Carousel>
       )}
@@ -92,7 +96,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
         <>
           <Carousel title="For you">
             {forYou.map((s) => (
-              <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} /></div>
+              <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} showExcerpt={false} /></div>
             ))}
           </Carousel>
           <p className="mt-2 text-xs text-graphite">
@@ -106,7 +110,9 @@ export default async function NewsPage(props: PageProps<"/news">) {
       <div className="my-8"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
 
       {/* ── All news: search, filters, paginated grid ────────────────────── */}
-      <h2 className="text-lg font-bold uppercase tracking-wide text-ink">All news</h2>
+      <h2 id="all-news" className="text-lg font-bold uppercase tracking-wide text-ink">All news</h2>
+      {/* Safari ignores the #all-news fragment on the date form's full-page GET — see ScrollToHash */}
+      <ScrollToHash />
 
       <SearchForm className="mt-3 flex gap-2" />
 
@@ -129,7 +135,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
       </div>
 
       {/* GET submit replaces the whole query string, hence the hidden fields */}
-      <form action="/news" className="mt-3 flex flex-wrap items-end gap-3 text-sm">
+      <form action="/news#all-news" className="mt-3 flex flex-wrap items-end gap-3 text-sm">
         {category && <input type="hidden" name="category" value={category} />}
         {industry && <input type="hidden" name="industry" value={industry} />}
         {memberOnly && <input type="hidden" name="filter" value="members" />}
@@ -143,12 +149,12 @@ export default async function NewsPage(props: PageProps<"/news">) {
         </label>
         <button className="rounded border bg-white px-3 py-1.5 hover:border-ink">Apply dates</button>
         {hasFilters && (
-          <Link href="/news" className="text-graphite hover:underline">Clear filters</Link>
+          <Link href="/news#all-news" className="text-graphite hover:underline">Clear filters</Link>
         )}
       </form>
 
       <div data-testid="all-news-grid" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {stories.map((s) => <StoryCard key={s.id} story={s} />)}
+        {stories.map((s) => <StoryCard key={s.id} story={s} showExcerpt={false} />)}
       </div>
       {stories.length === 0 && <p className="mt-10 text-center text-graphite">No stories found.</p>}
 

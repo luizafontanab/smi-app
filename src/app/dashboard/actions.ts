@@ -70,6 +70,7 @@ export async function submitStory(formData: FormData) {
     // not be caught as an upload failure.
     redirect(`/dashboard/story/new?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
   }
+  if (!cover) redirect(`/dashboard/story/new?error=${encodeURIComponent("A cover image is required.")}`);
   const db = serviceDb();
   const { data } = await db.from("stories").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
@@ -116,6 +117,12 @@ export async function editStory(formData: FormData) {
     cover = await uploadImage(formData.get("cover") as File | null, "stories");
   } catch (e) {
     redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
+  }
+  // A cover is mandatory — fine to keep the existing one on a resubmit, but a
+  // story that somehow has neither (pre-dates this rule) can't stay without one.
+  if (!cover) {
+    const { data: existing } = await db.from("stories").select("cover_path").eq("id", id).single();
+    if (!existing?.cover_path) redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("A cover image is required.")}`);
   }
   await db.from("stories").update({
     title,

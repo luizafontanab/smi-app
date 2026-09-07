@@ -57,7 +57,7 @@ export function StoryForm({ action, uploadImage, categories, member, initial, wi
           </select>
         </div>
         {/* Full width, not a grid column: the crop picker is a fixed 320px box. */}
-        <CoverField onPreview={setCoverUrl} />
+        <CoverField cover={initial?.coverUrl} required onPreview={setCoverUrl} />
       </div>
 
       {tab === "preview" && (

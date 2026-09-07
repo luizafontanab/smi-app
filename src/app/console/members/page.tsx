@@ -32,7 +32,7 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
     .order("name");
   if (status !== "all") membersQuery = membersQuery.eq("status", status);
   const term = ilikeTerm(q);
-  if (term) membersQuery = membersQuery.ilike("name", `%${term}%`);
+  if (term) membersQuery = membersQuery.or(`name.ilike.%${term}%,description.ilike.%${term}%,contact_email.ilike.%${term}%`);
   const { data: filtered, count } = await membersQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 

@@ -18,7 +18,14 @@ export function MemberBadge({ variant = "overlay" }: { variant?: "overlay" | "in
   );
 }
 
-export function StoryCard({ story, size = "md" }: { story: StoryCardType; size?: "md" | "lg" | "sm" }) {
+export function StoryCard({
+  story, size = "md", showExcerpt = true,
+}: {
+  story: StoryCardType;
+  size?: "md" | "lg" | "sm";
+  /** Off on the news page (fix list) — image, title and date only, no summary text. */
+  showExcerpt?: boolean;
+}) {
   const img = mediaUrl(story.cover_path);
   const heights = { sm: "h-32", md: "h-44", lg: "h-80" };
   return (
@@ -35,7 +42,7 @@ export function StoryCard({ story, size = "md" }: { story: StoryCardType; size?:
       </div>
       <div className="p-3">
         <h3 className={`font-semibold leading-snug ${size === "lg" ? "text-2xl" : "text-sm"} line-clamp-3`}>{story.title}</h3>
-        {size !== "sm" && story.excerpt && <p className="mt-1 text-xs text-graphite line-clamp-2">{story.excerpt}</p>}
+        {showExcerpt && size !== "sm" && story.excerpt && <p className="mt-1 text-xs text-graphite line-clamp-2">{story.excerpt}</p>}
         <p className="mt-2 text-[11px] uppercase tracking-wide text-graphite">
           {story.published_at ? new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : ""}
           {story.member && <> · {story.member.name}</>}

@@ -1453,6 +1453,18 @@ export async function saveMember(formData: FormData) {
     return memberFail(id, error.code === "23505" ? "That web address is already taken — choose another." : error.message);
   }
 
+  // Membership types (GAPS A8.1) live in a join table, not a members column —
+  // synced separately from the plain update above, same shape as story_categories.
+  const membershipTypeIds = formData.getAll("membership_types").map(Number).filter(Boolean);
+  const { error: clearErr } = await db.from("member_membership_types").delete().eq("member_id", id);
+  if (clearErr) return memberFail(id, clearErr.message);
+  if (membershipTypeIds.length) {
+    const { error: linkErr } = await db
+      .from("member_membership_types")
+      .insert(membershipTypeIds.map((membership_type_id) => ({ member_id: id, membership_type_id })));
+    if (linkErr) return memberFail(id, linkErr.message);
+  }
+
   if (slugChanged && member.status !== "draft") {
     // keep inbound links and search results working — honoured by /member/[slug].
     // recordRename also clears the reverse row, so renaming back doesn't leave
@@ -1583,6 +1595,30 @@ export async function markInboxRead(formData: FormData) {
   // its "mark unread" must land back on the list or it would undo itself.
   const next = safeInternalPath(formData.get("next"));
   if (next) redirect(next);
+}
+
+/** Admin reply to an inbox enquiry, sent via the same adapter as every other outgoing mail. */
+export async function replyToInboxMessage(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id"));
+  const subject = String(formData.get("subject") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!subject || !body) redirect(`/console/messages/${id}?error=${encodeURIComponent("Subject and message are required.")}`);
+
+  const db = serviceDb();
+  const { data: m } = await db.from("inbox_messages").select("email").eq("id", id).single();
+  if (!m) redirect(`/console/messages/${id}?error=${encodeURIComponent("Message not found.")}`);
+
+  try {
+    const { getEmailSender } = await import("@/lib/adapters/email");
+    await getEmailSender().send({ to: m.email, subject, text: body });
+  } catch (e) {
+    console.error("[console] inbox reply failed:", e);
+    redirect(`/console/messages/${id}?error=${encodeURIComponent("Could not send — the mail provider rejected it. Try again.")}`);
+  }
+
+  revalidatePath(`/console/messages/${id}`);
+  redirect(`/console/messages/${id}?replied=1`);
 }
 
 /* ---------- media library ---------- */

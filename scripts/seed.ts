@@ -65,8 +65,15 @@ async function main() {
   await emptyBucket();
 
   console.log("— categories (real story cats from WP + member cats)");
+  // WP's native "category" taxonomy: nearly every post on the live site is
+  // "Uncategorized" (2060 of ~2064), with 3 strays under long-dead one-off
+  // categories — not what the requirements' "~30 categories" describes. The
+  // real topical taxonomy (Cutting Systems, Presses & Stamping, Welding...)
+  // lives in WP's "tags", so that's what a story's category is drawn from
+  // here (fix list item 16 — the previous /categories fetch left this
+  // meaningless: every story landed in "Uncategorized").
   const wpCats: { id: number; name: string; slug: string; count: number }[] = await fetch(
-    `${WP}/categories?per_page=50&orderby=count&order=desc`
+    `${WP}/tags?per_page=50&orderby=count&order=desc`
   ).then((r) => r.json());
   const storyCats = wpCats.filter((c) => c.count > 0).slice(0, 30);
   const catRows = [
@@ -136,7 +143,7 @@ async function main() {
 
   console.log("— real stories from WP API");
   type WpPost = {
-    slug: string; date: string; categories?: number[];
+    slug: string; date: string; tags?: number[];
     title: { rendered: string }; excerpt?: { rendered: string }; content?: { rendered: string };
     _embedded?: { "wp:featuredmedia"?: { source_url?: string }[] };
   };
@@ -167,7 +174,7 @@ async function main() {
       member_id: asMemberNews ? faker.helpers.arrayElement(activeMembers).id : null,
       cover_path,
       published_at: p.date,
-      wp_cats: (p.categories ?? []) as number[],
+      wp_cats: (p.tags ?? []) as number[],
     });
   }
   for (const row of storyRows) {

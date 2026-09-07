@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import sharp from "sharp";
 
 const PASSWORD = "local-dev-password";
 
@@ -56,14 +57,16 @@ test.describe("member directory — category combobox + text search", () => {
     // the old flat list of category links is no longer rendered (noscript is inert)
     await expect(page.locator('a[href^="/member?category="]')).toHaveCount(0);
 
-    const trigger = page.getByRole("button", { name: /All categories/ });
+    // idle multi-select trigger reads "Categories" (exact — "Clear categories filter" appears once one is picked)
+    const trigger = page.getByRole("button", { name: "Categories", exact: true });
     await trigger.click();
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
 
     const filter = page.getByRole("combobox", { name: "Filter categories" });
     await expect(filter).toBeFocused(); // focus moves into the panel on open
+    // the multi-select has no "All" row, so this is exactly the member-category count (10 in the dev seed)
     const total = await page.getByRole("option").count();
-    expect(total).toBeGreaterThan(10);
+    expect(total).toBeGreaterThan(1);
 
     await filter.fill("las");
     expect(await page.getByRole("option").count()).toBeLessThan(total);
@@ -77,7 +80,7 @@ test.describe("member directory — category combobox + text search", () => {
 
   test("Escape closes the panel and returns focus to the trigger", async ({ page }) => {
     await page.goto("/member");
-    const trigger = page.getByRole("button", { name: /All categories/ });
+    const trigger = page.getByRole("button", { name: "Categories", exact: true });
     await trigger.click();
     await page.keyboard.press("Escape");
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -90,7 +93,7 @@ test.describe("member directory — category combobox + text search", () => {
     const term = name.split(/\s+/)[0];
 
     // pick a category first — the form's hidden field must carry it through the search
-    await page.getByRole("button", { name: /All categories/ }).click();
+    await page.getByRole("button", { name: "Categories", exact: true }).click();
     await page.getByRole("option").nth(1).click();
     await page.waitForURL(/category=/);
     const chosen = new URL(page.url()).searchParams.get("category")!;
@@ -101,7 +104,7 @@ test.describe("member directory — category combobox + text search", () => {
     expect(new URL(page.url()).searchParams.get("category")).toBe(chosen);
 
     // and the reverse: clearing the category keeps q
-    await page.getByRole("button", { name: "Clear category filter" }).click();
+    await page.getByRole("button", { name: "Clear categories filter" }).click();
     await page.waitForURL((u) => !u.searchParams.has("category"));
     expect(new URL(page.url()).searchParams.get("q")).toBe(term);
   });
@@ -188,6 +191,13 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
     await page.keyboard.press("Enter");
     await page.click('button[title="Bold"]');
     await page.keyboard.type("Bold statement.");
+    // a cover is mandatory for member stories (fix list item 32) — the input's
+    // `required` would otherwise block the submit below at the browser
+    await page.setInputFiles('input[name="cover"]', {
+      name: "cover.jpg",
+      mimeType: "image/jpeg",
+      buffer: await sharp({ create: { width: 1200, height: 675, channels: 3, background: { r: 51, g: 65, b: 85 } } }).jpeg().toBuffer(),
+    });
 
     // preview shows the backlink + branding BEFORE publish (req §7 fix)
     await page.click("button:has-text('Preview')");
