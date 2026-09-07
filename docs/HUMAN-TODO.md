@@ -263,9 +263,12 @@ are inert in production until these steps run.
 
 ## 9 · Member-area rework (3 Sep) — production follow-through
 
-- [ ] **9.1 — Apply migration `20260902000003_drop_member_testimonials.sql` to
-      production** (`pnpm db:push:prod`, together with whatever else is pending).
-      Deploy the app code first or in the same release: the code no longer
+- [x] **9.1 — Apply migration `20260902000003_drop_member_testimonials.sql` to
+      production** — done 6 Sep 2026 via `pnpm db:push:prod` (applied
+      20260902000003 → 20260904000001; remote in sync with local). Production
+      still serves the holding page from `main`, so no deployed code read the
+      dropped column. Original note kept for the record:
+      deploy the app code first or in the same release: the code no longer
       reads or writes `members.testimonials`, and `decideRevision` strips the
       key from old pending revisions, so code-before-migration is the safe
       ordering. The migration also scrubs the key from stored
@@ -275,10 +278,13 @@ are inert in production until these steps run.
 
 ## 10 · Fix-list pass (3 Sep) — production follow-through
 
-- [ ] **10.1 — Apply migrations `20260903000001_content_page_collapsible.sql`
-      and `20260903000002_event_coords.sql` to production**
-      (`pnpm db:push:prod`, together with whatever else is pending). Both are
-      additive nullable/defaulted columns — safe in either deploy order.
+- [x] **10.1 — Apply migrations `20260903000001_content_page_collapsible.sql`,
+      `20260903000002_event_coords.sql` and `20260904000001_membership_types.sql`
+      to production** — done 6 Sep 2026 with 9.1 (one `pnpm db:push:prod`).
+      Note: the CLI (v2.109) prints a noisy `pgdelta-target-ca.crt: ENOENT`
+      error after "Finished supabase db push" — that's its post-push drift
+      check failing locally, not the migrations; confirm with
+      `supabase migration list --linked`.
 - [ ] **10.2 — Seed the FAQ page on production** (`pnpm seed:real -- --pages-only`
       now includes it, same About-page mechanism) **and review its copy** — the
       seven starter Q&As are my drafting, written to be plausible, not
