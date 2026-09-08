@@ -11,14 +11,7 @@
 
 32. [x] In the member area, when creating a story, make the cover image mandatory. — required client-side (unless a cover already exists, so a resubmit isn't blocked) and enforced again in `submitStory`/`editStory` server-side
 33. [x] When a visitor filters the All News section, reload. scroll to that section of the page, not the top of the page. Better yet, if you're able to do a full reload of the entire page — every filter/pagination control on `/news` now targets `#all-news` (a real full-page GET reload, landing scrolled to that heading). Dates were the odd one out: the "Apply dates" form kept `#all-news` in the URL but Safari doesn't scroll to a fragment after a GET form submit (Chrome does) — a small `ScrollToHash` client component on `/news` now does that scroll on load, verified in WebKit.
-34. [x] On member's dashboard, You can see all notifications in the notification box, but we don't have a similar notification on Submissions. Include one, please. — "Your submissions" heading now carries the same count badge as "Recent updates"
-35. [x] Let's reorganise the members dashboard cards. The new order is:
-        1. Add content
-        2. Advertising
-        3. Statistics
-        4. Your page
-        5. Help
-        6. Settings
-    — done; Help and Settings are new cards (new `IconHelp`/`IconSettings`), Settings replaces the old Billing-only card (Billing is a tab inside it)
+34. [x] On member's dashboard, You can see all notifications in the notification box, but we don't have a similar notification on Submissions. Include one, please. — "Your submissions" heading now carries the same count badge as "Recent updates", and the box has the same "See all →" link, to a new `/dashboard/submissions` page listing every pending item (edit / withdraw on each). The badge is the true total across stories, videos, events and equipment; the dashboard box shows only the newest four, like the notifications box.
+
 - Copy the text wording and structure of the Contact Us page from the live website to our working version. 
 - Copy the featured machine from live so that we have a seed. 

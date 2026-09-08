@@ -2,7 +2,9 @@ import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { notificationLabel } from "@/lib/email/templates";
-import { dismissOnboarding, withdrawEvent, withdrawMachine, withdrawStory, withdrawVideo } from "./actions";
+import { pendingSubmissions } from "@/lib/submissions";
+import { dismissOnboarding } from "./actions";
+import { SubmissionList } from "@/components/dashboard/SubmissionList";
 import { IconBuilding, IconChart, IconHelp, IconMegaphone, IconNewspaper, IconSettings } from "@/components/icons";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { WelcomePanel } from "./WelcomePanel";
@@ -29,32 +31,19 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
   const sp = await props.searchParams;
   const db = serviceDb();
 
-  const pendingCols = "id, title, status, rejected_reason";
+  // A4.17 — one pre-approval submission list across all four content types
+  // (lib/submissions). Like "Recent updates", the box shows the newest few and
+  // the badge carries the true total; "See all" opens /dashboard/submissions.
   const [
-    { data: lastStory }, { data: pendingStories }, { data: pendingVideos }, { data: pendingEvents }, { data: pendingMachines },
+    { data: lastStory }, pending,
     { data: notifications }, { count: unreadNotifications }, { data: member },
   ] = await Promise.all([
     db.from("stories").select("published_at").eq("member_id", user.memberId).eq("status", "published").order("published_at", { ascending: false }).limit(1).maybeSingle(),
-    db.from("stories").select(pendingCols).eq("member_id", user.memberId).in("status", ["awaiting_approval", "rejected"]).order("created_at", { ascending: false }).limit(3),
-    db.from("videos").select(pendingCols).eq("member_id", user.memberId).in("status", ["awaiting_approval", "rejected"]).order("created_at", { ascending: false }).limit(3),
-    db.from("events").select(pendingCols).eq("member_id", user.memberId).in("status", ["awaiting_approval", "rejected"]).order("created_at", { ascending: false }).limit(3),
-    db.from("featured_machines").select("id, name, status, rejected_reason").eq("member_id", user.memberId).in("status", ["awaiting_approval", "rejected"]).order("created_at", { ascending: false }).limit(3),
+    pendingSubmissions(user.memberId, { limit: 4 }),
     db.from("notifications").select("kind, payload, created_at").eq("member_id", user.memberId).order("created_at", { ascending: false }).limit(4),
     db.from("notifications").select("*", { count: "exact", head: true }).eq("member_id", user.memberId).is("read_at", null),
     db.from("members").select("status, paid_at, comped_until, draft_submitted_at, onboarding_seen").eq("id", user.memberId).single(),
   ]);
-
-  // A4.17 — one pre-approval submission list across all four content types,
-  // each with its own edit page and withdraw action.
-  const pending = [
-    ...(pendingStories ?? []).map((s) => ({ ...s, editHref: `/dashboard/story/${s.id}/edit` as const, withdrawAction: withdrawStory })),
-    ...(pendingVideos ?? []).map((v) => ({ ...v, editHref: `/dashboard/video/${v.id}/edit` as const, withdrawAction: withdrawVideo })),
-    ...(pendingEvents ?? []).map((e) => ({ ...e, editHref: `/dashboard/event/${e.id}/edit` as const, withdrawAction: withdrawEvent })),
-    ...(pendingMachines ?? []).map((m) => ({
-      id: m.id, title: m.name, status: m.status, rejected_reason: m.rejected_reason,
-      editHref: `/dashboard/equipment/${m.id}/edit` as const, withdrawAction: withdrawMachine,
-    })),
-  ];
 
   // nudge: "the last time you posted a story was six months ago"
   // eslint-disable-next-line react-hooks/purity -- per-request render
@@ -111,28 +100,15 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
         ))}
       </div>
 
-      {pending.length > 0 && (
+      {pending.items.length > 0 && (
         <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="font-bold text-ink">
-            Your submissions<span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-ink">{pending.length}</span>
-          </h2>
-          {pending.map((s) => (
-            <div key={s.editHref} className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-2 text-sm">
-              <p>
-                {s.title} —{" "}
-                {s.status === "awaiting_approval"
-                  ? <span className="text-brand-text">awaiting approval</span>
-                  : <span className="text-danger">not published{s.rejected_reason && `: ${s.rejected_reason}`}</span>}
-              </p>
-              <div className="flex items-center gap-3 text-xs">
-                <Link href={s.editHref} className="tap px-1 text-graphite underline">Edit</Link>
-                <form action={s.withdrawAction}>
-                  <input type="hidden" name="id" value={s.id} />
-                  <button type="submit" className="tap px-1 text-graphite underline hover:text-danger">Withdraw</button>
-                </form>
-              </div>
-            </div>
-          ))}
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-ink">
+              Your submissions<span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-ink">{pending.total}</span>
+            </h2>
+            <Link href="/dashboard/submissions" className="text-sm text-graphite underline">See all →</Link>
+          </div>
+          <SubmissionList items={pending.items} />
         </section>
       )}
 
