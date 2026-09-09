@@ -84,6 +84,33 @@ describe("payMembership", () => {
     }));
   });
 
+  it("says \"1 month\", not \"1 months\", for a single comped month", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => memberRow() })));
+    createCheckout.mockResolvedValueOnce({ kind: "comped", months: 1 });
+
+    await expect(payMembership(PREV, form({ promo: "smi-one" }))).rejects.toThrow(RedirectSignal);
+    expect(notifyAdminFunnel).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining("comped 1 month."),
+    }));
+    // The promo code is echoed upper-cased so it is greppable in the console note.
+    expect(notifyAdminFunnel).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining("SMI-ONE"),
+    }));
+  });
+
+  it("drops the \"(simulated)\" note once Stripe is live", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => memberRow() })));
+    paymentsAreLive.mockReturnValueOnce(true);
+
+    await expect(payMembership(PREV, form())).rejects.toThrow(RedirectSignal);
+    expect(notifyAdminFunnel).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining("Paid £40/month by card."),
+    }));
+    expect(notifyAdminFunnel).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.not.stringContaining("simulated"),
+    }));
+  });
+
   it("a live-Stripe redirect result goes straight to the checkout URL with nothing applied", async () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => memberRow() })));
     createCheckout.mockResolvedValueOnce({ kind: "redirect", url: "https://checkout.stripe.test/cs_1" });

@@ -41,9 +41,11 @@ type Props = {
   desktop: string;
   mobile: string;
   shape: AdShape;
+  /** The page this slot renders on — carried into the impression beacon, same literal each page already passes to its own page_view record(). */
+  path: string;
 };
 
-export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Props) {
+export function AdCreative({ advertId, name, href, desktop, mobile, shape, path }: Props) {
   const ref = useRef<HTMLAnchorElement>(null);
   const counted = useRef(false);
   const [loaded, setLoaded] = useState(false);
@@ -73,7 +75,7 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
     // booked advert is as wrong as overcounting one.
     if (typeof IntersectionObserver === "undefined") {
       counted.current = true;
-      reportAdSeen(advertId);
+      reportAdSeen(advertId, path);
       return;
     }
 
@@ -85,7 +87,7 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
             timer ??= setTimeout(() => {
               counted.current = true;
               io.disconnect();
-              reportAdSeen(advertId);
+              reportAdSeen(advertId, path);
             }, VISIBLE_MS);
           } else if (timer) {
             // scrolled away before it earned the impression — start again next time
@@ -102,7 +104,7 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
       if (timer) clearTimeout(timer);
       io.disconnect();
     };
-  }, [advertId, loaded]);
+  }, [advertId, loaded, path]);
 
   return (
     <Link ref={ref} href={href} className="block" aria-label={`Advert: ${name}`}>

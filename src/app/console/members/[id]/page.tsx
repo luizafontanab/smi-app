@@ -157,7 +157,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 <input id="name" name="name" defaultValue={member.name} required className={field} />
               </div>
               <div>
-                <label htmlFor="category_id" className={label}>Category</label>
+                <label htmlFor="category_id" className={label}>Industry</label>
                 <select id="category_id" name="category_id" defaultValue={member.category_id ?? ""} className={field}>
                   <option value="">— none —</option>
                   {(cats ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -166,7 +166,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             </div>
             <fieldset>
               <legend className={label}>Membership types</legend>
-              <p className="text-xs text-graphite">Shown on the public directory as a filter — distinct from Category above.</p>
+              <p className="text-xs text-graphite">Shown on the public directory as a filter — distinct from Industry above, and from the Services list.</p>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
                 {(types ?? []).map((t) => (
                   <label key={t.id} className="flex items-center gap-1.5 text-sm">

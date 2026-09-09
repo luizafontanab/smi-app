@@ -9,6 +9,11 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    // next.config.ts switches distDir to .next-visual for the visual suite, so
+    // this fills with build output the moment `pnpm visual` runs — and eslint
+    // lints it, failing `pnpm lint`/`pnpm check` with ~900 errors in generated
+    // chunks. Same reason .next/** is ignored.
+    ".next-visual/**",
     "out/**",
     "build/**",
     "next-env.d.ts",

@@ -87,17 +87,21 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           <Image src={hero} alt="" fill sizes="100vw" className="object-cover" unoptimized />
         </div>
       )}
-      <header className={`${hero ? "rounded-b-xl" : "mt-6 rounded-xl"} flex flex-wrap items-center gap-5 bg-white p-6 shadow-sm`}>
-        {/* Logo overlaps up into the hero (a -mt-16 pull, not absolute — flex-wrap
-            keeps this sane if there's no room beside the name). Prominent
-            position per fix list; the white ring reads against any hero photo. */}
+      <header className={`relative z-10 ${hero ? "rounded-b-xl" : "mt-6 rounded-xl"} flex flex-wrap items-center gap-5 bg-white p-6 shadow-sm`}>
+        {/* Logo overlaps up into the hero (a -mt-16 pull, plus relative z-10 on
+            the header so it explicitly wins the stacking order rather than
+            relying on DOM-order paint order — that was fragile enough to
+            occasionally paint the logo behind the hero). Prominent position
+            per fix list; the white ring reads against any hero photo. */}
         <div className={hero ? "-mt-16 shrink-0" : "shrink-0"}>
           {member.logo_path ? (
-            <Image
-              src={mediaUrl(member.logo_path)!} alt="" width={112} height={112}
-              className={`rounded-xl bg-white object-contain ${hero ? "border-4 border-white shadow-md" : ""}`}
-              unoptimized
-            />
+            // Rounded box is bigger than the image inside it (112px box, 96px
+            // image) so the corner radius only ever clips white background,
+            // never the logo artwork — object-contain alone can letterbox a
+            // non-square logo right up to the box's edges.
+            <div className={`flex h-28 w-28 items-center justify-center rounded-xl bg-white ${hero ? "border-4 border-white shadow-md" : ""}`}>
+              <Image src={mediaUrl(member.logo_path)!} alt="" width={96} height={96} className="object-contain" unoptimized />
+            </div>
           ) : hero ? (
             <div className="flex h-28 w-28 items-center justify-center rounded-xl border-4 border-white bg-graphite/10 text-4xl text-graphite/30 shadow-md">⚙</div>
           ) : null}
@@ -120,9 +124,12 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
         </div>
       </header>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <section className="rounded-lg bg-white p-6 shadow-sm">
+      <div className="mt-6 grid items-stretch gap-6 lg:grid-cols-3">
+        <div className="flex lg:col-span-2">
+          {/* flex + w-full/flex-col so the visible card itself fills the
+              grid-stretched row height (never shorter than the sidebar, can
+              be taller) rather than just its invisible wrapper growing. */}
+          <section className="flex w-full flex-col rounded-lg bg-white p-6 shadow-sm">
             <h2 className="font-bold text-ink">About</h2>
             <RichText html={member.description} className="mt-2 text-ink" />
           </section>
@@ -184,6 +191,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
         memberName={member.name}
         supplierLogos={logos}
         showPlaceholders={showPlaceholders}
+        path={`/member/${slug}`}
         anchors={{ profile_main: profileMain, profile_video: profileVideo }}
       />
       <div className="my-10" />

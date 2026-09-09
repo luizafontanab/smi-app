@@ -268,6 +268,34 @@ describe("memberDirectory", () => {
     expect(membersBuilder.in).toHaveBeenCalledWith("category_id", ["cat1"]);
   });
 
+  it("filters services through member_services, not membership_types", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    db({
+      members: () => membersBuilder,
+      services: () => queryBuilder(dbOk([{ id: 7 }])),
+      member_services: () => queryBuilder(dbOk([{ member_id: "m1" }])),
+    });
+
+    await memberDirectory({ services: ["automation-robotics"] });
+
+    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m1"]);
+  });
+
+  it("intersects services and membership types so both narrow the result", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    db({
+      members: () => membersBuilder,
+      services: () => queryBuilder(dbOk([{ id: 7 }])),
+      member_services: () => queryBuilder(dbOk([{ member_id: "m1" }, { member_id: "m2" }])),
+      membership_types: () => queryBuilder(dbOk([{ id: 2 }])),
+      member_membership_types: () => queryBuilder(dbOk([{ member_id: "m2" }, { member_id: "m3" }])),
+    });
+
+    await memberDirectory({ services: ["automation-robotics"], membershipTypes: ["equipment-supplier"] });
+
+    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m2"]);
+  });
+
   it("fetches the whole set (no SQL range) and slices offset/limit in JS after the seeded shuffle", async () => {
     const rows = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}`, name: `Member ${i}` }));
 
@@ -317,10 +345,12 @@ describe("memberBySlug", () => {
       stories: () => queryBuilder(dbOk([{ id: "s1" }])),
     });
 
-    expect(await memberBySlug("acme")).toEqual({ id: "m1", slug: "acme", services: [], stories: [{ id: "s1" }] });
+    expect(await memberBySlug("acme")).toEqual({
+      id: "m1", slug: "acme", services: [], membershipTypes: [], stories: [{ id: "s1" }],
+    });
   });
 
-  it("flattens the membership-types join into a plain services list", async () => {
+  it("flattens the two taxonomy joins into separate lists — they are different things", async () => {
     db({
       members: () => queryBuilder(dbOk({
         id: "m1",
@@ -330,14 +360,22 @@ describe("memberBySlug", () => {
           { membership_type: { slug: "it-services", name: "IT Services" } },
           { membership_type: null }, // a dangling join row must not crash the flatten
         ],
+        member_services: [
+          { service: { slug: "automation-robotics", name: "Automation / Robotics" } },
+          { service: null },
+        ],
       })),
       stories: () => queryBuilder(dbOk([])),
     });
 
-    expect((await memberBySlug("acme"))?.services).toEqual([
+    const member = await memberBySlug("acme");
+    // Membership types used to be returned under the name `services`, which is
+    // what made the directory's "Services" filter show the 5-item type list.
+    expect(member?.membershipTypes).toEqual([
       { slug: "software", name: "Software" },
       { slug: "it-services", name: "IT Services" },
     ]);
+    expect(member?.services).toEqual([{ slug: "automation-robotics", name: "Automation / Robotics" }]);
   });
 });
 

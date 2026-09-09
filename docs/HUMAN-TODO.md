@@ -101,6 +101,15 @@ Do these in order; later steps depend on earlier ones.
 - [ ] **3.4 — Confirm the advert creative choice with Jas.** Booked newsletter
       slots render the **mobile** artwork, since the email column is ≤600px and
       narrower on a phone. Reasonable, but it is his rate card.
+- [ ] **3.5 — Confirm Resend broadcast open tracking is actually on.**
+      `ResendNewsletterSender.sendIssue()` (`src/lib/adapters/newsletter.ts`)
+      posts to `POST /broadcasts` with no `open_tracking`/`click_tracking` field
+      — whether Resend injects an open-tracking pixel by default per-account, or
+      needs an explicit flag or a dashboard toggle, is unconfirmed. If it's off,
+      `newsletter_issues.opens_count` (A5.4) silently stays at 0 forever, and so
+      does the "Newsletter" series on the member stats page's Advert-impressions
+      chart (`/dashboard/stats`). Same "confirm on first live send" caution as
+      §3.3.
 
 ## 4 · The deliverability gate — still open
 
@@ -325,6 +334,38 @@ are inert in production until these steps run.
       `fetch("https://sheetmetalindustries.com/wp-json/wp/v2/tags?per_page=50&orderby=count&order=desc")`
       → upsert into `categories` with `kind: "story"`, top 30 by count) or add
       them by hand at `/console/categories`.
+
+---
+
+## 11 · Visual regression suite (9 Sep) — decisions for you
+
+The suite is built and working (`tests/visual/`, `pnpm visual`). 79 baselines are
+committed. These three need a person.
+
+- [ ] **11.1 — Review the first baselines.** Accepting a baseline asserts someone
+      looked at the picture. I reviewed all 79 as contact sheets and spot-checked
+      individual pages (the homepage, a member page, the console), and found and
+      fixed two bad captures that way — but I am not the right last word on
+      whether each page *looks correct*. Worth one pass through
+      `pnpm visual:report` before trusting the set.
+- [ ] **11.2 — Plain git or LFS for the baseline PNGs.** `tests/visual/baseline/`
+      is **24 MB** (79 full-page PNGs plus their element maps), and git keeps
+      every generation forever. Plain git is fine for now and is what is set up.
+      If re-baselining becomes frequent, LFS is the alternative — but it adds a
+      tool every clone and CI checkout needs. No action needed today; just know
+      the number.
+- [ ] **11.3 — Six routes have no coverage because the local database has no
+      content for them**, and they are marked `skip` with a reason in
+      `tests/visual/manifest.ts`: the four member submission editors
+      (`/dashboard/{story,video,event,equipment}/[id]/edit` — member1 has no
+      submissions), `/console/newsletter/[id]` and `/console/adverts/bundles/[id]`
+      (the indexes are empty), plus `/newsletters/[slug]`. A seed that creates
+      one of each would let them be unskipped and pinned. Not urgent — they are
+      listed in every report, so they cannot be forgotten.
+
+Also worth knowing: **a reseed invalidates every baseline** (they are photographs
+of specific content). That is expected — run `pnpm visual`, look, then
+`pnpm visual:accept --changed`.
 
 ---
 

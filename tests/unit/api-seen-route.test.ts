@@ -22,8 +22,8 @@ afterEach(() => {
 
 const ADVERT = "22222222-2222-4222-8222-222222222222";
 
-const beacon = (ids: unknown) =>
-  new Request("http://localhost/api/seen", { method: "POST", body: JSON.stringify({ ids }) });
+const beacon = (items: unknown) =>
+  new Request("http://localhost/api/seen", { method: "POST", body: JSON.stringify({ items }) });
 
 function liveBookingDb() {
   const from = vi.fn(() => queryBuilder(dbOk([{ advert_id: ADVERT }])));
@@ -32,16 +32,23 @@ function liveBookingDb() {
 }
 
 describe("POST /api/seen", () => {
-  it("records an impression for a live booking and always answers 204", async () => {
+  it("records an impression for a live booking, with its path, and always answers 204", async () => {
     liveBookingDb();
-    const res = await POST(beacon([ADVERT]));
+    const res = await POST(beacon([{ id: ADVERT, path: "/news" }]));
     expect(res.status).toBe(204);
-    expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_impression", advert_id: ADVERT })]);
+    expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_impression", advert_id: ADVERT, path: "/news" })]);
+  });
+
+  it("falls back to \"unknown\" for an item with no path", async () => {
+    liveBookingDb();
+    // deliberately malformed, same as a stale cached client bundle mid-deploy
+    await POST(beacon([{ id: ADVERT }]));
+    expect(record).toHaveBeenCalledWith([expect.objectContaining({ advert_id: ADVERT, path: "unknown" })]);
   });
 
   it("drops non-uuid and duplicate ids before touching the database", async () => {
     const from = liveBookingDb();
-    await POST(beacon(["x,status.eq.live", ADVERT, ADVERT]));
+    await POST(beacon([{ id: "x,status.eq.live", path: "/news" }, { id: ADVERT, path: "/news" }, { id: ADVERT, path: "/video" }]));
     expect(from).toHaveBeenCalledTimes(1);
   });
 
@@ -53,7 +60,7 @@ describe("POST /api/seen", () => {
     let counted = 0;
     for (let i = 0; i < 40; i++) {
       record.mockClear();
-      const res = await POST(beacon([ADVERT]));
+      const res = await POST(beacon([{ id: ADVERT, path: "/news" }]));
       // impressions are billable: the limiter must be invisible to the client
       expect(res.status).toBe(204);
       if (record.mock.calls.length > 0) counted += 1;

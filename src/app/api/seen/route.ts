@@ -36,10 +36,20 @@ export async function POST(req: Request) {
   } catch {
     return new Response(null, { status: 204 });
   }
-  const raw = (body as { ids?: unknown })?.ids;
-  const wanted = Array.isArray(raw)
-    ? [...new Set(raw.filter((v): v is string => typeof v === "string" && UUID_RE.test(v)))].slice(0, MAX_PER_BEACON)
-    : [];
+  const rawItems = (body as { items?: unknown })?.items;
+  const byId = new Map<string, string>(); // advert_id -> path
+  if (Array.isArray(rawItems)) {
+    for (const it of rawItems) {
+      if (!it || typeof it !== "object") continue;
+      const id = (it as { id?: unknown }).id;
+      const rawPath = (it as { path?: unknown }).path;
+      if (typeof id === "string" && UUID_RE.test(id)) {
+        byId.set(id, typeof rawPath === "string" && rawPath.length > 0 ? rawPath : "unknown");
+        if (byId.size >= MAX_PER_BEACON) break;
+      }
+    }
+  }
+  const wanted = [...byId.keys()];
   if (wanted.length === 0) return new Response(null, { status: 204 });
 
   // The client says what it saw, so trust it only as far as the booking allows:
@@ -63,6 +73,6 @@ export async function POST(req: Request) {
   if (live.length === 0) return new Response(null, { status: 204 });
 
   const ctx = await requestContext();
-  record(live.map((advert_id) => ({ kind: "ad_impression" as const, advert_id, ...ctx })));
+  record(live.map((advert_id) => ({ kind: "ad_impression" as const, advert_id, path: byId.get(advert_id) ?? "unknown", ...ctx })));
   return new Response(null, { status: 204 });
 }

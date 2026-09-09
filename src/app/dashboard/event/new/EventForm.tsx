@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -41,7 +42,7 @@ export function EventForm({ action, uploadImage, member, initial, withdrawAction
       {/* Both tabs stay mounted — hidden/plain inputs must remain in the form. */}
       <div id="write-panel" role="tabpanel" aria-labelledby="write-tab" className={tab === "write" ? "space-y-4" : "hidden"}>
         <div>
-          <label htmlFor="title" className="text-sm font-medium">Event name</label>
+          <label htmlFor="title" className="text-sm font-medium">Event name<RequiredMark /></label>
           <input id="title" name="title" required value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
@@ -50,7 +51,7 @@ export function EventForm({ action, uploadImage, member, initial, withdrawAction
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
-            <label htmlFor="starts_on" className="text-sm font-medium">Starts</label>
+            <label htmlFor="starts_on" className="text-sm font-medium">Starts<RequiredMark /></label>
             <input id="starts_on" name="starts_on" type="date" required defaultValue={initial?.startsOn} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
           <div>

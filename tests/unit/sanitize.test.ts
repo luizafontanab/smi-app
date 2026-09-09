@@ -95,6 +95,15 @@ describe("renderableHtml", () => {
   it("strips advert breaks — they only mean anything in a split story body", () => {
     expect(renderableHtml(`<p>a</p>${BREAK}<p>b</p>`)).toBe("<p>a</p><p>b</p>");
   });
+
+  it("sanitises a legacy row with a real tag typed partway through, not just at the start", () => {
+    // A row written before the rich-text editor existed can be mostly plain
+    // text with one inline tag typed by hand — the leading-`<` heuristic used
+    // to miss this and escape the tag into visible "&lt;strong&gt;" text.
+    expect(renderableHtml("Founded in 1990, <strong>we</strong> specialise in laser cutting.")).toBe(
+      "Founded in 1990, <strong>we</strong> specialise in laser cutting.",
+    );
+  });
 });
 
 describe("splitAtAdBreaks", () => {
@@ -139,13 +148,24 @@ describe("splitAtAdBreaks", () => {
     expect(splitAtAdBreaks("")).toEqual([]);
   });
 
-  it("can yield a segment opening on bare text — why StoryBody sanitises, not renders", () => {
+  it("can yield a segment opening on bare text, with a real tag later in it", () => {
     // Imported bodies are full of bare top-level text where the sanitiser stripped
     // a <figure> or <h4>, so a break can legitimately land in front of one.
     const [, second] = splitAtAdBreaks(`<p>a</p>${BREAK}Caption<p>b</p>`);
     expect(sanitizeRichText(second)).toBe("Caption<p>b</p>");
-    // renderableHtml paragraph-wraps it instead, publishing visible escaped markup
-    expect(renderableHtml(second)).toContain("&lt;p&gt;");
+    // renderableHtml recognises the real <p> tag later in the string and
+    // sanitises rather than escapes — a segment like this is exactly the shape
+    // that used to publish visible "&lt;p&gt;" markup before the tag-anywhere fix.
+    expect(renderableHtml(second)).toBe("Caption<p>b</p>");
+  });
+
+  it("still differs from sanitizeRichText for a segment with no tag anywhere — why StoryBody sanitises, not renders", () => {
+    // A segment that's pure bare text (no recognisable tag at all) still gets
+    // paragraph-wrapped by renderableHtml, changing its structure — this is the
+    // remaining reason StoryBody.tsx must call sanitizeRichText directly.
+    const [, second] = splitAtAdBreaks(`<p>a</p>${BREAK}Caption`);
+    expect(sanitizeRichText(second)).toBe("Caption");
+    expect(renderableHtml(second)).toBe("<p>Caption</p>");
   });
 
   it("re-sanitising repairs a break that splits a blockquote", () => {
@@ -166,6 +186,18 @@ describe("excerptFromHtml", () => {
 
   it("leaves text at or under the limit alone", () => {
     expect(excerptFromHtml("<p>short</p>", 20)).toBe("short");
+  });
+
+  it("replaces an entity it does not know with a space rather than leaving it raw", () => {
+    // The table only covers what the WordPress import actually emitted. An
+    // unknown entity must not leak "&euro;" into a card summary.
+    expect(excerptFromHtml("<p>Costs &euro;500 a year</p>")).toBe("Costs 500 a year");
+  });
+
+  it("cuts mid-word when the limit falls before the first space", () => {
+    // A long unbroken token (a URL, a part number) has no word boundary to cut
+    // on — better a hard cut than returning the whole 10k-char body.
+    expect(excerptFromHtml(`<p>${"a".repeat(30)}</p>`, 12)).toBe(`${"a".repeat(12)}…`);
   });
 
   it("returns null for markup with no text", () => {

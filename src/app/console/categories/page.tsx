@@ -7,7 +7,7 @@ export const metadata = { title: "Categories" };
 
 const TABS = [
   { kind: "story", label: "Story categories" },
-  { kind: "member", label: "Member sectors" },
+  { kind: "member", label: "Industries" },
 ] as const;
 
 const usageLabel = (kind: "story" | "member", count: number) =>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { RequiredMark } from "@/components/RequiredMark";
 import { youtubeId } from "@/lib/youtube";
 
 /**
@@ -14,7 +15,7 @@ export function YoutubePreview({ name, defaultValue = "" }: { name: string; defa
   const yt = youtubeId(url);
   return (
     <div>
-      <label htmlFor={name} className="text-sm font-medium">YouTube URL</label>
+      <label htmlFor={name} className="text-sm font-medium">YouTube URL<RequiredMark /></label>
       <input
         id={name}
         name={name}

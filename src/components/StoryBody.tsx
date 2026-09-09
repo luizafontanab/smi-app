@@ -10,10 +10,11 @@ import { sanitizeRichText } from "@/lib/sanitize";
  * a marker inside a blockquote leaves one segment with an unclosed tag and the
  * next with an orphan closer, and sanitize-html closes and drops them respectively.
  *
- * It must be sanitizeRichText and NOT RichText/renderableHtml: those paragraph-wrap
- * anything not starting with "<", which HTML-ESCAPES it. A segment can legitimately
- * open on a bare text node (imported bodies are full of them, left behind where the
- * sanitiser stripped a <figure> or <h4>), and that would publish visible markup.
+ * It must be sanitizeRichText and NOT RichText/renderableHtml: those still
+ * paragraph-wrap a segment with no recognisable tag anywhere in it (a bare
+ * orphan text node, left behind where the sanitiser stripped a <figure> or
+ * <h4>), which changes its structure — sanitizeRichText leaves it exactly as
+ * the split produced it.
  *
  * Each segment gets its own .story-body wrapper so the breaks sit outside it —
  * otherwise `.story-body img` would restyle the advert artwork.

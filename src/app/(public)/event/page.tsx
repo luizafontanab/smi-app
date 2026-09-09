@@ -75,8 +75,9 @@ export default async function EventsPage(props: PageProps<"/event">) {
     <div className="mx-auto max-w-6xl px-4">
       <h1 className="mt-6 text-2xl font-bold text-ink">Events</h1>
 
-      {/* List leads, calendar rides in a sidebar (fix list item 23). Mobile
-          stacks main-first so the filterable list stays on top. */}
+      {/* List leads, map rides in a sidebar (fix list item 37, swapping the
+          calendar and map from their original arrangement, fix list item 23).
+          Mobile stacks main-first so the filterable list stays on top. */}
       <div className="mt-6 flex flex-col gap-8 lg:flex-row">
         <div className="min-w-0 flex-1">
           {/* GET submit replaces the whole query string, hence the hidden carriers */}
@@ -112,7 +113,7 @@ export default async function EventsPage(props: PageProps<"/event">) {
           )}
           {/* Unconditional: the slot is booked inventory, so it must not vanish just
               because the listing is short. Only the split below is count-dependent. */}
-          <div className="my-6"><AdSlot slotKey="events_mid" adverts={slots.get("events_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
+          <div className="my-6"><AdSlot slotKey="events_mid" adverts={slots.get("events_mid") ?? []} showPlaceholders={showPlaceholders} path="/event" /></div>
           {events.length > 3 && (
             <div className="space-y-4">
               {events.slice(3).map((e) => <EventCard key={e.slug} event={e} />)}
@@ -120,16 +121,16 @@ export default async function EventsPage(props: PageProps<"/event">) {
           )}
           <Pagination page={upcomingPage} pages={upcomingPages} hrefFor={qsUpcoming} />
 
-          {/* Renders nothing until at least one upcoming event has geocoded
-              coords. Shows all upcoming events regardless of list filters. */}
-          <EventMap events={pins} />
-        </div>
-
-        <aside className="shrink-0 lg:w-96">
-          <h2 className="text-lg font-bold text-ink">Calendar</h2>
+          <h2 className="mt-6 text-lg font-bold text-ink">Calendar</h2>
           <div className="mt-3">
             <EventsCalendar month={month} events={monthEvents} hrefForMonth={hrefForMonth} />
           </div>
+        </div>
+
+        <aside className="shrink-0 lg:w-96">
+          {/* Renders nothing until at least one upcoming event has geocoded
+              coords. Shows all upcoming events regardless of list filters. */}
+          <EventMap events={pins} />
         </aside>
       </div>
 

@@ -135,6 +135,17 @@ export async function membershipTypes() {
   return data ?? [];
 }
 
+/**
+ * The Services vocabulary — the live site's /find-a-member "Services" filter,
+ * many per member. Distinct from both the single industry (`memberCategories`)
+ * and the fixed membership-type tags above.
+ */
+export async function services() {
+  const db = publicDb();
+  const { data } = await db.from("services").select("slug, name").order("name");
+  return data ?? [];
+}
+
 // Same projection with the member embed as an inner join, so the industry
 // filter can apply to it; stories with no member_id drop out, by design.
 const STORY_CARD_MEMBER_INNER = STORY_CARD.replace("member:members(", "member:members!inner(");
@@ -446,34 +457,58 @@ export function ilikeTerm(raw: string): string {
     .trim();
 }
 
-type MemberFilterOpts = { categories?: string[]; services?: string[] };
+/**
+ * The three member taxonomies are genuinely different things (docs/ask-jas.md):
+ * `categories` is the single INDUSTRY per member, `services` is the many-to-many
+ * Services vocabulary from the live /find-a-member filter, and `membershipTypes`
+ * is the separate fixed 5-item list. `services` used to resolve against
+ * membership_types, so the directory's "Services" filter was really a
+ * membership-type filter under a wrong label.
+ */
+type MemberFilterOpts = { categories?: string[]; services?: string[]; membershipTypes?: string[] };
+
+/** Members linked to any of `slugs` through a taxonomy join table. */
+async function membersLinkedVia(
+  db: ReturnType<typeof publicDb>,
+  slugs: string[],
+  table: "services" | "membership_types",
+  join: "member_services" | "member_membership_types",
+  fk: "service_id" | "membership_type_id",
+) {
+  const { data: terms } = await db.from(table).select("id").in("slug", slugs);
+  const ids = (terms ?? []).map((t) => t.id);
+  const { data: links } = ids.length
+    ? await db.from(join).select("member_id").in(fk, ids)
+    : { data: [] };
+  return [...new Set((links ?? []).map((l) => l.member_id))];
+}
 
 /**
- * Resolves the category (single FK, OR-matched across the selected slugs)
- * and services (many-to-many join table) filters to id lists memberDirectory
- * and memberPins can both apply with `.in()`. Null means "not filtering on
- * this axis"; an empty array means "filtered to nothing matches".
+ * Resolves the industry (single FK, OR-matched across the selected slugs) plus
+ * the two many-to-many filters to id lists memberDirectory and memberPins can
+ * both apply with `.in()`. Null means "not filtering on this axis"; an empty
+ * array means "filtered to nothing matches". The two member-id lists are
+ * intersected, so services AND membership types both narrow the result.
  */
 async function memberFilterIds(db: ReturnType<typeof publicDb>, opts: MemberFilterOpts) {
-  const [catRows, typeRows] = await Promise.all([
+  const [catRows, serviceIds, typeIds] = await Promise.all([
     opts.categories?.length
       ? db.from("categories").select("id").eq("kind", "member").in("slug", opts.categories)
       : Promise.resolve({ data: null }),
     opts.services?.length
-      ? db.from("membership_types").select("id").in("slug", opts.services)
-      : Promise.resolve({ data: null }),
+      ? membersLinkedVia(db, opts.services, "services", "member_services", "service_id")
+      : Promise.resolve(null),
+    opts.membershipTypes?.length
+      ? membersLinkedVia(db, opts.membershipTypes, "membership_types", "member_membership_types", "membership_type_id")
+      : Promise.resolve(null),
   ]);
   const categoryIds = catRows.data ? catRows.data.map((c) => c.id) : null;
 
-  let serviceMemberIds: string[] | null = null;
-  if (typeRows.data) {
-    const typeIds = typeRows.data.map((t) => t.id);
-    const { data: links } = typeIds.length
-      ? await db.from("member_membership_types").select("member_id").in("membership_type_id", typeIds)
-      : { data: [] };
-    serviceMemberIds = [...new Set((links ?? []).map((l) => l.member_id))];
-  }
-  return { categoryIds, serviceMemberIds };
+  const memberIds =
+    serviceIds && typeIds
+      ? serviceIds.filter((id) => typeIds.includes(id))
+      : serviceIds ?? typeIds;
+  return { categoryIds, serviceMemberIds: memberIds };
 }
 
 // members.id is a uuid — this never matches a real row, so an empty
@@ -509,7 +544,7 @@ export async function memberDirectory(opts: MemberFilterOpts & { q?: string; lim
   // whole and offset/limit are sliced here in JS, after the shuffle) while
   // rotating it daily and per filter. memberPins stays alphabetical — a map's
   // ordering is spatial, so it has nothing to rotate.
-  const seed = `${new Date().toISOString().slice(0, 10)}|${(opts.categories ?? []).join(",")}|${(opts.services ?? []).join(",")}|${opts.q ?? ""}`;
+  const seed = `${new Date().toISOString().slice(0, 10)}|${(opts.categories ?? []).join(",")}|${(opts.services ?? []).join(",")}|${(opts.membershipTypes ?? []).join(",")}|${opts.q ?? ""}`;
   let members = seededShuffle(data ?? [], seed);
   // No limit means the caller wants the whole filtered set (the homepage logo wall).
   if (opts.limit != null) members = members.slice(opts.offset ?? 0, (opts.offset ?? 0) + opts.limit);
@@ -542,7 +577,7 @@ export async function memberBySlug(slug: string) {
   const { data: member } = await db
     .from("members")
     .select(
-      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, category:categories(name), member_membership_types(membership_type:membership_types(slug, name))",
+      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, category:categories(name), member_membership_types(membership_type:membership_types(slug, name)), member_services(service:services(slug, name))",
     )
     .in("status", ["active", "grace"])
     .eq("slug", slug)
@@ -554,10 +589,12 @@ export async function memberBySlug(slug: string) {
     .eq("status", "published")
     .eq("member_id", member.id)
     .order("published_at", { ascending: false });
-  // Flatten the join row — the page only ever wants "this member's services".
-  const { member_membership_types, ...rest } = member;
-  const services = (member_membership_types ?? []).flatMap((r) => (r.membership_type ? [r.membership_type] : []));
-  return { ...rest, services, stories: (stories ?? []) as unknown as StoryCard[] };
+  // Flatten both join rows. These are different lists and were previously
+  // conflated: membership types were returned under the name `services`.
+  const { member_membership_types, member_services, ...rest } = member;
+  const membershipTypes = (member_membership_types ?? []).flatMap((r) => (r.membership_type ? [r.membership_type] : []));
+  const services = (member_services ?? []).flatMap((r) => (r.service ? [r.service] : []));
+  return { ...rest, membershipTypes, services, stories: (stories ?? []) as unknown as StoryCard[] };
 }
 
 /** Site search: members rank first (query-level ordering — not stored bias). */

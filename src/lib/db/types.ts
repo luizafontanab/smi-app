@@ -1234,6 +1234,36 @@ export type Database = {
           },
         ]
       }
+      member_services: {
+        Row: {
+          member_id: string
+          service_id: number
+        }
+        Insert: {
+          member_id: string
+          service_id: number
+        }
+        Update: {
+          member_id?: string
+          service_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_services_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_services_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       members: {
         Row: {
           address: string | null
@@ -1811,6 +1841,24 @@ export type Database = {
           query?: string
           results_count?: number
           session_hash?: string | null
+        }
+        Relationships: []
+      }
+      services: {
+        Row: {
+          id: number
+          name: string
+          slug: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          slug: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          slug?: string
         }
         Relationships: []
       }

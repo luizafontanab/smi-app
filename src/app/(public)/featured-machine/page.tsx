@@ -76,6 +76,7 @@ export default async function FeaturedMachinePage() {
         latestStories={latest}
         supplierLogos={logos}
         showPlaceholders={showPlaceholders}
+        path="/featured-machine"
         anchors={{ machine_main: machineMain }}
       />
       <div className="my-10" />

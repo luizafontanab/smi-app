@@ -63,8 +63,8 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
         </span>
       </p>
 
-      {/* No min-width: the calendar lives in a sidebar (fix list item 23) and
-          compresses — chips truncate, colour + the title attr carry the rest. */}
+      {/* No min-width: the calendar can render at any column width — chips
+          truncate, colour + the title attr carry the rest. */}
       <div className="mt-3 rounded-xl bg-white p-3 shadow-sm">
         <div>
           <div className="grid grid-cols-7 gap-px">

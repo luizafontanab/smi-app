@@ -70,6 +70,7 @@ export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
         latestStories={latest}
         supplierLogos={logos}
         showPlaceholders={showPlaceholders}
+        path={`/pages/${slug}`}
         anchors={{ page_main: pageMain }}
       />
       <div className="my-10" />

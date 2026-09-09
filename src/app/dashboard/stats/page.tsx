@@ -1,7 +1,7 @@
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
-import { ChannelBreakdown } from "@/components/ChannelBreakdown";
-import { Sparkline } from "@/components/Sparkline";
+import { StackedTrendChart, type ChartSeries } from "@/components/StackedTrendChart";
+import { TrendChart } from "@/components/Sparkline";
 
 const CHANNEL_LABELS: Record<string, string> = {
   ad_click: "Advert",
@@ -9,6 +9,8 @@ const CHANNEL_LABELS: Record<string, string> = {
   phone_click: "Phone",
   email_click: "Email",
 };
+const CLICK_KINDS = ["ad_click", "outbound_click", "phone_click", "email_click", "social_click"] as const;
+const CLICK_CATEGORIES = ["Advert", "Website", "Phone", "Email", "Social"] as const;
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your statistics" };
@@ -17,8 +19,9 @@ export const metadata = { title: "Your statistics" };
  * The agreed stats panel (USE-CASES gap 6): kept chart names, honest numbers,
  * impressions + cumulative counts carry the headline. Region and company
  * attribution are parked for Phase 1 (GAPS B2.1/B2.2) — resolveIp() returns
- * null for both until GeoLite2/a company vendor is wired, so those columns
- * render "Not available yet" rather than fabricated or misleading values.
+ * null for both until GeoLite2/a company vendor is wired, so "Who's engaging"
+ * and company/region columns stay out of this page for now rather than
+ * showing "Not available yet" everywhere.
  */
 export default async function MemberStatsPage() {
   const user = await requireMember();
@@ -26,37 +29,43 @@ export default async function MemberStatsPage() {
   // eslint-disable-next-line react-hooks/purity -- per-request render
   const now = Date.now();
   const monthAgo = new Date(now - 30 * 864e5).toISOString();
-  const sixtyDaysAgo = new Date(now - 60 * 864e5).toISOString();
   const yearAgo = new Date(now - 365 * 864e5).toISOString();
   const yearAgoDay = yearAgo.slice(0, 10);
-
   const thirtyDaysAgo = new Date(now - 30 * 864e5).toISOString().slice(0, 10);
 
-  const [pageViewsMonth, pageViewsPriorMonth, pageViewsYear, pageViewsTrend, myStories, storyViews, myAdverts, audit, consent] = await Promise.all([
+  const [pageViewsMonth, pageViewsTrend, myStories, storyViews, myAdverts, consent] = await Promise.all([
     db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "member_page_view").eq("member_id", user.memberId).gte("occurred_at", monthAgo),
-    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "member_page_view").eq("member_id", user.memberId).gte("occurred_at", sixtyDaysAgo).lt("occurred_at", monthAgo),
-    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "member_page_view").eq("member_id", user.memberId).gte("occurred_at", yearAgo),
     db.from("rollups_daily").select("day, count").eq("kind", "member_page_view").eq("member_id", user.memberId).gte("day", yearAgoDay),
-    db.from("stories").select("id", { count: "exact" }).eq("member_id", user.memberId).eq("status", "published"),
-    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "story_view").eq("member_id", user.memberId),
+    db.from("stories").select("id").eq("member_id", user.memberId).eq("status", "published"),
+    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "story_view").eq("member_id", user.memberId).gte("occurred_at", monthAgo),
     db.from("adverts").select("id").eq("member_id", user.memberId),
-    db.from("engagement_audit").select("occurred_on, region, company, page, views").eq("member_id", user.memberId).order("occurred_on", { ascending: false }).limit(20),
     db.from("consent_stats").select("total_requests, consented_requests").gte("day", thirtyDaysAgo),
   ]);
 
-  // A5.5: 12 calendar months of member_page_view, oldest to newest, missing months as 0.
-  const monthTotals = new Map<string, number>();
-  for (const r of pageViewsTrend.data ?? []) {
-    const key = r.day.slice(0, 7);
-    monthTotals.set(key, (monthTotals.get(key) ?? 0) + r.count);
-  }
-  const monthKeys = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth() - (11 - i), 1));
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-  });
-  const trendValues = monthKeys.map((k) => monthTotals.get(k) ?? 0);
-  const priorMonthCount = pageViewsPriorMonth.count ?? 0;
-  const deltaPct = priorMonthCount > 0 ? Math.round((((pageViewsMonth.count ?? 0) - priorMonthCount) / priorMonthCount) * 100) : null;
+  const storyIds = (myStories.data ?? []).map((s) => s.id);
+  const advertIds = (myAdverts.data ?? []).map((a) => a.id);
+
+  type ImpressionRow = { occurred_at: string; path: string | null };
+  type NewsletterAdRow = { advert_id: string; issue: { id: string; sent_at: string | null; opens_count: number } | null };
+
+  const [storyViewsTrend, clickEvents, [impressionRows, newsletterOpenRows]] = await Promise.all([
+    storyIds.length
+      ? db.from("rollups_daily").select("day, count").eq("kind", "story_view").in("story_id", storyIds).gte("day", yearAgoDay)
+      : Promise.resolve({ data: [] as { day: string; count: number }[] }),
+    db.from("analytics_events").select("occurred_at, kind").eq("member_id", user.memberId).in("kind", CLICK_KINDS).gte("occurred_at", yearAgo),
+    advertIds.length
+      ? Promise.all([
+          db.from("analytics_events").select("occurred_at, path").eq("kind", "ad_impression").in("advert_id", advertIds).gte("occurred_at", yearAgo),
+          db.from("newsletter_ads").select("advert_id, issue:newsletter_issues!inner(id, sent_at, opens_count, status)").in("advert_id", advertIds).eq("issue.status", "sent").gte("issue.sent_at", yearAgo),
+        ])
+      : (Promise.resolve([{ data: [] }, { data: [] }]) as Promise<[{ data: ImpressionRow[] }, { data: NewsletterAdRow[] }]>),
+  ]);
+
+  const monthKeys = monthKeysFor(now);
+  // page performance / story reach: rollups_daily is already pre-aggregated per
+  // day, so these are a straight month-bucket reshape — no new instrumentation.
+  const trendValues = bucketSingleSeries(pageViewsTrend.data ?? [], monthKeys);
+  const storyReachValues = bucketSingleSeries(storyViewsTrend.data ?? [], monthKeys);
 
   // GAPS C6: record() drops every event without consent — impressions/clicks
   // are a real lower bound, not a full count. Site-wide rate, not per-member:
@@ -68,144 +77,137 @@ export default async function MemberStatsPage() {
   );
   const acceptRatePct = consentTotals.total > 0 ? Math.round((consentTotals.consented / consentTotals.total) * 100) : null;
 
-  const advertIds = (myAdverts.data ?? []).map((a) => a.id);
-  let impressions = 0, clicks = 0, newsletterClicks = 0;
-  if (advertIds.length) {
-    const [imp, clk, newsletterAdRows] = await Promise.all([
-      db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "ad_impression").in("advert_id", advertIds).gte("occurred_at", yearAgo),
-      db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "ad_click").in("advert_id", advertIds).gte("occurred_at", yearAgo),
-      db.from("newsletter_ads").select("advert_id, issue:newsletter_issues!inner(status)").in("advert_id", advertIds).eq("issue.status", "sent"),
-    ]);
-    impressions = imp.count ?? 0;
-    clicks = clk.count ?? 0;
-    const newsletterAdvertIds = [...new Set((newsletterAdRows.data ?? []).map((r) => r.advert_id))];
-    if (newsletterAdvertIds.length) {
-      const { count } = await db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "ad_click").in("advert_id", newsletterAdvertIds);
-      newsletterClicks = count ?? 0;
-    }
-  }
+  // Last 30 days tiles: bare totals, filtered client-side from the same rows
+  // the month-by-month charts already fetched, rather than separate queries.
+  const impressions30 = (impressionRows.data ?? []).filter((r) => r.occurred_at >= monthAgo).length;
+  // Deliberately narrower than the 5-channel month-by-month chart below it —
+  // matches this tile's original definition (advert + website clicks only).
+  const clicksOverview30 = (clickEvents.data ?? []).filter(
+    (r) => r.occurred_at >= monthAgo && (r.kind === "ad_click" || r.kind === "outbound_click"),
+  ).length;
 
-  // A5.6/A5.10: outbound website clicks, folded additively into "Clicks overview"
-  // so the number never drops vs the ad-click-only figure it replaces.
-  const { count: outboundClickCount } = await db
-    .from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "outbound_click").eq("member_id", user.memberId).gte("occurred_at", yearAgo);
-  const clicksOverview = clicks + (outboundClickCount ?? 0);
+  // Month-by-month: clicks by channel, all social platforms folded into one
+  // "Social" series — per-platform detail stays only on console/analytics.
+  const clicksSeries = bucketMultiSeries(
+    clickEvents.data ?? [],
+    (r) => r.occurred_at.slice(0, 7),
+    (r) => (r.kind === "social_click" ? "Social" : (CHANNEL_LABELS[r.kind] ?? r.kind)),
+    CLICK_CATEGORIES,
+    monthKeys,
+  );
 
-  // A5.10: member-scoped clicks-by-channel breakdown (Gap 6 item 3 / item 5).
-  const { data: channelRows } = await db
-    .from("analytics_events")
-    .select("kind, platform")
-    .eq("member_id", user.memberId)
-    .in("kind", ["ad_click", "outbound_click", "phone_click", "email_click", "social_click"])
-    .gte("occurred_at", yearAgo);
-  const channelCounts = new Map<string, number>();
-  for (const r of channelRows ?? []) {
-    const label = r.kind === "social_click" ? (r.platform ? `Social: ${r.platform}` : "Social") : (CHANNEL_LABELS[r.kind] ?? r.kind);
-    channelCounts.set(label, (channelCounts.get(label) ?? 0) + 1);
+  // Month-by-month: advert impressions by location. Real path data only
+  // exists for events recorded after this instrumentation shipped — older
+  // months read honestly sparse/zero, not backfilled.
+  const impressionsBase = bucketMultiSeries(
+    impressionRows.data ?? [],
+    (r) => r.occurred_at.slice(0, 7),
+    (r) => (r.path === "/" ? "Homepage" : r.path?.startsWith("/") ? "Other pages" : null),
+    ["Homepage", "Other pages"],
+    monthKeys,
+  );
+  // Newsletter series is issue-level, not per-advert — newsletter_ads has no
+  // metrics of its own, so this attributes each sent issue's real,
+  // webhook-driven opens_count to the member for the month it sent, for every
+  // issue that carried one of their adverts (see docs/GAPS.md A5.4/A5.5).
+  const seenIssues = new Map<string, { sent_at: string | null; opens_count: number }>();
+  for (const row of newsletterOpenRows.data ?? []) {
+    if (row.issue && !seenIssues.has(row.issue.id)) seenIssues.set(row.issue.id, row.issue);
   }
-
-  // A5.7: newsletter value — issues that carried one of this member's stories,
-  // filtered to actually-sent issues in the current calendar year (the old
-  // query counted every newsletter_items row regardless of status or year).
-  const storyIds = (myStories.data ?? []).map((s) => s.id);
-  const yearStart = new Date(Date.UTC(new Date(now).getUTCFullYear(), 0, 1)).toISOString();
-  let featuredIn = 0;
-  if (storyIds.length) {
-    const { count } = await db
-      .from("newsletter_items")
-      .select("issue:newsletter_issues!inner(status, sent_at)", { count: "exact", head: true })
-      .in("story_id", storyIds)
-      .eq("issue.status", "sent")
-      .gte("issue.sent_at", yearStart);
-    featuredIn = count ?? 0;
+  const newsletterOpensByMonth = new Map<string, number>();
+  for (const { sent_at, opens_count } of seenIssues.values()) {
+    if (!sent_at) continue;
+    const key = sent_at.slice(0, 7);
+    newsletterOpensByMonth.set(key, (newsletterOpensByMonth.get(key) ?? 0) + opens_count);
   }
-
-  // A5.7: real reader figure — the most recent sent issue's actual recipient
-  // count, replacing the hardcoded "~2,500" literal. Falls back to the
-  // current subscribed-contacts count if no issue has ever sent yet.
-  const { data: lastSentIssue } = await db
-    .from("newsletter_issues").select("sent_count").eq("status", "sent").order("sent_at", { ascending: false }).limit(1).maybeSingle();
-  let readerEstimate = lastSentIssue?.sent_count ?? null;
-  if (readerEstimate == null) {
-    const { count } = await db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null);
-    readerEstimate = count ?? 0;
-  }
+  const impressionsSeries: ChartSeries[] = [
+    ...impressionsBase,
+    { label: "Newsletter", values: monthKeys.map((m) => newsletterOpensByMonth.get(m) ?? 0) },
+  ];
 
   return (
     <div className="mx-auto max-w-4xl">
       <h1 className="mt-1 text-xl font-bold text-ink">Your statistics</h1>
       <p className="mt-1 text-sm text-graphite">Real, unpadded numbers, measured on SMI&apos;s own platform.</p>
 
-      <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Stat
-          label="Page performance"
-          value={pageViewsMonth.count ?? 0}
-          sub={`${pageViewsYear.count ?? 0} in 12 months${deltaPct != null ? ` · ${deltaPct >= 0 ? "+" : ""}${deltaPct}% vs prior 30 days` : ""}`}
-        >
-          <Sparkline values={trendValues} />
-        </Stat>
-        <Stat label="Advert impressions" value={impressions} sub="pages your brand appeared on (12 mo)" />
-        <Stat label="Clicks overview" value={clicksOverview} sub="advert + website clicks (12 mo)" />
-        <Stat label="Story reach" value={storyViews.count ?? 0} sub={`${myStories.count ?? 0} stories, all-time views`} />
+      <h2 className="mt-6 font-bold text-ink">Last 30 days</h2>
+      <div className="mt-3 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Stat label="Page views" value={pageViewsMonth.count ?? 0} />
+        <Stat label="Advert impressions" value={impressions30} />
+        <Stat label="Clicks overview" value={clicksOverview30} />
+        <Stat label="Story views" value={storyViews.count ?? 0} />
       </div>
 
-      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Clicks by channel</h2>
-        <p className="mt-1 text-xs text-graphite">Last 12 months.</p>
-        <div className="mt-3">
-          <ChannelBreakdown rows={[...channelCounts.entries()].map(([label, count]) => ({ label, count }))} />
-        </div>
-      </section>
+      <h2 className="mt-8 font-bold text-ink">Month by month</h2>
+      <div className="mt-3 grid gap-4 md:grid-cols-2">
+        <section className="rounded-xl bg-white p-5 shadow-sm">
+          <h3 className="font-bold text-ink">Page performance</h3>
+          <div className="mt-3"><TrendChart values={trendValues} labels={monthKeys} /></div>
+        </section>
+        <section className="rounded-xl bg-white p-5 shadow-sm">
+          <h3 className="font-bold text-ink">Story reach</h3>
+          <div className="mt-3"><TrendChart values={storyReachValues} labels={monthKeys} /></div>
+        </section>
+        <section className="rounded-xl bg-white p-5 shadow-sm">
+          <h3 className="font-bold text-ink">Advert impressions</h3>
+          <p className="mt-1 text-xs text-graphite">Where your advert appeared.</p>
+          <div className="mt-3"><StackedTrendChart labels={monthKeys} series={impressionsSeries} /></div>
+        </section>
+        <section className="rounded-xl bg-white p-5 shadow-sm">
+          <h3 className="font-bold text-ink">Clicks overview</h3>
+          <p className="mt-1 text-xs text-graphite">By channel — wider than the 30-day figure above, which counts advert and website clicks only.</p>
+          <div className="mt-3"><StackedTrendChart labels={monthKeys} series={clicksSeries} /></div>
+        </section>
+      </div>
+
       {acceptRatePct !== null && (
-        <p className="mt-2 text-xs text-graphite">
+        <p className="mt-6 text-xs text-graphite">
           These counts only include visits where the reader accepted analytics cookies — about {acceptRatePct}% of
           site traffic in the last 30 days. Treat every number above as a floor, not a total.
         </p>
       )}
-
-      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Newsletter value</h2>
-        <p className="mt-1 text-sm text-graphite">
-          Your stories featured in <b>{featuredIn}</b> newsletter issue{featuredIn === 1 ? "" : "s"} this year, reaching
-          ~{readerEstimate.toLocaleString()} trade readers each.
-          {newsletterClicks > 0 && <> Your newsletter adverts have been clicked <b>{newsletterClicks}</b> time{newsletterClicks === 1 ? "" : "s"}.</>}
-        </p>
-      </section>
-
-      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Who&apos;s engaging</h2>
-        <p className="mt-1 text-xs text-graphite">
-          Company and region attribution isn&apos;t switched on yet — that layer is parked for a later phase, not a
-          per-visit lookup that came back empty. The dates and view counts below are real.
-        </p>
-        <div className="overflow-x-auto mt-3">
-        <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Date</th><th scope="col">Who</th><th scope="col">Where</th><th scope="col">Views</th></tr></thead>
-          <tbody>
-            {(audit.data ?? []).map((a, i) => (
-              <tr key={i} className="border-t">
-                <td className="py-1.5 text-graphite">{a.occurred_on}</td>
-                <td className="font-medium">{a.company ?? <span className="font-normal text-graphite">Not available yet</span>}</td>
-                <td>{a.region ?? <span className="text-graphite">Not available yet</span>}</td>
-                <td>{a.views}</td>
-              </tr>
-            ))}
-            {(audit.data ?? []).length === 0 && <tr><td colSpan={4} className="py-3 text-graphite">No engagement recorded yet.</td></tr>}
-          </tbody>
-        </table>
-        </div>
-      </section>
     </div>
   );
 }
 
-function Stat({ label, value, sub, children }: { label: string; value: number; sub: string; children?: React.ReactNode }) {
+function monthKeysFor(now: number): string[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth() - (11 - i), 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
+function bucketSingleSeries(rows: { day: string; count: number }[], monthKeys: string[]): number[] {
+  const totals = new Map<string, number>();
+  for (const r of rows) {
+    const key = r.day.slice(0, 7);
+    totals.set(key, (totals.get(key) ?? 0) + r.count);
+  }
+  return monthKeys.map((k) => totals.get(k) ?? 0);
+}
+
+function bucketMultiSeries<T>(
+  rows: T[],
+  monthOf: (r: T) => string,
+  categoryOf: (r: T) => string | null,
+  categories: readonly string[],
+  monthKeys: string[],
+): ChartSeries[] {
+  const totals = new Map<string, number>(); // `${month}|${category}` -> count
+  for (const r of rows) {
+    const cat = categoryOf(r);
+    if (cat == null) continue;
+    const key = `${monthOf(r)}|${cat}`;
+    totals.set(key, (totals.get(key) ?? 0) + 1);
+  }
+  return categories.map((label) => ({ label, values: monthKeys.map((m) => totals.get(`${m}|${label}`) ?? 0) }));
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl bg-white p-4 shadow-sm">
       <p className="text-xs uppercase tracking-wide text-graphite">{label}</p>
       <p className="mt-1 text-2xl font-bold text-ink">{value.toLocaleString()}</p>
-      <p className="text-xs text-graphite">{sub}</p>
-      {children}
     </div>
   );
 }

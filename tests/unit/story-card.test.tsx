@@ -45,6 +45,26 @@ describe("StoryCard", () => {
     expect(screen.queryByText("Member news")).not.toBeInTheDocument();
   });
 
+  it("at the large size, uses the tall media box and the bigger headline", () => {
+    // The lg card is the hero slot. Note the `sizes` hint the component also
+    // varies by size never reaches the DOM — next/image drops it under
+    // `unoptimized`, since there is no srcset for it to select from.
+    const { container } = render(
+      <StoryCard story={story({ cover_path: "stories/a.jpg" })} size="lg" />,
+    );
+    expect(container.querySelector(".h-80")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "A Story" }).className).toContain("text-2xl");
+  });
+
+  it("credits the member alongside the date when the story has one", () => {
+    render(
+      <StoryCard
+        story={story({ member: { slug: "acme", name: "Acme Fabrications", logo_path: null, status: "active" } })}
+      />,
+    );
+    expect(screen.getByText(/Acme Fabrications/)).toBeInTheDocument();
+  });
+
   it("hides the excerpt at the small size", () => {
     const { rerender } = render(<StoryCard story={story()} size="md" />);
     expect(screen.getByText("The opening line.")).toBeInTheDocument();

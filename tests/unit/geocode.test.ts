@@ -37,6 +37,16 @@ describe("geocodeAddress", () => {
     expect(result).toBeNull();
   });
 
+  it("returns null when the coordinates are not numbers", async () => {
+    // Nominatim answers 200 with a body; a malformed row must not become
+    // NaN/NaN and put a pin in the middle of the ocean.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ lat: "not-a-number", lon: "-1.8904" }]), { status: 200 }),
+    );
+
+    expect(await geocodeAddress("somewhere")).toBeNull();
+  });
+
   it("returns null on a non-2xx response rather than throwing", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("busy", { status: 503 }));
 

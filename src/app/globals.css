@@ -38,6 +38,19 @@
   --smi-success: #15803d;
   /* Tint panel between paper and line — the old bg-gray-50/100 role. */
   --smi-shade: #f4f5f6;
+  /* Categorical series for multi-series charts (StackedTrendChart) — fixed
+     order, never cycled or reassigned by value. Brand orange stays out of this
+     set (it's the single non-categorical accent everywhere else); these five
+     are drawn from the dataviz skill's validated default 8-hue palette,
+     re-validated as this 5-slot subset (node scripts/validate_palette.js
+     "#2a78d6,#1baf7a,#eda100,#e87ba4,#008300" --mode light --surface "#ffffff":
+     all hard gates pass; slots 2/3/4 sit under 3:1 on white, which is why
+     every chart using them also ships a text legend — the required relief). */
+  --smi-series-1: #2a78d6; /* blue */
+  --smi-series-2: #1baf7a; /* aqua */
+  --smi-series-3: #eda100; /* yellow */
+  --smi-series-4: #e87ba4; /* magenta */
+  --smi-series-5: #008300; /* green */
   /* Two roles on purpose: Source Sans 3 reads (body, UI, data — real tabular
      figures), League Spartan speaks (headings, hero). Swapping either token
      re-faces its whole role; nothing selects a family directly. */

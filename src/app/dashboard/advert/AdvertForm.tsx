@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type Dispatch, type SetStateAction } from "react";
+import { RequiredMark } from "@/components/RequiredMark";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export type AdvertDefaults = {
@@ -68,7 +69,7 @@ export function AdvertForm({ action, bookingId, defaults, submitLabel = "Submit 
 
       <div className={tab === "details" ? "space-y-4" : "hidden"}>
         <div>
-          <label htmlFor="name" className="text-sm font-medium">Advert name</label>
+          <label htmlFor="name" className="text-sm font-medium">Advert name<RequiredMark /></label>
           <input id="name" name="name" required defaultValue={defaults?.name ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           <p className="mt-1 text-xs text-graphite">For your own reference — readers never see it.</p>
         </div>
@@ -85,13 +86,13 @@ export function AdvertForm({ action, bookingId, defaults, submitLabel = "Submit 
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label htmlFor="desktop" className="text-sm font-medium">Desktop artwork</label>
+            <label htmlFor="desktop" className="text-sm font-medium">Desktop artwork{!defaults && <RequiredMark />}</label>
             <p className="text-xs text-graphite">{spec.desktop}</p>
             <input id="desktop" name="desktop" type="file" accept="image/jpeg,image/png,image/webp" required={!defaults}
               onChange={(e) => preview(e.target.files?.[0], setDesktopUrl)} className="mt-1 w-full text-sm" />
           </div>
           <div>
-            <label htmlFor="mobile" className="text-sm font-medium">Mobile artwork</label>
+            <label htmlFor="mobile" className="text-sm font-medium">Mobile artwork{!defaults && <RequiredMark />}</label>
             <p className="text-xs text-graphite">{spec.mobile}</p>
             <input id="mobile" name="mobile" type="file" accept="image/jpeg,image/png,image/webp" required={!defaults}
               onChange={(e) => preview(e.target.files?.[0], setMobileUrl)} className="mt-1 w-full text-sm" />
@@ -99,11 +100,11 @@ export function AdvertForm({ action, bookingId, defaults, submitLabel = "Submit 
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label htmlFor="starts_on" className="text-sm font-medium">Preferred start</label>
+            <label htmlFor="starts_on" className="text-sm font-medium">Preferred start<RequiredMark /></label>
             <input id="starts_on" name="starts_on" type="date" required defaultValue={defaults?.startsOn ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
           <div>
-            <label htmlFor="ends_on" className="text-sm font-medium">Preferred end</label>
+            <label htmlFor="ends_on" className="text-sm font-medium">Preferred end<RequiredMark /></label>
             <input id="ends_on" name="ends_on" type="date" required defaultValue={defaults?.endsOn ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
         </div>

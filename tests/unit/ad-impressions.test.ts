@@ -34,47 +34,47 @@ describe("reportAdSeen", () => {
   });
 
   it("does not send before the batch window elapses", async () => {
-    reportAdSeen("ad-1");
+    reportAdSeen("ad-1", "/news");
     await vi.advanceTimersByTimeAsync(499);
 
     expect(sendBeacon).not.toHaveBeenCalled();
   });
 
   it("batches ids reported within the window into a single beacon", async () => {
-    reportAdSeen("ad-1");
-    reportAdSeen("ad-2");
+    reportAdSeen("ad-1", "/news");
+    reportAdSeen("ad-2", "/video");
     await vi.advanceTimersByTimeAsync(500);
 
     expect(sendBeacon).toHaveBeenCalledTimes(1);
     const [url, blob] = sendBeacon.mock.calls[0];
     expect(url).toBe("/api/seen");
-    expect(JSON.parse(await blob.text())).toEqual({ ids: ["ad-1", "ad-2"] });
+    expect(JSON.parse(await blob.text())).toEqual({ items: [{ id: "ad-1", path: "/news" }, { id: "ad-2", path: "/video" }] });
   });
 
   it("dedupes repeated ids within the same batch", async () => {
-    reportAdSeen("ad-1");
-    reportAdSeen("ad-1");
+    reportAdSeen("ad-1", "/news");
+    reportAdSeen("ad-1", "/news");
     await vi.advanceTimersByTimeAsync(500);
 
     const [, blob] = sendBeacon.mock.calls[0];
-    expect(JSON.parse(await blob.text())).toEqual({ ids: ["ad-1"] });
+    expect(JSON.parse(await blob.text())).toEqual({ items: [{ id: "ad-1", path: "/news" }] });
   });
 
   it("starts a new batch after the previous one flushes", async () => {
-    reportAdSeen("ad-1");
+    reportAdSeen("ad-1", "/news");
     await vi.advanceTimersByTimeAsync(500);
-    reportAdSeen("ad-2");
+    reportAdSeen("ad-2", "/video");
     await vi.advanceTimersByTimeAsync(500);
 
     expect(sendBeacon).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(await sendBeacon.mock.calls[1][1].text())).toEqual({ ids: ["ad-2"] });
+    expect(JSON.parse(await sendBeacon.mock.calls[1][1].text())).toEqual({ items: [{ id: "ad-2", path: "/video" }] });
   });
 
   it("falls back to a keepalive fetch when sendBeacon is unavailable", async () => {
     // @ts-expect-error remove the stub for this test
     delete navigator.sendBeacon;
 
-    reportAdSeen("ad-1");
+    reportAdSeen("ad-1", "/news");
     await vi.advanceTimersByTimeAsync(500);
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -82,13 +82,13 @@ describe("reportAdSeen", () => {
     expect(url).toBe("/api/seen");
     expect(init?.method).toBe("POST");
     expect(init?.keepalive).toBe(true);
-    expect(JSON.parse(init?.body as string)).toEqual({ ids: ["ad-1"] });
+    expect(JSON.parse(init?.body as string)).toEqual({ items: [{ id: "ad-1", path: "/news" }] });
   });
 
   it("falls back to fetch when the browser refuses to queue the beacon", async () => {
     sendBeacon.mockReturnValue(false);
 
-    reportAdSeen("ad-1");
+    reportAdSeen("ad-1", "/news");
     await vi.advanceTimersByTimeAsync(500);
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -99,7 +99,7 @@ describe("reportAdSeen", () => {
     delete navigator.sendBeacon;
     fetchSpy.mockRejectedValue(new Error("offline"));
 
-    reportAdSeen("ad-1");
+    reportAdSeen("ad-1", "/news");
     await expect(vi.advanceTimersByTimeAsync(500)).resolves.not.toThrow();
   });
 });

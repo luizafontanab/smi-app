@@ -21,6 +21,18 @@ Use the `verify` skill (`.claude/skills/verify/SKILL.md`) while iterating and be
 - **Mid-task, quick check** — after each meaningful edit: scoped `pnpm lint <touched files>`, a targeted grep/read to confirm the edit landed, and editor diagnostics if visible. Skip the full sweep here.
 - **Before calling a task done, full sweep** — `pnpm check` (`tsc --noEmit && lint && vitest run`), plus `pnpm build` for routing/env/Next.js config changes, or `pnpm test:e2e` for UI/flow changes (needs the `run-smi-app` dev stack running).
 
+### Visual regression is not part of any of that
+
+`pnpm visual` (`tests/visual/`, see its README) screenshots every page and
+compares against committed baselines. It is **human-triggered only** — never add
+it to `pnpm check`, `pnpm test:e2e`, or CI, and don't run it unprompted: it takes
+minutes and its baselines are machine-local.
+
+It **never updates a baseline by itself**. A missing baseline is a hard failure
+(exit 2), not a silent write. Only a person accepts a change, per route:
+`pnpm visual:accept <route-id>`. Do not run `visual:accept --all` on someone's
+behalf — accepting a baseline is asserting you looked at the picture.
+
 ## Don't restart what doesn't need it
 
 The local dev server and Supabase are long-lived — leave them running across a session instead of cycling them per edit. See `.claude/skills/run-smi-app/SKILL.md` for full detail; in short:

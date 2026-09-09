@@ -24,7 +24,10 @@
       "Bash(pnpm lint 2>&1)",
       "Bash(pnpm check 2>&1)",
       "Bash(pnpm test:e2e 2>&1)",
-      "Bash(pnpm vitest run *)"
+      "Bash(pnpm vitest run *)",
+      "Bash(pnpm exec vitest *)",
+      "Bash(pnpm exec eslint *)",
+      "Bash(pnpm exec tsc *)"
     ],
     "deny": [
       "Bash(rm -rf:*)",

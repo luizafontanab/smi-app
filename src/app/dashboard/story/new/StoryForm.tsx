@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CoverField } from "@/components/CoverField";
 import { MemberBacklink } from "@/components/MemberBacklink";
+import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
@@ -39,7 +40,7 @@ export function StoryForm({ action, uploadImage, categories, member, initial, wi
       {/* Both tabs stay mounted — hidden inputs must remain in the form. */}
       <div id="write-panel" role="tabpanel" aria-labelledby="write-tab" className={tab === "write" ? "space-y-4" : "hidden"}>
         <div>
-          <label htmlFor="title" className="text-sm font-medium">Title</label>
+          <label htmlFor="title" className="text-sm font-medium">Title<RequiredMark /></label>
           <input id="title" name="title" required value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>

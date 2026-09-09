@@ -20,12 +20,12 @@ function advert(overrides: Partial<LiveAdvert> = {}): LiveAdvert {
 
 describe("AdSlot", () => {
   it("renders nothing for an empty slot when placeholders are off", () => {
-    const { container } = render(<AdSlot adverts={[]} showPlaceholders={false} />);
+    const { container } = render(<AdSlot adverts={[]} showPlaceholders={false} path="/news" />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("draws a labelled placeholder footprint per shape, without touching AdCreative", () => {
-    render(<AdSlot adverts={[]} shape="mpu" slotKey="story_ad_1" showPlaceholders />);
+    render(<AdSlot adverts={[]} shape="mpu" slotKey="story_ad_1" showPlaceholders path="/news" />);
     expect(screen.getByText("Advert space")).toBeInTheDocument();
     expect(screen.getByText(/story_ad_1/)).toBeInTheDocument();
   });

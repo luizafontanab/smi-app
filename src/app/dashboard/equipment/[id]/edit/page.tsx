@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { renderableHtml } from "@/lib/sanitize";
+import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { editMachine, memberUploadImage, withdrawMachine } from "../../../actions";
 
@@ -30,7 +31,7 @@ export default async function EditMemberMachine(props: PageProps<"/dashboard/equ
       <form action={editMachine} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
         <input type="hidden" name="id" value={machine.id} />
         <div>
-          <label htmlFor="name" className="text-sm font-medium">Machine name</label>
+          <label htmlFor="name" className="text-sm font-medium">Machine name<RequiredMark /></label>
           <input id="name" name="name" required defaultValue={machine.name} className="mt-1 w-full rounded border px-3 py-2" placeholder="e.g. 2024 Durma HD-F 3015 fibre laser" />
         </div>
         <div>

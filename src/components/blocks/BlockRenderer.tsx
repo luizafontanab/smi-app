@@ -20,6 +20,8 @@ type Props = {
   supplierLogos?: LiveAdvert[];
   /** Draw empty slots' footprints — resolved per request by showAdPlaceholders(). */
   showPlaceholders?: boolean;
+  /** The page this layout renders on — carried into any ad_banner block's impression beacon. */
+  path: string;
 };
 
 /**
@@ -27,7 +29,7 @@ type Props = {
  * upstream by the uniform shuffle — this component must never pick or reorder
  * adverts (rotational-neutral contract).
  */
-export function BlockRenderer({ pageType, layout, anchors, slots, latestStories, memberStories, memberName, supplierLogos, showPlaceholders = false }: Props) {
+export function BlockRenderer({ pageType, layout, anchors, slots, latestStories, memberStories, memberName, supplierLogos, showPlaceholders = false, path }: Props) {
   const keys = adSlotKeys(pageType, layout);
   let adIndex = 0;
 
@@ -43,7 +45,7 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
             const ads = slots?.get(key) ?? [];
             // the wrapper carries margin, so it must not render around a null slot
             return ads.length || showPlaceholders
-              ? <div key={block.id} className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} /></div>
+              ? <div key={block.id} className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} path={path} /></div>
               : null;
           }
           case "back_link": {

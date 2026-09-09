@@ -6,6 +6,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { renewAdvertBooking, resubmitAdvert } from "../../actions";
 import { AdvertForm } from "../AdvertForm";
 import { ArtworkSwapForm } from "../ArtworkSwapForm";
+import { RequiredMark } from "@/components/RequiredMark";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your advert" };
@@ -105,8 +106,8 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
           <p className="mt-1 text-xs text-graphite">Same artwork, new dates. It goes back to us for approval.</p>
           <form action={renewAdvertBooking} className="mt-3 flex flex-wrap items-end gap-3 text-sm">
             <input type="hidden" name="id" value={id} />
-            <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block rounded border px-3 py-2" /></label>
-            <label className="block">End<input type="date" name="ends_on" required className="mt-1 block rounded border px-3 py-2" /></label>
+            <label className="block">Start<RequiredMark /><input type="date" name="starts_on" required className="mt-1 block rounded border px-3 py-2" /></label>
+            <label className="block">End<RequiredMark /><input type="date" name="ends_on" required className="mt-1 block rounded border px-3 py-2" /></label>
             <button className="rounded bg-ink px-4 py-2 text-white">Request</button>
           </form>
         </section>

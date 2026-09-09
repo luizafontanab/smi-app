@@ -68,7 +68,7 @@ export function GridHome({
         <h1 className="sr-only">Sheet Metal Industries — UK sheet metal, fabrication and welding news</h1>
         {/* The rotating banner is a real advert slot, not an editorial hero —
             see the top-of-file note on the above-the-fold exception. */}
-        <div className="pt-6"><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} /></div>
+        <div className="pt-6"><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
 
         {/* Jas asked for the search bar on home, news, video and members — one
             universal tool, and the query log is meant to steer SEO later. */}
@@ -80,8 +80,8 @@ export function GridHome({
           <div className="flex flex-col gap-4">
             {member1 && <FeaturedMemberCard member={member1} variant="compact" />}
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <AdSlot slotKey="home_rail_1" adverts={railLogos.get("home_rail_1") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
-              <AdSlot slotKey="home_rail_2" adverts={railLogos.get("home_rail_2") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+              <AdSlot slotKey="home_rail_1" adverts={railLogos.get("home_rail_1") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
+              <AdSlot slotKey="home_rail_2" adverts={railLogos.get("home_rail_2") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
             </div>
             {videos.length > 0 && (
               <div>
@@ -92,8 +92,8 @@ export function GridHome({
               </div>
             )}
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <AdSlot slotKey="home_rail_3" adverts={railLogos.get("home_rail_3") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
-              <AdSlot slotKey="home_rail_4" adverts={railLogos.get("home_rail_4") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+              <AdSlot slotKey="home_rail_3" adverts={railLogos.get("home_rail_3") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
+              <AdSlot slotKey="home_rail_4" adverts={railLogos.get("home_rail_4") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
             </div>
           </div>
 
@@ -120,19 +120,19 @@ export function GridHome({
 
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <AdSlot slotKey="home_rail_5" adverts={railLogos.get("home_rail_5") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
-              <AdSlot slotKey="home_rail_6" adverts={railLogos.get("home_rail_6") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+              <AdSlot slotKey="home_rail_5" adverts={railLogos.get("home_rail_5") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
+              <AdSlot slotKey="home_rail_6" adverts={railLogos.get("home_rail_6") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
             </div>
-            <AdSlot slotKey="home_mpu_1" adverts={boxes.get("home_mpu_1") ?? []} shape="mpu" showPlaceholders={showPlaceholders} />
+            <AdSlot slotKey="home_mpu_1" adverts={boxes.get("home_mpu_1") ?? []} shape="mpu" showPlaceholders={showPlaceholders} path="/" />
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <AdSlot slotKey="home_rail_7" adverts={railLogos.get("home_rail_7") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
-              <AdSlot slotKey="home_rail_8" adverts={railLogos.get("home_rail_8") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+              <AdSlot slotKey="home_rail_7" adverts={railLogos.get("home_rail_7") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
+              <AdSlot slotKey="home_rail_8" adverts={railLogos.get("home_rail_8") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
             </div>
             {machine && <MachineCard machine={machine} />}
           </div>
         </div>
 
-        <div className="mt-10"><AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} /></div>
+        <div className="mt-10"><AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
 
         {/* ── Watch more: three video cards + a mixed trending rail ───────── */}
         <section className="mt-10">
@@ -160,7 +160,7 @@ export function GridHome({
           </section>
         )}
 
-        <div className="mt-10"><AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} /></div>
+        <div className="mt-10"><AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
 
         <div className="-mx-4 mt-10"><SupplierLogos adverts={adverts.supplier_logo} showPlaceholders={showPlaceholders} /></div>
 

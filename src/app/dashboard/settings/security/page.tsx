@@ -1,5 +1,6 @@
 import { requireMember } from "@/lib/auth";
 import { changePassword } from "../../actions";
+import { RequiredMark } from "@/components/RequiredMark";
 import { SettingsTabs } from "../SettingsTabs";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +27,11 @@ export default async function SecuritySettingsPage(props: PageProps<"/dashboard/
       <SettingsTabs active="security" />
       <form action={changePassword} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm text-sm">
         <div>
-          <label htmlFor="password" className="font-medium">New password</label>
+          <label htmlFor="password" className="font-medium">New password<RequiredMark /></label>
           <input id="password" name="password" type="password" required minLength={PASSWORD_MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <div>
-          <label htmlFor="confirm" className="font-medium">Confirm new password</label>
+          <label htmlFor="confirm" className="font-medium">Confirm new password<RequiredMark /></label>
           <input id="confirm" name="confirm" type="password" required minLength={PASSWORD_MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <button className="rounded bg-ink px-5 py-2.5 text-white">Update password</button>

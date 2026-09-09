@@ -86,6 +86,20 @@ describe("liveAdverts / liveAdvertsByFormat", () => {
     }]);
   });
 
+  it("maps a house advert with no member to null slug and id", async () => {
+    // Not every advert belongs to a member — house ads and third-party
+    // placements have no join row, and the mapped shape must carry nulls
+    // rather than undefined, which AdSlot keys off.
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: () => queryBuilder(dbOk([booking("1", "banner", null)])),
+    })));
+
+    expect(await liveAdverts("banner")).toEqual([{
+      advertId: "1", name: "Ad 1", desktopPath: "d/1.jpg", mobilePath: "m/1.jpg", linkUrl: null,
+      memberSlug: null, memberId: null, format: "banner",
+    }]);
+  });
+
   it("dedupes an advert booked twice over overlapping dates", async () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
       from: () => queryBuilder(dbOk([booking("1", "banner"), booking("1", "banner")])),

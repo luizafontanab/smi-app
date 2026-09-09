@@ -30,6 +30,10 @@ import type { Role } from "@/lib/auth";
 import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
+import { INDUSTRY_ROWS, industrySlug } from "./lib/industries";
+import { industryForServices } from "./lib/industry-map";
+import { selectMembers } from "./lib/select-members";
+import { AUTHORED_EVENT_COORDS } from "./lib/event-coords";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACT_DIR = process.env.EXTRACT_DIR ?? path.resolve(HERE, "../../handover-extract");
@@ -56,7 +60,15 @@ const arg = (name: string) => {
   return i > -1 ? process.argv[i + 1] : undefined;
 };
 const REMOTE = process.argv.includes("--remote");
-const STORIES_LIMIT = arg("--stories-limit") ? parseInt(arg("--stories-limit")!, 10) : REMOTE ? Infinity : 150;
+const limitArg = (flag: string, local: number) =>
+  arg(flag) ? parseInt(arg(flag)!, 10) : REMOTE ? Infinity : local;
+const STORIES_LIMIT = limitArg("--stories-limit", 150);
+// Local runs seed a working subset, not the whole export — enough to exercise
+// every surface (all 10 industries represented, both upcoming events, member
+// news) without uploading ~800 media files. --remote lifts all four.
+const MEMBERS_LIMIT = limitArg("--members-limit", 40);
+const VIDEOS_LIMIT = limitArg("--videos-limit", 60);
+const EVENTS_LIMIT = limitArg("--events-limit", 25);
 const SKIP_MEDIA = process.argv.includes("--skip-media");
 // --no-adverts: leave the advert inventory empty, to check the unsold state
 const NO_ADVERTS = process.argv.includes("--no-adverts");
@@ -71,6 +83,20 @@ const PAGES_ONLY = process.argv.includes("--pages-only");
 
 const seed = async <T>(name: string): Promise<T> =>
   JSON.parse(await readFile(path.join(EXTRACT_DIR, "seed", name), "utf8"));
+
+/**
+ * The raw export, for the two member taxonomies the shaping step drops.
+ * `members.seed.json` keeps only the Services slugs (as `category_slugs`) and
+ * discards `sector` entirely, but we need both: Services populate the services
+ * tables, and `sector` populates member_membership_types. Raw `wp_id` and
+ * shaped `wp_member_id` are the same id space.
+ */
+const rawJson = async <T>(name: string): Promise<T> =>
+  JSON.parse(await readFile(path.join(EXTRACT_DIR, "json", name), "utf8"));
+
+type WpTerm = { name: string; slug: string };
+type RawMember = { wp_id: number; services?: WpTerm[]; sector?: WpTerm[] };
+
 
 /** Same shape as scripts/seed.ts and the videos.slug backfill migration. */
 const slugify = (s: string) =>
@@ -239,18 +265,71 @@ async function main() {
   type StoryRow = Record<string, unknown> & { wp_member_id: number | null; slug: string; category_slugs: string[]; cover_path: string | null };
   type Manifest = { source: string; storage_path: string; used_by: string }[];
 
-  const [catRows, memberRows, storyRowsAll, videoRows, eventRows, pageRows, manifest] = await Promise.all([
-    seed<Cat[]>("categories.seed.json"),
-    seed<MemberRow[]>("members.seed.json"),
-    seed<StoryRow[]>("stories.seed.json"),
-    seed<Record<string, unknown>[]>("videos.seed.json"),
-    seed<Record<string, unknown>[]>("events.seed.json"),
-    seed<{ slug: string; title: string; body: string }[]>("static_pages.seed.json"),
-    seed<Manifest>("media-manifest.json"),
-  ]);
-  const storyRows = storyRowsAll.slice(0, STORIES_LIMIT);
+  const [catRows, memberRowsAll, storyRowsAll, videoRowsAll, eventRowsAll, pageRows, manifest, rawMembers] =
+    await Promise.all([
+      seed<Cat[]>("categories.seed.json"),
+      seed<MemberRow[]>("members.seed.json"),
+      seed<StoryRow[]>("stories.seed.json"),
+      seed<Record<string, unknown>[]>("videos.seed.json"),
+      seed<Record<string, unknown>[]>("events.seed.json"),
+      seed<{ slug: string; title: string; body: string }[]>("static_pages.seed.json"),
+      seed<Manifest>("media-manifest.json"),
+      rawJson<RawMember[]>("members.json"),
+    ]);
+
+  // The two taxonomies the shaped seed drops, keyed by the id both files share.
+  const rawById = new Map(rawMembers.map((m) => [m.wp_id, m]));
+  // Deduped: the join tables key on (member_id, term_id), so a repeated tag in
+  // a future re-export would abort the whole seed on a PK violation.
+  const servicesOf = (wp: number) => [...new Set((rawById.get(wp)?.services ?? []).map((s) => s.slug))];
+  const sectorsOf = (wp: number) => [...new Set((rawById.get(wp)?.sector ?? []).map((s) => s.slug))];
+  // Derived, NOT from the export — see scripts/lib/industry-map.ts and the
+  // validation item in docs/GO-LIVE.md.
+  const industryOf = (row: MemberRow) => industryForServices(servicesOf(row.wp_member_id));
+
+  // Content per member, so the subset keeps the members who actually have
+  // stories/videos — otherwise /news's member rail and the member pages'
+  // story lists come out empty (only 34 of the 123 members own any content).
+  const contentPerMember = new Map<number, number>();
+  for (const r of [...storyRowsAll, ...videoRowsAll] as { wp_member_id?: number | null }[]) {
+    if (r.wp_member_id) contentPerMember.set(r.wp_member_id, (contentPerMember.get(r.wp_member_id) ?? 0) + 1);
+  }
+  const memberRows = selectMembers(memberRowsAll, industryOf, MEMBERS_LIMIT, (m) => contentPerMember.get(m.wp_member_id) ?? 0);
+  const keptWpIds = new Set(memberRows.map((m) => m.wp_member_id));
+  if (memberRows.length < memberRowsAll.length)
+    console.log(`— members limited to ${memberRows.length} of ${memberRowsAll.length} (spread across industries)`);
+
+  // Content follows the members, so member-attributed stories/videos actually
+  // exist in the subset — picking them independently is what left /news's
+  // "Member news" rail empty.
+  const takeForMembers = <T extends { wp_member_id?: number | null }>(rows: T[], limit: number) => {
+    if (rows.length <= limit) return rows;
+    const mine = rows.filter((r) => r.wp_member_id && keptWpIds.has(r.wp_member_id));
+    const rest = rows.filter((r) => !(r.wp_member_id && keptWpIds.has(r.wp_member_id)));
+    return [...mine, ...rest.slice(0, Math.max(0, limit - mine.length))].slice(0, limit);
+  };
+
+  const storyRows = takeForMembers(storyRowsAll, STORIES_LIMIT);
   if (storyRows.length < storyRowsAll.length)
-    console.log(`— stories limited to ${storyRows.length} of ${storyRowsAll.length} (newest first)`);
+    console.log(`— stories limited to ${storyRows.length} of ${storyRowsAll.length} (member stories first, then newest)`);
+
+  const videoRows = takeForMembers(videoRowsAll as (Record<string, unknown> & { wp_member_id?: number | null })[], VIDEOS_LIMIT);
+  if (videoRows.length < videoRowsAll.length)
+    console.log(`— videos limited to ${videoRows.length} of ${videoRowsAll.length} (member videos first, then newest)`);
+
+  // Events carry no member link, and only a couple are ever in the future —
+  // keep every upcoming one or the events page loses its whole upcoming list,
+  // then backfill with the most recent past events.
+  const today = new Date().toISOString().slice(0, 10);
+  const endsOn = (e: Record<string, unknown>) => String(e.ends_on ?? e.starts_on ?? "");
+  const upcoming = eventRowsAll.filter((e) => endsOn(e) >= today);
+  const past = eventRowsAll.filter((e) => endsOn(e) < today).sort((a, b) => endsOn(b).localeCompare(endsOn(a)));
+  const eventRows =
+    eventRowsAll.length <= EVENTS_LIMIT
+      ? eventRowsAll
+      : [...upcoming, ...past.slice(0, Math.max(0, EVENTS_LIMIT - upcoming.length))];
+  if (eventRows.length < eventRowsAll.length)
+    console.log(`— events limited to ${eventRows.length} of ${eventRowsAll.length} (${upcoming.length} upcoming kept)`);
 
   // Authored rows (content the extract can't produce) win over extract rows on slug.
   // PostgREST bulk upserts need uniform keys across rows, so default the
@@ -284,23 +363,77 @@ async function main() {
   console.log("— media: clearing stale files from previous seeds");
   await emptyBucket();
 
-  console.log(`— categories (${catRows.length})`);
-  const { data: cats, error: catErr } = await db.from("categories").upsert(catRows, { onConflict: "kind,slug" }).select();
+  // `categories` kind='member' is the INDUSTRY list (one per member), not the
+  // Services vocabulary. The extract's member-kind rows are the 69 WP Services
+  // terms — seeding those here is what put 69 service names in the industry
+  // bar. They now go to the `services` tables instead, and industries come from
+  // the canonical list shared with scripts/seed.ts.
+  const storyCatRows = catRows.filter((c) => c.kind === "story");
+  const catRowsToSeed = [...storyCatRows, ...INDUSTRY_ROWS];
+  console.log(`— categories (${storyCatRows.length} story topics + ${INDUSTRY_ROWS.length} industries)`);
+  const { data: cats, error: catErr } = await db.from("categories").upsert(catRowsToSeed, { onConflict: "kind,slug" }).select();
   if (catErr) throw catErr;
   const catId = (kind: string, slug: string) => cats!.find((c) => c.kind === kind && c.slug === slug)?.id ?? null;
+
+  console.log(`— services (${catRows.length - storyCatRows.length} terms, the real /find-a-member vocabulary)`);
+  const serviceRows = catRows.filter((c) => c.kind === "member").map(({ slug, name }) => ({ slug, name }));
+  const { data: serviceCats, error: svcErr } = await db.from("services").upsert(serviceRows, { onConflict: "slug" }).select();
+  if (svcErr) throw svcErr;
+  const serviceId = new Map(serviceCats!.map((s) => [s.slug, s.id]));
 
   console.log(`— members (${memberRows.length})`);
   const wpToUuid = new Map<number, string>();
   for (const rows of chunk(memberRows, 100)) {
-    const insert = rows.map(({ wp_member_id, category_slugs, ...r }) => ({
-      ...r,
-      category_id: category_slugs.length ? catId("member", category_slugs[0]) : null,
-    }));
+    // testimonials dropped product-wide (migration 20260902000003) — the extract's
+    // rows still carry the field, so it must be excluded rather than spread in.
+    // category_slugs are the member's SERVICES (they seed member_services below);
+    // category_id is their single derived industry.
+    const insert = rows.map(({ wp_member_id, category_slugs, testimonials, ...r }) => {
+      const industry = industryForServices(servicesOf(wp_member_id));
+      return { ...r, category_id: industry ? catId("member", industrySlug(industry)) : null };
+    });
     const { data, error } = await db.from("members").insert(insert).select("id, slug");
     if (error) throw error;
     for (const m of data!) wpToUuid.set(rows.find((r) => r.slug === m.slug)!.wp_member_id, m.id);
   }
   const memberId = (wp: number | null | undefined) => (wp ? wpToUuid.get(wp) ?? null : null);
+
+  // Services per member — the real multi-value taxonomy, previously collapsed
+  // to "first one wins" on members.category_id and otherwise discarded.
+  const memberServiceLinks = memberRows.flatMap((m) => {
+    const id = memberId(m.wp_member_id);
+    if (!id) return [];
+    return servicesOf(m.wp_member_id).flatMap((slug) => {
+      const service_id = serviceId.get(slug);
+      return service_id ? [{ member_id: id, service_id }] : [];
+    });
+  });
+  if (memberServiceLinks.length) {
+    const { error } = await db.from("member_services").insert(memberServiceLinks);
+    if (error) throw error;
+  }
+
+  // Membership types from the legacy WP "sector" field — neither seed populated
+  // these before, so the directory's membership filter matched nothing for
+  // every member. Only 2 of the 4 sector terms have an equivalent in the
+  // 5-item list (docs/ask-jas.md:23 flags the mismatch); the rest stay
+  // unlinked rather than being force-fitted.
+  const { data: mTypes, error: mtErr } = await db.from("membership_types").select("id, slug");
+  if (mtErr) throw mtErr;
+  const membershipTypeId = new Map(mTypes!.map((t) => [t.slug, t.id]));
+  const memberTypeLinks = memberRows.flatMap((m) => {
+    const id = memberId(m.wp_member_id);
+    if (!id) return [];
+    return sectorsOf(m.wp_member_id).flatMap((slug) => {
+      const membership_type_id = membershipTypeId.get(slug);
+      return membership_type_id ? [{ member_id: id, membership_type_id }] : [];
+    });
+  });
+  if (memberTypeLinks.length) {
+    const { error } = await db.from("member_membership_types").insert(memberTypeLinks);
+    if (error) throw error;
+  }
+  console.log(`— member taxonomies: ${memberServiceLinks.length} service links, ${memberTypeLinks.length} membership-type links`);
 
   if (!NO_ADVERTS) await seedAdverts(memberRows, memberId);
 
@@ -376,7 +509,15 @@ async function main() {
     const { error } = await db.from("videos").insert(insert);
     if (error) throw error;
   }
-  const { error: evErr } = await db.from("events").insert(eventRows);
+  // Attach authored coordinates so the /event map has pins — the export has
+  // none and the app only geocodes on save (see lib/event-coords.ts).
+  const eventInsert = eventRows.map((e) => {
+    const coords = AUTHORED_EVENT_COORDS[String(e.slug)];
+    return coords ? { ...e, lat: coords.lat, lng: coords.lng } : e;
+  });
+  const withCoords = eventInsert.filter((e) => "lat" in e && e.lat != null).length;
+  console.log(`— events: ${withCoords} of ${eventInsert.length} have coordinates (map pins)`);
+  const { error: evErr } = await db.from("events").insert(eventInsert);
   if (evErr) throw evErr;
 
   console.log(`— static pages (${allPageRows.length})`);
@@ -408,6 +549,44 @@ async function main() {
   await db.from("page_layouts").insert(
     Object.entries(DEFAULT_LAYOUTS).map(([page_type, layout]) => ({ page_type, entity_id: null, layout })),
   );
+
+  // Real featured machine (fix list): the WP export has no machine/equipment
+  // content type at all — "equipment suppliers" are just members tagged with a
+  // sector — so this can't come from the extract like everything else above.
+  // Hand-authored from the live page (sheetmetalindustries.com/31770-2/) against
+  // a real seeded member, not faker.js text (contrast scripts/seed.ts's synthetic one).
+  console.log("— featured machine (real: Salvagnini S1)");
+  const { data: salvagnini } = await db.from("members").select("id").eq("slug", "salvagnini-uk-ireland").maybeSingle();
+  if (salvagnini) {
+    const imageBody = await readFile(path.join(HERE, "seed-assets", "featured-machine-salvagnini-s1.jpg"));
+    const { error: imgErr } = await db.storage
+      .from("media")
+      .upload("machines/salvagnini-s1.jpg", imageBody, { contentType: "image/jpeg", upsert: true });
+    if (imgErr) throw imgErr;
+    const { data: fm, error: fmErr } = await db.from("featured_machines").insert({
+      member_id: salvagnini.id,
+      name: "S1 Laser Punching Machine",
+      description:
+        "<p>S1 is a punch-laser combi machine, a true work center that punches, forms, taps, and cuts parts.</p>" +
+        "<p>The S1 <strong>maximizes process efficiency</strong>: all the punching, forming and separation operations are automatic, done by a single system that eliminates semi-finished parts, does not require manual intervention and assures extreme repeatability.</p>" +
+        "<p>Store-towers and automatic loading/unloading devices <strong>increase the autonomy of the system</strong>, and integrated adaptive technologies <strong>make the system intelligent</strong>, automatically adapting to variation and guaranteeing high machining quality.</p>",
+      image_path: "machines/salvagnini-s1.jpg",
+      external_url: "https://www.salvagninigroup.com/en-INT/products/punching-machines/S1",
+    }).select("id").single();
+    if (fmErr) throw fmErr;
+    const today = new Date();
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const { error: plErr } = await db.from("placements").insert({
+      kind: "featured_machine",
+      featured_machine_id: fm.id,
+      member_id: salvagnini.id,
+      starts_on: iso(new Date(today.getFullYear(), today.getMonth(), 1)),
+      ends_on: iso(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+    });
+    if (plErr) throw plErr;
+  } else {
+    console.warn("— featured machine: salvagnini-uk-ireland not found in this seed run, skipped");
+  }
 
   console.log("Real-content seed complete.");
   const counts = await Promise.all(

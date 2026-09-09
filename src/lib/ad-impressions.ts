@@ -6,13 +6,13 @@
 
 const BATCH_MS = 500;
 
-const pending = new Set<string>();
+const pending = new Map<string, string>(); // advertId -> path
 let timer: ReturnType<typeof setTimeout> | null = null;
 let listening = false;
 
-function send(ids: string[]) {
-  if (ids.length === 0) return;
-  const body = JSON.stringify({ ids });
+function send(items: { id: string; path: string }[]) {
+  if (items.length === 0) return;
+  const body = JSON.stringify({ items });
   // sendBeacon survives the page going away; keepalive fetch is the fallback
   // for browsers that lack it (and for a beacon the browser refuses to queue).
   if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
@@ -33,14 +33,14 @@ function flush() {
     clearTimeout(timer);
     timer = null;
   }
-  const ids = [...pending];
+  const items = [...pending.entries()].map(([id, path]) => ({ id, path }));
   pending.clear();
-  send(ids);
+  send(items);
 }
 
 /** Queue one advert as genuinely displayed. Callers must already have deduped. */
-export function reportAdSeen(advertId: string) {
-  pending.add(advertId);
+export function reportAdSeen(advertId: string, path: string) {
+  pending.set(advertId, path);
   if (!listening && typeof window !== "undefined") {
     listening = true;
     window.addEventListener("pagehide", flush);

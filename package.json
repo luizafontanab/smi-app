@@ -16,8 +16,13 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "visual": "tsx tests/visual/runner.ts",
+    "visual:accept": "tsx tests/visual/accept.ts",
+    "visual:server": "tsx tests/visual/lib/server.ts",
+    "visual:report": "open tests/visual/.runs/latest/report.html",
     "seed": "tsx scripts/seed.ts",
     "seed:real": "tsx scripts/seed-real.ts",
+    "db:types": "supabase gen types typescript --local > src/lib/db/types.ts",
     "db:push:prod": "supabase db push --linked",
     "seed:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/seed-real.ts --remote"
   },

@@ -37,7 +37,7 @@ async function markLoaded(img: HTMLImageElement, naturalWidth = 100) {
   });
 }
 
-const PROPS = { advertId: "ad1", name: "Acme Fabrication", href: "/visit/ad1", desktop: "d.jpg", mobile: "m.jpg" } as const;
+const PROPS = { advertId: "ad1", name: "Acme Fabrication", href: "/visit/ad1", desktop: "d.jpg", mobile: "m.jpg", path: "/news" } as const;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -94,7 +94,7 @@ describe("impression counting", () => {
     expect(reportAdSeen).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1000);
-    expect(reportAdSeen).toHaveBeenCalledExactlyOnceWith("ad1");
+    expect(reportAdSeen).toHaveBeenCalledExactlyOnceWith("ad1", "/news");
     expect(io.disconnect).toHaveBeenCalled();
   });
 
@@ -123,6 +123,6 @@ describe("impression counting", () => {
 
     render(<AdCreative {...PROPS} shape="skyscraper" />);
     await markLoaded(screen.getByRole("img"));
-    expect(reportAdSeen).toHaveBeenCalledExactlyOnceWith("ad1");
+    expect(reportAdSeen).toHaveBeenCalledExactlyOnceWith("ad1", "/news");
   });
 });

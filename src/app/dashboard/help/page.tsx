@@ -1,5 +1,6 @@
 import { requireMember } from "@/lib/auth";
 import { sendMemberMessage } from "../actions";
+import { RequiredMark } from "@/components/RequiredMark";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Help" };
@@ -21,7 +22,7 @@ export default async function MemberHelpPage(props: PageProps<"/dashboard/help">
       )}
       <form action={sendMemberMessage} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
         <div>
-          <label htmlFor="help-message" className="text-sm font-medium">Message</label>
+          <label htmlFor="help-message" className="text-sm font-medium">Message<RequiredMark /></label>
           <textarea id="help-message" name="message" required rows={6} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <button className="rounded bg-ink px-5 py-2.5 text-white">Send</button>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MemberBacklink } from "@/components/MemberBacklink";
+import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { youtubeId } from "@/lib/youtube";
@@ -38,7 +39,7 @@ export function VideoForm({ action, uploadImage, member, initial, withdrawAction
       {/* Both tabs stay mounted — hidden/plain inputs must remain in the form. */}
       <div id="write-panel" role="tabpanel" aria-labelledby="write-tab" className={tab === "write" ? "space-y-4" : "hidden"}>
         <div>
-          <label htmlFor="title" className="text-sm font-medium">Title</label>
+          <label htmlFor="title" className="text-sm font-medium">Title<RequiredMark /></label>
           <input id="title" name="title" required value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <YoutubePreview name="url" defaultValue={initial?.url} />

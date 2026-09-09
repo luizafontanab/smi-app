@@ -100,6 +100,15 @@ Pulled directly from the live "Services" dropdown on `sheetmetalindustries.com/f
 
 *Note: "Software" appears in both the membership types and industries lists — worth checking that's intentional and not a naming collision.*
 
+*Note (9 Sep): this list has **no source in the WordPress data**. Checked the
+export and the original database dump — the only member taxonomies there are
+`best-service` (the 69-term Services list above) and `best-level` (the 4-option
+legacy Sector field). There is no `industry` taxonomy and no ACF field, so
+whatever drives the live industry bar lives outside the database. Until Jas
+confirms, dev seeds derive each member's industry from their Services tags
+(`scripts/lib/industry-map.ts`, ~93% resolve). Validating this is item 1.1 in
+[`GO-LIVE.md`](GO-LIVE.md).*
+
 ### Topics (the live "Topics" filter on `/news/`, used for tagging news stories)
 
 Pulled directly from the "Topics" dropdown on `sheetmetalindustries.com/news/`:

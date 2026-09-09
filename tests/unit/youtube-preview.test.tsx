@@ -12,13 +12,13 @@ describe("YoutubePreview", () => {
 
   it("embeds a nocookie preview for a matching watch URL", () => {
     render(<YoutubePreview name="video_url" />);
-    fireEvent.change(screen.getByLabelText("YouTube URL"), { target: { value: "https://www.youtube.com/watch?v=abc123" } });
+    fireEvent.change(screen.getByLabelText(/YouTube URL/), { target: { value: "https://www.youtube.com/watch?v=abc123" } });
     expect(screen.getByTitle("Preview")).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123");
   });
 
   it("warns instead of embedding for a non-watch URL, but still lets it save", () => {
     render(<YoutubePreview name="video_url" />);
-    const input = screen.getByLabelText("YouTube URL");
+    const input = screen.getByLabelText(/YouTube URL/);
     fireEvent.change(input, { target: { value: "https://youtu.be/abc123" } });
     expect(screen.queryByTitle("Preview")).not.toBeInTheDocument();
     expect(screen.getByText(/Doesn't look like a YouTube watch URL/)).toBeInTheDocument();

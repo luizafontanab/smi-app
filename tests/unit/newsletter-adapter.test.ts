@@ -64,6 +64,9 @@ describe("renderIssueHtml", () => {
 
     expect(rendered!.html).toContain("m.jpg");
     expect(rendered!.html).not.toContain("NoImage");
+    // marks the click as newsletter-sourced (A5.10) — real per-event attribution,
+    // not the referrer-based guess used for on-site clicks
+    expect(rendered!.html).toContain("?src=newsletter");
   });
 
   it("includes the read-online link only when the issue has a web_slug", async () => {

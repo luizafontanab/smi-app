@@ -172,4 +172,20 @@ describe("requestContext", () => {
     await requestContext();
     expect(rpc).toHaveBeenCalledWith("bump_consent_stats", { p_consented: true });
   });
+
+  it("logs rather than throws when the consent counter fails", async () => {
+    // Fire-and-forget: a failed counter must never take down the page view it
+    // was measuring.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const rpc = vi.fn(async () => ({ data: null, error: { message: "rpc missing" } }));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ rpc })));
+
+    await expect(requestContext()).resolves.toBeTruthy();
+    await vi.waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[analytics] bump_consent_stats failed:",
+        "rpc missing",
+      ),
+    );
+  });
 });

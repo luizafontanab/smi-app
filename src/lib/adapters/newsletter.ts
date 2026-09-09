@@ -143,7 +143,7 @@ export async function renderIssueHtml(issueId: string): Promise<{ subject: strin
       // advertiser's own member page when there's no link_url.
       return `<tr><td style="padding:16px 0;">
         <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5a6068;">Advertisement</p>
-        <a href="${escapeHtml(`${base}/visit/${advert.id}`)}">${inner}</a>
+        <a href="${escapeHtml(`${base}/visit/${advert.id}?src=newsletter`)}">${inner}</a>
       </td></tr>`;
     })
     .join("");

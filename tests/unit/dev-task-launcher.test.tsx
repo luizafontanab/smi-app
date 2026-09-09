@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { cookies } from "next/headers";
 import { DevTaskLauncher } from "@/components/dev-task/DevTaskLauncher";
 import { currentUser, isAdmin } from "@/lib/auth";
@@ -41,5 +41,17 @@ describe("DevTaskLauncher", () => {
     render(<>{await DevTaskLauncher()}</>);
     expect(screen.getByRole("button", { name: "Feedback" })).toBeInTheDocument();
     expect(cookies).toHaveBeenCalled();
+  });
+
+  it("falls back to the email when the admin has no display name", async () => {
+    // The reporter name lands on the task row, so it must never be blank.
+    cookieStore.set("sb-access-token", "x");
+    vi.mocked(currentUser).mockResolvedValue({ ...ADMIN, displayName: null });
+    vi.mocked(isAdmin).mockReturnValue(true);
+
+    render(<>{await DevTaskLauncher()}</>);
+    fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
+
+    expect(screen.getByText(/Filing as jas@smi\.local\./)).toBeInTheDocument();
   });
 });

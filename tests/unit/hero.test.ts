@@ -131,9 +131,24 @@ describe("buildHero", () => {
     expect(build.items[0].meta).toBe("12 August 2026 · Acme Fabrications");
   });
 
+  it("keeps filling past the end of the pattern, defaulting the extra slots to stories", () => {
+    // PATTERN only describes the first five slots. A rail asked for more must
+    // default rather than read undefined and quietly stop short.
+    const build = buildHero(story("head"), stories(8), videos(2), 7);
+    expect(build.items).toHaveLength(7);
+    expect(build.items.slice(5).every((i) => i.kind === "story")).toBe(true);
+  });
+
   it("falls back to the YouTube still when a video has no stored thumbnail", () => {
     const build = buildHero(null, [], [video("v0")]);
     expect(build.items[0].image).toBe("https://i.ytimg.com/vi/vidv0/hqdefault.jpg");
+  });
+
+  it("leaves the image null when there is neither a thumbnail nor a YouTube id", () => {
+    // A Vimeo or self-hosted URL yields no ytimg still, so the rail has to
+    // cope with an imageless card rather than building a broken URL.
+    const build = buildHero(null, [], [video("v0", { url: "https://vimeo.com/12345" })]);
+    expect(build.items[0].image).toBeNull();
   });
 
   it("prefers the stored thumbnail over the YouTube still", () => {

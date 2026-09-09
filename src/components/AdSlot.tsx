@@ -21,7 +21,7 @@ export type { AdShape };
  * showAdPlaceholders() and defaults to off, so a caller that forgets to pass it
  * shows readers nothing rather than a hollow box.
  */
-export function AdSlot({ adverts, shape = "banner", slotKey, showPlaceholders = false }: { adverts: LiveAdvert[]; shape?: AdShape; slotKey?: string; showPlaceholders?: boolean }) {
+export function AdSlot({ adverts, shape = "banner", slotKey, showPlaceholders = false, path }: { adverts: LiveAdvert[]; shape?: AdShape; slotKey?: string; showPlaceholders?: boolean; path: string }) {
   const ad = pickOne(adverts);
   if (!ad) return showPlaceholders ? <AdPlaceholder shape={shape} slotKey={slotKey} /> : null;
   return (
@@ -32,6 +32,7 @@ export function AdSlot({ adverts, shape = "banner", slotKey, showPlaceholders = 
       desktop={mediaUrl(ad.desktopPath)!}
       mobile={mediaUrl(ad.mobilePath)!}
       shape={shape}
+      path={path}
     />
   );
 }

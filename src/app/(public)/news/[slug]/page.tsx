@@ -104,6 +104,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
         memberStories={[]}
         supplierLogos={logos}
         showPlaceholders={showPlaceholders}
+        path={`/news/${slug}`}
         anchors={{
           story_header: (
             <header className="mt-4">
@@ -135,7 +136,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
                   // same rule as BlockRenderer's ad_banner: the margin-carrying
                   // wrapper must not render around an empty slot
                   return ads.length || showPlaceholders
-                    ? <div className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} /></div>
+                    ? <div className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} path={`/news/${slug}`} /></div>
                     : null;
                 })}
               />

@@ -48,6 +48,17 @@ describe("collapseSections", () => {
     expect(out.indexOf(">Detail</summary>")).toBeLessThan(out.indexOf("</details>"));
   });
 
+  it("handles an h2 that opens straight onto an h3, with an empty trailing subsection", () => {
+    // Three edges at once: no lead paragraph before the first h3, a first h3
+    // bounded by the next one rather than by the end of the section, and a
+    // final h3 with nothing under it.
+    const out = collapseSections("<h2>Policy</h2><h3>One</h3><p>x</p><h3>Two</h3>");
+    expect(out.match(/<details/g)).toHaveLength(3);
+    // No stray empty content wrapper where the lead paragraph would have been.
+    expect(out).toContain(">Policy</summary><details");
+    expect(out).toContain(">Two</summary></details>");
+  });
+
   it("keeps a flat page (no h3s) collapsing exactly as single-level sections — FAQ's shape", () => {
     const out = collapseSections("<h2>One</h2><p>A.</p><h2>Two</h2><p>B.</p>");
     expect(out.match(/<details/g)).toHaveLength(2);

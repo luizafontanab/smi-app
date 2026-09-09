@@ -66,7 +66,7 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
           <div><label htmlFor="website" className="text-sm font-medium">Website</label><input id="website" name="website" defaultValue={m?.website ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
           <div><label htmlFor="video_url" className="text-sm font-medium">YouTube video URL</label><input id="video_url" name="video_url" defaultValue={m?.video_url ?? ""} className="mt-1 w-full rounded border px-3 py-2" /></div>
           <div>
-            <label htmlFor="category_id" className="text-sm font-medium">Sector</label>
+            <label htmlFor="category_id" className="text-sm font-medium">Industry</label>
             <select id="category_id" name="category_id" defaultValue={m?.category_id ?? ""} className="mt-1 w-full rounded border px-3 py-2">
               <option value="">— none —</option>
               {(cats ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

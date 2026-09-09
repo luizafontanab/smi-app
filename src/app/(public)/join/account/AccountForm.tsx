@@ -1,21 +1,22 @@
 "use client";
 import { useActionState } from "react";
 import { createAccount } from "./actions";
+import { RequiredMark } from "@/components/RequiredMark";
 
 export function AccountForm() {
   const [state, formAction, pending] = useActionState(createAccount, { message: "" });
   return (
     <form action={formAction} className="mt-5 space-y-4">
       <div>
-        <label htmlFor="company" className="text-sm font-medium">Company name</label>
+        <label htmlFor="company" className="text-sm font-medium">Company name<RequiredMark /></label>
         <input id="company" name="company" required aria-required="true" aria-invalid={state?.message ? true : undefined} aria-describedby="account-error" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>
-        <label htmlFor="email" className="text-sm font-medium">Email</label>
+        <label htmlFor="email" className="text-sm font-medium">Email<RequiredMark /></label>
         <input id="email" type="email" name="email" required aria-required="true" aria-invalid={state?.message ? true : undefined} aria-describedby="account-error" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>
-        <label htmlFor="password" className="text-sm font-medium">Password (8+ characters)</label>
+        <label htmlFor="password" className="text-sm font-medium">Password (8+ characters)<RequiredMark /></label>
         <input id="password" type="password" name="password" required minLength={8} aria-required="true" aria-invalid={state?.message ? true : undefined} aria-describedby="account-error" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>

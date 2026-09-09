@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_FOCUS, type Focus } from "@/lib/focus";
 import { FocusPicker } from "./FocusPicker";
+import { RequiredMark } from "./RequiredMark";
 
 /**
  * Cover image field: file input + crop picker, sharing one preview.
@@ -136,7 +137,7 @@ export function CoverField({
   return (
     <div>
       <label htmlFor="cover" className="block text-sm font-medium">
-        {label}{required && !cover && <span aria-hidden> *</span>}
+        {label}{required && !cover && <RequiredMark />}
       </label>
       <input
         ref={inputRef}

@@ -11,6 +11,7 @@ import type { Role } from "@/lib/auth";
 import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
+import { INDUSTRIES } from "./lib/industries";
 
 faker.seed(42);
 
@@ -22,7 +23,10 @@ const db = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: fals
 
 const WP = "https://sheetmetalindustries.com/wp-json/wp/v2";
 const UK_REGIONS = ["West Midlands", "South Yorkshire", "Greater Manchester", "East Midlands", "South East", "North West", "Scotland", "Wales", "North East", "East of England"];
-const MEMBER_CATEGORIES = ["Laser Cutting", "Fabrication", "Welding", "Tube Bending", "Press Brakes", "Machinery Sales", "Finishing & Coating", "Automation & Robotics", "Software", "Service & Maintenance"];
+// The canonical industries, shared with seed-real.ts so the two seeds cannot
+// disagree about what categories kind='member' means (they did: seed-real was
+// writing the 69-term Services vocabulary here).
+const MEMBER_CATEGORIES = [...INDUSTRIES];
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/&[a-z0-9#]+;/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);

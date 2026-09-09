@@ -1,0 +1,5 @@
+# Visual-regression baselines. `binary` keeps `git diff`/`git show` from dumping
+# megabytes of PNG noise into a terminal; `-merge` makes a conflicting baseline an
+# explicit "re-accept it" decision rather than a silently corrupted file.
+tests/visual/baseline/**/*.png binary -diff -merge
+tests/visual/baseline/**/*.json -merge

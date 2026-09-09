@@ -57,6 +57,7 @@ describe("back_link", () => {
     render(
       <BlockRenderer
         pageType="static_page"
+        path="/news"
         layout={layout({ id: "b1", type: "back_link", props: { label: "Back to news", href: "/news" } })}
         anchors={{}}
       />,
@@ -68,7 +69,7 @@ describe("back_link", () => {
 describe("latest_news / member_news", () => {
   it("renders nothing when there are no matching stories", () => {
     const { container } = render(
-      <BlockRenderer pageType="static_page" layout={layout({ id: "b1", type: "latest_news" })} anchors={{}} latestStories={[]} />,
+      <BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "latest_news" })} anchors={{}} latestStories={[]} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
@@ -78,6 +79,7 @@ describe("latest_news / member_news", () => {
     render(
       <BlockRenderer
         pageType="static_page"
+        path="/news"
         layout={layout({ id: "b1", type: "latest_news", props: { limit: 2 } })}
         anchors={{}}
         latestStories={stories}
@@ -88,11 +90,25 @@ describe("latest_news / member_news", () => {
     expect(screen.queryByText("Three")).not.toBeInTheDocument();
   });
 
+  it("falls back to \"this member\" in the heading when no member name is passed", () => {
+    render(
+      <BlockRenderer
+        pageType="member_profile"
+        path="/news"
+        layout={layout({ id: "b1", type: "member_news" })}
+        anchors={{}}
+        memberStories={[story()]}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Stories featuring this member" })).toBeInTheDocument();
+  });
+
   it("member_news with limit 0 shows every story about the member", () => {
     const stories = [story({ id: "1", title: "One" }), story({ id: "2", title: "Two" }), story({ id: "3", title: "Three" })];
     render(
       <BlockRenderer
         pageType="member_profile"
+        path="/news"
         layout={layout({ id: "b1", type: "member_news", props: { limit: 0 } })}
         anchors={{}}
         memberStories={stories}
@@ -108,22 +124,31 @@ describe("latest_news / member_news", () => {
 describe("ad_banner", () => {
   it("renders nothing for an empty slot when placeholders are off", () => {
     const { container } = render(
-      <BlockRenderer pageType="static_page" layout={layout({ id: "b1", type: "ad_banner" })} anchors={{}} showPlaceholders={false} />,
+      <BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "ad_banner" })} anchors={{}} showPlaceholders={false} />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders the margin wrapper for an empty slot once placeholders are on", () => {
+    // The wrapper carries the vertical rhythm, so it must appear exactly when
+    // the slot does — never around nothing.
+    const { container } = render(
+      <BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "ad_banner" })} anchors={{}} showPlaceholders />,
+    );
+    expect(container.querySelector(".my-8")).toBeInTheDocument();
   });
 });
 
 describe("join_cta", () => {
   it("renders the join CTA", () => {
-    render(<BlockRenderer pageType="static_page" layout={layout({ id: "b1", type: "join_cta" })} anchors={{}} />);
+    render(<BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "join_cta" })} anchors={{}} />);
     expect(screen.getByTestId("join-cta")).toBeInTheDocument();
   });
 });
 
 describe("newsletter_signup", () => {
   it("renders the signup form", () => {
-    render(<BlockRenderer pageType="static_page" layout={layout({ id: "b1", type: "newsletter_signup" })} anchors={{}} />);
+    render(<BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "newsletter_signup" })} anchors={{}} />);
     expect(screen.getByPlaceholderText("you@company.co.uk")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Subscribe" })).toBeInTheDocument();
   });
@@ -132,15 +157,23 @@ describe("newsletter_signup", () => {
 describe("supplier_logos", () => {
   it("renders nothing with no adverts and placeholders off", () => {
     const { container } = render(
-      <BlockRenderer pageType="static_page" layout={layout({ id: "b1", type: "supplier_logos" })} anchors={{}} showPlaceholders={false} />,
+      <BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "supplier_logos" })} anchors={{}} showPlaceholders={false} />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders the placeholder rail with no adverts at all", () => {
+    const { container } = render(
+      <BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "supplier_logos" })} anchors={{}} showPlaceholders />,
+    );
+    expect(container.querySelector(".-mx-4")).toBeInTheDocument();
   });
 
   it("renders a logo image per live advert", () => {
     const { container } = render(
       <BlockRenderer
         pageType="static_page"
+        path="/news"
         layout={layout({ id: "b1", type: "supplier_logos" })}
         anchors={{}}
         supplierLogos={[advert()]}
@@ -155,18 +188,28 @@ describe("anchors", () => {
     render(
       <BlockRenderer
         pageType="static_page"
+        path="/news"
         layout={layout({ id: "b1", type: "page_main" })}
         anchors={{ page_main: <p>Page body</p> }}
       />,
     );
     expect(screen.getByText("Page body")).toBeInTheDocument();
   });
+
+  it("renders an empty wrapper when the layout has an anchor block the page did not supply", () => {
+    // A layout row can name an anchor the caller has nothing for. That must be
+    // an empty slot, not a crash.
+    const { container } = render(
+      <BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "page_main" })} anchors={{}} />,
+    );
+    expect(container.querySelector("div")).toBeEmptyDOMElement();
+  });
 });
 
 describe("unknown block types", () => {
   it("renders nothing", () => {
     const { container } = render(
-      <BlockRenderer pageType="static_page" layout={layout({ id: "b1", type: "story_hero" })} anchors={{}} />,
+      <BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "story_hero" })} anchors={{}} />,
     );
     expect(container).toBeEmptyDOMElement();
   });

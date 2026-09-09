@@ -52,7 +52,7 @@ export default async function VideosPage(props: PageProps<"/video">) {
       {/* Mid-page banner, same placement rule as the newsroom: below the first two
           rows, never above the content readers came for. Rendered unconditionally —
           the slot is booked inventory, so it must not vanish on a short listing. */}
-      <div className="my-6"><AdSlot slotKey="videos_mid" adverts={slots.get("videos_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
+      <div className="my-6"><AdSlot slotKey="videos_mid" adverts={slots.get("videos_mid") ?? []} showPlaceholders={showPlaceholders} path="/video" /></div>
       {gridVideos.length > 6 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {gridVideos.slice(6).map((v) => <VideoCard key={v.id} video={v} />)}

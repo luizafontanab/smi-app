@@ -61,6 +61,16 @@ describe("GET /reset/confirm", () => {
     expect(res.headers.get("location")).toContain("/login?error=reset");
   });
 
+  it("bounces to login when the PKCE exchange is refused", async () => {
+    const exchangeCodeForSession = vi.fn(async () => ({ error: { message: "expired" } }));
+    vi.mocked(sessionDb).mockResolvedValue(authDb({ exchangeCodeForSession }));
+
+    const res = await GET(req("?code=stale-code"));
+
+    expect(res.headers.get("location")).toContain("/login?error=reset");
+    expect(exchangeCodeForSession).toHaveBeenCalledWith("stale-code");
+  });
+
   it("bounces to login when no token is supplied at all", async () => {
     vi.mocked(sessionDb).mockResolvedValue(authDb({}));
 

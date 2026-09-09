@@ -3,7 +3,7 @@ import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
-import { featuredMembers, memberCategories, memberDirectory, memberPins, membershipTypes } from "@/lib/queries";
+import { featuredMembers, memberCategories, memberDirectory, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
 import { MemberMap } from "@/components/MemberMap";
 import { MultiSelectCombobox } from "@/components/MultiSelectCombobox";
@@ -26,6 +26,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const sp = await props.searchParams;
   const categories = asArray(sp.category);
   const services = asArray(sp.service);
+  const membershipTypeSlugs = asArray(sp.type);
   const rawQ = typeof sp.q === "string" ? sp.q : "";
   const q = rawQ.trim() || undefined;
   const page = Math.max(1, Number(sp.page) || 1);
@@ -36,10 +37,12 @@ export default async function MembersPage(props: PageProps<"/member">) {
   // (slug/name/lat/lng) instead of paging the full directory rows.
   const isMap = view === "map";
 
-  const [dir, pins, cats, services_, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
-    isMap ? null : memberDirectory({ categories, services, q, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
-    isMap ? memberPins({ categories, services, q }) : null,
+  const filters = { categories, services, membershipTypes: membershipTypeSlugs, q };
+  const [dir, pins, cats, serviceList, typeList, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
+    isMap ? null : memberDirectory({ ...filters, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+    isMap ? memberPins(filters) : null,
     memberCategories(),
+    allServices(),
     membershipTypes(),
     featuredMembers(),
     liveAdverts("banner"),
@@ -58,7 +61,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const qs = (over: Record<string, string | string[] | number | undefined>) => {
     const params = new URLSearchParams();
     const merged: Record<string, string | string[] | number | undefined> = {
-      category: categories, service: services, q, view: view === "map" ? "map" : undefined, page: undefined, ...over,
+      category: categories, service: services, type: membershipTypeSlugs, q, view: view === "map" ? "map" : undefined, page: undefined, ...over,
     };
     Object.entries(merged).forEach(([k, v]) => {
       if (v === undefined || v === "") return;
@@ -111,6 +114,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
         <form action="/member" role="search" className="flex min-w-0 flex-1 gap-2">
           {categories.map((c) => <input key={c} type="hidden" name="category" value={c} />)}
           {services.map((s) => <input key={s} type="hidden" name="service" value={s} />)}
+          {membershipTypeSlugs.map((t) => <input key={t} type="hidden" name="type" value={t} />)}
           {view === "map" && <input type="hidden" name="view" value="map" />}
           <input
             name="q"
@@ -124,30 +128,30 @@ export default async function MembersPage(props: PageProps<"/member">) {
         </form>
 
         <MultiSelectCombobox
-          label="Categories"
-          options={categoryList.map((c) => ({ slug: c.slug, name: c.name, href: qs({ category: toggled(categories, c.slug) }) }))}
-          clearHref={qs({ category: undefined })}
-          selectedSlugs={categories}
-        />
-        <MultiSelectCombobox
           label="Services"
-          options={services_.map((s) => ({ slug: s.slug, name: s.name, href: qs({ service: toggled(services, s.slug) }) }))}
+          options={serviceList.map((s) => ({ slug: s.slug, name: s.name, href: qs({ service: toggled(services, s.slug) }) }))}
           clearHref={qs({ service: undefined })}
           selectedSlugs={services}
         />
+        <MultiSelectCombobox
+          label="Membership type"
+          options={typeList.map((t) => ({ slug: t.slug, name: t.name, href: qs({ type: toggled(membershipTypeSlugs, t.slug) }) }))}
+          clearHref={qs({ type: undefined })}
+          selectedSlugs={membershipTypeSlugs}
+        />
       </div>
 
-      {/* Keeps the category links in the HTML for crawlers and no-JS users (single-
-          select only, without the js-driven combobox's toggling). Inert when
-          scripting is on, so it doesn't affect the combobox or e2e counts. */}
-      <noscript>
-        <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-          <a href={qs({ category: undefined })} className="rounded-full border bg-white px-3 py-1">All</a>
-          {categoryList.map((c) => (
-            <a key={c.slug} href={qs({ category: [c.slug] })} className="rounded-full border bg-white px-3 py-1">{c.name}</a>
-          ))}
-        </div>
-      </noscript>
+      {/* Industry pills, single-select — same pattern and same underlying data
+          as /news's industry filter (categories kind='member'), plain Links so
+          they work with no JS and need no noscript fallback. */}
+      <nav aria-label="Filter by industry" className="mt-3 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+        <Link href={qs({ category: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${categories.length === 0 ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+        {categoryList.map((c) => (
+          <Link key={c.slug} href={qs({ category: [c.slug] })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${categories.includes(c.slug) ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+            {c.name}
+          </Link>
+        ))}
+      </nav>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         {/* aria-live: a soft router.push transition doesn't announce itself */}
@@ -155,8 +159,8 @@ export default async function MembersPage(props: PageProps<"/member">) {
           {total} {total === 1 ? "member" : "members"}
           {activeCats.length > 0 && <> in {activeCats.map((c) => c.name).join(", ")}</>}
           {q && <> matching “{q}”</>}
-          {(q || categories.length > 0 || services.length > 0) && (
-            <> · <Link href={qs({ category: undefined, service: undefined, q: undefined })} className="text-graphite hover:underline">Clear filters</Link></>
+          {(q || categories.length > 0 || services.length > 0 || membershipTypeSlugs.length > 0) && (
+            <> · <Link href={qs({ category: undefined, service: undefined, type: undefined, q: undefined })} className="text-graphite hover:underline">Clear filters</Link></>
           )}
         </p>
         <div className="flex gap-2 text-sm">
@@ -194,7 +198,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
 
       {/* Format A sells rotation across the directory too (advertising/page.tsx).
           Unconditional so a narrow filter result still delivers booked inventory. */}
-      <div className="my-6"><AdSlot slotKey="directory_mid" adverts={slots.get("directory_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
+      <div className="my-6"><AdSlot slotKey="directory_mid" adverts={slots.get("directory_mid") ?? []} showPlaceholders={showPlaceholders} path="/member" /></div>
       <div className="my-10" />
     </div>
   );
@@ -208,7 +212,11 @@ function MemberCard({ member: m }: { member: Awaited<ReturnType<typeof memberDir
     <Link href={`/member/${m.slug}`} className="block rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
       <div className="flex items-center gap-4">
         {m.logo_path ? (
-          <Image src={mediaUrl(m.logo_path)!} alt="" width={128} height={128} className="h-32 w-32 shrink-0 rounded-lg object-contain" unoptimized />
+          // Rounded box bigger than the image inside it, so the corner radius
+          // only ever clips white background, never a non-square logo's artwork.
+          <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-white">
+            <Image src={mediaUrl(m.logo_path)!} alt="" width={112} height={112} className="object-contain" unoptimized />
+          </div>
         ) : (
           <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30">⚙</div>
         )}

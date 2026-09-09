@@ -154,6 +154,17 @@ describe("StripePayments", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("reports a 200 with no checkout URL as an error rather than redirecting nowhere", async () => {
+    liveEnv();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "cs_1" }), { status: 200 }),
+    );
+
+    const result = await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme" });
+
+    expect(result).toEqual({ kind: "error", message: "Stripe did not return a checkout URL." });
+  });
+
   it("reports Stripe's rejection as a checkout error", async () => {
     liveEnv();
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("card declined", { status: 402 }));

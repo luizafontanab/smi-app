@@ -1,10 +1,12 @@
 /**
  * Hand-built inline-SVG trend rendering — no chart library exists in this
- * app, and these are the only two trend shapes needed (a stat-tile sparkline,
- * a single-series admin trend line). Single series throughout, so no legend
- * or categorical palette: brand orange is the one accent, per globals.css's
- * "brand only ever as a non-text accent" rule — never used for the numbers
- * beside it.
+ * app. These two are the single-series shapes (a stat-tile sparkline, a
+ * larger single-series trend line): no legend or categorical palette, brand
+ * orange is the one accent, per globals.css's "brand only ever as a non-text
+ * accent" rule — never used for the numbers beside it. A third, multi-series
+ * shape (StackedTrendChart.tsx) exists for the two categorical cases that
+ * need a breakdown by series rather than a single line — it draws from the
+ * dataviz-skill-validated --smi-series-* palette instead.
  */
 
 function points(values: number[], width: number, height: number, pad: number): string {

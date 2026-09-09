@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pendingSubmissions } from "@/lib/submissions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
@@ -68,5 +68,31 @@ describe("pendingSubmissions", () => {
   it("returns an empty list and zero total when nothing is pending", async () => {
     db({});
     expect(await pendingSubmissions("mem1")).toEqual({ items: [], total: 0 });
+  });
+
+  it("degrades to an empty box when a query fails, rather than throwing", async () => {
+    // A failed select returns data: null and no count. The dashboard box is a
+    // sidebar widget — it must not take the whole page down with it, so every
+    // read is defended with a fallback. This covers all four tables at once.
+    db({
+      stories: () => queryBuilder(dbError("stories exploded")),
+      videos: () => queryBuilder(dbError("videos exploded")),
+      events: () => queryBuilder(dbError("events exploded")),
+      featured_machines: () => queryBuilder(dbError("machines exploded")),
+    });
+
+    expect(await pendingSubmissions("mem1")).toEqual({ items: [], total: 0 });
+  });
+
+  it("still merges the tables that succeeded when only one fails", async () => {
+    db({
+      stories: () => queryBuilder(dbOk([row("s1", "2026-09-01T10:00:00Z")], 1)),
+      videos: () => queryBuilder(dbError("videos exploded")),
+    });
+
+    const { items, total } = await pendingSubmissions("mem1");
+
+    expect(items.map((i) => i.id)).toEqual(["s1"]);
+    expect(total).toBe(1);
   });
 });

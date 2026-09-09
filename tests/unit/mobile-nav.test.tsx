@@ -34,6 +34,21 @@ describe("MobileNav", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("a click on the backdrop closes the drawer, but a click inside it does not", () => {
+    // A modal <dialog>'s backdrop is part of the dialog element itself, so the
+    // only way to tell them apart is the event target. Getting this wrong
+    // closes the drawer whenever someone taps a link's padding.
+    render(<MobileNav user={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    const dialog = screen.getByRole("dialog", { hidden: true });
+
+    fireEvent.click(screen.getByRole("navigation"));
+    expect(dialog).toHaveAttribute("open");
+
+    fireEvent.click(dialog);
+    expect(dialog).not.toHaveAttribute("open");
+  });
+
   it("a link click closes the drawer", () => {
     render(<MobileNav user={null} />);
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));

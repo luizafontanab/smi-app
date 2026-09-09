@@ -36,12 +36,11 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
   // the badge carries the true total; "See all" opens /dashboard/submissions.
   const [
     { data: lastStory }, pending,
-    { data: notifications }, { count: unreadNotifications }, { data: member },
+    { data: notifications }, { data: member },
   ] = await Promise.all([
     db.from("stories").select("published_at").eq("member_id", user.memberId).eq("status", "published").order("published_at", { ascending: false }).limit(1).maybeSingle(),
     pendingSubmissions(user.memberId, { limit: 4 }),
     db.from("notifications").select("kind, payload, created_at").eq("member_id", user.memberId).order("created_at", { ascending: false }).limit(4),
-    db.from("notifications").select("*", { count: "exact", head: true }).eq("member_id", user.memberId).is("read_at", null),
     db.from("members").select("status, paid_at, comped_until, draft_submitted_at, onboarding_seen").eq("id", user.memberId).single(),
   ]);
 
@@ -103,9 +102,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
       {pending.items.length > 0 && (
         <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-ink">
-              Your submissions<span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-ink">{pending.total}</span>
-            </h2>
+            <h2 className="font-bold text-ink">Your submissions</h2>
             <Link href="/dashboard/submissions" className="text-sm text-graphite underline">See all →</Link>
           </div>
           <SubmissionList items={pending.items} />
@@ -115,9 +112,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
       {(notifications ?? []).length > 0 && (
         <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-ink">
-              Recent updates{Boolean(unreadNotifications) && <span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-ink">{unreadNotifications}</span>}
-            </h2>
+            <h2 className="font-bold text-ink">Recent updates</h2>
             <Link href="/dashboard/notifications" className="text-sm text-graphite underline">See all →</Link>
           </div>
           {(notifications ?? []).map((n, i) => (

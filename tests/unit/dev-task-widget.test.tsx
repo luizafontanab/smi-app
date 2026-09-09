@@ -29,6 +29,21 @@ describe("DevTaskWidget", () => {
     expect(screen.getByText(/Filing as Jas/)).toBeInTheDocument();
   });
 
+  it("a click on the backdrop closes it, but a click on the dialog's own padding does not", () => {
+    // p-0 on the dialog is load-bearing for exactly this reason: padding
+    // belongs to the dialog element, so a click on it would read as a backdrop
+    // click and discard a half-typed report.
+    render(<DevTaskWidget reporterName="Jas" />);
+    fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
+    const dialog = screen.getByRole("dialog", { hidden: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }).parentElement!);
+    expect(dialog).toHaveAttribute("open");
+
+    fireEvent.click(dialog);
+    expect(dialog).not.toHaveAttribute("open");
+  });
+
   it("offers every kind and priority option", () => {
     render(<DevTaskWidget reporterName="Jas" />);
     fireEvent.click(screen.getByRole("button", { name: "Feedback" }));

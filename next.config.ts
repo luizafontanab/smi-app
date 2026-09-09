@@ -128,6 +128,22 @@ const legacyRedirects = [
 ];
 
 const nextConfig: NextConfig = {
+  /**
+   * Normally `.next`. The visual-regression suite (tests/visual) sets this to
+   * `.next-visual` so its production build does not clean out the `.next` the
+   * long-lived dev server is using — `next build` wipes the dist dir, which
+   * would kill a running `pnpm dev` (and any parallel session sharing this
+   * tree). Unset everywhere else, so dev/build/start/CI/Vercel are unaffected.
+   */
+  distDir: process.env.VISUAL_DIST_DIR || ".next",
+  /**
+   * The visual suite builds only in order to photograph the result, and this is
+   * a shared working tree — a half-finished edit in some unrelated file should
+   * not stop a screenshot run. Type errors remain a hard failure for `pnpm build`
+   * and `pnpm check`, which is where they belong. Scoped to the visual env var,
+   * so a normal build is unaffected.
+   */
+  typescript: { ignoreBuildErrors: !!process.env.VISUAL_DIST_DIR },
   // Playwright drives the app via 127.0.0.1; without this the dev server 403s
   // client chunks/HMR for that origin (only `localhost` is allowed by default)
   allowedDevOrigins: ["127.0.0.1"],

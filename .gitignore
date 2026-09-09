@@ -21,6 +21,7 @@
 
 # next.js
 /.next/
+/.next-visual/
 /out/
 
 # production
@@ -39,6 +40,12 @@ dev.log
 
 # persistent dev server state (pnpm dev:start / dev:stop)
 /.dev-server/
+
+# visual regression: run output and login state.
+# tests/visual/baseline/ IS committed — it is the reference the suite compares to.
+# .state/ holds live Supabase refresh tokens and must never be.
+/tests/visual/.runs/
+/tests/visual/.state/
 
 # env files (can opt-in for committing if needed)
 .env*

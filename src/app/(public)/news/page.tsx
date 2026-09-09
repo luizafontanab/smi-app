@@ -107,7 +107,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
 
       {/* Rendered unconditionally — the slot is booked inventory, so it must
           not vanish on quiet days. Sits between the rails and the archive. */}
-      <div className="my-8"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
+      <div className="my-8"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} path="/news" /></div>
 
       {/* ── All news: search, filters, paginated grid ────────────────────── */}
       <h2 id="all-news" className="text-lg font-bold uppercase tracking-wide text-ink">All news</h2>
@@ -165,7 +165,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
       </nav>
 
       <div className="-mx-4"><SupplierLogos adverts={logos} showPlaceholders={showPlaceholders} /></div>
-      <div className="my-6"><AdSlot slotKey="footer" adverts={slots.get("footer") ?? []} showPlaceholders={showPlaceholders} /></div>
+      <div className="my-6"><AdSlot slotKey="footer" adverts={slots.get("footer") ?? []} showPlaceholders={showPlaceholders} path="/news" /></div>
     </div>
   );
 }
