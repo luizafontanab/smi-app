@@ -25,8 +25,50 @@ export type JobKind =
   | "stats_summary"          // daily sweep: fires per member on their chosen stats cadence
   | "lead_alert";            // daily sweep: fires per member on their chosen leads cadence
 
+/**
+ * In development only, a job that is due now runs as soon as the response is
+ * out, instead of waiting for scripts/job-runner.ts to poll /api/cron.
+ *
+ * Why: locally the runner is optional and usually not running, so `enqueue`
+ * looked like a no-op — an approved video's "your video is live" notification
+ * sat unclaimed in the queue and read as a product bug. Dev should show the
+ * effect of an action immediately.
+ *
+ * Scope, deliberately narrow:
+ *   · development only — never production (Vercel Cron owns it there) and never
+ *     test, where vitest sets NODE_ENV=test and `after` has no request context.
+ *   · only jobs already due. A delayed job keeps its delay: social_push is
+ *     enqueued at +30 minutes and firing it instantly would be a different
+ *     behaviour, not a faster one.
+ *   · periodic sweeps (publish_scheduled, comp_expiry, …) are unaffected —
+ *     they are time-based and still need the runner. "Immediate in dev" covers
+ *     jobs an action causes, not the clock-driven ones.
+ *
+ * `after` runs the callback once the response is sent, so a slow or failing
+ * job can never delay or break the server action that queued it — and it still
+ * runs when the action ends in redirect(), which all of them do.
+ */
+function runDueJobInlineInDev(jobId: string, dueAt: Date) {
+  if (process.env.NODE_ENV !== "development") return;
+  if (dueAt.getTime() > Date.now()) return;
+  // Imported lazily: next/server is unavailable to the plain-node callers of
+  // this module (scripts, and the vitest suites that exercise runJob directly).
+  // The catch covers both that and `after` being called with no request
+  // context — either way the job stays pending for the runner, exactly as it
+  // behaved before. A dev convenience must never break the thing it speeds up.
+  void import("next/server")
+    .then(({ after }) => after(() => runJobById(jobId)))
+    .catch(() => {});
+}
+
 export async function enqueue(kind: JobKind, payload: Record<string, unknown> = {}, dueAt?: Date) {
-  await serviceDb().from("jobs").insert({ kind, payload: payload as Json, due_at: (dueAt ?? new Date()).toISOString() });
+  const due = dueAt ?? new Date();
+  const { data } = await serviceDb()
+    .from("jobs")
+    .insert({ kind, payload: payload as Json, due_at: due.toISOString() })
+    .select("id")
+    .single();
+  if (data) runDueJobInlineInDev(data.id, due);
 }
 
 type JobRow = { id: string; kind: string; payload: unknown; attempts: number; max_attempts: number; due_at: string };

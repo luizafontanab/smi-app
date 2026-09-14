@@ -1,14 +1,10 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { memberActivityTimeline } from "@/lib/activity";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { socialFieldName } from "@/lib/member-form";
-import { renderableHtml } from "@/lib/sanitize";
-import { SOCIAL_CHANNELS } from "@/lib/social";
 import { Badge, Card, SectionTitle } from "@/components/console/ui";
-import { RichTextEditor } from "@/components/RichTextEditor";
+import { CompanyPageForm } from "@/components/member/CompanyPageForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import {
@@ -35,7 +31,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         <Link href="/console/members" className="text-sm text-graphite hover:text-ink">← Members</Link>
         <h1 className="mt-1 text-xl font-bold text-ink">New member</h1>
         <p className="mt-1 text-sm text-graphite">
-          Creates their login and a draft company page. Category, page content and billing come next, on the edit screen.
+          Creates their login and a draft company page. Industry, page content and billing come next, on the edit screen.
         </p>
         {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
         <Card className="mt-4">
@@ -65,24 +61,27 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
     );
   }
 
-  const [{ data: member }, { data: cats }, { data: revisions }, { data: types }, { data: memberTypes }] = await Promise.all([
+  const [{ data: member }, { data: inds }, { data: revisions }, { data: types }, { data: memberTypes }, { data: svcs }, { data: memberSvcs }] = await Promise.all([
     db.from("members").select(
-      "id, slug, name, status, category_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
+      "id, slug, name, status, industry_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
     ).eq("id", id).single(),
-    db.from("categories").select("id, name").eq("kind", "member").order("name"),
+    db.from("industries").select("id, name").order("sort_order"),
     db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1),
     db.from("membership_types").select("id, name").order("sort_order"),
     db.from("member_membership_types").select("membership_type_id").eq("member_id", id),
+    // `services` has no sort_order column (20260909000001) — order by name.
+    db.from("services").select("id, name").order("name"),
+    db.from("member_services").select("service_id").eq("member_id", id),
   ]);
   if (!member) notFound();
   const memberTypeIds = new Set((memberTypes ?? []).map((t) => t.membership_type_id));
+  const memberServiceIds = new Set((memberSvcs ?? []).map((r) => r.service_id));
 
   // the renewal-call view (A18) — stories, placements, invoices, notifications,
   // advert clicks and newsletter appearances (A5.8), merged in lib/activity.ts
   // so the CRM per-contact panel can reuse the exact same query.
   const timeline = await memberActivityTimeline(id);
 
-  const social = (member.social ?? {}) as Record<string, string>;
   const logo = mediaUrl(member.logo_path);
   const hero = mediaUrl(member.hero_path);
   const isDraft = member.status === "draft";
@@ -150,107 +149,22 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
 
         <Card>
           <SectionTitle>Company page</SectionTitle>
-          <fieldset className="mt-3 space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="name" className={label}>Company name</label>
-                <input id="name" name="name" defaultValue={member.name} required className={field} />
-              </div>
-              <div>
-                <label htmlFor="category_id" className={label}>Industry</label>
-                <select id="category_id" name="category_id" defaultValue={member.category_id ?? ""} className={field}>
-                  <option value="">— none —</option>
-                  {(cats ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <fieldset>
-              <legend className={label}>Membership types</legend>
-              <p className="text-xs text-graphite">Shown on the public directory as a filter — distinct from Industry above, and from the Services list.</p>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
-                {(types ?? []).map((t) => (
-                  <label key={t.id} className="flex items-center gap-1.5 text-sm">
-                    <input type="checkbox" name="membership_types" value={t.id} defaultChecked={memberTypeIds.has(t.id)} />
-                    {t.name}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <div>
-              <label htmlFor="slug" className={label}>Web address</label>
-              <div className="mt-1 flex items-center gap-1">
-                <span className="text-sm text-graphite">/member/</span>
-                <input id="slug" name="slug" defaultValue={member.slug} className="w-full rounded border px-3 py-2" />
-              </div>
-              {!isDraft && (
-                <label className="mt-1.5 flex items-center gap-2 text-xs text-graphite">
-                  <input type="checkbox" name="confirm_slug" />
-                  Changing this changes their public URL — old links will be redirected automatically.
-                </label>
-              )}
-            </div>
-            <div>
-              <span className={label}>About the company</span>
-              <RichTextEditor
-                name="description" ariaLabel="About the company"
-                initialHtml={renderableHtml(member.description)}
-                uploadImage={consoleUploadImage}
-                minHeightClass="min-h-56"
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="logo" className={label}>Company logo</label>
-                {logo && <Image src={logo} alt="" width={64} height={64} className="mt-1 rounded border" unoptimized />}
-                <input id="logo" type="file" name="logo" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
-                {logo && (
-                  <label className="mt-1 flex items-center gap-2 text-xs text-graphite">
-                    <input type="checkbox" name="remove_logo" /> Remove the current logo
-                  </label>
-                )}
-              </div>
-              <div>
-                <label htmlFor="hero" className={label}>Cover photo</label>
-                {hero && <Image src={hero} alt="" width={128} height={64} className="mt-1 rounded border object-cover" unoptimized />}
-                <input id="hero" type="file" name="hero" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
-                {hero && (
-                  <label className="mt-1 flex items-center gap-2 text-xs text-graphite">
-                    <input type="checkbox" name="remove_hero" /> Remove the current cover
-                  </label>
-                )}
-              </div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div><label htmlFor="address" className={label}>Address</label><input id="address" name="address" defaultValue={member.address ?? ""} className={field} /></div>
-              <div>
-                <label htmlFor="phone" className={label}>Phone</label>
-                <input id="phone" name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ""} className={field} />
-                <p className="mt-1 text-xs text-graphite">Digits, spaces, +, ( ) and - only.</p>
-              </div>
-              <div><label htmlFor="website" className={label}>Website</label><input id="website" name="website" defaultValue={member.website ?? ""} className={field} /></div>
-              <div><label htmlFor="video_url" className={label}>YouTube video URL</label><input id="video_url" name="video_url" defaultValue={member.video_url ?? ""} className={field} /></div>
-              <div>
-                <label htmlFor="lat" className={label}>Latitude</label>
-                <input id="lat" name="lat" defaultValue={member.lat ?? ""} inputMode="decimal" className={field} />
-              </div>
-              <div>
-                <label htmlFor="lng" className={label}>Longitude</label>
-                <input id="lng" name="lng" defaultValue={member.lng ?? ""} inputMode="decimal" className={field} />
-              </div>
-            </div>
-            <p className="-mt-2 text-xs text-graphite">Latitude and longitude place the map on their profile. Leave both empty for no map.</p>
-            <fieldset>
-              <legend className={label}>Social profiles</legend>
-              <div className="mt-2 grid gap-4 sm:grid-cols-2">
-                {SOCIAL_CHANNELS.map((c) => (
-                  <label key={c.key} className="text-sm">
-                    <span className="text-graphite">{c.label}</span>
-                    <input name={socialFieldName(c.key)} defaultValue={social[c.key] ?? ""} placeholder={c.placeholder} className={field} />
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          </fieldset>
+          {/* Shared verbatim with /dashboard/profile — same row, same edit, so
+              the same form. Anything admin-only belongs in the cards below. */}
+          <div className="mt-3">
+            <CompanyPageForm
+              mode="console"
+              member={member}
+              industries={inds ?? []}
+              services={svcs ?? []}
+              membershipTypes={types ?? []}
+              selectedServiceIds={memberServiceIds}
+              selectedMembershipTypeIds={memberTypeIds}
+              uploadImage={consoleUploadImage}
+              logoUrl={logo}
+              heroUrl={hero}
+            />
+          </div>
         </Card>
 
         <Card>
@@ -286,14 +200,11 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
                 <p className="mt-1 text-xs text-graphite">For corrections — use “Record payment” below to raise an invoice too.</p>
               </div>
               <div><label htmlFor="comped_until" className={label}>Comped until</label><input id="comped_until" type="date" name="comped_until" defaultValue={member.comped_until ?? ""} className={field} /></div>
-              <div className="sm:col-span-2">
-                <label htmlFor="contact_email" className={label}>Contact email</label>
-                <input id="contact_email" name="contact_email" type="email" defaultValue={member.contact_email ?? ""} className={field} />
-                <p className="mt-1 text-xs text-graphite">
-                  Where their notifications go. This is not their login — changing it here does not change how they sign in.
-                </p>
-              </div>
             </div>
+            {/* Contact email lives in the shared company-page form above, where
+                the member edits it too. It was duplicated here briefly: two
+                inputs of the same name in one form means the lower one silently
+                wins, so an edit to the other would have been dropped. */}
             <p className="text-xs text-graphite">
               Page submitted: {member.draft_submitted_at?.slice(0, 10) ?? "not yet"}
               {member.stripe_customer_id && ` · Stripe customer ${member.stripe_customer_id}`}

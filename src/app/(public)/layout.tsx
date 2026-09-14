@@ -7,11 +7,17 @@ import { SkipLink } from "@/components/SkipLink";
 import { currentUser } from "@/lib/auth";
 import { mediaUrl } from "@/lib/db/server";
 import { organizationLd, webSiteLd } from "@/lib/jsonld";
-import { activeTakeover, memberCategories } from "@/lib/queries";
+import { unreadNotificationCount } from "@/lib/notifications";
+import { activeTakeover, industries as industryList } from "@/lib/queries";
 import { IndustryBar } from "@/components/IndustryBar";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  const [user, takeover, industries] = await Promise.all([currentUser(), activeTakeover(), memberCategories()]);
+  const [user, takeover, industries] = await Promise.all([currentUser(), activeTakeover(), industryList()]);
+
+  // Signed-in members only: an anonymous visit adds no query, and an admin's
+  // unread signal is the console's own inbox bell. currentUser() reads cookies,
+  // so this layout is already per-request — no caching is given up here.
+  const unread = user?.memberId ? await unreadNotificationCount(user.memberId) : 0;
 
   // Site-wide by design (V17 names home/news/videos; this is a deliberate
   // superset — one shared layout, not a per-route check). --smi-brand is the
@@ -40,7 +46,7 @@ export default async function PublicLayout({ children }: { children: React.React
         )
       )}
       <IndustryBar industries={industries} />
-      <SiteHeader user={user} />
+      <SiteHeader user={user} unread={unread} />
       <main id="main" className="flex-1">{children}</main>
       <SiteFooter />
       <CookieConsent />

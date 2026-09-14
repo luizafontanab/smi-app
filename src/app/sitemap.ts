@@ -37,7 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     db.from("events").select("slug").eq("status", "published"),
     db.from("newsletter_issues").select("web_slug").eq("status", "sent"),
     db.from("static_pages").select("slug, updated_at"),
-    db.from("categories").select("slug").eq("kind", "member"),
+    db.from("industries").select("slug"),
   ]);
 
   return [

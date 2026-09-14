@@ -11,7 +11,7 @@ export default async function NewMemberStory(props: PageProps<"/dashboard/story/
   const user = await requireMember();
   const sp = await props.searchParams;
   const [{ data: cats }, { data: member }] = await Promise.all([
-    publicDb().from("categories").select("id, name").eq("kind", "story").order("name"),
+    publicDb().from("categories").select("id, name").order("name"),
     serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single(),
   ]);
   return (

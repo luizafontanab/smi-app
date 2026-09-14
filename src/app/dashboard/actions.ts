@@ -7,9 +7,10 @@ import { geocodeAddress } from "@/lib/adapters/geocode";
 import { mediaUrl, serviceDb, sessionDb } from "@/lib/db/server";
 import { isEventType } from "@/lib/event-types";
 import { removeMedia, uploadImage } from "@/lib/media";
+import { companyPageValuesFromForm } from "@/lib/member-form";
+import { resolveCoordinates } from "@/lib/member-geocode";
+import { replaceMemberServices } from "@/lib/member-services";
 import { sanitizeRichText } from "@/lib/sanitize";
-import { mergeSocial } from "@/lib/social";
-import { EMAIL_RE, parsePhone } from "@/lib/validate";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -165,6 +166,7 @@ export async function submitVideo(formData: FormData) {
     title,
     url,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
+    industry_id: Number(formData.get("industry_id")) || null,
     status: "awaiting_approval",
     source: "member",
     member_id: user.memberId,
@@ -200,6 +202,7 @@ export async function editVideo(formData: FormData) {
     title,
     url,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
+    industry_id: Number(formData.get("industry_id")) || null,
     status: "awaiting_approval",
     rejected_reason: null,
     updated_at: new Date().toISOString(),
@@ -309,70 +312,79 @@ export async function editEvent(formData: FormData) {
  * M5 — profile edits are approval-gated (working assumption #2): stored as a revision.
  * Draft members (V13 step 3 of 4) write their page directly instead — it's not public
  * yet, and Jas's Activate is the one approval; a revision would mean approving twice.
+ *
+ * Parses the same FormData with the same parser the console's saveMember uses
+ * (`companyPageValuesFromForm`), because both pages now render the same
+ * `CompanyPageForm`. Everything the console's member editor can change about a
+ * company page, a member can change about their own — what the console keeps to
+ * itself is the membership half (status, billing, payment dates), which is a
+ * different form entirely and never reaches here.
  */
 export async function submitProfileEdit(formData: FormData) {
   const user = await requireMember();
-  const [logoPath, heroPath] = await Promise.all([
-    uploadImage(formData.get("logo") as File | null, `members/${user.memberId}`),
-    uploadImage(formData.get("hero") as File | null, `members/${user.memberId}`),
-  ]);
+  const back = (msg: string) => redirect(`/dashboard/profile?error=${encodeURIComponent(msg)}`);
+
   const db = serviceDb();
   const { data: member } = await db.from("members")
-    .select("name, status, draft_submitted_at, social, address, lat, lng").eq("id", user.memberId).single();
+    .select("slug, status, draft_submitted_at, social, address, lat, lng").eq("id", user.memberId).single();
   if (!member) return;
 
-  const social = mergeSocial(member.social, (key) => String(formData.get(key) ?? ""));
-
-  const contact_email = String(formData.get("contact_email") ?? "").trim() || null;
-  if (contact_email && !EMAIL_RE.test(contact_email)) {
-    redirect(`/dashboard/profile?error=${encodeURIComponent("Contact email is not a valid address.")}`);
+  let uploaded: { logo_path: string | null; hero_path: string | null };
+  try {
+    const [logo_path, hero_path] = await Promise.all([
+      uploadImage(formData.get("logo") as File | null, `members/${user.memberId}`),
+      uploadImage(formData.get("hero") as File | null, `members/${user.memberId}`),
+    ]);
+    uploaded = { logo_path, hero_path };
+  } catch (e) {
+    // redirect() must stay outside the try or its NEXT_REDIRECT is swallowed
+    // as an upload failure — same reasoning as saveMember.
+    uploaded = { logo_path: null, hero_path: null };
+    back(e instanceof Error ? e.message : "Image upload failed.");
+    return;
   }
 
-  const phone = parsePhone(String(formData.get("phone") ?? ""));
-  if (phone && typeof phone === "object") {
-    redirect(`/dashboard/profile?error=${encodeURIComponent(phone.error)}`);
+  const parsed = companyPageValuesFromForm(formData, member, uploaded);
+  if ("error" in parsed) return back(parsed.error);
+  const values = { ...parsed.values };
+
+  // The member owns their own URL now that the form is shared, so the same
+  // guards the console applies have to apply here: a clash would violate the
+  // unique index, and a silent rename would break every inbound link.
+  const slug = values.slug!;
+  const slugChanged = slug !== member.slug;
+  if (slugChanged) {
+    const { data: clash } = await db.from("members").select("id").eq("slug", slug).neq("id", user.memberId).maybeSingle();
+    if (clash) return back(`The web address “${slug}” is already taken — choose another.`);
   }
 
-  const address = String(formData.get("address") ?? "");
-  // Re-geocode only when the address actually changed — a fresh Nominatim
-  // lookup on every unrelated save would be both wasteful and against its
-  // usage policy. A failed lookup keeps whatever coordinates were already
-  // on file rather than blanking the map.
-  let lat = member.lat;
-  let lng = member.lng;
-  if (address.trim() && address.trim() !== (member.address ?? "").trim()) {
-    const geocoded = await geocodeAddress(address);
-    if (geocoded) {
-      lat = geocoded.lat;
-      lng = geocoded.lng;
-    }
-  }
+  // Same rule the console applies — see resolveCoordinates.
+  const coords = await resolveCoordinates(
+    { lat: values.lat ?? null, lng: values.lng ?? null },
+    member,
+    String(values.address ?? ""),
+  );
+  values.lat = coords.lat;
+  values.lng = coords.lng;
 
-  const payload = {
-    description: sanitizeRichText(String(formData.get("description") ?? "")),
-    ...(logoPath ? { logo_path: logoPath } : {}),
-    ...(heroPath ? { hero_path: heroPath } : {}),
-    address,
-    phone,
-    website: String(formData.get("website") ?? ""),
-    video_url: String(formData.get("video_url") ?? "") || null,
-    social,
-    category_id: Number(formData.get("category_id")) || null,
-    contact_email,
-    lat,
-    lng,
-  };
+  // Services live in the `member_services` join table, not on `members`, so they
+  // cannot ride the payload as a column. They travel as `service_ids`, which
+  // decideRevision pulls out before it applies the rest — see the note there.
+  const serviceIds = formData.getAll("services").map(Number).filter(Boolean);
 
   if (member.status === "draft") {
     const firstSubmit = !member.draft_submitted_at;
     await db.from("members").update({
-      ...payload, // description already sanitised above; page stays hidden until Activate
+      ...values, // description already sanitised by the parser; page stays hidden until Activate
       draft_submitted_at: member.draft_submitted_at ?? new Date().toISOString(),
     }).eq("id", user.memberId);
+    // A draft page is not public yet and Activate is the one approval it gets,
+    // so its services apply straight away rather than through a revision.
+    await replaceMemberServices(db, user.memberId, serviceIds);
     if (firstSubmit) {
       const { notifyAdminFunnel } = await import("@/lib/notify-admin");
       await notifyAdminFunnel({
-        name: member.name,
+        name: String(values.name ?? ""),
         email: user.email,
         message: "Submitted their draft company page for review — ready for your verification and approval.",
       });
@@ -383,7 +395,7 @@ export async function submitProfileEdit(formData: FormData) {
 
   await db.from("member_revisions").insert({
     member_id: user.memberId,
-    payload: payload as import("@/lib/db/types").Json,
+    payload: { ...values, service_ids: serviceIds } as import("@/lib/db/types").Json,
   });
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=profile");
@@ -475,6 +487,43 @@ export async function sendMemberMessage(formData: FormData) {
     emailSubject: `Member message from ${member?.name ?? user.email}`,
   });
   redirect("/dashboard/help?sent=1");
+}
+
+/**
+ * "Request a change" on published content (fix list).
+ *
+ * A member can see their published work but not edit it — editing is gated to
+ * `awaiting_approval`/`rejected`, and reopening a live page for edit would take
+ * it off the site while it waited for re-approval. So this asks Jas instead: the
+ * note lands in the console inbox (where he can already reply in-app, fix list
+ * item 24) and emails him, exactly as the Help page's message does. **The
+ * published item is not touched** — no status change, no new table.
+ */
+export async function requestContentChange(formData: FormData) {
+  const user = await requireMember();
+  const title = String(formData.get("title") ?? "").trim();
+  const kind = String(formData.get("kind") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  const back = `/dashboard/submissions${String(formData.get("filter") ?? "") ? `?status=${formData.get("filter")}` : ""}`;
+  if (!title) return;
+  if (!note) redirect(`${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent("Tell us what needs changing first.")}`);
+
+  // Same bucket and limit as the Help page: this is the same inbox and the same
+  // person on the other end, so one member cannot flood it from two routes.
+  const { allowRequest, HOUR } = await import("@/lib/rate-limit");
+  if (!(await allowRequest("member-help", 5, HOUR))) {
+    redirect(`${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent("Too many requests just now — please try again shortly.")}`);
+  }
+
+  const { data: member } = await serviceDb().from("members").select("name").eq("id", user.memberId).single();
+  const { notifyAdminFunnel } = await import("@/lib/notify-admin");
+  await notifyAdminFunnel({
+    name: member?.name ?? user.displayName ?? user.email,
+    email: user.email,
+    message: `Change requested on published ${kind || "content"} “${title}”:\n\n${note}`,
+    emailSubject: `Change request from ${member?.name ?? user.email}`,
+  });
+  redirect(`${back}${back.includes("?") ? "&" : "?"}requested=1`);
 }
 
 export async function markNotificationRead(formData: FormData) {

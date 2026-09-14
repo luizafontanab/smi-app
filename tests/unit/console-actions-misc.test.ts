@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  deleteCategory, deleteContentPage, deleteMedia, markInboxRead, renameMedia, saveCategory, saveContentPage,
+  deleteCategory, deleteContentPage, deleteIndustry, deleteMedia, markInboxRead, renameMedia, saveCategory,
+  saveContentPage, saveIndustry,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -142,15 +143,9 @@ describe("deleteContentPage", () => {
 });
 
 describe("saveCategory", () => {
-  it("only accepts story or member kinds", async () => {
-    const from = db({});
-    await saveCategory(form({ kind: "bogus", name: "x" }));
-    expect(from).not.toHaveBeenCalled();
-  });
-
   it("requires a name", async () => {
     const from = db({});
-    await saveCategory(form({ kind: "story", name: "  " }));
+    await saveCategory(form({ name: "  " }));
     expect(from).not.toHaveBeenCalled();
   });
 
@@ -158,45 +153,94 @@ describe("saveCategory", () => {
     const builder = queryBuilder(dbOk(null));
     db({ categories: () => builder });
 
-    await expect(saveCategory(form({ kind: "story", name: "Fabrication" })))
-      .rejects.toThrow("NEXT_REDIRECT:/console/categories?kind=story&saved=1");
-    expect(builder.insert).toHaveBeenCalledWith({ kind: "story", name: "Fabrication", slug: "fabrication" });
+    await expect(saveCategory(form({ name: "Fabrication" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/categories?saved=1");
+    expect(builder.insert).toHaveBeenCalledWith({ name: "Fabrication", slug: "fabrication" });
   });
 
-  it("reports a friendlier message for a duplicate slug within the same kind", async () => {
+  it("reports a friendlier message for a duplicate slug", async () => {
     db({ categories: () => queryBuilder(dbError("duplicate", { code: "23505" })) });
 
-    await expect(saveCategory(form({ kind: "story", name: "Fabrication" })))
-      .rejects.toThrow(/already%20used%20for%20this%20category%20type/);
+    await expect(saveCategory(form({ name: "Fabrication" })))
+      .rejects.toThrow(/already%20used%20by%20another%20category/);
   });
 
   it("updates an existing category in place", async () => {
     const builder = queryBuilder(dbOk(null));
     db({ categories: () => builder });
 
-    await expect(saveCategory(form({ id: "3", kind: "member", name: "Suppliers" })))
-      .rejects.toThrow("NEXT_REDIRECT:/console/categories?kind=member&saved=1");
+    await expect(saveCategory(form({ id: "3", name: "Suppliers" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/categories?saved=1");
     expect(builder.update).toHaveBeenCalledWith({ name: "Suppliers", slug: "suppliers" });
   });
 });
 
 describe("deleteCategory", () => {
   it("requires the confirm checkbox", async () => {
-    await expect(deleteCategory(form({ id: "3", kind: "story" })))
+    await expect(deleteCategory(form({ id: "3" })))
       .rejects.toThrow(/Tick%20the%20confirm%20box/);
   });
 
-  it("reports when a member still references the category", async () => {
-    db({ categories: () => queryBuilder(dbError("fk violation", { code: "23503" })) });
-
-    await expect(deleteCategory(form({ id: "3", kind: "story", confirm: "1" })))
-      .rejects.toThrow(/still%20assigned%20to%20a%20member/);
-  });
-
-  it("deletes and redirects with the kind preserved", async () => {
+  it("deletes and redirects", async () => {
     db({ categories: () => queryBuilder(dbOk(null)) });
 
-    await expect(deleteCategory(form({ id: "3", kind: "member", confirm: "1" })))
-      .rejects.toThrow("NEXT_REDIRECT:/console/categories?kind=member&deleted=1");
+    await expect(deleteCategory(form({ id: "3", confirm: "1" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/categories?deleted=1");
+  });
+});
+
+describe("saveIndustry", () => {
+  it("requires a name", async () => {
+    const from = db({});
+    await saveIndustry(form({ name: "  " }));
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("creates a new industry with its strip position and redirects", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ industries: () => builder });
+
+    await expect(saveIndustry(form({ name: "Tube Bending", sort_order: "9" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/industries?saved=1");
+    expect(builder.insert).toHaveBeenCalledWith({ name: "Tube Bending", slug: "tube-bending", sort_order: 9 });
+  });
+
+  it("reports a friendlier message for a duplicate slug", async () => {
+    db({ industries: () => queryBuilder(dbError("duplicate", { code: "23505" })) });
+
+    await expect(saveIndustry(form({ name: "Welding" })))
+      .rejects.toThrow(/already%20used%20by%20another%20industry/);
+  });
+
+  it("updates an existing industry in place", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ industries: () => builder });
+
+    await expect(saveIndustry(form({ id: "3", name: "Welding", sort_order: "10" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/industries?saved=1");
+    expect(builder.update).toHaveBeenCalledWith({ name: "Welding", slug: "welding", sort_order: 10 });
+  });
+});
+
+describe("deleteIndustry", () => {
+  it("requires the confirm checkbox", async () => {
+    await expect(deleteIndustry(form({ id: "3" })))
+      .rejects.toThrow(/Tick%20the%20confirm%20box/);
+  });
+
+  it("reports when content still references the industry", async () => {
+    // members/stories/videos/events all point at industries with the default
+    // RESTRICT, so any one of the four blocks the delete
+    db({ industries: () => queryBuilder(dbError("fk violation", { code: "23503" })) });
+
+    await expect(deleteIndustry(form({ id: "3", confirm: "1" })))
+      .rejects.toThrow(/still%20assigned%20to%20a%20member%2C%20story%2C%20video%20or%20event/);
+  });
+
+  it("deletes and redirects", async () => {
+    db({ industries: () => queryBuilder(dbOk(null)) });
+
+    await expect(deleteIndustry(form({ id: "3", confirm: "1" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/industries?deleted=1");
   });
 });

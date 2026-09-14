@@ -106,6 +106,67 @@ describe("decideRevision", () => {
     expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "page_changes_live" }));
   });
 
+  // `service_ids` is not a members column — it rides the payload because a
+  // member's profile edit has no other channel, and must be pulled out before
+  // the members UPDATE or Postgres rejects the whole thing.
+  it("approving applies service_ids to member_services and keeps them out of the member row", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
+    const servicesBuilder = queryBuilder(dbOk(null));
+    const revisionsBuilder = queryBuilder(dbOk({
+      id: "r1", member_id: "m1", status: "awaiting_approval",
+      payload: { website: "https://example.com", service_ids: [3, 7] },
+    }));
+    db({
+      member_revisions: () => revisionsBuilder,
+      members: () => membersBuilder,
+      member_services: () => servicesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    const [payload] = (membersBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(payload).not.toHaveProperty("service_ids");
+    expect(payload.website).toBe("https://example.com");
+    expect(servicesBuilder.delete).toHaveBeenCalled();
+    expect(servicesBuilder.insert).toHaveBeenCalledWith([
+      { member_id: "m1", service_id: 3 },
+      { member_id: "m1", service_id: 7 },
+    ]);
+  });
+
+  // A revision written before the services picker existed carries no
+  // service_ids key at all. Approving it must not read that absence as "clear
+  // every service this member has".
+  it("approving a revision with no service_ids leaves the member's services alone", async () => {
+    const servicesBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "x" } })),
+      members: () => queryBuilder(dbOk(null)),
+      member_services: () => servicesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    expect(servicesBuilder.delete).not.toHaveBeenCalled();
+  });
+
+  it("approving with an empty service_ids clears the member's services", async () => {
+    const servicesBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { service_ids: [] } })),
+      members: () => queryBuilder(dbOk(null)),
+      member_services: () => servicesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    expect(servicesBuilder.delete).toHaveBeenCalled();
+    expect(servicesBuilder.insert).not.toHaveBeenCalled();
+  });
+
   it("rejecting notifies the member with the reason and never touches the member row", async () => {
     const membersBuilder = queryBuilder(dbOk(null));
     const revisionsBuilder = queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: {} }));

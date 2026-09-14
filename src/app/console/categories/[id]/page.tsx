@@ -16,31 +16,22 @@ export default async function CategoryEditor(props: PageProps<"/console/categori
 
   const { data: category } = isNew
     ? { data: null }
-    : await db.from("categories").select("id, kind, name, slug").eq("id", Number(id)).maybeSingle();
+    : await db.from("categories").select("id, name, slug").eq("id", Number(id)).maybeSingle();
   if (!isNew && !category) notFound();
-
-  const kind = isNew ? (sp.kind === "member" ? "member" : "story") : category!.kind;
 
   const usageCount = isNew
     ? 0
-    : kind === "member"
-      ? (await db.from("members").select("id", { count: "exact", head: true }).eq("category_id", category!.id)).count ?? 0
-      : (await db.from("story_categories").select("story_id", { count: "exact", head: true }).eq("category_id", category!.id)).count ?? 0;
+    : (await db.from("story_categories").select("story_id", { count: "exact", head: true }).eq("category_id", category!.id)).count ?? 0;
 
   return (
     <div className="mx-auto max-w-lg">
-      <Link href={`/console/categories?kind=${kind}`} className="text-sm text-graphite hover:text-ink">← Categories</Link>
+      <Link href="/console/categories" className="text-sm text-graphite hover:text-ink">← News categories</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New category" : `Edit “${category!.name}”`}</h1>
       {sp.error && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <form action={saveCategory} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         <UnsavedChangesGuard />
         <input type="hidden" name="id" value={isNew ? "" : category!.id} />
-        <input type="hidden" name="kind" value={kind} />
-        <div>
-          <span className="text-sm font-medium">Type</span>
-          <p className="mt-1 text-sm text-graphite">{kind === "member" ? "Member sector" : "Story category"}</p>
-        </div>
         <div>
           <label htmlFor="name" className="text-sm font-medium">Name</label>
           <input id="name" name="name" defaultValue={category?.name ?? ""} required className="mt-1 w-full rounded border px-3 py-2" />
@@ -56,16 +47,11 @@ export default async function CategoryEditor(props: PageProps<"/console/categori
       {!isNew && (
         <form action={deleteCategory} className="mt-4 rounded-xl border border-danger/30 bg-white p-5 shadow-sm">
           <input type="hidden" name="id" value={category!.id} />
-          <input type="hidden" name="kind" value={kind} />
           <h2 className="font-bold text-ink">Delete this category</h2>
           <p className="mt-1 text-xs text-graphite">
-            {kind === "member"
-              ? usageCount > 0
-                ? `${usageCount} member${usageCount === 1 ? "" : "s"} still use this category — deleting will fail until they're recategorised.`
-                : "No members use this category."
-              : usageCount > 0
-                ? `${usageCount} stor${usageCount === 1 ? "y" : "ies"} tagged with this category will be silently untagged.`
-                : "No stories are tagged with this category."}
+            {usageCount > 0
+              ? `${usageCount} stor${usageCount === 1 ? "y" : "ies"} tagged with this category will be silently untagged.`
+              : "No stories are tagged with this category."}
           </p>
           <label className="mt-3 flex items-center gap-2 text-sm">
             <input type="checkbox" name="confirm" value="1" required />

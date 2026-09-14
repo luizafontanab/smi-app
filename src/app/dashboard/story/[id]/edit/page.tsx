@@ -17,7 +17,7 @@ export default async function EditMemberStory(props: PageProps<"/dashboard/story
   const db = serviceDb();
   const [{ data: story }, { data: cats }, { data: member }, { data: link }] = await Promise.all([
     db.from("stories").select("id, title, excerpt, body, cover_path, cover_focus, status, member_id").eq("id", id).single(),
-    publicDb().from("categories").select("id, name").eq("kind", "story").order("name"),
+    publicDb().from("categories").select("id, name").order("name"),
     serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single(),
     db.from("story_categories").select("category_id").eq("story_id", id).maybeSingle(),
   ]);

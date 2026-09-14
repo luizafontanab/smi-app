@@ -120,11 +120,6 @@ export default async function EventsPage(props: PageProps<"/event">) {
             </div>
           )}
           <Pagination page={upcomingPage} pages={upcomingPages} hrefFor={qsUpcoming} />
-
-          <h2 className="mt-6 text-lg font-bold text-ink">Calendar</h2>
-          <div className="mt-3">
-            <EventsCalendar month={month} events={monthEvents} hrefForMonth={hrefForMonth} />
-          </div>
         </div>
 
         <aside className="shrink-0 lg:w-96">
@@ -133,6 +128,17 @@ export default async function EventsPage(props: PageProps<"/event">) {
           <EventMap events={pins} />
         </aside>
       </div>
+
+      {/* Outside the list/map flex row on purpose: a 7-column month grid beside
+          the 384px map only had ~700px to work with at lg, which cramped the day
+          cells and truncated most chips. Full container width instead — the
+          component is fluid by design (see its own note on having no min-width). */}
+      <section className="mt-8">
+        <h2 className="text-lg font-bold text-ink">Calendar</h2>
+        <div className="mt-3">
+          <EventsCalendar month={month} events={monthEvents} hrefForMonth={hrefForMonth} />
+        </div>
+      </section>
 
       {/* Past events keep their pages — the old site's /event/ URLs were indexed
           for years, and listing only what is upcoming quietly retired each one

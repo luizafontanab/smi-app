@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pendingSubmissions } from "@/lib/submissions";
+import { CONTENT_FILTERS, isContentFilter, memberContent, pendingSubmissions } from "@/lib/submissions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -94,5 +94,80 @@ describe("pendingSubmissions", () => {
 
     expect(items.map((i) => i.id)).toEqual(["s1"]);
     expect(total).toBe(1);
+  });
+});
+
+// memberContent is what pendingSubmissions delegates to. It exists because a
+// member could not see their own published work anywhere in the member area
+// once it went live (fix list).
+describe("memberContent", () => {
+  it("queries whatever statuses it is given", async () => {
+    const stories = queryBuilder(dbOk([], 0));
+    db({ stories: () => stories });
+
+    await memberContent("mem1", { statuses: CONTENT_FILTERS.published });
+
+    expect(stories.in).toHaveBeenCalledWith("status", ["published", "scheduled"]);
+  });
+
+  it("gives a published row a public href, per kind", async () => {
+    db({
+      stories: () => queryBuilder(dbOk([row("s1", "2026-09-01T10:00:00Z", { status: "published", slug: "big-news" })], 1)),
+      videos: () => queryBuilder(dbOk([row("v1", "2026-09-02T10:00:00Z", { status: "published", slug: "a-video" })], 1)),
+      events: () => queryBuilder(dbOk([row("e1", "2026-09-03T10:00:00Z", { status: "published", slug: "open-day" })], 1)),
+    });
+
+    const { items } = await memberContent("mem1", { statuses: CONTENT_FILTERS.published });
+    const href = (kind: string) => items.find((i) => i.kind === kind)?.publicHref;
+
+    expect(href("story")).toBe("/news/big-news");
+    expect(href("video")).toBe("/video/a-video");
+    expect(href("event")).toBe("/event/open-day");
+  });
+
+  // /featured-machine is one page listing the current booking — an individual
+  // machine has no URL of its own to send the member to.
+  it("gives equipment no public href even when published", async () => {
+    db({
+      featured_machines: () => queryBuilder(dbOk(
+        [{ id: "m1", name: "Press brake", status: "published", rejected_reason: null, created_at: "2026-09-04T10:00:00Z" }],
+        1,
+      )),
+    });
+
+    const { items } = await memberContent("mem1", { statuses: CONTENT_FILTERS.published });
+
+    expect(items[0]).toMatchObject({ kind: "machine", publicHref: null });
+  });
+
+  // A draft or pending row has a slug, but that URL 404s until it publishes —
+  // linking to it would be worse than not linking at all.
+  it("withholds the public href until a row is actually published", async () => {
+    db({
+      stories: () => queryBuilder(dbOk([
+        row("s1", "2026-09-01T10:00:00Z", { status: "awaiting_approval", slug: "pending-news" }),
+        row("s2", "2026-08-01T10:00:00Z", { status: "draft", slug: "draft-news" }),
+        row("s3", "2026-07-01T10:00:00Z", { status: "scheduled", slug: "soon-news" }),
+      ], 3)),
+    });
+
+    const { items } = await memberContent("mem1", { statuses: CONTENT_FILTERS.all });
+
+    expect(items.map((i) => i.publicHref)).toEqual([null, null, null]);
+  });
+
+  it("every filter maps to at least one status, and 'all' covers them all", async () => {
+    for (const [name, statuses] of Object.entries(CONTENT_FILTERS)) {
+      expect(statuses.length, name).toBeGreaterThan(0);
+      if (name === "all") continue;
+      for (const s of statuses) expect(CONTENT_FILTERS.all).toContain(s);
+    }
+  });
+
+  it("isContentFilter gates the ?status= param", () => {
+    expect(isContentFilter("published")).toBe(true);
+    expect(isContentFilter("all")).toBe(true);
+    expect(isContentFilter("bogus")).toBe(false);
+    expect(isContentFilter("")).toBe(false);
   });
 });

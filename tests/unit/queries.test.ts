@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  activePlacements, activeTakeover, eventBySlug, headlineStory, headlineVideo, ilikeTerm, memberBySlug, memberCategories,
+  activePlacements, activeTakeover, eventBySlug, headlineStory, headlineVideo, ilikeTerm, industries, memberBySlug,
   memberDirectory, newsletterBySlug, pastEvents, publishedStories, publishedVideos, searchSite, sentNewsletters, staticPage,
-  storiesByMemberCategory, storyBySlug, storyCategories, storyIntros, upcomingEvents, videoBySlug,
+  storiesByIndustry, storyBySlug, storyCategories, storyIntros, upcomingEvents, videoBySlug,
 } from "@/lib/queries";
 import { publicDb, serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -130,39 +130,42 @@ describe("storyCategories / activePlacements / sentNewsletters", () => {
   });
 });
 
-describe("memberCategories", () => {
-  it("fetches member-kind categories, defaulting to an empty list", async () => {
-    const catsBuilder = queryBuilder(dbOk([{ slug: "welding", name: "Welding" }]));
-    db({ categories: () => catsBuilder });
-    expect(await memberCategories()).toEqual([{ slug: "welding", name: "Welding" }]);
-    expect(catsBuilder.eq).toHaveBeenCalledWith("kind", "member");
+describe("industries", () => {
+  it("fetches the industry list in its curated order, defaulting to an empty list", async () => {
+    const indBuilder = queryBuilder(dbOk([{ slug: "welding", name: "Welding" }]));
+    db({ industries: () => indBuilder });
+    expect(await industries()).toEqual([{ slug: "welding", name: "Welding" }]);
+    // sort_order, not name: the strip's order is editorial, set in the console
+    expect(indBuilder.order).toHaveBeenCalledWith("sort_order");
 
-    db({ categories: () => queryBuilder(dbOk(null)) });
-    expect(await memberCategories()).toEqual([]);
+    db({ industries: () => queryBuilder(dbOk(null)) });
+    expect(await industries()).toEqual([]);
   });
 });
 
-describe("storiesByMemberCategory", () => {
+describe("storiesByIndustry", () => {
   it("returns null for an unknown slug without querying stories", async () => {
-    const from = db({ categories: () => queryBuilder(dbOk(null)) });
-    expect(await storiesByMemberCategory("bogus")).toBeNull();
+    const from = db({ industries: () => queryBuilder(dbOk(null)) });
+    expect(await storiesByIndustry("bogus")).toBeNull();
     expect(from).not.toHaveBeenCalledWith("stories");
   });
 
-  it("filters through the member inner join on the resolved category id", async () => {
+  it("filters on the story's own industry_id, with no member join", async () => {
     const storiesBuilder = queryBuilder(dbOk([{ id: "s1" }], 7));
     db({
       stories: () => storiesBuilder,
-      categories: () => queryBuilder(dbOk({ id: "cat1", slug: "welding", name: "Welding" })),
+      industries: () => queryBuilder(dbOk({ id: "ind1", slug: "welding", name: "Welding" })),
     });
 
-    const result = await storiesByMemberCategory("welding", { limit: 12, offset: 12 });
+    const result = await storiesByIndustry("welding", { limit: 12, offset: 12 });
 
-    // guards the STORY_CARD.replace() building the inner-join projection
-    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.stringContaining("member:members!inner("), { count: "exact" });
-    expect(storiesBuilder.eq).toHaveBeenCalledWith("member.category_id", "cat1");
+    // the member embed must stay a LEFT join: an editorial story with an
+    // industry but no member has to survive the filter (it did not before
+    // migration 20260909000002, which is the point of the direct column)
+    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.not.stringContaining("!inner"), { count: "exact" });
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("industry_id", "ind1");
     expect(storiesBuilder.range).toHaveBeenCalledWith(12, 23);
-    expect(result).toEqual({ category: { slug: "welding", name: "Welding" }, stories: [{ id: "s1" }], total: 7 });
+    expect(result).toEqual({ industry: { slug: "welding", name: "Welding" }, stories: [{ id: "s1" }], total: 7 });
   });
 });
 
@@ -259,13 +262,13 @@ describe("memberDirectory", () => {
     expect(membersBuilder.or).toHaveBeenCalledWith("name.ilike.%fabrication%,description.ilike.%fabrication%");
   });
 
-  it("resolves category slugs and filters by their ids", async () => {
+  it("resolves industry slugs and filters by their ids", async () => {
     const membersBuilder = queryBuilder(dbOk([], 0));
-    db({ members: () => membersBuilder, categories: () => queryBuilder(dbOk([{ id: "cat1" }])) });
+    db({ members: () => membersBuilder, industries: () => queryBuilder(dbOk([{ id: "ind1" }])) });
 
-    await memberDirectory({ categories: ["fabrication"] });
+    await memberDirectory({ industries: ["fabrication"] });
 
-    expect(membersBuilder.in).toHaveBeenCalledWith("category_id", ["cat1"]);
+    expect(membersBuilder.in).toHaveBeenCalledWith("industry_id", ["ind1"]);
   });
 
   it("filters services through member_services, not membership_types", async () => {

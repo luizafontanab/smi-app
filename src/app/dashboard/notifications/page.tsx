@@ -1,6 +1,7 @@
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { notificationLabel } from "@/lib/email/templates";
+import { unreadNotificationCount } from "@/lib/notifications";
 import { Pagination } from "@/components/Pagination";
 import { markAllNotificationsRead, markNotificationRead } from "../actions";
 
@@ -14,12 +15,12 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
   const page = Math.max(1, Number(sp.page) || 1);
   const db = serviceDb();
 
-  const [{ data: notifications, count }, { count: unread }] = await Promise.all([
+  const [{ data: notifications, count }, unread] = await Promise.all([
     db.from("notifications").select("id, kind, payload, created_at, read_at", { count: "exact" })
       .eq("member_id", user.memberId)
       .order("created_at", { ascending: false })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
-    db.from("notifications").select("*", { count: "exact", head: true }).eq("member_id", user.memberId).is("read_at", null),
+    unreadNotificationCount(user.memberId),
   ]);
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
   const qs = (p: number) => (p > 1 ? `/dashboard/notifications?page=${p}` : "/dashboard/notifications");

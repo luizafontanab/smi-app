@@ -26,7 +26,7 @@ const LINKS = [
  */
 export function MobileNav({ user, accountLinks = [], signOutAction }: {
   user: CurrentUser | null;
-  accountLinks?: { href: string; label: string }[];
+  accountLinks?: { href: string; label: string; badge?: number }[];
   signOutAction?: () => Promise<void>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -83,8 +83,19 @@ export function MobileNav({ user, accountLinks = [], signOutAction }: {
               <>
                 <p className="truncate px-3 text-xs text-white/60">{name}</p>
                 {accountLinks.map((l) => (
-                  <Link key={l.href} href={l.href} onClick={close} className="block rounded px-3 py-2.5 hover:bg-chrome-hover">
-                    {l.label}
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    onClick={close}
+                    aria-label={l.badge ? `${l.label}, ${l.badge} unread` : undefined}
+                    className="flex items-center justify-between gap-2 rounded px-3 py-2.5 hover:bg-chrome-hover"
+                  >
+                    <span>{l.label}</span>
+                    {Boolean(l.badge) && (
+                      <span aria-hidden="true" className="min-w-5 rounded-full bg-brand px-1.5 text-center text-xs font-bold leading-5 text-ink">
+                        {l.badge}
+                      </span>
+                    )}
                   </Link>
                 ))}
                 {signOutAction && (

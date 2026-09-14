@@ -40,6 +40,14 @@ describe.skipIf(!ANON_KEY || !SECRET_KEY)("anon write lockdown (migration 202609
     expect(error).toBeNull();
   });
 
+  it("anon can read industries (the strip is in the public layout — every page)", async () => {
+    // RLS with no policy denies everything, so a missing public_read_industries
+    // would empty the industry bar site-wide with no error anywhere. This is the
+    // only test that catches it.
+    const { error } = await anon().from("industries").select("id").limit(1);
+    expect(error).toBeNull();
+  });
+
   it("the service role can still call the metric RPCs", async () => {
     const service = createClient(URL_, SECRET_KEY!, { auth: { persistSession: false } });
     // unknown broadcast id: updates zero rows, proving only that execute is granted

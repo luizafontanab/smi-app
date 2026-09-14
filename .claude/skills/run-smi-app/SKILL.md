@@ -9,7 +9,7 @@ Three moving parts. Only the first two are needed to look at a page.
 
 1. **Supabase** (Postgres/Auth/Storage, Docker, ports `563xx`) — every page reads from it; without it the app boots but errors on data.
 2. **`pnpm dev`** — Next.js 16 + Turbopack on **port 3100**.
-3. **`scripts/job-runner.ts`** — optional background jobs (scheduled publishing, notifications). Skip unless the change touches jobs.
+3. **`scripts/job-runner.ts`** — the clock-driven jobs only (scheduled publishing, the daily sweeps). Member notifications no longer need it in dev — see Background jobs. Skip unless you're working on something time-based.
 
 ## Start
 
@@ -73,7 +73,12 @@ For real content instead of synthetic data, swap `scripts/seed.ts` for `scripts/
 set -a && source .env.local && set +a && CRON_SECRET=local pnpm exec tsx scripts/job-runner.ts
 ```
 
-Without it, scheduled publishing and notification jobs simply never run — pages stay in the state the seed left them.
+**In development you mostly don't need it.** A job that is already due runs as soon as the response is sent (`runDueJobInlineInDev`, `src/lib/jobs.ts`), so a member notification and its email land immediately — the queue no longer looks like a no-op when the runner isn't up. Dev only; production leaves all of it to Vercel Cron, which currently runs once a day (HUMAN-TODO §13.1).
+
+Two things it does *not* cover, and this is why the runner still exists:
+
+- **Delayed jobs keep their delay.** `social_push` is enqueued at +30 minutes and dev does not shortcut that.
+- **Time-based sweeps never self-trigger.** `publish_scheduled`, `comp_expiry`, `membership_lapse`, `advert_lifecycle`, `admin_digest` and the rest only fire from the runner. Without it a story scheduled for 10am stays scheduled.
 
 ## Tests
 

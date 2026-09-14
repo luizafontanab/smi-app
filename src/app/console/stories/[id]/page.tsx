@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { consoleUploadImage, decideStory, pinStory, saveStory, scheduleStory } from "../../actions";
+import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory } from "../../actions";
 import { CoverField } from "@/components/CoverField";
 import { parseFocus, focusStyle } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -29,7 +29,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
     isNew
       ? Promise.resolve({ data: null })
       : db.from("stories").select("*, member:members(name, logo_path, slug, status)").eq("id", id).single(),
-    db.from("categories").select("id, name").eq("kind", "story").order("name"),
+    db.from("categories").select("id, name").order("name"),
     db.from("members").select("id, name").eq("status", "active").order("name"),
   ]);
   if (!isNew && !story) notFound();
@@ -156,6 +156,15 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                     <button className="rounded bg-ink px-3 py-1.5 text-white">Pin</button>
                   </>
                 )}
+              </form>
+              {/* Return to draft was previously reachable only by dragging the
+                  card on the board — the matrix allowed it, no button offered
+                  it (fix list). */}
+              <form action={returnToDraft} className="mt-4 border-t pt-3">
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="kind" value="story" />
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <p className="mt-1 text-xs text-graphite">Takes it off the site straight away. The member is not emailed.</p>
               </form>
             </div>
           )}

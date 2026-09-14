@@ -3,7 +3,7 @@ import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { parseDateParam, parseViewedCats, VIEWED_CATS_COOKIE } from "@/lib/news-prefs";
-import { forYouStories, memberCategories, mostViewedStories, publishedStories, storyCategories } from "@/lib/queries";
+import { forYouStories, industries as industryList, mostViewedStories, publishedStories, storyCategories } from "@/lib/queries";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { ScrollToHash } from "@/components/ScrollToHash";
@@ -38,7 +38,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
     publishedStories({ limit: RAIL_SIZE, memberOnly: true }),
     publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly, industry, from, to }),
     storyCategories(),
-    memberCategories(),
+    industryList(),
     liveAdverts("banner"),
     liveAdverts("supplier_logo"),
     showAdPlaceholders(),

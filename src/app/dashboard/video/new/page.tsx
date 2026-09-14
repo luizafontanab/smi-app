@@ -9,7 +9,11 @@ export const metadata = { title: "Add a video" };
 
 export default async function NewMemberVideo() {
   const user = await requireMember();
-  const { data: member } = await serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single();
+  const db = serviceDb();
+  const [{ data: member }, { data: inds }] = await Promise.all([
+    db.from("members").select("name, slug, logo_path, industry_id").eq("id", user.memberId).single(),
+    db.from("industries").select("id, name").order("sort_order"),
+  ]);
   return (
     <div className="mx-auto max-w-2xl">
       <AddContentTabs active="video" />
@@ -21,6 +25,8 @@ export default async function NewMemberVideo() {
       <VideoForm
         action={submitVideo}
         uploadImage={memberUploadVideoImage}
+        industries={inds ?? []}
+        defaultIndustryId={member?.industry_id ?? null}
         member={{ name: member?.name ?? "", slug: member?.slug ?? "", logoUrl: mediaUrl(member?.logo_path) }}
       />
     </div>

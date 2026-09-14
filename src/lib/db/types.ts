@@ -679,19 +679,16 @@ export type Database = {
       categories: {
         Row: {
           id: number
-          kind: Database["public"]["Enums"]["category_kind"]
           name: string
           slug: string
         }
         Insert: {
           id?: number
-          kind: Database["public"]["Enums"]["category_kind"]
           name: string
           slug: string
         }
         Update: {
           id?: number
-          kind?: Database["public"]["Enums"]["category_kind"]
           name?: string
           slug?: string
         }
@@ -878,6 +875,7 @@ export type Database = {
           description: string | null
           ends_on: string | null
           id: string
+          industry_id: number | null
           lat: number | null
           link: string | null
           lng: number | null
@@ -900,6 +898,7 @@ export type Database = {
           description?: string | null
           ends_on?: string | null
           id?: string
+          industry_id?: number | null
           lat?: number | null
           link?: string | null
           lng?: number | null
@@ -922,6 +921,7 @@ export type Database = {
           description?: string | null
           ends_on?: string | null
           id?: string
+          industry_id?: number | null
           lat?: number | null
           link?: string | null
           lng?: number | null
@@ -939,6 +939,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "events_industry_id_fkey"
+            columns: ["industry_id"]
+            isOneToOne: false
+            referencedRelation: "industries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "events_member_id_fkey"
             columns: ["member_id"]
@@ -1039,6 +1046,27 @@ export type Database = {
           message?: string
           name?: string
           read?: boolean
+        }
+        Relationships: []
+      }
+      industries: {
+        Row: {
+          id: number
+          name: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          id?: number
+          name: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          id?: number
+          name?: string
+          slug?: string
+          sort_order?: number
         }
         Relationships: []
       }
@@ -1269,7 +1297,6 @@ export type Database = {
           address: string | null
           billing_mode: string
           cancel_requested_at: string | null
-          category_id: number | null
           comped_until: string | null
           contact_email: string | null
           created_at: string
@@ -1278,6 +1305,7 @@ export type Database = {
           grace_until: string | null
           hero_path: string | null
           id: string
+          industry_id: number | null
           is_bundle_account: boolean
           joined_at: string | null
           lat: number | null
@@ -1300,7 +1328,6 @@ export type Database = {
           address?: string | null
           billing_mode?: string
           cancel_requested_at?: string | null
-          category_id?: number | null
           comped_until?: string | null
           contact_email?: string | null
           created_at?: string
@@ -1309,6 +1336,7 @@ export type Database = {
           grace_until?: string | null
           hero_path?: string | null
           id?: string
+          industry_id?: number | null
           is_bundle_account?: boolean
           joined_at?: string | null
           lat?: number | null
@@ -1331,7 +1359,6 @@ export type Database = {
           address?: string | null
           billing_mode?: string
           cancel_requested_at?: string | null
-          category_id?: number | null
           comped_until?: string | null
           contact_email?: string | null
           created_at?: string
@@ -1340,6 +1367,7 @@ export type Database = {
           grace_until?: string | null
           hero_path?: string | null
           id?: string
+          industry_id?: number | null
           is_bundle_account?: boolean
           joined_at?: string | null
           lat?: number | null
@@ -1360,10 +1388,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "members_category_id_fkey"
-            columns: ["category_id"]
+            foreignKeyName: "members_industry_id_fkey"
+            columns: ["industry_id"]
             isOneToOne: false
-            referencedRelation: "categories"
+            referencedRelation: "industries"
             referencedColumns: ["id"]
           },
         ]
@@ -1912,6 +1940,7 @@ export type Database = {
           created_at: string
           excerpt: string | null
           id: string
+          industry_id: number | null
           is_member_news: boolean
           member_id: string | null
           pinned_until: string | null
@@ -1933,6 +1962,7 @@ export type Database = {
           created_at?: string
           excerpt?: string | null
           id?: string
+          industry_id?: number | null
           is_member_news?: boolean
           member_id?: string | null
           pinned_until?: string | null
@@ -1954,6 +1984,7 @@ export type Database = {
           created_at?: string
           excerpt?: string | null
           id?: string
+          industry_id?: number | null
           is_member_news?: boolean
           member_id?: string | null
           pinned_until?: string | null
@@ -1969,6 +2000,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "stories_industry_id_fkey"
+            columns: ["industry_id"]
+            isOneToOne: false
+            referencedRelation: "industries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stories_member_id_fkey"
             columns: ["member_id"]
@@ -2020,6 +2058,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          industry_id: number | null
           member_id: string | null
           pinned_until: string | null
           published_at: string | null
@@ -2038,6 +2077,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          industry_id?: number | null
           member_id?: string | null
           pinned_until?: string | null
           published_at?: string | null
@@ -2056,6 +2096,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          industry_id?: number | null
           member_id?: string | null
           pinned_until?: string | null
           published_at?: string | null
@@ -2071,6 +2112,13 @@ export type Database = {
           url?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "videos_industry_id_fkey"
+            columns: ["industry_id"]
+            isOneToOne: false
+            referencedRelation: "industries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "videos_member_id_fkey"
             columns: ["member_id"]
@@ -2141,7 +2189,6 @@ export type Database = {
       site_sessions_last_year: { Args: never; Returns: number }
     }
     Enums: {
-      category_kind: "story" | "member"
       content_status:
         | "draft"
         | "awaiting_approval"
@@ -2286,7 +2333,6 @@ export const Constants = {
   },
   public: {
     Enums: {
-      category_kind: ["story", "member"],
       content_status: [
         "draft",
         "awaiting_approval",

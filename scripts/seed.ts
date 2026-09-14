@@ -7,11 +7,14 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { faker } from "@faker-js/faker";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Role } from "@/lib/auth";
 import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
-import { INDUSTRIES } from "./lib/industries";
+import { INDUSTRY_ROWS } from "./lib/industries";
 
 faker.seed(42);
 
@@ -21,12 +24,9 @@ if (!SECRET_KEY) throw new Error("SUPABASE_SECRET_KEY not set (load .env.local)"
 assertSeedTarget(SUPABASE_URL);
 const db = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
 
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WP = "https://sheetmetalindustries.com/wp-json/wp/v2";
 const UK_REGIONS = ["West Midlands", "South Yorkshire", "Greater Manchester", "East Midlands", "South East", "North West", "Scotland", "Wales", "North East", "East of England"];
-// The canonical industries, shared with seed-real.ts so the two seeds cannot
-// disagree about what categories kind='member' means (they did: seed-real was
-// writing the 69-term Services vocabulary here).
-const MEMBER_CATEGORIES = [...INDUSTRIES];
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/&[a-z0-9#]+;/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -68,7 +68,7 @@ async function main() {
   console.log("— media: clearing stale files from previous seeds");
   await emptyBucket();
 
-  console.log("— categories (real story cats from WP + member cats)");
+  console.log("— categories (real news topics from WP) + industries");
   // WP's native "category" taxonomy: nearly every post on the live site is
   // "Uncategorized" (2060 of ~2064), with 3 strays under long-dead one-off
   // categories — not what the requirements' "~30 categories" describes. The
@@ -80,15 +80,40 @@ async function main() {
     `${WP}/tags?per_page=50&orderby=count&order=desc`
   ).then((r) => r.json());
   const storyCats = wpCats.filter((c) => c.count > 0).slice(0, 30);
-  const catRows = [
-    ...storyCats.map((c) => ({ kind: "story", slug: c.slug, name: decode(c.name) })),
-    ...MEMBER_CATEGORIES.map((n) => ({ kind: "member", slug: slugify(n), name: n })),
-  ];
-  const { data: cats, error: catErr } = await db.from("categories").upsert(catRows, { onConflict: "kind,slug" }).select();
+  const catRows = storyCats.map((c) => ({ slug: c.slug, name: decode(c.name) }));
+  const { data: cats, error: catErr } = await db.from("categories").upsert(catRows, { onConflict: "slug" }).select();
   if (catErr) throw catErr;
-  const storyCatIds = cats!.filter((c) => c.kind === "story").map((c) => c.id);
-  const memberCatIds = cats!.filter((c) => c.kind === "member").map((c) => c.id);
-  const wpCatMap = new Map(storyCats.map((c) => [c.id, cats!.find((x) => x.kind === "story" && x.slug === c.slug)?.id]));
+  const storyCatIds = cats!.map((c) => c.id);
+  const wpCatMap = new Map(storyCats.map((c) => [c.id, cats!.find((x) => x.slug === c.slug)?.id]));
+
+  // Industries are their own table since 20260909000002, and that migration
+  // already inserts these rows — upserting keeps the seed self-sufficient.
+  const { data: inds, error: indErr } = await db.from("industries").upsert(INDUSTRY_ROWS, { onConflict: "slug" }).select();
+  if (indErr) throw indErr;
+  const industryIds = inds!.map((i) => i.id);
+
+  // Services: many per member, distinct from the single industry above. Migration
+  // 20260909000001 deliberately seeds no rows — the real 69-term vocabulary comes
+  // out of the WordPress `best-service` taxonomy in seed-real.ts. This is a
+  // representative subset so the synthetic seed still exercises the directory's
+  // Services filter and the member profile's services picker, which otherwise
+  // render against an empty table. Not shared with INDUSTRY_ROWS-style constants
+  // on purpose: the two seeds legitimately carry different vocabularies here.
+  const SERVICE_NAMES = [
+    "Assembly", "Automation / Robotics", "Bending / Folding", "Consultancy Services",
+    "Design & Prototyping Services", "Finishing / Coating", "Laser Cutting Services",
+    "Powder Coating", "Press Braking", "Punching Services", "Tube Bending", "Welding / Fabrication",
+  ];
+  const { data: svcs, error: svcErr } = await db
+    .from("services")
+    .upsert(SERVICE_NAMES.map((name) => ({ slug: slugify(name), name })), { onConflict: "slug" })
+    .select();
+  if (svcErr) throw svcErr;
+  const serviceIds = svcs!.map((s) => s.id);
+
+  const { data: mTypes, error: mTypeErr } = await db.from("membership_types").select("id");
+  if (mTypeErr) throw mTypeErr;
+  const membershipTypeIds = (mTypes ?? []).map((t) => t.id);
 
   console.log("— members (synthetic ~85)");
   const memberRows = Array.from({ length: 85 }, (_, i) => {
@@ -101,7 +126,7 @@ async function main() {
       // join funnel: one draft ready to activate (paid + page submitted), one mid-funnel (neither)
       paid_at: i === 83 ? faker.date.recent({ days: 3 }).toISOString() : null,
       draft_submitted_at: i === 83 ? faker.date.recent({ days: 2 }).toISOString() : null,
-      category_id: faker.helpers.arrayElement(memberCatIds),
+      industry_id: faker.helpers.arrayElement(industryIds),
       description: faker.lorem.paragraphs(2),
       address: `${faker.location.streetAddress()}, ${faker.helpers.arrayElement(UK_REGIONS)}`,
       lat: faker.location.latitude({ min: 50.5, max: 55.5 }),
@@ -113,9 +138,62 @@ async function main() {
       joined_at: faker.date.past({ years: 4 }).toISOString().slice(0, 10),
     };
   });
-  const { data: members, error: memErr } = await db.from("members").insert(memberRows).select("id, slug, name, status");
+  const { data: members, error: memErr } = await db.from("members").insert(memberRows).select("id, slug, name, status, industry_id");
   if (memErr) throw memErr;
   const activeMembers = members!.filter((m) => m.status === "active");
+  /** Content inherits its member's industry, matching migration 20260909000002. */
+  const industryOfMember = (id: string | null) =>
+    id ? members!.find((m) => m.id === id)?.industry_id ?? null : null;
+
+  // Both are join tables, so a member can hold several of each — that is the
+  // whole reason they aren't columns. Without these links the directory's
+  // Services and Membership-type filters match nothing on a synthetic seed, and
+  // the member area's read-only "Membership type" row always reads "Not set".
+  console.log("— member services and membership types");
+  const pickSome = <T,>(pool: T[], min: number, max: number) =>
+    faker.helpers.arrayElements(pool, faker.number.int({ min, max }));
+  const serviceLinks = members!.flatMap((m) =>
+    pickSome(serviceIds, 1, 4).map((service_id) => ({ member_id: m.id, service_id })));
+  const { error: svcLinkErr } = await db.from("member_services").insert(serviceLinks);
+  if (svcLinkErr) throw svcLinkErr;
+  if (membershipTypeIds.length) {
+    const typeLinks = members!.flatMap((m) =>
+      pickSome(membershipTypeIds, 1, 2).map((membership_type_id) => ({ member_id: m.id, membership_type_id })));
+    const { error: typeLinkErr } = await db.from("member_membership_types").insert(typeLinks);
+    if (typeLinkErr) throw typeLinkErr;
+  }
+
+  // Member imagery (fix list). This seed used to set neither logo_path nor
+  // hero_path on any of the 85 rows, so every member page rendered with no
+  // artwork and there was nothing local to check crops, sizes and the logo/hero
+  // overlap against. seed-real.ts gets real images from the WP extract; this is
+  // the synthetic seed's equivalent, using the same committed-asset pattern as
+  // the Salvagnini machine photo there.
+  //
+  // Real marks on faker companies, deliberately: the point is realistic aspect
+  // ratios, and this seed never runs against anything but a local/throwaway DB
+  // (assertSeedTarget above enforces that). The four members below cover all
+  // four logo/hero combinations the member page branches on — see its own
+  // comments around the -mt-16 logo overlap.
+  console.log("— member logos and covers (4 of 85, spread across shapes)");
+  const asset = async (file: string, slug: string, name: string, contentType: string) =>
+    upload(`members/${slug}/${name}`, await readFile(path.join(HERE, "seed-assets", "members", file)), contentType);
+
+  const imagery: { logo?: [string, string]; hero?: [string, string] }[] = [
+    { logo: ["logo-square.jpeg", "image/jpeg"], hero: ["hero-1.jpg", "image/jpeg"] },   // 200×200 square + 800×400
+    { logo: ["logo-extra-wide.png", "image/png"], hero: ["hero-2.jpg", "image/jpeg"] }, // 172×34, the extreme case
+    { hero: ["hero-3.jpg", "image/jpeg"] },                                             // cover, no logo → ⚙ placeholder
+    { logo: ["logo-wide.png", "image/png"] },                                           // 200×90 logo, no cover
+  ];
+  for (const [i, want] of imagery.entries()) {
+    const m = activeMembers[i];
+    if (!m) break;
+    const ext = (f: string) => f.slice(f.lastIndexOf("."));
+    const logo_path = want.logo ? await asset(want.logo[0], m.slug, `logo${ext(want.logo[0])}`, want.logo[1]) : null;
+    const hero_path = want.hero ? await asset(want.hero[0], m.slug, `hero${ext(want.hero[0])}`, want.hero[1]) : null;
+    const { error } = await db.from("members").update({ logo_path, hero_path }).eq("id", m.id);
+    if (error) throw error;
+  }
 
   console.log("— auth users (1 admin, media co member, 3 member logins)");
   const mkUser = async (email: string, role: Role, member_id: string | null, display_name: string) => {
@@ -167,6 +245,7 @@ async function main() {
     }
     // every ~5th real story becomes member news attributed to a seeded member
     const asMemberNews = i % 5 === 4;
+    const storyMemberId = asMemberNews ? faker.helpers.arrayElement(activeMembers).id : null;
     storyRows.push({
       slug: slugify(p.slug),
       title: decode(stripTags(p.title.rendered)),
@@ -175,7 +254,8 @@ async function main() {
       status: "published",
       source: "import",
       is_member_news: asMemberNews,
-      member_id: asMemberNews ? faker.helpers.arrayElement(activeMembers).id : null,
+      member_id: storyMemberId,
+      industry_id: industryOfMember(storyMemberId),
       cover_path,
       published_at: p.date,
       wp_cats: (p.tags ?? []) as number[],
@@ -201,6 +281,7 @@ async function main() {
     await db.from("stories").insert({
       slug: slugify(p.title), title: p.title, body: `<p>${faker.lorem.paragraphs(3, "</p><p>")}</p>`,
       excerpt: faker.lorem.sentence(), status: p.status, source: p.source, member_id: p.member_id,
+      industry_id: industryOfMember(p.member_id),
       is_member_news: p.is_member_news,
       scheduled_at: p.status === "scheduled" ? faker.date.soon({ days: 3 }).toISOString() : null,
     });
@@ -307,7 +388,7 @@ async function main() {
     // and seeds must never call Nominatim (usage policy: one lookup per save).
     { slug: "smi-golf-challenge-2026", title: "SMI Golf Challenge 2026", location: "Belfry, West Midlands", lat: 52.5623, lng: -1.7259, starts_on: "2026-09-17", status: "published", description: "The annual SMI golf day.", type: "golf_challenge" },
     { slug: "euroblech-2026", title: "EuroBLECH 2026", location: "Hanover, Germany", lat: 52.3207, lng: 9.8106, starts_on: "2026-10-20", ends_on: "2026-10-23", status: "published", link: "https://www.euroblech.com", type: "exhibition" },
-    { slug: "open-house-bending-demo", title: "Open house: bending cell demo", location: faker.location.city(), starts_on: iso(new Date(today.getTime() + 30 * 864e5)), status: "awaiting_approval", member_id: memberLogins[0] },
+    { slug: "open-house-bending-demo", title: "Open house: bending cell demo", location: faker.location.city(), starts_on: iso(new Date(today.getTime() + 30 * 864e5)), status: "awaiting_approval", member_id: memberLogins[0], industry_id: industryOfMember(memberLogins[0]) },
     // past and published — the archive on /event and the "already taken place"
     // notice on /event/[slug] are otherwise unreachable from seed data
     { slug: "smi-golf-challenge-2025", title: "SMI Golf Challenge 2025", location: "Belfry, West Midlands", starts_on: iso(new Date(today.getTime() - 340 * 864e5)), status: "published", description: "<p>Last year's golf day.</p>" },
@@ -315,13 +396,15 @@ async function main() {
   const ytIds = ["fLcEcOuZTBs", "kXYiU_JCYtU", "hTWKbfoikeg", "9bZkp7q19f0", "dQw4w9WgXcQ", "L_jWHffIx5E"];
   await db.from("videos").insert(ytIds.map((v, i) => {
     const title = `${faker.company.buzzPhrase()} — shop floor tour`;
+    const videoMemberId = i < 3 ? activeMembers[i + 6].id : null;
     return {
       // buzzPhrase can repeat across six rows, and videos.slug is unique — the
       // index suffix is what keeps a reseed from failing on a coincidence
       slug: `${slugify(title)}-${i}`,
       title, url: `https://www.youtube.com/watch?v=${v}`,
       description: `<p>${faker.lorem.paragraph()}</p>`,
-      member_id: i < 3 ? activeMembers[i + 6].id : null, status: "published", source: i < 2 ? "manual" : "curated",
+      member_id: videoMemberId, industry_id: industryOfMember(videoMemberId),
+      status: "published", source: i < 2 ? "manual" : "curated",
       published_at: faker.date.recent({ days: 60 }).toISOString(),
     };
   }));

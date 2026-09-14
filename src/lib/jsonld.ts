@@ -114,7 +114,7 @@ export function localBusinessLd(member: {
   website?: string | null;
   logoUrl?: string | null;
   socialUrls?: string[];
-  categoryName?: string | null;
+  industryName?: string | null;
 }): Ld {
   return compact({
     "@context": "https://schema.org",
@@ -134,7 +134,7 @@ export function localBusinessLd(member: {
       ? [member.website, ...(member.socialUrls ?? [])].filter(Boolean)
       : undefined,
     image: member.logoUrl ?? undefined,
-    knowsAbout: member.categoryName ?? undefined,
+    knowsAbout: member.industryName ?? undefined,
   });
 }
 

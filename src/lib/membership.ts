@@ -12,6 +12,18 @@ export const MEMBER_STATUSES: readonly MemberStatus[] = ["draft", "active", "gra
 export const BILLING_MODES: readonly string[] = ["card", "invoice"];
 
 /**
+ * Member-facing wording for a status. "grace" and "lapsed" are internal terms —
+ * a member reading their own page should get the plain-English version, and the
+ * grace banner in the dashboard layout already explains the detail.
+ */
+export const MEMBER_STATUS_LABELS: Record<MemberStatus, string> = {
+  draft: "Awaiting activation",
+  active: "Active",
+  grace: "Payment overdue",
+  lapsed: "Lapsed",
+};
+
+/**
  * V13 step 4 (A17) — a draft member only goes live once a payment or comp is on
  * record. Both the list-page Activate button and the console edit form POST
  * directly, so this is a guard, not a UI nicety: it is evaluated against the

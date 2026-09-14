@@ -19,6 +19,9 @@
  *        [--no-adverts]    seed everything except the sample adverts
  *        [--adverts-only]  add sample adverts to an already-seeded DB, nothing else
  *        [--pages-only]    upsert static pages into an already-seeded DB, nothing else
+ *        [--taxonomies-only] repair industries/services/membership-type links on an
+ *                          already-seeded DB — idempotent, writes no content or media
+ *        [--dry-run]       with --taxonomies-only: print the changes, write nothing
  *        [--remote]        allow a non-localhost target; also lifts the story cap
  */
 import { createClient } from "@supabase/supabase-js";
@@ -80,6 +83,13 @@ const MEDIA_ONLY = process.argv.includes("--media-only");
 // --pages-only: upsert static pages into an already-seeded DB, nothing else —
 // safe on a populated target because static_pages upserts on slug
 const PAGES_ONLY = process.argv.includes("--pages-only");
+// --taxonomies-only: repair the three member taxonomies on an already-seeded DB
+// without touching content or media. Written for production, which was seeded
+// before the taxonomy split and so has no services/member_services rows and no
+// real industry assignment. Every write is an upsert, so it is re-runnable.
+const TAXONOMIES_ONLY = process.argv.includes("--taxonomies-only");
+// --dry-run: print what --taxonomies-only would change and write nothing.
+const DRY_RUN = process.argv.includes("--dry-run");
 
 const seed = async <T>(name: string): Promise<T> =>
   JSON.parse(await readFile(path.join(EXTRACT_DIR, "seed", name), "utf8"));
@@ -178,6 +188,141 @@ async function seedAdverts(
     { short_name: "Newsletter banner", format: "newsletter_banner", cap: 3, rate_pennies: 35000 },
     { short_name: "Association logo", format: "association_logo", cap: 3, rate_pennies: 15000 },
   ]);
+}
+
+/**
+ * Repair the three member taxonomies on a database that already holds members
+ * — production, which was seeded before the taxonomy split (20260909000001,
+ * 20260909000002) and so has an empty `services`, an empty `member_services`,
+ * an empty `member_membership_types`, and no real industry assignment.
+ *
+ * Everything here is an upsert keyed on a natural key, so the pass is
+ * re-runnable and safe to interrupt. It writes no content and touches no media.
+ *
+ * Members are matched to the extract by SLUG: `members` carries no
+ * wp_member_id, and slug is the only stable identifier both sides share.
+ */
+async function backfillTaxonomies(
+  memberRows: { wp_member_id: number; slug: string }[],
+  catRows: { kind: string; slug: string; name: string }[],
+  servicesOf: (wp: number) => string[],
+  sectorsOf: (wp: number) => string[],
+) {
+  const say = (s: string) => console.log(`${DRY_RUN ? "[dry-run] " : ""}${s}`);
+  say(`— taxonomies-only against ${SUPABASE_URL}`);
+
+  // 1. Industries. The migration inserts these; upserting makes the script
+  //    self-sufficient and re-asserts names if one was edited by hand.
+  say(`— industries (${INDUSTRY_ROWS.length})`);
+  if (!DRY_RUN) {
+    const { error } = await db.from("industries").upsert(INDUSTRY_ROWS, { onConflict: "slug" });
+    if (error) throw error;
+  }
+  const { data: inds, error: indErr } = await db.from("industries").select("id, slug");
+  if (indErr) throw indErr;
+  const industryId = new Map((inds ?? []).map((i) => [i.slug, i.id]));
+
+  // 2. The Services vocabulary — the extract's member-kind category rows.
+  const serviceRows = catRows.filter((c) => c.kind === "member").map(({ slug, name }) => ({ slug, name }));
+  say(`— services (${serviceRows.length} terms)`);
+  if (!DRY_RUN) {
+    const { error } = await db.from("services").upsert(serviceRows, { onConflict: "slug" });
+    if (error) throw error;
+  }
+  const { data: svcRows, error: svcErr } = await db.from("services").select("id, slug");
+  if (svcErr) throw svcErr;
+  const serviceId = new Map((svcRows ?? []).map((s) => [s.slug, s.id]));
+
+  // 3. Match the target's members to the extract, by slug, and say loudly what
+  //    did not match in EITHER direction rather than skipping quietly.
+  const { data: liveMembers, error: memErr } = await db.from("members").select("id, slug");
+  if (memErr) throw memErr;
+  const idBySlug = new Map((liveMembers ?? []).map((m) => [m.slug, m.id]));
+  const extractBySlug = new Map(memberRows.map((m) => [m.slug, m]));
+  const matched = memberRows.filter((m) => idBySlug.has(m.slug));
+  const missingFromTarget = memberRows.filter((m) => !idBySlug.has(m.slug)).map((m) => m.slug);
+  const unknownInTarget = (liveMembers ?? []).filter((m) => !extractBySlug.has(m.slug)).map((m) => m.slug);
+  // Both directions are reported, but capped: against a local subset these run
+  // to ~80 slugs each and would bury the numbers that matter.
+  const sample = (slugs: string[]) =>
+    slugs.slice(0, 10).join(", ") + (slugs.length > 10 ? `, …and ${slugs.length - 10} more` : "");
+  say(`— members: ${matched.length} of ${memberRows.length} extract rows matched by slug`);
+  if (missingFromTarget.length) say(`  ⚠ in the extract but NOT in the target (${missingFromTarget.length}): ${sample(missingFromTarget)}`);
+  if (unknownInTarget.length) say(`  ⚠ in the target but NOT in the extract (${unknownInTarget.length}, left untouched): ${sample(unknownInTarget)}`);
+
+  // 4. Each member's derived industry. DEV ASSUMPTION, not source data — see
+  //    scripts/lib/industry-map.ts and docs/GO-LIVE.md 1.1.
+  const assignments = matched.map((m) => {
+    const industry = industryForServices(servicesOf(m.wp_member_id));
+    return { id: idBySlug.get(m.slug)!, slug: m.slug, industry_id: industry ? industryId.get(industrySlug(industry)) ?? null : null };
+  });
+  const resolved = assignments.filter((a) => a.industry_id != null);
+  say(`— member industries: ${resolved.length} resolved, ${assignments.length - resolved.length} left null`);
+  if (!DRY_RUN) {
+    for (const batch of chunk(assignments, 50)) {
+      await Promise.all(
+        batch.map(async (a) => {
+          const { error } = await db.from("members").update({ industry_id: a.industry_id }).eq("id", a.id);
+          if (error) throw error;
+        }),
+      );
+    }
+  }
+
+  // 5. Services per member, and membership types from the legacy `sector`
+  //    field. Only 2 of the 4 sector terms have an equivalent in the 5-item
+  //    list (docs/ask-jas.md); the rest stay unlinked rather than force-fitted.
+  const { data: mTypes, error: mtErr } = await db.from("membership_types").select("id, slug");
+  if (mtErr) throw mtErr;
+  const membershipTypeId = new Map((mTypes ?? []).map((t) => [t.slug, t.id]));
+
+  const serviceLinks = matched.flatMap((m) =>
+    servicesOf(m.wp_member_id).flatMap((slug) => {
+      const service_id = serviceId.get(slug);
+      return service_id ? [{ member_id: idBySlug.get(m.slug)!, service_id }] : [];
+    }),
+  );
+  const typeLinks = matched.flatMap((m) =>
+    sectorsOf(m.wp_member_id).flatMap((slug) => {
+      const membership_type_id = membershipTypeId.get(slug);
+      return membership_type_id ? [{ member_id: idBySlug.get(m.slug)!, membership_type_id }] : [];
+    }),
+  );
+  say(`— links: ${serviceLinks.length} member_services, ${typeLinks.length} member_membership_types`);
+  if (!DRY_RUN) {
+    for (const batch of chunk(serviceLinks, 500)) {
+      const { error } = await db.from("member_services").upsert(batch, { onConflict: "member_id,service_id", ignoreDuplicates: true });
+      if (error) throw error;
+    }
+    for (const batch of chunk(typeLinks, 500)) {
+      const { error } = await db.from("member_membership_types").upsert(batch, { onConflict: "member_id,membership_type_id", ignoreDuplicates: true });
+      if (error) throw error;
+    }
+  }
+
+  // 6. Content inherits from its member, the same rule migration
+  //    20260909000002 applied — re-run so the industries just assigned in step
+  //    4 reach the stories/videos/events that were null when it ran.
+  const withIndustry = resolved.filter((a) => a.industry_id != null);
+  let touched = 0;
+  for (const a of withIndustry) {
+    for (const table of ["stories", "videos", "events"] as const) {
+      const { count } = await db
+        .from(table)
+        .select("id", { count: "exact", head: true })
+        .eq("member_id", a.id)
+        .is("industry_id", null);
+      if (!count) continue;
+      touched += count;
+      if (!DRY_RUN) {
+        const { error } = await db.from(table).update({ industry_id: a.industry_id }).eq("member_id", a.id).is("industry_id", null);
+        if (error) throw error;
+      }
+    }
+  }
+  say(`— content inheriting a member industry: ${touched} row${touched === 1 ? "" : "s"}`);
+
+  say(DRY_RUN ? "Dry run complete — nothing was written." : "Taxonomy backfill complete.");
 }
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
@@ -360,20 +505,33 @@ async function main() {
     return;
   }
 
+  if (TAXONOMIES_ONLY) {
+    // Deliberately memberRowsAll, not the local subset: this repairs a target
+    // that already holds every member.
+    await backfillTaxonomies(memberRowsAll, catRows, servicesOf, sectorsOf);
+    return;
+  }
+
   console.log("— media: clearing stale files from previous seeds");
   await emptyBucket();
 
-  // `categories` kind='member' is the INDUSTRY list (one per member), not the
-  // Services vocabulary. The extract's member-kind rows are the 69 WP Services
-  // terms — seeding those here is what put 69 service names in the industry
-  // bar. They now go to the `services` tables instead, and industries come from
-  // the canonical list shared with scripts/seed.ts.
-  const storyCatRows = catRows.filter((c) => c.kind === "story");
-  const catRowsToSeed = [...storyCatRows, ...INDUSTRY_ROWS];
-  console.log(`— categories (${storyCatRows.length} story topics + ${INDUSTRY_ROWS.length} industries)`);
-  const { data: cats, error: catErr } = await db.from("categories").upsert(catRowsToSeed, { onConflict: "kind,slug" }).select();
+  // `categories` is the news-topic vocabulary and nothing else (migration
+  // 20260909000002). The extract's member-kind rows are the 69 WP Services
+  // terms — seeding those as industries is what put 69 service names in the
+  // industry bar. They go to the `services` tables below; industries are their
+  // own table, seeded from the canonical list shared with scripts/seed.ts.
+  const storyCatRows = catRows.filter((c) => c.kind === "story").map(({ slug, name }) => ({ slug, name }));
+  console.log(`— categories (${storyCatRows.length} news topics)`);
+  const { data: cats, error: catErr } = await db.from("categories").upsert(storyCatRows, { onConflict: "slug" }).select();
   if (catErr) throw catErr;
-  const catId = (kind: string, slug: string) => cats!.find((c) => c.kind === kind && c.slug === slug)?.id ?? null;
+  const catId = (slug: string) => cats!.find((c) => c.slug === slug)?.id ?? null;
+
+  // The migration already inserts these; upserting keeps the seed correct on a
+  // database built by any route, and re-asserts the names if one was edited.
+  console.log(`— industries (${INDUSTRY_ROWS.length})`);
+  const { data: inds, error: indErr } = await db.from("industries").upsert(INDUSTRY_ROWS, { onConflict: "slug" }).select();
+  if (indErr) throw indErr;
+  const industryId = (slug: string) => inds!.find((i) => i.slug === slug)?.id ?? null;
 
   console.log(`— services (${catRows.length - storyCatRows.length} terms, the real /find-a-member vocabulary)`);
   const serviceRows = catRows.filter((c) => c.kind === "member").map(({ slug, name }) => ({ slug, name }));
@@ -387,16 +545,26 @@ async function main() {
     // testimonials dropped product-wide (migration 20260902000003) — the extract's
     // rows still carry the field, so it must be excluded rather than spread in.
     // category_slugs are the member's SERVICES (they seed member_services below);
-    // category_id is their single derived industry.
+    // industry_id is their single derived industry.
     const insert = rows.map(({ wp_member_id, category_slugs, testimonials, ...r }) => {
       const industry = industryForServices(servicesOf(wp_member_id));
-      return { ...r, category_id: industry ? catId("member", industrySlug(industry)) : null };
+      return { ...r, industry_id: industry ? industryId(industrySlug(industry)) : null };
     });
     const { data, error } = await db.from("members").insert(insert).select("id, slug");
     if (error) throw error;
     for (const m of data!) wpToUuid.set(rows.find((r) => r.slug === m.slug)!.wp_member_id, m.id);
   }
   const memberId = (wp: number | null | undefined) => (wp ? wpToUuid.get(wp) ?? null : null);
+  /**
+   * Content inherits its member's industry, matching migration 20260909000002's
+   * backfill. Most of the archive has no member and so no industry — that is
+   * the real shape of the data, not a seeding gap (docs/GO-LIVE.md 1.1).
+   */
+  const industryOfWp = (wp: number | null | undefined) => {
+    if (!wp) return null;
+    const industry = industryForServices(servicesOf(wp));
+    return industry ? industryId(industrySlug(industry)) : null;
+  };
 
   // Services per member — the real multi-value taxonomy, previously collapsed
   // to "first one wins" on members.category_id and otherwise discarded.
@@ -470,13 +638,17 @@ async function main() {
 
   console.log(`— stories (${storyRows.length})`);
   for (const rows of chunk(storyRows, 100)) {
-    const insert = rows.map(({ wp_member_id, category_slugs, ...r }) => ({ ...r, member_id: memberId(wp_member_id) }));
+    const insert = rows.map(({ wp_member_id, category_slugs, ...r }) => ({
+      ...r,
+      member_id: memberId(wp_member_id),
+      industry_id: industryOfWp(wp_member_id),
+    }));
     const { data, error } = await db.from("stories").insert(insert).select("id, slug");
     if (error) throw error;
     const junctions = data!.flatMap((st) => {
       const src = rows.find((r) => r.slug === st.slug)!;
       return src.category_slugs
-        .map((slug) => catId("story", slug))
+        .map((slug) => catId(slug))
         .filter(Boolean)
         .map((category_id) => ({ story_id: st.id, category_id }));
     });
@@ -505,6 +677,7 @@ async function main() {
       ...r,
       slug: videoSlug(r.title as string),
       member_id: memberId(wp_member_id as number | null),
+      industry_id: industryOfWp(wp_member_id as number | null),
     }));
     const { error } = await db.from("videos").insert(insert);
     if (error) throw error;
@@ -590,7 +763,7 @@ async function main() {
 
   console.log("Real-content seed complete.");
   const counts = await Promise.all(
-    ["members", "stories", "videos", "events", "categories", "static_pages"].map(
+    ["members", "stories", "videos", "events", "categories", "industries", "static_pages"].map(
       async (t) => `${t}=${(await db.from(t).select("*", { count: "exact", head: true })).count}`,
     ),
   );

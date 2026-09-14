@@ -1,0 +1,44 @@
+/**
+ * Video Engine kanban: shared, pure logic. Sibling of `story-board.ts`, and
+ * deliberately a separate module rather than a generic one parameterised over
+ * content type — the two matrices are the same today only by coincidence, and
+ * events (three columns, no `scheduled`) already proves the shapes diverge.
+ * Kept free of Next and Supabase imports so it unit-tests directly.
+ *
+ * As with stories, dragging must be a second entry point into the same
+ * approve/publish code paths the buttons use, never a way around them: a
+ * publish fires the social push and the `video_live` notification, and an
+ * approval writes an `approvals` row. The matrix below is exactly what
+ * scheduleVideo/decideVideo already permit.
+ */
+
+export const BOARD_STATUSES = ["draft", "awaiting_approval", "scheduled", "published"] as const;
+export type BoardStatus = (typeof BOARD_STATUSES)[number];
+
+export const COLUMN_LABELS: Record<BoardStatus, string> = {
+  awaiting_approval: "Awaiting approval",
+  draft: "Drafts",
+  scheduled: "Scheduled",
+  published: "Published",
+};
+
+export const LEGAL_VIDEO_MOVES: Record<BoardStatus, readonly BoardStatus[]> = {
+  // draft rows are admin-authored (member submissions start at
+  // awaiting_approval), so "publish now" here never skips a member's approval.
+  draft: ["awaiting_approval", "published"],
+  // reject needs a reason and notifies the member — keep that on the dedicated
+  // Reject form, not as a drag target.
+  awaiting_approval: ["published"],
+  scheduled: ["draft", "published"],
+  // unpublish/take down. Videos had no route back from published at all before
+  // this (fix list) — not by drag, and not by any button.
+  published: ["draft"],
+};
+
+export function isBoardStatus(value: string): value is BoardStatus {
+  return (BOARD_STATUSES as readonly string[]).includes(value);
+}
+
+export function canMoveVideo(from: string, to: string): to is BoardStatus {
+  return isBoardStatus(from) && isBoardStatus(to) && LEGAL_VIDEO_MOVES[from].includes(to);
+}

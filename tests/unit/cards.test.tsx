@@ -25,12 +25,16 @@ describe("VideoCard", () => {
     expect(container.querySelector("img")).toHaveAttribute("src", expect.stringContaining("i.ytimg.com/vi/abc123/hqdefault.jpg"));
   });
 
+  // "Member video", not "Member news" (fix list): VideoCard shares MemberBadge
+  // with StoryCard, and before the badge took a label a member's video was
+  // tagged as news.
   it("shows the member badge only for member-sourced videos", () => {
     const video = { id: "1", slug: "v1", title: "Metal Bending 101", url: "https://www.youtube.com/watch?v=abc123", thumbnail_path: null };
     const { rerender } = render(<VideoCard video={{ ...video, source: "member" }} />);
-    expect(screen.getByText("Member news")).toBeInTheDocument();
-    rerender(<VideoCard video={{ ...video, source: "staff" }} />);
+    expect(screen.getByText("Member video")).toBeInTheDocument();
     expect(screen.queryByText("Member news")).not.toBeInTheDocument();
+    rerender(<VideoCard video={{ ...video, source: "staff" }} />);
+    expect(screen.queryByText("Member video")).not.toBeInTheDocument();
   });
 });
 

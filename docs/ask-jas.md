@@ -7,6 +7,13 @@
 3. **Phone number format** — should the field accept extensions, or only a standard phone number?
 4. **Ad placement** — which pages should *not* carry adverts?
 5. **News sorting** - should we stick with "topics" or use "categories"?
+6. **Taking published content back down** — the console can now return a published story, video, event or piece of equipment to draft (fix-list 47). It does this silently: the member is not emailed and gets no in-app notification, because there is no wording for it and inventing one felt like your call. Should a member be told when their published content is taken down, and if so what should it say — does it differ between "we're editing this, it'll be back" and "this is coming down for good"?
+
+*Note (13 Sep): a member can now see their own published content in the member area and ask for a change to it (fix-list 51), so they will notice when something disappears. That makes the question above more pressing than it was.*
+
+*Note (13-14 Sep): the Services list below is now picked from by **both** members (`/dashboard/profile`) and Jas (`/console/members/[id]`) — fix-list 43 and 52. So a wrong or duplicated term now gets **used**, not just displayed, which makes settling this list more urgent than the others.*
+
+*Note (14 Sep): assigning services to a member is done (GO-LIVE §3.2, ticked). What still does not exist is a screen for editing the **vocabulary itself** — adding, renaming or removing a service — the way `/console/industries` and `/console/categories` allow for theirs. Until that is built, changing this list means a migration or a seed run, so it is worth getting right once rather than iterating.*
 
 ## Data validation
 
@@ -85,7 +92,7 @@ Pulled directly from the live "Services" dropdown on `sheetmetalindustries.com/f
 *Note: several entries look like near-duplicates added at different times (e.g. "Tube Bending and Pipe Fabrication" vs. "Tube Bending/ Manipulation Services", "Tool & Die" vs. "Tool and Die"). Please confirm which of each pair is current, and whether this full 55-item list should carry over as-is or be consolidated.*
 
 
-### Industries (one per member, shown on the industry bar and `/industry/*` pages)
+### Industries (one per member — and now one per story, video and event too)
 
 1. Automation & Robotics
 2. Fabrication
@@ -108,6 +115,14 @@ whatever drives the live industry bar lives outside the database. Until Jas
 confirms, dev seeds derive each member's industry from their Services tags
 (`scripts/lib/industry-map.ts`, ~93% resolve). Validating this is item 1.1 in
 [`GO-LIVE.md`](GO-LIVE.md).*
+
+*Note (10 Sep): these 10 are now their own `industries` table, inserted by
+migration `20260909000002` and editable at `/console/industries` — they used to
+be a discriminated subset of `categories`, which is what let a bad seed put 69
+service names in the industry bar. News, videos and events also carry their own
+`industry_id` now rather than inheriting one through their member, so an
+editorial story with no member can still be filed under an industry. The three
+member lists in this document remain three genuinely separate things.*
 
 ### Topics (the live "Topics" filter on `/news/`, used for tagging news stories)
 

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
-import { featuredMembers, memberCategories, memberDirectory, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
+import { featuredMembers, industries as industryList, memberDirectory, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
 import { MemberMap } from "@/components/MemberMap";
 import { MultiSelectCombobox } from "@/components/MultiSelectCombobox";
@@ -18,13 +18,16 @@ const PAGE_SIZE = 12;
 
 export const metadata = {
   title: "Member Directory",
-  description: "Find UK sheet metal, fabrication and welding companies — search SMI's member directory by name, category or location.",
+  description: "Find UK sheet metal, fabrication and welding companies — search SMI's member directory by name, industry or location.",
   alternates: { canonical: "/member" },
 };
 
 export default async function MembersPage(props: PageProps<"/member">) {
   const sp = await props.searchParams;
-  const categories = asArray(sp.category);
+  // `?industry=` since 20260909000002 renamed the taxonomy. `?category=` is
+  // still read because it is a public URL surface — /industry/[slug] linked to
+  // it and external links may exist — but nothing emits it any more.
+  const industrySlugs = [...asArray(sp.industry), ...asArray(sp.category)];
   const services = asArray(sp.service);
   const membershipTypeSlugs = asArray(sp.type);
   const rawQ = typeof sp.q === "string" ? sp.q : "";
@@ -37,11 +40,11 @@ export default async function MembersPage(props: PageProps<"/member">) {
   // (slug/name/lat/lng) instead of paging the full directory rows.
   const isMap = view === "map";
 
-  const filters = { categories, services, membershipTypes: membershipTypeSlugs, q };
-  const [dir, pins, cats, serviceList, typeList, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
+  const filters = { industries: industrySlugs, services, membershipTypes: membershipTypeSlugs, q };
+  const [dir, pins, inds, serviceList, typeList, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
     isMap ? null : memberDirectory({ ...filters, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
     isMap ? memberPins(filters) : null,
-    memberCategories(),
+    industryList(),
     allServices(),
     membershipTypes(),
     featuredMembers(),
@@ -56,12 +59,12 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   record([{ kind: "page_view", path: "/member", ...ctx }]);
 
-  // Same shape as news/page.tsx — one builder so category/service/q/view always
+  // Same shape as news/page.tsx — one builder so industry/service/q/view always
   // survive each other. Never emits a trailing slash: e2e selects a[href^='/member/'].
   const qs = (over: Record<string, string | string[] | number | undefined>) => {
     const params = new URLSearchParams();
     const merged: Record<string, string | string[] | number | undefined> = {
-      category: categories, service: services, type: membershipTypeSlugs, q, view: view === "map" ? "map" : undefined, page: undefined, ...over,
+      industry: industrySlugs, service: services, type: membershipTypeSlugs, q, view: view === "map" ? "map" : undefined, page: undefined, ...over,
     };
     Object.entries(merged).forEach(([k, v]) => {
       if (v === undefined || v === "") return;
@@ -72,8 +75,8 @@ export default async function MembersPage(props: PageProps<"/member">) {
     return s ? `/member?${s}` : "/member";
   };
 
-  const categoryList = cats;
-  const activeCats = categoryList.filter((c) => categories.includes(c.slug));
+  const industryOptions = inds;
+  const activeIndustries = industryOptions.filter((i) => industrySlugs.includes(i.slug));
   const withCoords = pinRows.filter((m): m is typeof m & { lat: number; lng: number } => m.lat != null && m.lng != null);
 
   // A member can hold overlapping featured placements — show each member once.
@@ -100,7 +103,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
                 )}
                 <div className="min-w-0">
                   <p className="truncate font-bold text-ink">{m.name}</p>
-                  {m.category && <p className="text-xs text-graphite">{m.category.name}</p>}
+                  {m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
                 </div>
               </Link>
             ))}
@@ -110,9 +113,9 @@ export default async function MembersPage(props: PageProps<"/member">) {
 
       <h2 className="mt-16 text-lg font-bold text-ink">All members</h2>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-        {/* GET submit replaces the whole query string, hence the hidden category/service */}
+        {/* GET submit replaces the whole query string, hence the hidden industry/service */}
         <form action="/member" role="search" className="flex min-w-0 flex-1 gap-2">
-          {categories.map((c) => <input key={c} type="hidden" name="category" value={c} />)}
+          {industrySlugs.map((s) => <input key={s} type="hidden" name="industry" value={s} />)}
           {services.map((s) => <input key={s} type="hidden" name="service" value={s} />)}
           {membershipTypeSlugs.map((t) => <input key={t} type="hidden" name="type" value={t} />)}
           {view === "map" && <input type="hidden" name="view" value="map" />}
@@ -142,12 +145,12 @@ export default async function MembersPage(props: PageProps<"/member">) {
       </div>
 
       {/* Industry pills, single-select — same pattern and same underlying data
-          as /news's industry filter (categories kind='member'), plain Links so
+          as /news's industry filter (the `industries` table), plain Links so
           they work with no JS and need no noscript fallback. */}
       <nav aria-label="Filter by industry" className="mt-3 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
-        <Link href={qs({ category: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${categories.length === 0 ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
-        {categoryList.map((c) => (
-          <Link key={c.slug} href={qs({ category: [c.slug] })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${categories.includes(c.slug) ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+        <Link href={qs({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${industrySlugs.length === 0 ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+        {industryOptions.map((c) => (
+          <Link key={c.slug} href={qs({ industry: [c.slug] })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industrySlugs.includes(c.slug) ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
             {c.name}
           </Link>
         ))}
@@ -157,10 +160,10 @@ export default async function MembersPage(props: PageProps<"/member">) {
         {/* aria-live: a soft router.push transition doesn't announce itself */}
         <p aria-live="polite" className="text-sm text-graphite">
           {total} {total === 1 ? "member" : "members"}
-          {activeCats.length > 0 && <> in {activeCats.map((c) => c.name).join(", ")}</>}
+          {activeIndustries.length > 0 && <> in {activeIndustries.map((i) => i.name).join(", ")}</>}
           {q && <> matching “{q}”</>}
-          {(q || categories.length > 0 || services.length > 0 || membershipTypeSlugs.length > 0) && (
-            <> · <Link href={qs({ category: undefined, service: undefined, type: undefined, q: undefined })} className="text-graphite hover:underline">Clear filters</Link></>
+          {(q || industrySlugs.length > 0 || services.length > 0 || membershipTypeSlugs.length > 0) && (
+            <> · <Link href={qs({ industry: undefined, service: undefined, type: undefined, q: undefined })} className="text-graphite hover:underline">Clear filters</Link></>
           )}
         </p>
         <div className="flex gap-2 text-sm">
@@ -222,7 +225,7 @@ function MemberCard({ member: m }: { member: Awaited<ReturnType<typeof memberDir
         )}
         <div className="min-w-0">
           <p className="font-bold text-ink">{m.name}</p>
-          {m.category && <p className="text-xs text-graphite">{m.category.name}</p>}
+          {m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
         </div>
       </div>
     </Link>

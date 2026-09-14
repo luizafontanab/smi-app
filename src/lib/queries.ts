@@ -23,7 +23,7 @@ export async function publishedStories(opts: {
   offset?: number;
   category?: string;
   memberOnly?: boolean;
-  /** Member-kind category slug — filters by the author-member's industry. */
+  /** Industry slug — filters on the story's own industry_id. */
   industry?: string;
   /** YYYY-MM-DD bounds on published_at; malformed values are ignored. */
   from?: string;
@@ -37,26 +37,25 @@ export async function publishedStories(opts: {
   // An unknown slug still means "no filter", matching the old behaviour.
   let catId: number | null = null;
   if (opts.category) {
-    const { data: cat } = await db.from("categories").select("id").eq("kind", "story").eq("slug", opts.category).single();
+    const { data: cat } = await db.from("categories").select("id").eq("slug", opts.category).single();
     catId = cat?.id ?? null;
   }
-  // Industry filtering rides stories.member_id → members.category_id, same as
-  // storiesByMemberCategory: the member embed becomes an inner join so the
-  // filter actually restricts rows (a left embed would only null the member
-  // out). Unknown slug again means "no filter".
+  // Industry is now the story's own column (migration 20260909000002), so this
+  // is a plain filter — it no longer has to inner-join the member embed, and it
+  // no longer misses editorial stories that have an industry but no member.
+  // Unknown slug again means "no filter".
   let industryId: number | null = null;
   if (opts.industry) {
-    const { data: cat } = await db.from("categories").select("id").eq("kind", "member").eq("slug", opts.industry).single();
-    industryId = cat?.id ?? null;
+    const { data: ind } = await db.from("industries").select("id").eq("slug", opts.industry).single();
+    industryId = ind?.id ?? null;
   }
-  const base = industryId ? STORY_CARD_MEMBER_INNER : STORY_CARD;
   let q = db
     .from("stories")
-    .select(catId ? `${base}, story_categories!inner(category_id)` : base, { count: "exact" })
+    .select(catId ? `${STORY_CARD}, story_categories!inner(category_id)` : STORY_CARD, { count: "exact" })
     .eq("status", "published");
   if (opts.memberOnly) q = q.eq("is_member_news", true);
   if (catId) q = q.eq("story_categories.category_id", catId);
-  if (industryId) q = q.eq("member.category_id", industryId);
+  if (industryId) q = q.eq("industry_id", industryId);
   // Validated here too (not just at the page) so a malformed value can never
   // reach PostgREST as a filter, wherever the call comes from.
   const from = parseDateParam(opts.from);
@@ -111,16 +110,17 @@ export async function storyIntros(ids: string[]): Promise<Map<string, string | n
   return new Map((data ?? []).map((r) => [r.id, r.body]));
 }
 
+/** The news-topic list — the /news topic combobox. `categories` holds nothing else. */
 export async function storyCategories() {
   const db = publicDb();
-  const { data } = await db.from("categories").select("slug, name").eq("kind", "story").order("name");
+  const { data } = await db.from("categories").select("slug, name").order("name");
   return data ?? [];
 }
 
-/** The member-kind ("Sector"/industry) list — industries bar, industry pages, directory. */
-export async function memberCategories() {
+/** The industry list — industry bar, industry pages, directory filter. */
+export async function industries() {
   const db = publicDb();
-  const { data } = await db.from("categories").select("slug, name").eq("kind", "member").order("name");
+  const { data } = await db.from("industries").select("slug, name").order("sort_order");
   return data ?? [];
 }
 
@@ -137,7 +137,7 @@ export async function membershipTypes() {
 
 /**
  * The Services vocabulary — the live site's /find-a-member "Services" filter,
- * many per member. Distinct from both the single industry (`memberCategories`)
+ * many per member. Distinct from both the single industry (`industries`)
  * and the fixed membership-type tags above.
  */
 export async function services() {
@@ -146,44 +146,50 @@ export async function services() {
   return data ?? [];
 }
 
-// Same projection with the member embed as an inner join, so the industry
-// filter can apply to it; stories with no member_id drop out, by design.
-const STORY_CARD_MEMBER_INNER = STORY_CARD.replace("member:members(", "member:members!inner(");
-
 /**
- * Stories for one industry, via stories.member_id → members.category_id.
- * Unknown slug returns null so /industry/[slug] can 404 — unlike
- * publishedStories, where an unknown category slug means "no filter".
+ * Stories for one industry, via the story's own industry_id. Unknown slug
+ * returns null so /industry/[slug] can 404 — unlike publishedStories, where an
+ * unknown slug means "no filter".
  */
-export async function storiesByMemberCategory(slug: string, opts: { limit?: number; offset?: number } = {}) {
+export async function storiesByIndustry(slug: string, opts: { limit?: number; offset?: number } = {}) {
   const db = publicDb();
-  const { data: cat } = await db.from("categories").select("id, slug, name").eq("kind", "member").eq("slug", slug).maybeSingle();
-  if (!cat) return null;
+  const { data: ind } = await db.from("industries").select("id, slug, name").eq("slug", slug).maybeSingle();
+  if (!ind) return null;
   const offset = opts.offset ?? 0;
   const { data, count } = await db
     .from("stories")
-    .select(STORY_CARD_MEMBER_INNER, { count: "exact" })
+    .select(STORY_CARD, { count: "exact" })
     .eq("status", "published")
-    .eq("member.category_id", cat.id)
+    .eq("industry_id", ind.id)
     .order("published_at", { ascending: false })
     .range(offset, offset + (opts.limit ?? 12) - 1);
-  return { category: { slug: cat.slug, name: cat.name }, stories: (data ?? []) as unknown as StoryCard[], total: count ?? 0 };
+  return { industry: { slug: ind.slug, name: ind.name }, stories: (data ?? []) as unknown as StoryCard[], total: count ?? 0 };
 }
 
 /**
  * "For you" (/news): fresh stories matching a mixed bag of slugs from the
- * viewed_cats cookie — story-kind slugs match via story_categories, member-kind
- * (industry) slugs via the author-member's category. PostgREST can't OR across
- * two different embeds, so this is one id lookup plus at most two card queries
- * run in parallel, merged newest-first and deduped.
+ * viewed_cats cookie — news-topic slugs match via story_categories, industry
+ * slugs via the story's own industry_id. PostgREST can't OR across an embed and
+ * a column, so this is two id lookups plus at most two card queries run in
+ * parallel, merged newest-first and deduped.
+ *
+ * The cookie stores bare slugs with no marker of which vocabulary they came
+ * from (see news-prefs.ts), so both tables are looked up and the matches are
+ * unioned. Exactly one slug collides — `automation-robotics` is both a news
+ * topic and an industry — and a reader who viewed one being shown the other is
+ * a good recommendation, not a mistake, so this stays a union rather than
+ * growing a discriminator.
  */
 export async function forYouStories(slugs: string[], opts: { limit?: number; excludeIds?: string[] } = {}): Promise<StoryCard[]> {
   if (slugs.length === 0) return [];
   const db = publicDb();
   const limit = opts.limit ?? 10;
-  const { data: cats } = await db.from("categories").select("id, kind").in("slug", slugs);
-  const storyCatIds = (cats ?? []).filter((c) => c.kind === "story").map((c) => c.id);
-  const memberCatIds = (cats ?? []).filter((c) => c.kind === "member").map((c) => c.id);
+  const [{ data: cats }, { data: inds }] = await Promise.all([
+    db.from("categories").select("id").in("slug", slugs),
+    db.from("industries").select("id").in("slug", slugs),
+  ]);
+  const storyCatIds = (cats ?? []).map((c) => c.id);
+  const industryIds = (inds ?? []).map((i) => i.id);
   const notIn = opts.excludeIds?.length ? `(${opts.excludeIds.join(",")})` : null;
   const runs = [];
   if (storyCatIds.length > 0) {
@@ -195,12 +201,12 @@ export async function forYouStories(slugs: string[], opts: { limit?: number; exc
     if (notIn) q = q.not("id", "in", notIn);
     runs.push(q.order("published_at", { ascending: false }).limit(limit));
   }
-  if (memberCatIds.length > 0) {
+  if (industryIds.length > 0) {
     let q = db
       .from("stories")
-      .select(STORY_CARD_MEMBER_INNER)
+      .select(STORY_CARD)
       .eq("status", "published")
-      .in("member.category_id", memberCatIds);
+      .in("industry_id", industryIds);
     if (notIn) q = q.not("id", "in", notIn);
     runs.push(q.order("published_at", { ascending: false }).limit(limit));
   }
@@ -250,12 +256,16 @@ export async function mostViewedStories(opts: { days?: number; limit?: number; e
   return ((data ?? []) as unknown as StoryCard[]).sort((a, b) => (rank.get(a.id) ?? limit) - (rank.get(b.id) ?? limit));
 }
 
-/** The author-member's industry (member-kind category) slug — feeds the viewed_cats cookie on story pages. */
-export async function memberIndustrySlug(memberId: string | null | undefined): Promise<string | null> {
-  if (!memberId) return null;
-  const { data } = await publicDb().from("members").select("category:categories(slug)").eq("id", memberId).maybeSingle();
-  const cat = (data as { category?: { slug: string } | { slug: string }[] | null } | null)?.category;
-  return (Array.isArray(cat) ? cat[0]?.slug : cat?.slug) ?? null;
+/**
+ * A story's own industry slug — feeds the viewed_cats cookie on story pages.
+ * Reads the story's industry_id directly rather than its author-member's, so an
+ * editorial story with an industry but no member is now counted too.
+ */
+export async function storyIndustrySlug(storyId: string | null | undefined): Promise<string | null> {
+  if (!storyId) return null;
+  const { data } = await publicDb().from("stories").select("industry:industries(slug)").eq("id", storyId).maybeSingle();
+  const ind = (data as { industry?: { slug: string } | { slug: string }[] | null } | null)?.industry;
+  return (Array.isArray(ind) ? ind[0]?.slug : ind?.slug) ?? null;
 }
 
 export async function activePlacements() {
@@ -263,7 +273,7 @@ export async function activePlacements() {
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
     .from("placements")
-    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, category:categories(name)), machine:featured_machines(id, name, description, image_path, external_url, status, member:members(slug, name))")
+    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, industry:industries(name)), machine:featured_machines(id, name, description, image_path, external_url, status, member:members(slug, name))")
     .lte("starts_on", today)
     .gte("ends_on", today);
   return data ?? [];
@@ -459,13 +469,13 @@ export function ilikeTerm(raw: string): string {
 
 /**
  * The three member taxonomies are genuinely different things (docs/ask-jas.md):
- * `categories` is the single INDUSTRY per member, `services` is the many-to-many
+ * `industries` is the single industry per member, `services` is the many-to-many
  * Services vocabulary from the live /find-a-member filter, and `membershipTypes`
  * is the separate fixed 5-item list. `services` used to resolve against
  * membership_types, so the directory's "Services" filter was really a
  * membership-type filter under a wrong label.
  */
-type MemberFilterOpts = { categories?: string[]; services?: string[]; membershipTypes?: string[] };
+type MemberFilterOpts = { industries?: string[]; services?: string[]; membershipTypes?: string[] };
 
 /** Members linked to any of `slugs` through a taxonomy join table. */
 async function membersLinkedVia(
@@ -491,9 +501,9 @@ async function membersLinkedVia(
  * intersected, so services AND membership types both narrow the result.
  */
 async function memberFilterIds(db: ReturnType<typeof publicDb>, opts: MemberFilterOpts) {
-  const [catRows, serviceIds, typeIds] = await Promise.all([
-    opts.categories?.length
-      ? db.from("categories").select("id").eq("kind", "member").in("slug", opts.categories)
+  const [indRows, serviceIds, typeIds] = await Promise.all([
+    opts.industries?.length
+      ? db.from("industries").select("id").in("slug", opts.industries)
       : Promise.resolve({ data: null }),
     opts.services?.length
       ? membersLinkedVia(db, opts.services, "services", "member_services", "service_id")
@@ -502,13 +512,13 @@ async function memberFilterIds(db: ReturnType<typeof publicDb>, opts: MemberFilt
       ? membersLinkedVia(db, opts.membershipTypes, "membership_types", "member_membership_types", "membership_type_id")
       : Promise.resolve(null),
   ]);
-  const categoryIds = catRows.data ? catRows.data.map((c) => c.id) : null;
+  const industryIds = indRows.data ? indRows.data.map((i) => i.id) : null;
 
   const memberIds =
     serviceIds && typeIds
       ? serviceIds.filter((id) => typeIds.includes(id))
       : serviceIds ?? typeIds;
-  return { categoryIds, serviceMemberIds: memberIds };
+  return { industryIds, serviceMemberIds: memberIds };
 }
 
 // members.id is a uuid — this never matches a real row, so an empty
@@ -522,18 +532,18 @@ export async function memberDirectory(opts: MemberFilterOpts & { q?: string; lim
   if (opts.q?.trim() && !term) return { members: [], total: 0 };
 
   const db = publicDb();
-  const { categoryIds, serviceMemberIds } = await memberFilterIds(db, opts);
+  const { industryIds, serviceMemberIds } = await memberFilterIds(db, opts);
   // `.order("name")` is NOT the display order — it pins the shuffle's input so
   // the same seed always permutes the same sequence (a DB with no ORDER BY may
   // return rows in a different order per query, which would break pagination).
   let q = db
     .from("members")
-    .select("id, slug, name, logo_path, description, address, website, phone, contact_email, lat, lng, category:categories(slug, name)", { count: "exact" })
+    .select("id, slug, name, logo_path, description, address, website, phone, contact_email, lat, lng, industry:industries(slug, name)", { count: "exact" })
     .eq("status", "active")
     .order("name");
-  if (categoryIds) q = q.in("category_id", categoryIds.length ? categoryIds : [-1]);
+  if (industryIds) q = q.in("industry_id", industryIds.length ? industryIds : [-1]);
   if (serviceMemberIds) q = q.in("id", serviceMemberIds.length ? serviceMemberIds : [NO_MATCH_UUID]);
-  // Separate PostgREST params are ANDed, so this is category AND services AND (name OR description).
+  // Separate PostgREST params are ANDed, so this is industry AND services AND (name OR description).
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data, count } = await q;
 
@@ -544,7 +554,7 @@ export async function memberDirectory(opts: MemberFilterOpts & { q?: string; lim
   // whole and offset/limit are sliced here in JS, after the shuffle) while
   // rotating it daily and per filter. memberPins stays alphabetical — a map's
   // ordering is spatial, so it has nothing to rotate.
-  const seed = `${new Date().toISOString().slice(0, 10)}|${(opts.categories ?? []).join(",")}|${(opts.services ?? []).join(",")}|${(opts.membershipTypes ?? []).join(",")}|${opts.q ?? ""}`;
+  const seed = `${new Date().toISOString().slice(0, 10)}|${(opts.industries ?? []).join(",")}|${(opts.services ?? []).join(",")}|${(opts.membershipTypes ?? []).join(",")}|${opts.q ?? ""}`;
   let members = seededShuffle(data ?? [], seed);
   // No limit means the caller wants the whole filtered set (the homepage logo wall).
   if (opts.limit != null) members = members.slice(opts.offset ?? 0, (opts.offset ?? 0) + opts.limit);
@@ -563,9 +573,9 @@ export async function memberPins(opts: MemberFilterOpts & { q?: string } = {}) {
   const term = ilikeTerm(opts.q ?? "");
   if (opts.q?.trim() && !term) return { members: [], total: 0 };
   const db = publicDb();
-  const { categoryIds, serviceMemberIds } = await memberFilterIds(db, opts);
+  const { industryIds, serviceMemberIds } = await memberFilterIds(db, opts);
   let q = db.from("members").select("slug, name, lat, lng", { count: "exact" }).eq("status", "active").order("name");
-  if (categoryIds) q = q.in("category_id", categoryIds.length ? categoryIds : [-1]);
+  if (industryIds) q = q.in("industry_id", industryIds.length ? industryIds : [-1]);
   if (serviceMemberIds) q = q.in("id", serviceMemberIds.length ? serviceMemberIds : [NO_MATCH_UUID]);
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data, count } = await q;
@@ -577,7 +587,7 @@ export async function memberBySlug(slug: string) {
   const { data: member } = await db
     .from("members")
     .select(
-      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, category:categories(name), member_membership_types(membership_type:membership_types(slug, name)), member_services(service:services(slug, name))",
+      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, industry:industries(name), member_membership_types(membership_type:membership_types(slug, name)), member_services(service:services(slug, name))",
     )
     .in("status", ["active", "grace"])
     .eq("slug", slug)

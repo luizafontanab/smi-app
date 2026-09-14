@@ -85,7 +85,7 @@ const PUBLIC_PINNED: Route[] = [
     role: "anon",
     skip: "no newsletter issue exists in the current database — /newsletters lists none and issue-47 renders the not-found page. Unskip after a seed that creates one.",
   },
-  anon("/industry/automation-robotics", { id: "industry_slug", pin: "a story category from the seed" }),
+  anon("/industry/welding", { id: "industry_slug", pin: "an industry from scripts/lib/industries.ts, inserted by migration 20260909000002" }),
   anon("/pages/about", { id: "pages_slug", pin: "authored static page (scripts/lib/static-page-content.ts)" }),
 ];
 
@@ -108,6 +108,9 @@ const DASHBOARD: Route[] = [
   member("/dashboard/stats"),
   member("/dashboard/story/new"),
   member("/dashboard/submissions"),
+  // The Live tab is where the page's new half lives — View and "Request a
+  // change" only appear on published rows, and the All tab may have none.
+  member("/dashboard/submissions?status=published", { id: "dashboard_submissions_live" }),
   member("/dashboard/video/new"),
 
   member("/dashboard/advert/6c85bdd1-e527-43c7-9d89-020bb1b6e375", {
@@ -155,6 +158,7 @@ const CONSOLE: Route[] = [
   admin("/console/adverts/spots"),
   admin("/console/adverts/takeover"),
   admin("/console/categories"),
+  admin("/console/industries"),
   admin("/console/content-pages"),
   admin("/console/crm"),
   admin("/console/dev"),
@@ -182,6 +186,7 @@ const CONSOLE_NEW: Route[] = [
   admin("/console/events/new"),
   admin("/console/machines/new"),
   admin("/console/categories/new"),
+  admin("/console/industries/new"),
   admin("/console/dev/new"),
   admin("/console/members/new"),
   admin("/console/content-pages/new"),

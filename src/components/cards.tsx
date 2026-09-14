@@ -39,7 +39,7 @@ export function VideoCard({ video, size = "md" }: { video: VideoCardData; size?:
       <div className={`relative ${VIDEO_HEIGHTS[size]} bg-ink`}>
         {img && <Image src={img} alt="" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover opacity-80" unoptimized />}
         <span className={`absolute inset-0 flex items-center justify-center ${PLAY_GLYPH[size]} text-white drop-shadow`}>▶</span>
-        {video.source === "member" && <MemberBadge />}
+        {video.source === "member" && <MemberBadge label="Member video" />}
       </div>
       <div className="p-3">
         <p className={`font-semibold line-clamp-2 ${size === "sm" ? "text-sm" : ""}`}>{video.title}</p>

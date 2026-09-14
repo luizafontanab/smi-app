@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { memberValuesFromForm, type MemberFormExisting } from "@/lib/member-form";
+import { companyPageValuesFromForm, memberValuesFromForm, type MemberFormExisting } from "@/lib/member-form";
 
 const existing: MemberFormExisting = {
   slug: "acme-fabrication",
@@ -133,5 +133,74 @@ describe("memberValuesFromForm", () => {
       expect(memberValuesFromForm(form({ status: "lapsed" }), draft)).not.toHaveProperty("error");
       expect(ok(memberValuesFromForm(form({ status: "draft" }), draft)).activatingDraft).toBe(false);
     });
+  });
+});
+
+/**
+ * The company-page half, shared verbatim by `/console/members/[id]` and
+ * `/dashboard/profile`. The point of the split is that both pages post the same
+ * field names into the same parser, so they cannot drift the way they had —
+ * most visibly on the social inputs, where the console posted `social_linkedin`
+ * and the member page posted `linkedin`, silently dropping every link a member
+ * saved through the console parser.
+ */
+describe("companyPageValuesFromForm", () => {
+  const shared = (overrides: Record<string, string> = {}) => {
+    const fd = new FormData();
+    const base: Record<string, string> = { name: "Acme Fabrication Ltd", slug: "acme-fabrication" };
+    for (const [k, v] of Object.entries({ ...base, ...overrides })) fd.set(k, v);
+    return fd;
+  };
+  const okShared = (r: ReturnType<typeof companyPageValuesFromForm>) => {
+    if ("error" in r) throw new Error(`expected values, got error: ${r.error}`);
+    return r.values;
+  };
+
+  it("reads social links from the prefixed field name both pages now post", () => {
+    const values = okShared(companyPageValuesFromForm(shared({ social_linkedin: "https://linkedin.com/company/new" }), existing));
+    expect((values.social as Record<string, string>).linkedin).toBe("https://linkedin.com/company/new");
+  });
+
+  // The member page used to post a bare `linkedin`. Nothing reads that now, and
+  // an absent prefixed field means "cleared" (mergeSocial deletes on empty) —
+  // so a form that forgets these inputs wipes every link rather than keeping
+  // them. Both pages render all six, which is what makes that safe.
+  it("does not read a bare social key, and an absent field clears the stored link", () => {
+    const values = okShared(companyPageValuesFromForm(shared({ linkedin: "https://linkedin.com/company/bare" }), existing));
+    expect((values.social as Record<string, string>).linkedin).toBeUndefined();
+    expect((values.social as Record<string, string>).facebook).toBeUndefined();
+  });
+
+  it("requires a company name", () => {
+    const r = companyPageValuesFromForm(shared({ name: "" }), existing);
+    expect(r).toEqual({ error: "Company name is required." });
+  });
+
+  it("falls back through the name to the stored slug rather than writing an empty one", () => {
+    expect(okShared(companyPageValuesFromForm(shared({ slug: "" }), existing)).slug).toBe("acme-fabrication-ltd");
+    expect(okShared(companyPageValuesFromForm(shared({ slug: "", name: "!!!" }), existing)).slug).toBe("acme-fabrication");
+  });
+
+  it("clears an image only when its remove box is ticked, and an upload always wins", () => {
+    expect(okShared(companyPageValuesFromForm(shared({ remove_logo: "on" }), existing))).toMatchObject({ logo_path: null });
+    expect(okShared(companyPageValuesFromForm(shared({ remove_logo: "on" }), existing, { logo_path: "members/m1/new.png" })))
+      .toMatchObject({ logo_path: "members/m1/new.png" });
+    expect(okShared(companyPageValuesFromForm(shared(), existing))).not.toHaveProperty("logo_path");
+  });
+
+  it("emits none of the membership fields — a member must never set those", () => {
+    const values = okShared(companyPageValuesFromForm(
+      shared({ status: "active", billing_mode: "invoice", paid_at: "2026-01-01T00:00", is_bundle_account: "on" }),
+      existing,
+    ));
+    for (const key of ["status", "billing_mode", "paid_at", "comped_until", "joined_at", "grace_until", "is_bundle_account"]) {
+      expect(values).not.toHaveProperty(key);
+    }
+  });
+
+  it("validates contact email and phone the same way for both pages", () => {
+    expect(companyPageValuesFromForm(shared({ contact_email: "nope" }), existing))
+      .toEqual({ error: "Contact email is not a valid address." });
+    expect(companyPageValuesFromForm(shared({ phone: "call me" }), existing)).toHaveProperty("error");
   });
 });

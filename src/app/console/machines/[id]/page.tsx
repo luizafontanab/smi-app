@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { consoleUploadImage, decideMachine, saveMachine, saveMachinePlacement } from "../../actions";
+import { consoleUploadImage, decideMachine, returnToDraft, saveMachine, saveMachinePlacement } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
@@ -93,6 +93,15 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
                 <span className="text-graphite">→</span>
                 <input type="date" name="ends_on" required className="rounded border px-3 py-1.5" />
                 <button className="rounded bg-ink px-4 py-2 text-white">Book slot</button>
+              </form>
+              {/* Equipment had no route back from published either (fix list).
+                  Note this does not cancel a booked placement — expire or
+                  re-book that separately if the machine is going away for good. */}
+              <form action={returnToDraft} className="mt-4 border-t pt-3">
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="kind" value="machine" />
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <p className="mt-1 text-xs text-graphite">Hides it from the public page. Any booked slot above stays as it is.</p>
               </form>
             </div>
           )}

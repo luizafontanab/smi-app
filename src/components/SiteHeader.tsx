@@ -21,7 +21,9 @@ const MEMBERS_ITEMS = [
 ];
 
 /** The signed-in account menu, by role — members also get notifications and help. */
-export function accountLinks(user: CurrentUser) {
+export function accountLinks(user: CurrentUser, unread = 0) {
+  // Admins are deliberately not given a member notification count — their
+  // unread signal is the console header's inbox_messages bell.
   return isAdmin(user)
     ? [
         { href: "/console", label: "Admin console" },
@@ -29,14 +31,15 @@ export function accountLinks(user: CurrentUser) {
       ]
     : [
         { href: "/dashboard", label: "Member area" },
-        { href: "/dashboard/notifications", label: "Notifications" },
+        { href: "/dashboard/notifications", label: "Notifications", badge: unread || undefined },
         { href: "/dashboard/help", label: "Help" },
       ];
 }
 
 /** Session comes from the public layout — this stays presentational. */
-export function SiteHeader({ user }: { user: CurrentUser | null }) {
+export function SiteHeader({ user, unread = 0 }: { user: CurrentUser | null; unread?: number }) {
   const name = user ? user.displayName ?? user.email : "";
+  const links = user ? accountLinks(user, unread) : [];
   return (
     <header className="border-b bg-chrome text-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
@@ -54,9 +57,9 @@ export function SiteHeader({ user }: { user: CurrentUser | null }) {
           <Link href="/search" className="tap hidden rounded px-3 py-2 hover:bg-chrome-hover lg:block" aria-label="Search">
             <IconSearch width={18} height={18} />
           </Link>
-          <MobileNav user={user} accountLinks={user ? accountLinks(user) : []} signOutAction={signOut} />
+          <MobileNav user={user} accountLinks={links} signOutAction={signOut} />
           {user ? (
-            <AccountMenu name={name} links={accountLinks(user)} signOutAction={signOut} />
+            <AccountMenu name={name} links={links} signOutAction={signOut} unread={unread} />
           ) : (
             <>
               <Link href="/join" className="tap rounded bg-brand px-3 py-2 font-semibold text-ink hover:brightness-110">

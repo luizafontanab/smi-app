@@ -99,29 +99,34 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
         ))}
       </div>
 
-      {pending.items.length > 0 && (
-        <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-ink">Your submissions</h2>
-            <Link href="/dashboard/submissions" className="text-sm text-graphite underline">See all →</Link>
-          </div>
-          <SubmissionList items={pending.items} />
-        </section>
-      )}
+      {/* Both boxes render unconditionally. They used to be gated on a non-empty
+          array, so a member with nothing in flight saw the dashboard simply end
+          after the card grid — no indication the feature existed at all, and no
+          way through to /dashboard/content or /dashboard/notifications. An empty
+          state is the more honest shape. */}
+      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-ink">Your submissions</h2>
+          <Link href="/dashboard/submissions" className="text-sm text-graphite underline">See all →</Link>
+        </div>
+        {pending.items.length > 0
+          ? <SubmissionList items={pending.items} />
+          : <p className="mt-2 text-sm text-graphite">Nothing awaiting approval — anything you send in shows up here.</p>}
+      </section>
 
-      {(notifications ?? []).length > 0 && (
-        <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-ink">Recent updates</h2>
-            <Link href="/dashboard/notifications" className="text-sm text-graphite underline">See all →</Link>
-          </div>
-          {(notifications ?? []).map((n, i) => (
-            <p key={i} className="mt-2 border-t pt-2 text-sm text-graphite">
-              {n.created_at.slice(0, 10)} — {n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind)}
-            </p>
-          ))}
-        </section>
-      )}
+      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-ink">Recent updates</h2>
+          <Link href="/dashboard/notifications" className="text-sm text-graphite underline">See all →</Link>
+        </div>
+        {(notifications ?? []).length > 0
+          ? (notifications ?? []).map((n, i) => (
+              <p key={i} className="mt-2 border-t pt-2 text-sm text-graphite">
+                {n.created_at.slice(0, 10)} — {n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind)}
+              </p>
+            ))
+          : <p className="mt-2 text-sm text-graphite">No updates yet. We&apos;ll let you know when something changes.</p>}
+      </section>
 
       <p className="mt-6 text-center text-xs text-graphite">
         <Link href="/dashboard/resources" className="underline">Download your &quot;proud member&quot; graphic</Link> · <Link href="/dashboard/settings" className="underline">Notification settings</Link>

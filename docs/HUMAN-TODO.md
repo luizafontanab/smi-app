@@ -332,8 +332,11 @@ are inert in production until these steps run.
       the same gap this local DB had; there's no migration for it since it's
       content, not schema. Either run the corrected fetch against prod (same
       `fetch("https://sheetmetalindustries.com/wp-json/wp/v2/tags?per_page=50&orderby=count&order=desc")`
-      → upsert into `categories` with `kind: "story"`, top 30 by count) or add
-      them by hand at `/console/categories`.
+      → upsert into `categories`, top 30 by count) or add them by hand at
+      `/console/categories`.
+      **Amended 10 Sep 2026:** the upsert no longer takes a `kind` — migration
+      `20260909000002` dropped that column, so `categories` is news topics only
+      and the rows are just `{ slug, name }`.
 
 ---
 
@@ -366,6 +369,91 @@ committed. These three need a person.
 Also worth knowing: **a reseed invalidates every baseline** (they are photographs
 of specific content). That is expected — run `pnpm visual`, look, then
 `pnpm visual:accept --changed`.
+
+---
+
+## 12 · Industries refactor (10 Sep) — production follow-through
+
+Industries became their own table and content gained a direct `industry_id`
+(migration `20260909000002`). The migration carries the schema **and the 10
+industry rows**, so `db:push:prod` alone fixes the wrong industry list that
+production has been serving. What it cannot carry is the per-member assignment
+and the two link tables — those are derived from the WordPress export, which
+SQL can't reach.
+
+Do these in order.
+
+- [ ] **12.1 — Apply migration `20260909000002_industries.sql` to production**
+      (`pnpm db:push:prod`). **Take a dashboard backup first.** I have not
+      verified that the Supabase CLI wraps a migration file in a transaction, so
+      treat a mid-file failure as possibly leaving a partial state. The file is
+      written to be correct on production's broken data specifically: step 4
+      copies the 69 WordPress Services terms out of `categories` into `services`
+      **before** step 8 deletes them. Those 69 rows exist only there and in the
+      extract — if the order is ever disturbed, they are gone.
+      Expect after: `industries` 10, `categories` 44, `services` 69.
+- [ ] **12.2 — Read the dry run, then run the taxonomy backfill.** The migration
+      leaves every member's `industry_id` null on prod (their old category was a
+      service term, which matches no industry slug). This fills it, plus the two
+      empty link tables:
+
+      ```
+      pnpm taxonomies:prod -- --dry-run    # prints every change, writes nothing
+      pnpm taxonomies:prod                 # the live pass
+      ```
+
+      It is idempotent — every write is an upsert on a natural key — so a failed
+      run can simply be repeated. Members are matched to the extract **by slug**,
+      and both directions of mismatch are printed rather than skipped quietly;
+      expect exactly one unmatched target row (`media-co`) and none unmatched in
+      the extract.
+
+      Expect after: 114 of 123 members with an `industry_id` (9 legitimately
+      resolve to none), `member_services` 483, `member_membership_types` 90.
+      Verify with `supabase inspect db table-stats --linked`.
+- [ ] **12.3 — The industry assignment is still a dev assumption.** It is derived
+      from each member's Services tags by `scripts/lib/industry-map.ts`, not
+      stated by any source. This is `GO-LIVE.md` item 1.1 and it does not close
+      just because production now has the data — Jas still has to confirm the
+      10-item list and the per-member assignments.
+- [ ] **12.4 — Content industries stay almost entirely empty on prod, by
+      choice.** Existing stories/videos/events inherited from their member only
+      (decided 9 Sep, no inference from news topics), which on production is 16
+      video rows and nothing else — prod's 300 stories and 53 events have no
+      member at all. `/industry/[slug]` will therefore show no news there until
+      content is tagged. Tag it at `/console/stories/…` as stories are edited, or
+      revisit the decision — deriving from news topics would have resolved 88 of
+      the 300.
+
+---
+
+## 13 · Fix-list pass (13 Sep) — production follow-through
+
+- [ ] **13.1 — Decide the production cron schedule.** `vercel.json` runs
+      `/api/cron` **once a day at 03:00** (`"schedule": "0 3 * * *"`). Everything
+      the job queue does inherits that delay in production: member notifications
+      and their emails, scheduled publishing, social pushes, and all ten daily
+      sweeps. A video approved at 10am notifies the member at 03:00 the next
+      morning; a story scheduled for 10am goes live the next night.
+
+      This is what produced fix-list item 49 ("member did not get notified of
+      video approval") — the notification was correct and queued, it just ran
+      about 21 hours later. Note `src/lib/jobs.ts:8` already documents the
+      intended behaviour as *"Prod: Vercel Cron hits /api/cron every minute"*,
+      so the code comment and `vercel.json` currently disagree.
+
+      **To change it:** set `"schedule": "* * * * *"` in `vercel.json` and
+      redeploy. **Before doing that, check the Vercel plan** — Hobby permits
+      only one cron invocation per day, which is very likely why it is set this
+      way; per-minute needs Pro. Decide with Jas whether the notification delay
+      justifies the plan, or whether a middle cadence (hourly, `"0 * * * *"`) is
+      enough. Left unchanged deliberately: it is a hosting-cost and deploy
+      decision, not an engineering one.
+
+      Local development is unaffected either way — since 13 Sep a due job runs
+      as soon as the response is sent (`runDueJobInlineInDev`), so the member
+      area reflects an action immediately without `scripts/job-runner.ts`. That
+      runner is still needed locally for the time-based sweeps.
 
 ---
 

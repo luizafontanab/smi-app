@@ -8,7 +8,7 @@ import { adSlotKeys, bodyAdSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
 import { breadcrumbLd, newsArticleLd } from "@/lib/jsonld";
-import { storyBySlug, publishedStories, memberIndustrySlug } from "@/lib/queries";
+import { storyBySlug, publishedStories, storyIndustrySlug } from "@/lib/queries";
 import { splitAtAdBreaks } from "@/lib/sanitize";
 import { AdSlot } from "@/components/AdSlot";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
@@ -64,8 +64,8 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
   const [{ stories: more }, logos, industrySlug] = await Promise.all([
     wantsLatest ? publishedStories({ limit: 5 }) : Promise.resolve({ stories: [] }),
     layout.blocks.some((b) => b.type === "supplier_logos") ? liveAdverts("supplier_logo") : Promise.resolve([]),
-    // author-member's industry, for the viewed_cats cookie mount below
-    memberIndustrySlug(story.member_id),
+    // the story's own industry, for the viewed_cats cookie mount below
+    storyIndustrySlug(story.id),
   ]);
 
   // Split once: the segments render the body and their count is what derives the

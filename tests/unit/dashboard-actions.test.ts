@@ -168,28 +168,28 @@ describe("submitEvent", () => {
 
 describe("submitProfileEdit", () => {
   it("draft member's first submission stamps draft_submitted_at and notifies Jas", async () => {
-    const membersBuilder = queryBuilder(dbOk({ name: "Acme", status: "draft", draft_submitted_at: null, social: null }));
+    const membersBuilder = queryBuilder(dbOk({ slug: "acme", status: "draft", draft_submitted_at: null, social: null, address: "", lat: null, lng: null }));
     db({ members: () => membersBuilder });
 
-    await expect(submitProfileEdit(form({}))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
+    await expect(submitProfileEdit(form({ name: "Acme" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
 
     expect(membersBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ draft_submitted_at: expect.any(String) }));
     expect(notifyAdminFunnel).toHaveBeenCalled();
   });
 
   it("does not re-notify Jas on a later edit of the same draft", async () => {
-    db({ members: () => queryBuilder(dbOk({ name: "Acme", status: "draft", draft_submitted_at: "2026-01-01T00:00:00.000Z", social: null })) });
+    db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "draft", draft_submitted_at: "2026-01-01T00:00:00.000Z", social: null, address: "", lat: null, lng: null })) });
 
-    await expect(submitProfileEdit(form({}))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
+    await expect(submitProfileEdit(form({ name: "Acme" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
 
     expect(notifyAdminFunnel).not.toHaveBeenCalled();
   });
 
   it("an active member's edit becomes a revision awaiting approval instead", async () => {
     const revisionsBuilder = queryBuilder(dbOk(null));
-    db({ members: () => queryBuilder(dbOk({ name: "Acme", status: "active", draft_submitted_at: null, social: null })), member_revisions: () => revisionsBuilder });
+    db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })), member_revisions: () => revisionsBuilder });
 
-    await expect(submitProfileEdit(form({ description: "New copy" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
+    await expect(submitProfileEdit(form({ name: "Acme", description: "New copy" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
 
     expect(revisionsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
       member_id: "mem1", payload: expect.objectContaining({ description: "New copy" }),
@@ -197,17 +197,17 @@ describe("submitProfileEdit", () => {
   });
 
   it("rejects an invalid contact email before writing anything", async () => {
-    const from = db({ members: () => queryBuilder(dbOk({ name: "Acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
+    const from = db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
 
-    await expect(submitProfileEdit(form({ contact_email: "nope" })))
+    await expect(submitProfileEdit(form({ name: "Acme", contact_email: "nope" })))
       .rejects.toThrow("NEXT_REDIRECT:/dashboard/profile?error=Contact%20email%20is%20not%20a%20valid%20address.");
     expect(from).not.toHaveBeenCalledWith("member_revisions");
   });
 
   it("rejects a malformed phone number before writing anything", async () => {
-    const from = db({ members: () => queryBuilder(dbOk({ name: "Acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
+    const from = db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
 
-    await expect(submitProfileEdit(form({ phone: "call me" })))
+    await expect(submitProfileEdit(form({ name: "Acme", phone: "call me" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/profile\?error=Phone/);
     expect(from).not.toHaveBeenCalledWith("member_revisions");
   });
@@ -215,12 +215,12 @@ describe("submitProfileEdit", () => {
   it("re-geocodes only when the address actually changed, and keeps the old coordinates on a failed lookup", async () => {
     const revisionsBuilder = queryBuilder(dbOk(null));
     db({
-      members: () => queryBuilder(dbOk({ name: "Acme", status: "active", draft_submitted_at: null, social: null, address: "1 Old Rd", lat: 52.1, lng: -1.1 })),
+      members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "1 Old Rd", lat: 52.1, lng: -1.1 })),
       member_revisions: () => revisionsBuilder,
     });
     geocodeAddress.mockResolvedValue(null); // lookup fails
 
-    await expect(submitProfileEdit(form({ address: "2 New Rd" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(submitProfileEdit(form({ name: "Acme", address: "2 New Rd" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(geocodeAddress).toHaveBeenCalledWith("2 New Rd");
     const [{ payload }] = (revisionsBuilder.insert as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -228,9 +228,9 @@ describe("submitProfileEdit", () => {
   });
 
   it("does not re-geocode when the address is unchanged", async () => {
-    db({ members: () => queryBuilder(dbOk({ name: "Acme", status: "active", draft_submitted_at: null, social: null, address: "1 Old Rd", lat: 52.1, lng: -1.1 })) });
+    db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "1 Old Rd", lat: 52.1, lng: -1.1 })) });
 
-    await expect(submitProfileEdit(form({ address: "1 Old Rd" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(submitProfileEdit(form({ name: "Acme", address: "1 Old Rd" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(geocodeAddress).not.toHaveBeenCalled();
   });

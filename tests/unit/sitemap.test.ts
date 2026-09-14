@@ -29,7 +29,7 @@ describe("sitemap", () => {
       events: () => queryBuilder(dbOk([{ slug: "acme-event" }])),
       newsletter_issues: () => queryBuilder(dbOk([{ web_slug: "issue-47" }])),
       static_pages: () => queryBuilder(dbOk([{ slug: "about", updated_at: "2026-02-01" }])),
-      categories: () => queryBuilder(dbOk([{ slug: "laser-cutting" }])),
+      industries: () => queryBuilder(dbOk([{ slug: "laser-cutting" }])),
     });
 
     const entries = await sitemap();

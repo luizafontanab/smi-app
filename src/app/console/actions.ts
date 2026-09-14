@@ -15,10 +15,13 @@ import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
 import { safeInternalPath } from "@/lib/validate";
 import { canMoveStory } from "@/lib/story-board";
+import { canMoveVideo } from "@/lib/video-board";
 import { FEATURED_SLOTS } from "@/lib/pricing";
 import { raiseInvoice } from "@/lib/invoicing";
 import { removeMedia, uploadDocument, uploadImage } from "@/lib/media";
 import { memberValuesFromForm } from "@/lib/member-form";
+import { resolveCoordinates } from "@/lib/member-geocode";
+import { replaceMemberServices } from "@/lib/member-services";
 import { recordRename } from "@/lib/redirects";
 import { activationBlocked, MEMBER_STATUSES, type MemberStatus } from "@/lib/membership";
 import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
@@ -175,7 +178,13 @@ export async function moveStory(input: { id: string; to: string }): Promise<{ ok
       await db.from("approvals").insert({ kind: "story", subject_id: input.id, decision: "approved", reason: null, decided_by: user.userId });
     }
   } else {
-    await db.from("stories").update({ status: input.to }).eq("id", input.id);
+    // Leaving published clears published_at, same reasoning as moveVideo: a
+    // re-publish stamps a fresh date, and a draft carrying a publication date is
+    // a claim the row cannot support.
+    await db.from("stories").update({
+      status: input.to,
+      ...(story.status === "published" ? { published_at: null } : {}),
+    }).eq("id", input.id);
   }
   revalidatePath("/console");
   revalidatePath("/console/stories");
@@ -220,6 +229,7 @@ export async function saveVideo(formData: FormData) {
     url,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     member_id: String(formData.get("member_id") ?? "") || null,
+    industry_id: Number(formData.get("industry_id")) || null,
     updated_at: new Date().toISOString(),
     ...(thumbnail_path ? { thumbnail_path } : {}),
   };
@@ -296,6 +306,111 @@ export async function pinVideo(formData: FormData) {
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   revalidatePath("/console/videos");
+}
+
+/**
+ * Video Engine kanban drop handler — the sibling of `moveStory`, same contract:
+ * re-read the current status from the DB rather than trusting the client's idea
+ * of it, refuse anything outside LEGAL_VIDEO_MOVES, and return the reason so the
+ * board can revert its optimistic update and say why.
+ */
+export async function moveVideo(input: { id: string; to: string }): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const { data: video } = await db.from("videos").select("id, status, member_id").eq("id", input.id).single();
+  if (!video) return { ok: false, error: "Video not found." };
+  if (!canMoveVideo(video.status, input.to)) {
+    return { ok: false, error: `Can't move a ${video.status} video straight to ${input.to}.` };
+  }
+  if (input.to === "published") {
+    await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", input.id);
+    await enqueue("social_push", { video_id: input.id }, new Date(Date.now() + 30 * 60_000));
+    if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: input.id });
+    if (video.status === "awaiting_approval") {
+      // mirror decideVideo's approve branch so the audit trail is identical
+      // whether an operator clicked Approve or dragged the card.
+      await db.from("approvals").insert({ kind: "video", subject_id: input.id, decision: "approved", reason: null, decided_by: user.userId });
+    }
+  } else {
+    // Leaving published clears published_at: a later re-publish must stamp a
+    // fresh date, and "published_at set while status is draft" is a lie the
+    // public queries would eventually trip over.
+    await db.from("videos").update({
+      status: input.to,
+      updated_at: new Date().toISOString(),
+      ...(video.status === "published" ? { published_at: null } : {}),
+    }).eq("id", input.id);
+  }
+  revalidatePath("/console");
+  revalidatePath("/console/videos");
+  return { ok: true };
+}
+
+/** Keyboard/no-JS fallback for the video board — same shape as setStoryStatus. */
+export async function setVideoStatus(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const to = String(formData.get("status") ?? "");
+  if (!id || !to) return;
+  await moveVideo({ id, to });
+}
+
+/* ---------- unpublish ---------- */
+
+// Not exported: this is a "use server" module, and Next only permits async
+// function exports from one. A const export here is a runtime error on every
+// page that imports the module, which typecheck and lint both let through.
+const UNPUBLISHABLE_KINDS = ["story", "video", "event", "machine"] as const;
+
+/**
+ * Take published content back to draft (fix list).
+ *
+ * Stories could already do this, but *only* by dragging a card on the board —
+ * the editors offered no button, and videos, events and equipment had no route
+ * back from published at all. This is that button, for all four.
+ *
+ * Stories and videos delegate to their board matrix so it stays the single
+ * authority on legal transitions; events and equipment have no matrix, so the
+ * `published` precondition is checked inline. Either way an already-draft row is
+ * a no-op rather than an error.
+ *
+ * The member is deliberately NOT notified — there is no notification kind for
+ * "your content was taken down" and inventing the wording is Jas's call
+ * (docs/ask-jas.md).
+ */
+export async function returnToDraft(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const kind = String(formData.get("kind") ?? "");
+  if (!id || !(UNPUBLISHABLE_KINDS as readonly string[]).includes(kind)) return;
+  const db = serviceDb();
+
+  // One branch per table rather than a generic `db.from(table)`: the four
+  // tables' Update types differ (featured_machines has no updated_at at all,
+  // only created_at), and a union collapses the payload type to never. The
+  // compiler caught exactly that — worth keeping the branches honest.
+  if (kind === "story") {
+    await moveStory({ id, to: "draft" });
+    redirect(`/console/stories/${id}`);
+  }
+  if (kind === "video") {
+    await moveVideo({ id, to: "draft" });
+    redirect(`/console/videos/${id}`);
+  }
+  if (kind === "event") {
+    const { data: row } = await db.from("events").select("id, status").eq("id", id).single();
+    if (!row || row.status !== "published") return;
+    await db.from("events").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", id);
+    revalidatePath("/console");
+    revalidatePath("/console/events");
+    redirect(`/console/events/${id}`);
+  }
+
+  const { data: row } = await db.from("featured_machines").select("id, status").eq("id", id).single();
+  if (!row || row.status !== "published") return;
+  await db.from("featured_machines").update({ status: "draft" }).eq("id", id);
+  revalidatePath("/console");
+  revalidatePath("/console/machines");
+  redirect(`/console/machines/${id}`);
 }
 
 /* ---------- events & member revisions ---------- */
@@ -409,14 +524,47 @@ export async function decideRevision(formData: FormData) {
   const { data: rev } = await db.from("member_revisions").select("id, member_id, payload, status").eq("id", id).single();
   if (!rev || rev.status !== "awaiting_approval") return;
   if (approve) {
+    // The member's form carries their web address now that it is shared with
+    // the console editor, so approving one can rename them — and a rename has
+    // to be handled exactly as saveMember handles it, or their inbound links
+    // die quietly. Read the slug they have *now*, before the update below.
+    const { data: current } = await db.from("members").select("slug").eq("id", rev.member_id).single();
     type MemberUpdate = import("@/lib/db/types").Database["public"]["Tables"]["members"]["Update"];
     const payload = { ...(rev.payload as MemberUpdate) };
     // revisions are member-authored and POST-reachable — never apply unsanitised markup
     if (typeof payload.description === "string") payload.description = renderableHtml(payload.description);
-    // revisions written before 20260902000003 dropped members.testimonials may
-    // still carry the key; applying it would fail on the missing column
-    delete (payload as Record<string, unknown>).testimonials;
+    // `service_ids` is not a members column — services are the join table
+    // `member_services`. It rides in the payload because that is the only
+    // channel a member's profile edit has, and is applied separately below.
+    // Read it out *before* the deletes so the value survives.
+    const raw = payload as Record<string, unknown>;
+    const serviceIds = Array.isArray(raw.service_ids) ? raw.service_ids.map(Number).filter(Boolean) : null;
+    delete raw.service_ids;
+    // revisions written before a column was dropped may still carry its key;
+    // applying one would fail on the missing column. 20260902000003 removed
+    // testimonials, 20260909000002 renamed category_id to industry_id — both
+    // migrations scrub the stored rows, this covers anything written between a
+    // deploy and its migration.
+    delete raw.testimonials;
+    delete raw.category_id;
+
+    // A slug clash would violate the unique index and fail the whole approval,
+    // so drop the rename rather than lose the rest of the member's edit — Jas
+    // sees the error and can settle the name with them separately.
+    const newSlug = typeof payload.slug === "string" ? payload.slug : null;
+    const renamed = Boolean(newSlug && current && newSlug !== current.slug);
+    if (renamed && newSlug) {
+      const { data: clash } = await db.from("members").select("id").eq("slug", newSlug).neq("id", rev.member_id).maybeSingle();
+      if (clash) return memberFail(rev.member_id, `That member asked for the web address “${newSlug}”, which another member already uses. Approve it after settling the name.`);
+    }
+
     await db.from("members").update(payload).eq("id", rev.member_id);
+    // null, not [], for a revision written before services existed on the form:
+    // that member's existing services must not be wiped by approving it.
+    if (serviceIds) await replaceMemberServices(db, rev.member_id, serviceIds);
+    // Same redirect bookkeeping saveMember does — a live member's old URL has
+    // to keep resolving.
+    if (renamed && newSlug && current) await recordRename(`/member/${current.slug}`, `/member/${newSlug}`);
     await db.from("member_revisions").update({ status: "published", decided_at: new Date().toISOString() }).eq("id", id);
     await enqueue("notify_member", { member_id: rev.member_id, kind: "page_changes_live", revision_id: id });
   } else {
@@ -1414,7 +1562,7 @@ export async function saveMember(formData: FormData) {
   const db = serviceDb();
   // explicit columns: select("*") would drag the search_tsv vector across the wire
   const { data: member } = await db.from("members")
-    .select("id, slug, status, social").eq("id", id).single();
+    .select("id, slug, status, social, address, lat, lng").eq("id", id).single();
   if (!member) return;
 
   // uploadImage throws on >8MB and on storage errors; redirect() must stay
@@ -1436,6 +1584,18 @@ export async function saveMember(formData: FormData) {
   const result = memberValuesFromForm(formData, member, uploaded);
   if ("error" in result) return memberFail(id, result.error);
   const { values, activatingDraft } = result;
+
+  // Same rule as the member's own save — the two run the same form, so they
+  // must derive the map pin the same way. Previously only the member side
+  // geocoded, so an operator saving a member with a new address and no typed
+  // coordinates left them without a map.
+  const coords = await resolveCoordinates(
+    { lat: values.lat ?? null, lng: values.lng ?? null },
+    member,
+    String(values.address ?? ""),
+  );
+  values.lat = coords.lat;
+  values.lng = coords.lng;
 
   const slug = values.slug!;
   const slugChanged = slug !== member.slug;
@@ -1463,6 +1623,14 @@ export async function saveMember(formData: FormData) {
       .from("member_membership_types")
       .insert(membershipTypeIds.map((membership_type_id) => ({ member_id: id, membership_type_id })));
     if (linkErr) return memberFail(id, linkErr.message);
+  }
+
+  // Services, the same way — the console had no way to edit these at all until
+  // the two member forms were merged (GO-LIVE §3.2).
+  try {
+    await replaceMemberServices(db, id, formData.getAll("services").map(Number).filter(Boolean));
+  } catch (e) {
+    return memberFail(id, e instanceof Error ? e.message : "Could not save services.");
   }
 
   if (slugChanged && member.status !== "draft") {
@@ -1705,13 +1873,11 @@ export async function deleteContentPage(formData: FormData) {
   redirect("/console/content-pages?deleted=1");
 }
 
-/* ---------- categories ---------- */
+/* ---------- news categories ---------- */
 
 export async function saveCategory(formData: FormData) {
   await requireConsole();
   const id = String(formData.get("id") ?? "");
-  const kind = String(formData.get("kind") ?? "");
-  if (kind !== "story" && kind !== "member") return;
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const slug = slugify(String(formData.get("slug") ?? "").trim() || name);
@@ -1720,36 +1886,84 @@ export async function saveCategory(formData: FormData) {
   if (id) {
     await db.from("categories").update({ name, slug }).eq("id", Number(id));
   } else {
-    const { error } = await db.from("categories").insert({ kind, name, slug });
+    const { error } = await db.from("categories").insert({ name, slug });
     if (error) {
       redirect(
-        `/console/categories/new?kind=${kind}&error=${encodeURIComponent(
-          error.code === "23505" ? "That slug is already used for this category type." : error.message
+        `/console/categories/new?error=${encodeURIComponent(
+          error.code === "23505" ? "That slug is already used by another category." : error.message
         )}`
       );
     }
   }
   revalidatePath("/console/categories");
-  redirect(`/console/categories?kind=${kind}&saved=1`);
+  revalidatePath("/news");
+  redirect("/console/categories?saved=1");
 }
 
 export async function deleteCategory(formData: FormData) {
   await requireConsole();
   const id = Number(formData.get("id"));
-  const kind = String(formData.get("kind") ?? "");
   if (!id || formData.get("confirm") !== "1") {
     redirect(`/console/categories/${id}?error=${encodeURIComponent("Tick the confirm box to delete this category.")}`);
   }
   const { error } = await serviceDb().from("categories").delete().eq("id", id);
   if (error) {
+    redirect(`/console/categories/${id}?error=${encodeURIComponent(error.message)}`);
+  }
+  revalidatePath("/console/categories");
+  revalidatePath("/news");
+  redirect("/console/categories?deleted=1");
+}
+
+/* ---------- industries ---------- */
+
+export async function saveIndustry(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  const slug = slugify(String(formData.get("slug") ?? "").trim() || name);
+  const sort_order = Number(formData.get("sort_order")) || 0;
+  const db = serviceDb();
+
+  if (id) {
+    await db.from("industries").update({ name, slug, sort_order }).eq("id", Number(id));
+  } else {
+    const { error } = await db.from("industries").insert({ name, slug, sort_order });
+    if (error) {
+      redirect(
+        `/console/industries/new?error=${encodeURIComponent(
+          error.code === "23505" ? "That slug is already used by another industry." : error.message
+        )}`
+      );
+    }
+  }
+  // The industry strip is in the public layout, so it renders on every public
+  // page — revalidating just /console/industries would leave the site stale.
+  revalidatePath("/console/industries");
+  revalidatePath("/", "layout");
+  redirect("/console/industries?saved=1");
+}
+
+export async function deleteIndustry(formData: FormData) {
+  await requireConsole();
+  const id = Number(formData.get("id"));
+  if (!id || formData.get("confirm") !== "1") {
+    redirect(`/console/industries/${id}?error=${encodeURIComponent("Tick the confirm box to delete this industry.")}`);
+  }
+  const { error } = await serviceDb().from("industries").delete().eq("id", id);
+  if (error) {
     redirect(
-      `/console/categories/${id}?error=${encodeURIComponent(
-        error.code === "23503" ? "This category is still assigned to a member — recategorise them first." : error.message
+      `/console/industries/${id}?error=${encodeURIComponent(
+        error.code === "23503"
+          ? "This industry is still assigned to a member, story, video or event — reassign them first."
+          : error.message
       )}`
     );
   }
-  revalidatePath("/console/categories");
-  redirect(`/console/categories?kind=${kind}&deleted=1`);
+  revalidatePath("/console/industries");
+  revalidatePath("/", "layout");
+  redirect("/console/industries?deleted=1");
 }
 
 /* ---------- promo codes ---------- */

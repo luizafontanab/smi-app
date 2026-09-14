@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { consoleUploadVideoImage, decideVideo, pinVideo, saveVideo, scheduleVideo } from "../../actions";
+import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -22,11 +22,12 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
     ? `/console/videos?view=calendar${/^\d{4}-\d{2}$/.test(String(sp.month ?? "")) ? `&month=${sp.month}` : ""}`
     : "/console/videos";
 
-  const [{ data: video }, { data: members }] = await Promise.all([
+  const [{ data: video }, { data: members }, { data: inds }] = await Promise.all([
     isNew
       ? Promise.resolve({ data: null })
       : db.from("videos").select("*, member:members(name, logo_path, slug)").eq("id", id).single(),
     db.from("members").select("id, name").eq("status", "active").order("name"),
+    db.from("industries").select("id, name").order("sort_order"),
   ]);
   if (!isNew && !video) notFound();
   const thumbnail = mediaUrl(video?.thumbnail_path);
@@ -69,6 +70,17 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
             <option value="">— none —</option>
             {(members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+        </div>
+        <div>
+          {/* videos.industry_id has existed since 20260909000002, which backfilled
+              it from the subject member's industry, but nothing could set it
+              afterwards — no form wrote the column (fix list). */}
+          <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
+          <select id="industry_id" name="industry_id" defaultValue={video?.industry_id ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+            <option value="">— none —</option>
+            {(inds ?? []).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-graphite">Drives /industry/* listings and the industry filter.</p>
         </div>
         <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
       </form>
@@ -129,6 +141,15 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
                     <button className="rounded bg-ink px-3 py-1.5 text-white">Pin</button>
                   </>
                 )}
+              </form>
+              {/* Videos had no route back from published at all before this —
+                  neither a button nor, until the board gained drag, a card
+                  move (fix list). */}
+              <form action={returnToDraft} className="mt-4 border-t pt-3">
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="kind" value="video" />
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <p className="mt-1 text-xs text-graphite">Takes it off the site straight away. The member is not emailed.</p>
               </form>
             </div>
           )}

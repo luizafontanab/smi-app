@@ -51,62 +51,58 @@ test.describe("reader (V1/V2)", () => {
   });
 });
 
-test.describe("member directory — category combobox + text search", () => {
-  test("the pill wall is gone; the combobox filters by type-ahead", async ({ page }) => {
+test.describe("member directory — industry pills + text search", () => {
+  test("the industry pills filter the directory", async ({ page }) => {
     await page.goto("/member");
-    // the old flat list of category links is no longer rendered (noscript is inert)
-    await expect(page.locator('a[href^="/member?category="]')).toHaveCount(0);
+    const pills = page.getByRole("navigation", { name: "Filter by industry" });
+    // "All industries" plus one per industry — 10 in the dev seed
+    const links = pills.getByRole("link");
+    expect(await links.count()).toBeGreaterThan(1);
 
-    // idle multi-select trigger reads "Categories" (exact — "Clear categories filter" appears once one is picked)
-    const trigger = page.getByRole("button", { name: "Categories", exact: true });
-    await trigger.click();
-    await expect(trigger).toHaveAttribute("aria-expanded", "true");
-
-    const filter = page.getByRole("combobox", { name: "Filter categories" });
-    await expect(filter).toBeFocused(); // focus moves into the panel on open
-    // the multi-select has no "All" row, so this is exactly the member-category count (10 in the dev seed)
-    const total = await page.getByRole("option").count();
-    expect(total).toBeGreaterThan(1);
-
-    await filter.fill("las");
-    expect(await page.getByRole("option").count()).toBeLessThan(total);
-
-    const option = page.getByRole("option").first();
-    const label = (await option.textContent())!.trim();
-    await option.click();
-    await page.waitForURL(/\/member\?category=/);
-    await expect(page.getByRole("button", { name: new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })).toBeVisible();
+    const pill = links.nth(1);
+    const label = (await pill.textContent())!.trim();
+    await pill.click();
+    await page.waitForURL(/\/member\?industry=/);
+    await expect(page.getByText(new RegExp(`in ${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`))).toBeVisible();
   });
 
-  test("Escape closes the panel and returns focus to the trigger", async ({ page }) => {
+  test("Escape closes the services panel and returns focus to the trigger", async ({ page }) => {
     await page.goto("/member");
-    const trigger = page.getByRole("button", { name: "Categories", exact: true });
+    const trigger = page.getByRole("button", { name: "Services", exact: true });
     await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press("Escape");
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
     await expect(trigger).toBeFocused();
   });
 
-  test("category and search term survive each other", async ({ page }) => {
+  test("industry and search term survive each other", async ({ page }) => {
     await page.goto("/member");
     const name = (await page.locator('a[href^="/member/"]').filter({ hasText: /\w/ }).first().textContent())!.trim();
     const term = name.split(/\s+/)[0];
 
-    // pick a category first — the form's hidden field must carry it through the search
-    await page.getByRole("button", { name: "Categories", exact: true }).click();
-    await page.getByRole("option").nth(1).click();
-    await page.waitForURL(/category=/);
-    const chosen = new URL(page.url()).searchParams.get("category")!;
+    // pick an industry first — the form's hidden field must carry it through the search
+    await page.getByRole("navigation", { name: "Filter by industry" }).getByRole("link").nth(1).click();
+    await page.waitForURL(/industry=/);
+    const chosen = new URL(page.url()).searchParams.get("industry")!;
 
     await page.getByRole("searchbox", { name: "Search members" }).fill(term);
     await page.keyboard.press("Enter");
     await page.waitForURL(/q=/);
-    expect(new URL(page.url()).searchParams.get("category")).toBe(chosen);
+    expect(new URL(page.url()).searchParams.get("industry")).toBe(chosen);
 
-    // and the reverse: clearing the category keeps q
-    await page.getByRole("button", { name: "Clear categories filter" }).click();
-    await page.waitForURL((u) => !u.searchParams.has("category"));
+    // and the reverse: clearing the industry keeps q
+    await page.getByRole("link", { name: "All industries" }).click();
+    await page.waitForURL((u) => !u.searchParams.has("industry"));
     expect(new URL(page.url()).searchParams.get("q")).toBe(term);
+  });
+
+  test("the legacy ?category= param still filters (external links must not die)", async ({ page }) => {
+    // /industry/[slug] linked here as ?category= before migration 20260909000002.
+    await page.goto("/member?industry=welding");
+    const viaIndustry = (await page.getByText(/\d+ members? in /).textContent())!.trim();
+    await page.goto("/member?category=welding");
+    await expect(page.getByText(/\d+ members? in /)).toHaveText(viaIndustry);
   });
 
   test("a term full of PostgREST delimiters cannot widen the filter", async ({ page }) => {

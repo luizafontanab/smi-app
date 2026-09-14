@@ -78,7 +78,17 @@ contains two of them, so one is currently **inferred**.
       the `/event` map has no pins for imported events until someone re-saves
       them through the console. **Decide:** re-save the handful of upcoming
       events by hand, or launch without event pins.
-- [ ] **3.2 — Services can't be edited in the console yet.** They're populated
+- [x] **3.2 — Services can't be edited in the console yet.** They're populated
       by the import; there's no admin UI to change a member's services (industry
       and membership types both have one). **Decide:** is that needed for
       launch, or can it wait?
+      **Fixed (fix-list 52, 14 Sep):** no longer a launch decision. Merging the
+      two company-page editors gave the console the Services picker for free —
+      `/console/members/[id]` and `/dashboard/profile` now render the same
+      `CompanyPageForm`, and `saveMember` writes `member_services` the same way
+      it writes membership types. Jas can change any member's services, and a
+      member can change their own (approval-gated).
+      **Still to validate on the day:** the 69-term vocabulary itself — see
+      `ask-jas.md` under Services. Members can now pick from that list
+      themselves, so a wrong or duplicated term gets used rather than just
+      displayed.

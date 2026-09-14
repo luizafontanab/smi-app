@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { consoleUploadEventImage, decideEvent, saveEvent } from "../../actions";
+import { consoleUploadEventImage, decideEvent, returnToDraft, saveEvent } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -117,6 +117,20 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
                 <input type="hidden" name="decision" value="reject" />
                 <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
                 <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
+              </form>
+            </div>
+          )}
+          {event.status === "published" && (
+            <div className="rounded-xl bg-white p-5 shadow-sm">
+              <h2 className="font-bold text-ink">Take it down</h2>
+              <p className="mt-1 text-xs text-graphite">
+                Returns the event to draft so it drops off the public listing and calendar. Edit and re-approve to put it back.
+              </p>
+              <form action={returnToDraft} className="mt-3">
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="kind" value="event" />
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <p className="mt-1 text-xs text-graphite">The member is not emailed.</p>
               </form>
             </div>
           )}

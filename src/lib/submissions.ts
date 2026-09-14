@@ -2,15 +2,26 @@ import { serviceDb } from "@/lib/db/server";
 
 export type SubmissionKind = "story" | "video" | "event" | "machine";
 
-/** One row of a member's pre-approval queue, across all four content types (A4.17). */
+/** Every status a member's own content can be in, across all four tables. */
+export type SubmissionStatus =
+  | "awaiting_approval"
+  | "rejected"
+  | "published"
+  | "draft"
+  | "scheduled"
+  | "withdrawn";
+
+/** One row of a member's own content, across all four content types (A4.17). */
 export type PendingSubmission = {
   id: string;
   kind: SubmissionKind;
   title: string;
-  status: "awaiting_approval" | "rejected";
+  status: SubmissionStatus;
   rejected_reason: string | null;
   created_at: string;
   editHref: string;
+  /** The live page, once there is one. Equipment has none — /featured-machine is a single page. */
+  publicHref: string | null;
 };
 
 const PENDING_STATUSES = ["awaiting_approval", "rejected"] as const;
@@ -22,31 +33,53 @@ const EDIT_HREF: Record<SubmissionKind, (id: string) => string> = {
 };
 
 /**
- * Everything a member has submitted that hasn't been published yet — awaiting
- * approval or sent back — newest first, merged across stories, videos, events
- * and equipment. `total` is the real count across all four tables even when
+ * A member's story publishes under /news — it is news on the public site, the
+ * `is_member_news` flag only badges it. Equipment has no page of its own.
+ */
+const PUBLIC_HREF: Record<SubmissionKind, (slug: string) => string | null> = {
+  story: (slug) => `/news/${slug}`,
+  video: (slug) => `/video/${slug}`,
+  event: (slug) => `/event/${slug}`,
+  machine: () => null,
+};
+
+/**
+ * A member's own content, merged across stories, videos, events and equipment,
+ * newest first. `total` is the real count across all four tables even when
  * `limit` trims the list, so a badge can show the true number while the
  * dashboard box shows only the most recent few (fix list item 34).
+ *
+ * `statuses` defaults to the pre-approval pair, which is what the dashboard box
+ * wants. Passing a wider set is how /dashboard/submissions shows published work
+ * too — before that, a member had no way to see their own content again once it
+ * went live (fix list).
  */
-export async function pendingSubmissions(memberId: string, opts: { limit?: number } = {}): Promise<{ items: PendingSubmission[]; total: number }> {
+export async function memberContent(
+  memberId: string,
+  opts: { limit?: number; statuses?: readonly SubmissionStatus[] } = {},
+): Promise<{ items: PendingSubmission[]; total: number }> {
   const db = serviceDb();
-  const cols = "id, title, status, rejected_reason, created_at";
+  const statuses = opts.statuses ?? PENDING_STATUSES;
+  const cols = "id, slug, title, status, rejected_reason, created_at";
   // Each table is capped at `limit` too: the newest N overall can only come
   // from the newest N of each type, so nothing is lost by trimming per table.
   const capped = <Q extends { limit: (n: number) => Q }>(q: Q) => (opts.limit != null ? q.limit(opts.limit) : q);
 
   const [stories, videos, events, machines] = await Promise.all([
-    capped(db.from("stories").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", PENDING_STATUSES).order("created_at", { ascending: false })),
-    capped(db.from("videos").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", PENDING_STATUSES).order("created_at", { ascending: false })),
-    capped(db.from("events").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", PENDING_STATUSES).order("created_at", { ascending: false })),
-    capped(db.from("featured_machines").select("id, name, status, rejected_reason, created_at", { count: "exact" }).eq("member_id", memberId).in("status", PENDING_STATUSES).order("created_at", { ascending: false })),
+    capped(db.from("stories").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
+    capped(db.from("videos").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
+    capped(db.from("events").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
+    // featured_machines has no slug column — it has no page of its own to link to.
+    capped(db.from("featured_machines").select("id, name, status, rejected_reason, created_at", { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
   ]);
 
-  type Raw = { id: string; title: string; status: string; rejected_reason: string | null; created_at: string };
+  type Raw = { id: string; slug?: string | null; title: string; status: string; rejected_reason: string | null; created_at: string };
   const rows = (kind: SubmissionKind, data: Raw[] | null): PendingSubmission[] =>
     (data ?? []).map((r) => ({
-      id: r.id, kind, title: r.title, status: r.status as PendingSubmission["status"],
+      id: r.id, kind, title: r.title, status: r.status as SubmissionStatus,
       rejected_reason: r.rejected_reason, created_at: r.created_at, editHref: EDIT_HREF[kind](r.id),
+      // Only a published row has a live page; a draft slug points at a 404.
+      publicHref: r.status === "published" && r.slug ? PUBLIC_HREF[kind](r.slug) : null,
     }));
 
   const items = [
@@ -59,3 +92,19 @@ export async function pendingSubmissions(memberId: string, opts: { limit?: numbe
   const total = (stories.count ?? 0) + (videos.count ?? 0) + (events.count ?? 0) + (machines.count ?? 0);
   return { items: opts.limit != null ? items.slice(0, opts.limit) : items, total };
 }
+
+/** Everything still waiting on the editor — the dashboard home's box. */
+export const pendingSubmissions = (memberId: string, opts: { limit?: number } = {}) =>
+  memberContent(memberId, { ...opts, statuses: PENDING_STATUSES });
+
+/** Tab definitions for /dashboard/submissions, and the statuses each one queries. */
+export const CONTENT_FILTERS = {
+  all: ["awaiting_approval", "rejected", "published", "draft", "scheduled", "withdrawn"],
+  pending: ["awaiting_approval"],
+  published: ["published", "scheduled"],
+  attention: ["rejected", "withdrawn"],
+} as const satisfies Record<string, readonly SubmissionStatus[]>;
+
+export type ContentFilter = keyof typeof CONTENT_FILTERS;
+
+export const isContentFilter = (v: string): v is ContentFilter => v in CONTENT_FILTERS;

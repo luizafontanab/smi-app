@@ -28,7 +28,7 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
   // pattern as /console/crm.
   let membersQuery = db
     .from("members")
-    .select("id, name, status, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, category:categories(name)", { count: "exact" })
+    .select("id, name, status, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, industry:industries(name)", { count: "exact" })
     .order("name");
   if (status !== "all") membersQuery = membersQuery.eq("status", status);
   const term = ilikeTerm(q);
@@ -84,7 +84,7 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                     <td className="py-1.5">
                       <Link href={`/console/members/${m.id}`} className="font-medium hover:text-graphite">{m.name}</Link>
                       <p className="text-xs text-graphite">
-                        {m.category?.name} · joined {m.joined_at} · {m.billing_mode} ·{" "}
+                        {m.industry?.name} · joined {m.joined_at} · {m.billing_mode} ·{" "}
                         <a href={`/console/pages?type=member_profile&entity=${m.id}`} className="underline hover:text-graphite">page layout</a>
                       </p>
                     </td>

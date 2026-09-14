@@ -252,7 +252,7 @@ describe("localBusinessLd", () => {
       address: null,
       phone: null,
       logoUrl: null,
-      categoryName: null,
+      industryName: null,
     });
     expect(ld.description).toBe("We bend metal");
     expect(ld).not.toHaveProperty("address");
@@ -268,7 +268,7 @@ describe("localBusinessLd", () => {
       address: "1 Forge Lane, Birmingham",
       phone: "0121 555 0100",
       logoUrl: "https://cdn.test/logo.png",
-      categoryName: "Laser cutting",
+      industryName: "Laser cutting",
     });
     expect(ld).toMatchObject({
       address: "1 Forge Lane, Birmingham",

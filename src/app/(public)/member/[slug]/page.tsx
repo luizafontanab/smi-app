@@ -74,7 +74,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
             ...member,
             logoUrl: mediaUrl(member.logo_path),
             socialUrls: socials.map((s) => s.href).filter((h): h is string => Boolean(h)),
-            categoryName: member.category?.name,
+            industryName: member.industry?.name,
           }),
           breadcrumbLd([
             { name: "Members", path: "/member" },
@@ -107,7 +107,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           ) : null}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs uppercase tracking-widest text-brand-text">SMI Member{member.category ? ` · ${member.category.name}` : ""}</p>
+          <p className="text-xs uppercase tracking-widest text-brand-text">SMI Member{member.industry ? ` · ${member.industry.name}` : ""}</p>
           <h1 className="text-2xl font-bold text-ink">{member.name}</h1>
           <p className="text-sm text-graphite">{member.address}</p>
           {member.services.length > 0 && (
