@@ -11,10 +11,14 @@ type Props = {
   action: (formData: FormData) => Promise<void>;
   uploadImage: (formData: FormData) => Promise<string | null>;
   categories: { id: number; name: string }[];
+  industries: { id: number; name: string }[];
   member: { name: string; slug: string; logoUrl: string | null };
   /** Present only in edit mode — pre-fills the form and switches the copy/actions. */
-  initial?: { id: string; title: string; excerpt: string; body: string; coverUrl: string | null; categoryId: number | null };
+  initial?: { id: string; title: string; excerpt: string; body: string; coverUrl: string | null; categoryId: number | null; industryId: number | null };
   withdrawAction?: (formData: FormData) => Promise<void>;
+  /** The member's own industry — the fallback whenever the story has none of its
+   *  own, on a new submission and on editing one that pre-dates the field. */
+  defaultIndustryId?: number | null;
 };
 
 /**
@@ -23,7 +27,7 @@ type Props = {
  * Doubles as the edit form for a pending/rejected submission when `initial`
  * is given — same fields, pre-filled, posting to a resubmit action instead.
  */
-export function StoryForm({ action, uploadImage, categories, member, initial, withdrawAction }: Props) {
+export function StoryForm({ action, uploadImage, categories, industries, member, initial, withdrawAction, defaultIndustryId }: Props) {
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [coverUrl, setCoverUrl] = useState<string | null>(initial?.coverUrl ?? null);
@@ -51,11 +55,27 @@ export function StoryForm({ action, uploadImage, categories, member, initial, wi
           <span className="block text-sm font-medium">Story</span>
           <RichTextEditor name="body" ariaLabel="Story" uploadImage={uploadImage} initialHtml={initial?.body} />
         </div>
-        <div className="sm:w-1/2 sm:pr-2">
-          <label htmlFor="category" className="text-sm font-medium">Category</label>
-          <select id="category" name="category" defaultValue={initial?.categoryId ?? ""} className="mt-1 w-full rounded border px-3 py-2">
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="category" className="text-sm font-medium">Category</label>
+            <select id="category" name="category" defaultValue={initial?.categoryId ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            {/* Defaults to the member's own industry on a new story, which is
+                what migration 20260909000002 backfilled for existing rows. On
+                an edit the saved value wins outright, including when it is
+                none — otherwise a resubmit would silently undo a deliberate
+                "— none —". Separate from Category above: that is the
+                news-topic list. */}
+            <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
+            <select id="industry_id" name="industry_id" defaultValue={initial ? initial.industryId ?? "" : defaultIndustryId ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+              <option value="">— none —</option>
+              {industries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-graphite">Helps buyers find your story on the matching industry page.</p>
+          </div>
         </div>
         {/* Full width, not a grid column: the crop picker is a fixed 320px box. */}
         <CoverField cover={initial?.coverUrl} required onPreview={setCoverUrl} />

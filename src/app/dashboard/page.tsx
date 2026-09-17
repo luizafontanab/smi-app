@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
-import { notificationLabel } from "@/lib/email/templates";
+import { notificationLabel, type NotificationPayload } from "@/lib/email/templates";
+import { notificationHref } from "@/lib/notification-links";
+import { notificationSlugs } from "@/lib/notifications";
 import { pendingSubmissions } from "@/lib/submissions";
 import { dismissOnboarding } from "./actions";
 import { SubmissionList } from "@/components/dashboard/SubmissionList";
@@ -41,8 +43,10 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
     db.from("stories").select("published_at").eq("member_id", user.memberId).eq("status", "published").order("published_at", { ascending: false }).limit(1).maybeSingle(),
     pendingSubmissions(user.memberId, { limit: 4 }),
     db.from("notifications").select("kind, payload, created_at").eq("member_id", user.memberId).order("created_at", { ascending: false }).limit(4),
-    db.from("members").select("status, paid_at, comped_until, draft_submitted_at, onboarding_seen").eq("id", user.memberId).single(),
+    db.from("members").select("slug, status, paid_at, comped_until, draft_submitted_at, onboarding_seen").eq("id", user.memberId).single(),
   ]);
+
+  const slugs = await notificationSlugs(notifications ?? [], user.memberId);
 
   // nudge: "the last time you posted a story was six months ago"
   // eslint-disable-next-line react-hooks/purity -- per-request render
@@ -51,6 +55,8 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
     ? Math.floor((now - new Date(lastStory.published_at).getTime()) / (30 * 864e5))
     : null;
   const neverPosted = !lastStory;
+  // Matches the console's own rule for "is there a public page to look at".
+  const isPublic = member?.status === "active" || member?.status === "grace";
   const submitted = typeof sp.submitted === "string" ? sp.submitted : null;
 
   return (
@@ -79,7 +85,17 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
         <WelcomePanel dismissAction={dismissOnboarding} />
       )}
 
-      <h1 className="text-2xl font-bold text-ink">Welcome back</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h1 className="text-2xl font-bold text-ink">Welcome back</h1>
+        {/* A member had no way to reach their own live page from here (fix
+            list). Only shown once there is one: a draft or lapsed page is not
+            public, and linking to it would 404 or show a stranger's view. */}
+        {isPublic && member?.slug && (
+          <Link href={`/member/${member.slug}`} className="text-sm text-graphite underline">
+            View your public page →
+          </Link>
+        )}
+      </div>
       {member?.status !== "draft" && (neverPosted || (monthsSince !== null && monthsSince >= 3)) && (
         <p className="mt-2 rounded-lg border-2 border-brand bg-brand/10 p-3 text-sm">
           {neverPosted
@@ -120,11 +136,16 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
           <Link href="/dashboard/notifications" className="text-sm text-graphite underline">See all →</Link>
         </div>
         {(notifications ?? []).length > 0
-          ? (notifications ?? []).map((n, i) => (
-              <p key={i} className="mt-2 border-t pt-2 text-sm text-graphite">
-                {n.created_at.slice(0, 10)} — {n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind)}
-              </p>
-            ))
+          ? (notifications ?? []).map((n, i) => {
+              const label = n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind);
+              const href = notificationHref(n.kind, (n.payload ?? {}) as NotificationPayload, slugs);
+              return (
+                <p key={i} className="mt-2 border-t pt-2 text-sm text-graphite">
+                  {n.created_at.slice(0, 10)} —{" "}
+                  {href ? <Link href={href} className="underline hover:text-ink">{label}</Link> : label}
+                </p>
+              );
+            })
           : <p className="mt-2 text-sm text-graphite">No updates yet. We&apos;ll let you know when something changes.</p>}
       </section>
 

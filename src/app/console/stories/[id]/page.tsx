@@ -25,12 +25,13 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
     ? `/console/stories?view=calendar${/^\d{4}-\d{2}$/.test(String(sp.month ?? "")) ? `&month=${sp.month}` : ""}`
     : "/console/stories";
 
-  const [{ data: story }, { data: cats }, { data: members }] = await Promise.all([
+  const [{ data: story }, { data: cats }, { data: members }, { data: inds }] = await Promise.all([
     isNew
       ? Promise.resolve({ data: null })
-      : db.from("stories").select("*, member:members(name, logo_path, slug, status)").eq("id", id).single(),
+      : db.from("stories").select("*, member:members(name, logo_path, slug, status, industry_id)").eq("id", id).single(),
     db.from("categories").select("id, name").order("name"),
     db.from("members").select("id, name").eq("status", "active").order("name"),
+    db.from("industries").select("id, name").order("sort_order"),
   ]);
   if (!isNew && !story) notFound();
   const { data: selectedCats } = isNew
@@ -40,6 +41,10 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const cover = mediaUrl(story?.cover_path);
   const focus = parseFocus(story?.cover_focus);
   const isPinned = !!story?.pinned_until && new Date(story.pinned_until) > new Date();
+  // Same rule the video editor uses: an industry set on the row wins, otherwise
+  // fall back to the subject member's — which is what migration 20260909000002
+  // backfilled, and is right for the stories written before this field existed.
+  const industryDefault = story?.industry_id ?? story?.member?.industry_id ?? "";
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -84,6 +89,18 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
             <input type="checkbox" name="is_member_news" defaultChecked={story?.is_member_news ?? false} />
             Member news (badged on the site)
           </label>
+          <div>
+            {/* stories.industry_id has existed since 20260909000002, which
+                backfilled it from the subject member, but nothing could set it
+                afterwards — no form wrote the column. Distinct from Categories
+                below: that is the news-topic list, many per story. */}
+            <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
+            <select id="industry_id" name="industry_id" defaultValue={industryDefault} className="mt-1 w-full rounded border px-3 py-2">
+              <option value="">— none —</option>
+              {(inds ?? []).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-graphite">Drives /industry/* listings and the industry filter.</p>
+          </div>
         </div>
         <fieldset>
           <legend className="text-sm font-medium">Categories</legend>

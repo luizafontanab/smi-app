@@ -1,7 +1,9 @@
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
-import { notificationLabel } from "@/lib/email/templates";
-import { unreadNotificationCount } from "@/lib/notifications";
+import Link from "next/link";
+import { notificationLabel, type NotificationPayload } from "@/lib/email/templates";
+import { notificationHref } from "@/lib/notification-links";
+import { notificationSlugs, unreadNotificationCount } from "@/lib/notifications";
 import { Pagination } from "@/components/Pagination";
 import { markAllNotificationsRead, markNotificationRead } from "../actions";
 
@@ -22,6 +24,7 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
     unreadNotificationCount(user.memberId),
   ]);
+  const slugs = await notificationSlugs(notifications ?? [], user.memberId);
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
   const qs = (p: number) => (p > 1 ? `/dashboard/notifications?page=${p}` : "/dashboard/notifications");
 
@@ -43,9 +46,17 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
           <div key={n.id} className="flex items-center justify-between gap-3 border-t py-3 text-sm first:border-t-0 first:pt-0">
             <div>
               {!n.read_at && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-brand" aria-label="unread" />}
-              <span className={n.read_at ? "text-graphite" : "font-semibold text-ink"}>
-                {n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind)}
-              </span>
+              {/* Linked to whatever it is about (fix list) — the public page
+                  when something went live, the member's own editor when it was
+                  sent back. Unlinked only when there is genuinely nowhere to go. */}
+              {(() => {
+                const label = n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind);
+                const href = notificationHref(n.kind, (n.payload ?? {}) as NotificationPayload, slugs);
+                const cls = n.read_at ? "text-graphite" : "font-semibold text-ink";
+                return href
+                  ? <Link href={href} className={`${cls} underline decoration-graphite/40 underline-offset-2 hover:decoration-ink`}>{label}</Link>
+                  : <span className={cls}>{label}</span>;
+              })()}
               <span className="ml-2 text-xs text-graphite">{n.created_at.slice(0, 10)}</span>
             </div>
             {!n.read_at && (

@@ -1,6 +1,12 @@
 import { serviceDb } from "@/lib/db/server";
 
-export type SubmissionKind = "story" | "video" | "event" | "machine";
+/**
+ * `profile` is not a content table — it's a pending edit to the member's own
+ * company page, held in `member_revisions`. It appears in this list because a
+ * member who submits page changes is waiting on exactly the same approval as a
+ * story, and had no way to see that it was queued (fix list).
+ */
+export type SubmissionKind = "story" | "video" | "event" | "machine" | "profile";
 
 /** Every status a member's own content can be in, across all four tables. */
 export type SubmissionStatus =
@@ -25,11 +31,16 @@ export type PendingSubmission = {
 };
 
 const PENDING_STATUSES = ["awaiting_approval", "rejected"] as const;
+/** Member statuses with a live public page — must match `memberBySlug` in queries.ts. */
+const PUBLIC_MEMBER_STATUSES: readonly string[] = ["active", "grace"];
 const EDIT_HREF: Record<SubmissionKind, (id: string) => string> = {
   story: (id) => `/dashboard/story/${id}/edit`,
   video: (id) => `/dashboard/video/${id}/edit`,
   event: (id) => `/dashboard/event/${id}/edit`,
   machine: (id) => `/dashboard/equipment/${id}/edit`,
+  // A revision has no editor of its own — the page it changes *is* the editor,
+  // and re-submitting there replaces the pending revision.
+  profile: () => "/dashboard/profile",
 };
 
 /**
@@ -41,6 +52,8 @@ const PUBLIC_HREF: Record<SubmissionKind, (slug: string) => string | null> = {
   video: (slug) => `/video/${slug}`,
   event: (slug) => `/event/${slug}`,
   machine: () => null,
+  // Once applied, the change is simply live on the member's own page.
+  profile: (slug) => `/member/${slug}`,
 };
 
 /**
@@ -65,13 +78,24 @@ export async function memberContent(
   // from the newest N of each type, so nothing is lost by trimming per table.
   const capped = <Q extends { limit: (n: number) => Q }>(q: Q) => (opts.limit != null ? q.limit(opts.limit) : q);
 
-  const [stories, videos, events, machines] = await Promise.all([
+  const [stories, videos, events, machines, revisions, memberRow] = await Promise.all([
     capped(db.from("stories").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
     capped(db.from("videos").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
     capped(db.from("events").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
     // featured_machines has no slug column — it has no page of its own to link to.
     capped(db.from("featured_machines").select("id, name, status, rejected_reason, created_at", { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
+    // Page edits queue for the same approval as content, so they belong in the
+    // same list (fix list). member_revisions shares the status vocabulary but
+    // has no title or slug of its own — both come from the member.
+    capped(db.from("member_revisions").select("id, status, rejected_reason, created_at", { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
+    db.from("members").select("slug, status").eq("id", memberId).maybeSingle(),
   ]);
+  // Only a publicly visible member has a page for an applied revision to link
+  // to — memberBySlug serves `active` and `grace` alone, so a lapsed member's
+  // slug would point at a 404. Null here becomes "no link" at `publicHref`.
+  const memberSlug = PUBLIC_MEMBER_STATUSES.includes(memberRow.data?.status ?? "")
+    ? memberRow.data?.slug ?? null
+    : null;
 
   type Raw = { id: string; slug?: string | null; title: string; status: string; rejected_reason: string | null; created_at: string };
   const rows = (kind: SubmissionKind, data: Raw[] | null): PendingSubmission[] =>
@@ -87,9 +111,10 @@ export async function memberContent(
     ...rows("video", videos.data),
     ...rows("event", events.data),
     ...rows("machine", (machines.data ?? []).map(({ name, ...m }) => ({ ...m, title: name }))),
+    ...rows("profile", (revisions.data ?? []).map((r) => ({ ...r, title: "Changes to your company page", slug: memberSlug }))),
   ].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
-  const total = (stories.count ?? 0) + (videos.count ?? 0) + (events.count ?? 0) + (machines.count ?? 0);
+  const total = (stories.count ?? 0) + (videos.count ?? 0) + (events.count ?? 0) + (machines.count ?? 0) + (revisions.count ?? 0);
   return { items: opts.limit != null ? items.slice(0, opts.limit) : items, total };
 }
 

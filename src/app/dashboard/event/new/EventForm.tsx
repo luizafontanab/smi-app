@@ -11,12 +11,17 @@ type Props = {
   action: (formData: FormData) => Promise<void>;
   uploadImage: (formData: FormData) => Promise<string | null>;
   member: { name: string; slug: string };
+  industries: { id: number; name: string }[];
   /** Present only in edit mode — pre-fills the form and switches the copy/actions. */
   initial?: {
     id: string; title: string; description: string; startsOn: string; startsTime: string | null;
     endsOn: string | null; location: string; link: string | null; type: string | null; coverUrl: string | null;
+    industryId: number | null;
   };
   withdrawAction?: (formData: FormData) => Promise<void>;
+  /** The member's own industry — the fallback whenever the event has none of its
+   *  own, on a new submission and on editing one that pre-dates the field. */
+  defaultIndustryId?: number | null;
 };
 
 /**
@@ -25,7 +30,7 @@ type Props = {
  * Doubles as the edit form for a pending/rejected submission when `initial`
  * is given.
  */
-export function EventForm({ action, uploadImage, member, initial, withdrawAction }: Props) {
+export function EventForm({ action, uploadImage, member, industries, initial, withdrawAction, defaultIndustryId }: Props) {
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [coverUrl, setCoverUrl] = useState<string | null>(initial?.coverUrl ?? null);
@@ -73,12 +78,27 @@ export function EventForm({ action, uploadImage, member, initial, withdrawAction
             <input id="link" name="link" type="url" defaultValue={initial?.link ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
         </div>
-        <div>
-          <label htmlFor="type" className="text-sm font-medium">Type (optional)</label>
-          <select id="type" name="type" defaultValue={initial?.type ?? ""} className="mt-1 w-full rounded border px-3 py-2">
-            <option value="">— none —</option>
-            {EVENT_TYPES.map((t) => <option key={t} value={t}>{EVENT_TYPE_LABELS[t]}</option>)}
-          </select>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="type" className="text-sm font-medium">Type (optional)</label>
+            <select id="type" name="type" defaultValue={initial?.type ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+              <option value="">— none —</option>
+              {EVENT_TYPES.map((t) => <option key={t} value={t}>{EVENT_TYPE_LABELS[t]}</option>)}
+            </select>
+          </div>
+          <div>
+            {/* Defaults to the member's own industry on a new event. Nothing has
+                ever written events.industry_id, so this form is where the
+                column starts getting values. On an edit the saved value wins
+                outright, including when it is none — otherwise a resubmit
+                would silently undo a deliberate "— none —". */}
+            <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
+            <select id="industry_id" name="industry_id" defaultValue={initial ? initial.industryId ?? "" : defaultIndustryId ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+              <option value="">— none —</option>
+              {industries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-graphite">Helps buyers find your event on the matching industry page.</p>
+          </div>
         </div>
         <div>
           <label htmlFor="cover" className="text-sm font-medium">Cover image (optional)</label>

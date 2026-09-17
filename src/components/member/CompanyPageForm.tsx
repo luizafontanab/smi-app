@@ -3,6 +3,7 @@ import { socialFieldName } from "@/lib/member-form";
 import { renderableHtml } from "@/lib/sanitize";
 import { SOCIAL_CHANNELS } from "@/lib/social";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { ServicesPicker } from "@/components/member/ServicesPicker";
 
 const field = "mt-1 w-full rounded border px-3 py-2";
 const label = "text-sm font-medium";
@@ -109,22 +110,16 @@ export function CompanyPageForm({
         )}
       </fieldset>
 
-      <fieldset>
-        <legend className={label}>Services you offer</legend>
-        <p className="text-xs text-graphite">Choose everything that applies — these are how buyers filter the member directory.</p>
-        {services.length === 0 ? (
+      {/* 69 terms as a flat list was the tallest thing on this form by far, so
+          it collapses to a summary and filters (fix list). */}
+      {services.length === 0 ? (
+        <fieldset>
+          <legend className={label}>Services you offer</legend>
           <p className="mt-2 text-sm text-graphite">No services have been set up yet.</p>
-        ) : (
-          <div className="mt-2 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
-            {services.map((s) => (
-              <label key={s.id} className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" name="services" value={s.id} defaultChecked={selectedServiceIds.has(s.id)} />
-                {s.name}
-              </label>
-            ))}
-          </div>
-        )}
-      </fieldset>
+        </fieldset>
+      ) : (
+        <ServicesPicker services={services} selected={selectedServiceIds} legendClass={label} />
+      )}
 
       <div>
         <label htmlFor="slug" className={label}>Web address</label>

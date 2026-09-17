@@ -8,6 +8,7 @@ import { AdSlot } from "@/components/AdSlot";
 import { MemberMap } from "@/components/MemberMap";
 import { MultiSelectCombobox } from "@/components/MultiSelectCombobox";
 import { Pagination } from "@/components/Pagination";
+import { MemberTile } from "@/components/cards";
 
 /** A searchParams value is `string | string[] | undefined` — normalise either shape to an array. */
 const asArray = (v: string | string[] | undefined): string[] => (Array.isArray(v) ? v : v ? [v] : []);
@@ -187,12 +188,12 @@ export default async function MembersPage(props: PageProps<"/member">) {
       ) : (
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {members.slice(0, 6).map((m) => <MemberCard key={m.slug} member={m} />)}
+            {members.slice(0, 6).map((m) => <MemberTile key={m.slug} member={m} />)}
           </div>
           {members.length === 0 && <p className="mt-10 text-center text-graphite">No members found.</p>}
           {members.length > 6 && (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {members.slice(6).map((m) => <MemberCard key={m.slug} member={m} />)}
+              {members.slice(6).map((m) => <MemberTile key={m.slug} member={m} />)}
             </div>
           )}
           <Pagination page={page} pages={pages} hrefFor={(p) => qs({ page: p })} />
@@ -207,27 +208,3 @@ export default async function MembersPage(props: PageProps<"/member">) {
   );
 }
 
-/* Deliberately spare (fix list item 24): logo, name, industry — nothing else.
-   The whole card links to the member page, where description and contact
-   details live. Never emits a trailing slash: e2e selects a[href^='/member/']. */
-function MemberCard({ member: m }: { member: Awaited<ReturnType<typeof memberDirectory>>["members"][number] }) {
-  return (
-    <Link href={`/member/${m.slug}`} className="block rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
-      <div className="flex items-center gap-4">
-        {m.logo_path ? (
-          // Rounded box bigger than the image inside it, so the corner radius
-          // only ever clips white background, never a non-square logo's artwork.
-          <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-white">
-            <Image src={mediaUrl(m.logo_path)!} alt="" width={112} height={112} className="object-contain" unoptimized />
-          </div>
-        ) : (
-          <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30">⚙</div>
-        )}
-        <div className="min-w-0">
-          <p className="font-bold text-ink">{m.name}</p>
-          {m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
-        </div>
-      </div>
-    </Link>
-  );
-}

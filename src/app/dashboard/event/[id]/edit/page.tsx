@@ -15,9 +15,10 @@ export default async function EditMemberEvent(props: PageProps<"/dashboard/event
   const sp = await props.searchParams;
   const user = await requireMember();
   const db = serviceDb();
-  const [{ data: event }, { data: member }] = await Promise.all([
-    db.from("events").select("id, title, description, starts_on, starts_time, ends_on, location, link, type, cover_path, status, member_id").eq("id", id).single(),
-    serviceDb().from("members").select("name, slug").eq("id", user.memberId).single(),
+  const [{ data: event }, { data: member }, { data: inds }] = await Promise.all([
+    db.from("events").select("id, title, description, starts_on, starts_time, ends_on, location, link, type, cover_path, status, member_id, industry_id").eq("id", id).single(),
+    db.from("members").select("name, slug, industry_id").eq("id", user.memberId).single(),
+    db.from("industries").select("id, name").order("sort_order"),
   ]);
   if (!event || event.member_id !== user.memberId || !EDITABLE_STATUSES.includes(event.status)) notFound();
 
@@ -32,6 +33,8 @@ export default async function EditMemberEvent(props: PageProps<"/dashboard/event
         action={editEvent}
         withdrawAction={withdrawEvent}
         uploadImage={memberUploadEventImage}
+        industries={inds ?? []}
+        defaultIndustryId={member?.industry_id ?? null}
         member={{ name: member?.name ?? "", slug: member?.slug ?? "" }}
         initial={{
           id: event.id,
@@ -44,6 +47,7 @@ export default async function EditMemberEvent(props: PageProps<"/dashboard/event
           link: event.link,
           type: event.type,
           coverUrl: mediaUrl(event.cover_path),
+          industryId: event.industry_id,
         }}
       />
     </div>

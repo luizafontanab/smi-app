@@ -94,6 +94,52 @@ export function FeaturedMemberCard({ member, variant = "card" }: { member: Featu
   );
 }
 
+export type MemberTileData = {
+  slug: string;
+  name: string;
+  logo_path: string | null;
+  industry?: { name: string } | null;
+};
+
+const TILE_LOGO = { sm: { box: "h-20 w-20", px: 72 }, md: { box: "h-32 w-32", px: 112 } };
+
+/**
+ * Deliberately spare (fix list item 24): logo, name, industry — nothing else.
+ * The whole card links to the member page, where description and contact
+ * details live. Never emits a trailing slash: e2e selects a[href^='/member/'].
+ *
+ * "md" is the directory tile on /member and is byte-identical to the private
+ * MemberCard it was lifted from, so that page's visual baseline does not move.
+ * "sm" is the industry hub's. `showIndustry` is off there: every member on an
+ * industry page shares the same one, so repeating it under each tile is noise.
+ */
+export function MemberTile({ member: m, size = "md", showIndustry = true }: {
+  member: MemberTileData;
+  size?: "sm" | "md";
+  showIndustry?: boolean;
+}) {
+  const logo = TILE_LOGO[size];
+  return (
+    <Link href={`/member/${m.slug}`} className="block rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
+      <div className="flex items-center gap-4">
+        {m.logo_path ? (
+          // Rounded box bigger than the image inside it, so the corner radius
+          // only ever clips white background, never a non-square logo's artwork.
+          <div className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-white`}>
+            <Image src={mediaUrl(m.logo_path)!} alt="" width={logo.px} height={logo.px} className="object-contain" unoptimized />
+          </div>
+        ) : (
+          <div className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30`}>⚙</div>
+        )}
+        <div className="min-w-0">
+          <p className="font-bold text-ink">{m.name}</p>
+          {showIndustry && m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 export type EventCardData = {
   slug: string;
   title: string;

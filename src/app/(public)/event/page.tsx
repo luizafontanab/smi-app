@@ -3,9 +3,10 @@ import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { dayKey, monthGrid, parseMonth } from "@/lib/calendar";
 import { EVENT_TYPES, EVENT_TYPE_LABELS, isEventType } from "@/lib/event-types";
-import { eventsInRange, pastEvents, upcomingEventPins, upcomingEvents } from "@/lib/queries";
+import { eventsInRange, industries, pastEvents, upcomingEventPins, upcomingEvents } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
 import { Pagination } from "@/components/Pagination";
+import { ScrollToHash } from "@/components/ScrollToHash";
 import { EventCard } from "@/components/cards";
 import { EventsCalendar } from "./EventsCalendar";
 import { EventMap } from "./EventMap";
@@ -29,6 +30,7 @@ export default async function EventsPage(props: PageProps<"/event">) {
   const upcomingPage = Math.max(1, Number(sp.upcoming_page) || 1);
   const pastPage = Math.max(1, Number(sp.past_page) || 1);
   const type = typeof sp.type === "string" && isEventType(sp.type) ? sp.type : undefined;
+  const industry = typeof sp.industry === "string" ? sp.industry : undefined;
   const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 80) : "";
   // Only a well-formed month is worth carrying in links; parseMonth already
   // falls back to the current month for anything else.
@@ -36,11 +38,15 @@ export default async function EventsPage(props: PageProps<"/event">) {
   const month = parseMonth(monthParam);
   const grid = monthGrid(month);
 
-  const [{ events, total: upcomingTotal }, { events: past, total: pastTotal }, monthEvents, pins, banners, showPlaceholders, ctx] = await Promise.all([
-    upcomingEvents({ limit: PAGE_SIZE_UPCOMING, offset: (upcomingPage - 1) * PAGE_SIZE_UPCOMING, type, q }),
-    pastEvents({ limit: PAGE_SIZE_PAST, offset: (pastPage - 1) * PAGE_SIZE_PAST }),
-    eventsInRange(dayKey(grid.start), dayKey(grid.end)),
-    upcomingEventPins(),
+  // Industry goes to all four reads, unlike type/q/paging which narrow only the
+  // upcoming list: an industry narrows what the page is *about*, so a calendar
+  // and a map still showing every trade would read as a bug.
+  const [{ events, total: upcomingTotal }, { events: past, total: pastTotal }, monthEvents, pins, inds, banners, showPlaceholders, ctx] = await Promise.all([
+    upcomingEvents({ limit: PAGE_SIZE_UPCOMING, offset: (upcomingPage - 1) * PAGE_SIZE_UPCOMING, type, q, industry }),
+    pastEvents({ limit: PAGE_SIZE_PAST, offset: (pastPage - 1) * PAGE_SIZE_PAST, industry }),
+    eventsInRange(dayKey(grid.start), dayKey(grid.end), { industry }),
+    upcomingEventPins({ industry }),
+    industries(),
     liveAdverts("banner"),
     showAdPlaceholders(),
     requestContext(),
@@ -57,6 +63,7 @@ export default async function EventsPage(props: PageProps<"/event">) {
     const merged: Record<string, string | number | undefined> = {
       month: monthParam,
       type,
+      industry,
       q: q || undefined,
       upcoming_page: upcomingPage > 1 ? upcomingPage : undefined,
       past_page: pastPage > 1 ? pastPage : undefined,
@@ -69,10 +76,15 @@ export default async function EventsPage(props: PageProps<"/event">) {
   };
   const qsUpcoming = (page: number) => qs({ upcoming_page: page > 1 ? page : undefined });
   const qsPast = (page: number) => qs({ past_page: page > 1 ? page : undefined });
-  const hrefForMonth = (key: string | null) => qs({ month: key ?? undefined });
+  // #calendar so paging a month lands back on the grid rather than at the top
+  // of the page (fix list): the month links are ordinary navigations, and the
+  // calendar sits below the listing and the ad slot. ScrollToHash covers Safari,
+  // which keeps the fragment but does not scroll to it on a full load.
+  const hrefForMonth = (key: string | null) => `${qs({ month: key ?? undefined })}#calendar`;
 
   return (
     <div className="mx-auto max-w-6xl px-4">
+      <ScrollToHash />
       <h1 className="mt-6 text-2xl font-bold text-ink">Events</h1>
 
       {/* List leads, map rides in a sidebar (fix list item 37, swapping the
@@ -83,6 +95,7 @@ export default async function EventsPage(props: PageProps<"/event">) {
           {/* GET submit replaces the whole query string, hence the hidden carriers */}
           <form action="/event" role="search" className="flex gap-2">
             {type && <input type="hidden" name="type" value={type} />}
+            {industry && <input type="hidden" name="industry" value={industry} />}
             {monthParam && <input type="hidden" name="month" value={monthParam} />}
             <input
               name="q"
@@ -102,13 +115,24 @@ export default async function EventsPage(props: PageProps<"/event">) {
               </Link>
             ))}
           </div>
+          {/* A second axis, kept on its own row: this one also re-filters the
+              calendar and the map, where the type pills only touch the list.
+              Both page families reset — a filtered page 3 is nonsense. */}
+          <nav aria-label="Filter by industry" className="mt-2 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+            <Link href={qs({ industry: undefined, upcoming_page: undefined, past_page: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+            {inds.map((i) => (
+              <Link key={i.slug} href={qs({ industry: i.slug, upcoming_page: undefined, past_page: undefined })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+                {i.name}
+              </Link>
+            ))}
+          </nav>
 
           <div className="mt-5 space-y-4">
             {events.slice(0, 3).map((e) => <EventCard key={e.slug} event={e} />)}
           </div>
           {events.length === 0 && (
             <p className="mt-4 text-graphite">
-              {type || q ? <>No upcoming events match. <Link href={qs({ type: undefined, q: undefined, upcoming_page: undefined })} className="underline">Clear filters</Link></> : "No upcoming events."}
+              {type || q || industry ? <>No upcoming events match. <Link href={qs({ type: undefined, q: undefined, industry: undefined, upcoming_page: undefined, past_page: undefined })} className="underline">Clear filters</Link></> : "No upcoming events."}
             </p>
           )}
           {/* Unconditional: the slot is booked inventory, so it must not vanish just
@@ -124,7 +148,8 @@ export default async function EventsPage(props: PageProps<"/event">) {
 
         <aside className="shrink-0 lg:w-96">
           {/* Renders nothing until at least one upcoming event has geocoded
-              coords. Shows all upcoming events regardless of list filters. */}
+              coords. Ignores the list's type/search filters and its paging, but
+              does honour the industry — see the fetch note above. */}
           <EventMap events={pins} />
         </aside>
       </div>
@@ -133,7 +158,7 @@ export default async function EventsPage(props: PageProps<"/event">) {
           the 384px map only had ~700px to work with at lg, which cramped the day
           cells and truncated most chips. Full container width instead — the
           component is fluid by design (see its own note on having no min-width). */}
-      <section className="mt-8">
+      <section id="calendar" className="mt-8 scroll-mt-4">
         <h2 className="text-lg font-bold text-ink">Calendar</h2>
         <div className="mt-3">
           <EventsCalendar month={month} events={monthEvents} hrefForMonth={hrefForMonth} />

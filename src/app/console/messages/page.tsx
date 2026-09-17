@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
-import { markInboxRead } from "../actions";
+import { markAllInboxRead, markInboxRead } from "../actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Messages" };
@@ -44,13 +44,31 @@ export default async function MessagesPage(props: PageProps<"/console/messages">
     return `/console/messages?${params.toString()}`;
   };
 
+  // Unread across the current kind filter, so the button's count matches what
+  // clearing it will actually touch.
+  let unreadQ = serviceDb().from("inbox_messages").select("*", { count: "exact", head: true }).eq("read", false);
+  if (kind) unreadQ = unreadQ.eq("kind", kind);
+  const { count: unread } = await unreadQ;
+
   const total = count ?? 0;
   const hasNext = page * PAGE_SIZE < total;
   const hasPrev = page > 1;
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-xl font-bold text-ink">Messages</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-bold text-ink">Messages</h1>
+        {/* Not on the Read tab: there it would offer to clear messages the list
+            is not showing, which reads as a bug even though the count is right. */}
+        {Boolean(unread) && filter !== "read" && (
+          <form action={markAllInboxRead}>
+            {kind && <input type="hidden" name="kind" value={kind} />}
+            <button type="submit" className="text-sm text-graphite underline hover:text-ink">
+              Mark all {kind ? `${kind} ` : ""}as read ({unread})
+            </button>
+          </form>
+        )}
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-1 border-b text-sm">

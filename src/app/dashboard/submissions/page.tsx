@@ -35,13 +35,13 @@ export default async function SubmissionsPage(props: PageProps<"/dashboard/submi
   const user = await requireMember();
   const sp = await props.searchParams;
   const filter: ContentFilter = typeof sp.status === "string" && isContentFilter(sp.status) ? sp.status : "all";
-  const { items, total } = await memberContent(user.memberId, { statuses: CONTENT_FILTERS[filter] });
+  const { items } = await memberContent(user.memberId, { statuses: CONTENT_FILTERS[filter] });
 
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-ink">
-          Your content{total > 0 && <span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-ink">{total}</span>}
+          Your content
         </h1>
         <Link href="/dashboard/story/new" className="text-sm text-graphite underline">Add content →</Link>
       </div>

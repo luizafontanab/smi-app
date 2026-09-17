@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { EventCard, FeaturedMemberCard, MachineCard, VideoCard } from "@/components/cards";
+import { EventCard, FeaturedMemberCard, MachineCard, MemberTile, VideoCard } from "@/components/cards";
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
@@ -52,6 +52,38 @@ describe("FeaturedMemberCard", () => {
     render(<FeaturedMemberCard member={member} variant="band" />);
     expect(screen.getByRole("link")).toHaveAttribute("href", "/member/acme");
     expect(screen.getByText("Featured member")).toBeInTheDocument();
+  });
+});
+
+describe("MemberTile", () => {
+  const member = { slug: "acme", name: "Acme Fabrication", logo_path: null, industry: { name: "Welding" } };
+
+  it("links to the member page with no trailing slash", () => {
+    render(<MemberTile member={member} />);
+    // e2e selects a[href^='/member/'] — a trailing slash silently breaks it
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/member/acme");
+  });
+
+  it("shows the industry by default and hides it on request", () => {
+    const { rerender } = render(<MemberTile member={member} />);
+    expect(screen.getByText("Welding")).toBeInTheDocument();
+    // off on an industry page, where every tile would repeat the same word
+    rerender(<MemberTile member={member} showIndustry={false} />);
+    expect(screen.queryByText("Welding")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the placeholder glyph when the member has no logo", () => {
+    const { container } = render(<MemberTile member={member} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText("⚙")).toBeInTheDocument();
+  });
+
+  it("renders a smaller logo at sm than at the directory's default md", () => {
+    const withLogo = { ...member, logo_path: "members/acme.png" };
+    const { container, rerender } = render(<MemberTile member={withLogo} size="md" />);
+    expect(container.querySelector("img")).toHaveAttribute("width", "112");
+    rerender(<MemberTile member={withLogo} size="sm" />);
+    expect(container.querySelector("img")).toHaveAttribute("width", "72");
   });
 });
 

@@ -16,7 +16,8 @@ type Props = {
   /** Present only in edit mode — pre-fills the form and switches the copy/actions. */
   initial?: { id: string; title: string; url: string; description: string; thumbnailUrl: string | null; industryId: number | null };
   withdrawAction?: (formData: FormData) => Promise<void>;
-  /** The member's own industry — the default for a new video, as the 20260909000002 backfill did. */
+  /** The member's own industry — the starting value for a *new* submission only.
+   *  Never applied in edit mode: there, "no industry" is a choice to preserve. */
   defaultIndustryId?: number | null;
 };
 
@@ -48,7 +49,10 @@ export function VideoForm({ action, uploadImage, industries, member, initial, wi
         <YoutubePreview name="url" defaultValue={initial?.url} />
         <div>
           {/* Defaults to the member's own industry on a new video, which is what
-              migration 20260909000002 backfilled for existing rows. */}
+              migration 20260909000002 backfilled for existing rows. On an edit
+              the saved value wins outright, including when it is none: falling
+              back there would silently undo a deliberate "— none —" every time
+              the member resubmitted. */}
           <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
           <select id="industry_id" name="industry_id" defaultValue={initial ? initial.industryId ?? "" : defaultIndustryId ?? ""} className="mt-1 w-full rounded border px-3 py-2">
             <option value="">— none —</option>

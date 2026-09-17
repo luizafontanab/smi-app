@@ -9,7 +9,11 @@ export const metadata = { title: "Add an event" };
 
 export default async function NewMemberEvent() {
   const user = await requireMember();
-  const { data: member } = await serviceDb().from("members").select("name, slug").eq("id", user.memberId).single();
+  const db = serviceDb();
+  const [{ data: member }, { data: inds }] = await Promise.all([
+    db.from("members").select("name, slug, industry_id").eq("id", user.memberId).single(),
+    db.from("industries").select("id, name").order("sort_order"),
+  ]);
   return (
     <div className="mx-auto max-w-2xl">
       <AddContentTabs active="event" />
@@ -18,6 +22,8 @@ export default async function NewMemberEvent() {
       <EventForm
         action={submitEvent}
         uploadImage={memberUploadEventImage}
+        industries={inds ?? []}
+        defaultIndustryId={member?.industry_id ?? null}
         member={{ name: member?.name ?? "", slug: member?.slug ?? "" }}
       />
     </div>

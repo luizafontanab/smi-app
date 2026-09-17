@@ -83,6 +83,7 @@ export async function submitStory(formData: FormData) {
     is_member_news: true,
     member_id: user.memberId,
     submitted_by: user.userId,
+    industry_id: Number(formData.get("industry_id")) || null,
     cover_path: cover,
     ...(formData.get("focus_x")
       ? { cover_focus: { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) } }
@@ -130,6 +131,7 @@ export async function editStory(formData: FormData) {
     excerpt: String(formData.get("excerpt") ?? ""),
     body: sanitizeRichText(String(formData.get("body") ?? "")),
     status: "awaiting_approval",
+    industry_id: Number(formData.get("industry_id")) || null,
     // cleared so the member is not still shown last time's reason once they act on it
     rejected_reason: null,
     updated_at: new Date().toISOString(),
@@ -244,6 +246,7 @@ export async function submitEvent(formData: FormData) {
     link: String(formData.get("link") ?? "") || null,
     member_id: user.memberId,
     type: eventType,
+    industry_id: Number(formData.get("industry_id")) || null,
     status: "awaiting_approval",
     source: "member",
     submitted_by: user.userId,
@@ -299,6 +302,7 @@ export async function editEvent(formData: FormData) {
     ends_on: String(formData.get("ends_on") ?? "") || null,
     link: String(formData.get("link") ?? "") || null,
     type: eventType,
+    industry_id: Number(formData.get("industry_id")) || null,
     status: "awaiting_approval",
     rejected_reason: null,
     updated_at: new Date().toISOString(),

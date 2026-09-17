@@ -21,14 +21,19 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
     ? `/console/events?view=calendar${/^\d{4}-\d{2}$/.test(String(sp.month ?? "")) ? `&month=${sp.month}` : ""}`
     : "/console/events";
 
-  const [{ data: event }, { data: members }] = await Promise.all([
+  const [{ data: event }, { data: members }, { data: inds }] = await Promise.all([
     isNew
       ? Promise.resolve({ data: null })
-      : db.from("events").select("*, member:members(name, slug)").eq("id", id).single(),
+      : db.from("events").select("*, member:members(name, slug, industry_id)").eq("id", id).single(),
     db.from("members").select("id, name").eq("status", "active").order("name"),
+    db.from("industries").select("id, name").order("sort_order"),
   ]);
   if (!isNew && !event) notFound();
   const cover = mediaUrl(event?.cover_path);
+  // An industry on the row wins, else the hosting member's — same rule as the
+  // story and video editors. Nothing has ever written events.industry_id, so
+  // on production this fallback is where every value will come from at first.
+  const industryDefault = event?.industry_id ?? event?.member?.industry_id ?? "";
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -95,6 +100,14 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
             <option value="">— none —</option>
             {(members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+        </div>
+        <div>
+          <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
+          <select id="industry_id" name="industry_id" defaultValue={industryDefault} className="mt-1 w-full rounded border px-3 py-2">
+            <option value="">— none —</option>
+            {(inds ?? []).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-graphite">Drives /industry/* listings and the industry filter.</p>
         </div>
         <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
       </form>

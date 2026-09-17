@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { publicDb, serviceDb } from "./db/server";
 import { displayLocation } from "./location";
 import { parseDateParam } from "./news-prefs";
@@ -18,13 +19,34 @@ export type StoryCard = {
 
 const STORY_CARD = "id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member:members(slug, name, logo_path, status)";
 
+/**
+ * Industry slug → industries.id, for the listing filters below.
+ *
+ * Accepts an id straight through so a caller that already holds the row does
+ * not pay for the lookup again: /industry/[slug] resolves the industry once and
+ * fans its id out to four sections, which would otherwise be four identical
+ * single-row reads. null means "unknown slug", which every caller here treats
+ * as "no filter" — industryBySlug is the one place a miss is a 404 instead.
+ */
+async function resolveIndustryId(
+  db: ReturnType<typeof publicDb>,
+  industry: string | number | undefined,
+): Promise<number | null> {
+  if (industry == null) return null;
+  if (typeof industry === "number") return industry;
+  // maybeSingle, not single: a miss here is an ordinary "no such industry",
+  // not an error worth a PGRST116 row.
+  const { data } = await db.from("industries").select("id").eq("slug", industry).maybeSingle();
+  return data?.id ?? null;
+}
+
 export async function publishedStories(opts: {
   limit?: number;
   offset?: number;
   category?: string;
   memberOnly?: boolean;
-  /** Industry slug — filters on the story's own industry_id. */
-  industry?: string;
+  /** Industry slug, or a pre-resolved industries.id — filters on the story's own industry_id. */
+  industry?: string | number;
   /** YYYY-MM-DD bounds on published_at; malformed values are ignored. */
   from?: string;
   to?: string;
@@ -44,11 +66,7 @@ export async function publishedStories(opts: {
   // is a plain filter — it no longer has to inner-join the member embed, and it
   // no longer misses editorial stories that have an industry but no member.
   // Unknown slug again means "no filter".
-  let industryId: number | null = null;
-  if (opts.industry) {
-    const { data: ind } = await db.from("industries").select("id").eq("slug", opts.industry).single();
-    industryId = ind?.id ?? null;
-  }
+  const industryId = await resolveIndustryId(db, opts.industry);
   let q = db
     .from("stories")
     .select(catId ? `${STORY_CARD}, story_categories!inner(category_id)` : STORY_CARD, { count: "exact" })
@@ -125,6 +143,24 @@ export async function industries() {
 }
 
 /**
+ * The industry row behind a public /industry/[slug] page, or null.
+ *
+ * Unlike every other industry-slug consumer here, a miss is a 404 rather than
+ * "no filter" — which is why this is its own function and not an option on
+ * resolveIndustryId. The page hands the resolved id to its four sections, so
+ * the slug is looked up once per request rather than once per section.
+ *
+ * cache()d for the same reason siteVariant() and currentUser() are: Next runs
+ * generateMetadata and the page body as separate invocations and both need the
+ * row. That is an optimisation, not a correctness requirement — a second read
+ * would return the same row.
+ */
+export const industryBySlug = cache(async (slug: string) => {
+  const { data } = await publicDb().from("industries").select("id, slug, name").eq("slug", slug).maybeSingle();
+  return data;
+});
+
+/**
  * Fixed membership-type tags (GAPS A8.1) — distinct from `categories`: a
  * member's industry is a single FK, but a member can hold several of these
  * (Equipment Supplier, Service Provider, …), so it's a join table instead.
@@ -144,26 +180,6 @@ export async function services() {
   const db = publicDb();
   const { data } = await db.from("services").select("slug, name").order("name");
   return data ?? [];
-}
-
-/**
- * Stories for one industry, via the story's own industry_id. Unknown slug
- * returns null so /industry/[slug] can 404 — unlike publishedStories, where an
- * unknown slug means "no filter".
- */
-export async function storiesByIndustry(slug: string, opts: { limit?: number; offset?: number } = {}) {
-  const db = publicDb();
-  const { data: ind } = await db.from("industries").select("id, slug, name").eq("slug", slug).maybeSingle();
-  if (!ind) return null;
-  const offset = opts.offset ?? 0;
-  const { data, count } = await db
-    .from("stories")
-    .select(STORY_CARD, { count: "exact" })
-    .eq("status", "published")
-    .eq("industry_id", ind.id)
-    .order("published_at", { ascending: false })
-    .range(offset, offset + (opts.limit ?? 12) - 1);
-  return { industry: { slug: ind.slug, name: ind.name }, stories: (data ?? []) as unknown as StoryCard[], total: count ?? 0 };
 }
 
 /**
@@ -318,14 +334,14 @@ export async function activeTakeover(): Promise<ActiveTakeover | null> {
 
 const VIDEO_CARD = "id, slug, title, url, thumbnail_path, source, member:members(slug, name)";
 
-export async function publishedVideos(opts: { limit?: number; offset?: number } = {}) {
+export async function publishedVideos(opts: { limit?: number; offset?: number; industry?: string | number } = {}) {
   const db = publicDb();
   const limit = opts.limit ?? 8;
   const offset = opts.offset ?? 0;
-  const { data, count } = await db
-    .from("videos")
-    .select(VIDEO_CARD, { count: "exact" })
-    .eq("status", "published")
+  const industryId = await resolveIndustryId(db, opts.industry);
+  let q = db.from("videos").select(VIDEO_CARD, { count: "exact" }).eq("status", "published");
+  if (industryId) q = q.eq("industry_id", industryId);
+  const { data, count } = await q
     .order("published_at", { ascending: false })
     .range(offset, offset + limit - 1);
   return { videos: data ?? [], total: count ?? 0 };
@@ -366,17 +382,19 @@ function withDisplayLocation<T extends { location: string | null }>(rows: T[] | 
   return (rows ?? []).map((e) => ({ ...e, location: displayLocation(e.location) }));
 }
 
-export async function upcomingEvents(opts: { limit?: number; offset?: number; type?: string; q?: string } = {}) {
+export async function upcomingEvents(opts: { limit?: number; offset?: number; type?: string; q?: string; industry?: string | number } = {}) {
   const db = publicDb();
   const limit = opts.limit ?? 6;
   const offset = opts.offset ?? 0;
   const term = ilikeTerm(opts.q ?? "");
+  const industryId = await resolveIndustryId(db, opts.industry);
   let query = db
     .from("events")
     .select(EVENT_FIELDS, { count: "exact" })
     .eq("status", "published")
     .gte("starts_on", new Date().toISOString().slice(0, 10));
   if (opts.type) query = query.eq("type", opts.type);
+  if (industryId) query = query.eq("industry_id", industryId);
   if (term) query = query.or(`title.ilike.%${term}%,location.ilike.%${term}%`);
   const { data, count } = await query.order("starts_on").range(offset, offset + limit - 1);
   return { events: withDisplayLocation(data), total: count ?? 0 };
@@ -389,15 +407,18 @@ export async function upcomingEvents(opts: { limit?: number; offset?: number; ty
  * past. Listing only what is upcoming silently retired each URL the morning
  * after its date, which is the one behaviour a redirect map cannot rescue.
  */
-export async function pastEvents(opts: { limit?: number; offset?: number } = {}) {
+export async function pastEvents(opts: { limit?: number; offset?: number; industry?: string | number } = {}) {
   const db = publicDb();
   const limit = opts.limit ?? 40;
   const offset = opts.offset ?? 0;
-  const { data, count } = await db
+  const industryId = await resolveIndustryId(db, opts.industry);
+  let q = db
     .from("events")
     .select(EVENT_FIELDS, { count: "exact" })
     .eq("status", "published")
-    .lt("starts_on", new Date().toISOString().slice(0, 10))
+    .lt("starts_on", new Date().toISOString().slice(0, 10));
+  if (industryId) q = q.eq("industry_id", industryId);
+  const { data, count } = await q
     .order("starts_on", { ascending: false })
     .range(offset, offset + limit - 1);
   return { events: withDisplayLocation(data), total: count ?? 0 };
@@ -410,15 +431,17 @@ export async function pastEvents(opts: { limit?: number; offset?: number } = {})
  * events are keyed by starts_on only — the calendar renders them on their
  * start day, not across the span.
  */
-export async function eventsInRange(start: string, end: string) {
+export async function eventsInRange(start: string, end: string, opts: { industry?: string | number } = {}) {
   const db = publicDb();
-  const { data } = await db
+  const industryId = await resolveIndustryId(db, opts.industry);
+  let q = db
     .from("events")
     .select("slug, title, starts_on, starts_time, ends_on, type")
     .eq("status", "published")
     .gte("starts_on", start)
-    .lt("starts_on", end)
-    .order("starts_on");
+    .lt("starts_on", end);
+  if (industryId) q = q.eq("industry_id", industryId);
+  const { data } = await q.order("starts_on");
   return data ?? [];
 }
 
@@ -427,15 +450,21 @@ export async function eventsInRange(start: string, end: string) {
  * all of them regardless of which listing page is showing (same shape as the
  * member directory's pinRows). Coordinate filtering stays in the caller so it
  * can say "N of M with a known location".
+ *
+ * Industry is the one filter it does honour: paging and the type/search filters
+ * narrow a page of a list, but an industry narrows what the page is *about*, and
+ * a map pinning every trade's events beside a Welding listing reads as a bug.
  */
-export async function upcomingEventPins() {
+export async function upcomingEventPins(opts: { industry?: string | number } = {}) {
   const db = publicDb();
-  const { data } = await db
+  const industryId = await resolveIndustryId(db, opts.industry);
+  let q = db
     .from("events")
     .select("slug, title, lat, lng")
     .eq("status", "published")
-    .gte("starts_on", new Date().toISOString().slice(0, 10))
-    .order("starts_on");
+    .gte("starts_on", new Date().toISOString().slice(0, 10));
+  if (industryId) q = q.eq("industry_id", industryId);
+  const { data } = await q.order("starts_on");
   return data ?? [];
 }
 

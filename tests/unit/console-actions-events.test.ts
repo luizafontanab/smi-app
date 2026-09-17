@@ -62,6 +62,21 @@ describe("saveEvent", () => {
       .rejects.toThrow("NEXT_REDIRECT:/console/events/e1");
     expect(eventsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ type: "webinar", status: "draft" }));
   });
+
+  it("writes the industry, and clears it when the select is left blank", async () => {
+    // events.industry_id had no writer at all before this field — migration
+    // 20260909000002's backfill set it on nothing, since prod events have no member.
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1" }));
+    db({ events: () => eventsBuilder });
+
+    await expect(saveEvent(form({ title: "t", starts_on: "2026-09-01", industry_id: "4" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/events/e1");
+    expect(eventsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ industry_id: 4 }));
+
+    await expect(saveEvent(form({ title: "t", starts_on: "2026-09-01", industry_id: "" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/events/e1");
+    expect(eventsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ industry_id: null }));
+  });
 });
 
 describe("decideEvent", () => {

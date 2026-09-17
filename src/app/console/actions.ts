@@ -59,6 +59,7 @@ export async function saveStory(formData: FormData) {
     body: sanitizeRichText(String(formData.get("body") ?? "")),
     member_id: String(formData.get("member_id") ?? "") || null,
     is_member_news: formData.get("is_member_news") === "on",
+    industry_id: Number(formData.get("industry_id")) || null,
     updated_at: new Date().toISOString(),
     cover_focus: formData.get("focus_x")
       ? { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) }
@@ -472,6 +473,7 @@ export async function saveEvent(formData: FormData) {
     link: String(formData.get("link") ?? "") || null,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     member_id: String(formData.get("member_id") ?? "") || null,
+    industry_id: Number(formData.get("industry_id")) || null,
     type: isEventType(type) ? type : null,
     updated_at: new Date().toISOString(),
     ...(cover_path ? { cover_path } : {}),
@@ -1751,6 +1753,22 @@ export async function setMemberStatus(formData: FormData) {
 }
 
 /* ---------- inbox ---------- */
+
+/**
+ * Clear the whole unread queue (fix list). Scoped to the kind currently being
+ * filtered on, so "mark all read" while looking at Advertising does not also
+ * silently clear the Contact messages the operator has not seen — the button
+ * only ever clears what is on screen.
+ */
+export async function markAllInboxRead(formData: FormData) {
+  await requireConsole();
+  const kind = String(formData.get("kind") ?? "");
+  let q = serviceDb().from("inbox_messages").update({ read: true }).eq("read", false);
+  if (kind) q = q.eq("kind", kind);
+  await q;
+  revalidatePath("/console");
+  revalidatePath("/console/messages");
+}
 
 export async function markInboxRead(formData: FormData) {
   await requireConsole();

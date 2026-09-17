@@ -4,7 +4,10 @@ import {
   requestContentChange, withdrawEvent, withdrawMachine, withdrawStory, withdrawVideo,
 } from "@/app/dashboard/actions";
 
-const WITHDRAW: Record<SubmissionKind, (formData: FormData) => Promise<void>> = {
+// Partial on purpose: a queued page edit has nothing to withdraw — submitting
+// the profile form again replaces the pending revision outright, which is what
+// the page already tells the member.
+const WITHDRAW: Partial<Record<SubmissionKind, (formData: FormData) => Promise<void>>> = {
   story: withdrawStory,
   video: withdrawVideo,
   event: withdrawEvent,
@@ -21,6 +24,7 @@ const KIND_LABELS: Record<SubmissionKind, string> = {
   video: "Video",
   event: "Event",
   machine: "Equipment",
+  profile: "Your page",
 };
 
 /** Only these two are the member's to edit — mirrors EDITABLE_STATUSES server-side. */
@@ -65,9 +69,11 @@ export function SubmissionList({ items, flush = false, filter }: {
     <>
       {items.map((s) => {
         const editable = EDITABLE.includes(s.status);
+        const withdraw = WITHDRAW[s.kind];
         return (
           <div
-            key={s.editHref}
+            // editHref is not unique — every profile revision shares /dashboard/profile
+            key={`${s.kind}:${s.id}`}
             className={`mt-2 border-t pt-2 text-sm ${flush ? "first:mt-0 first:border-t-0 first:pt-0" : ""}`}
           >
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -84,16 +90,18 @@ export function SubmissionList({ items, flush = false, filter }: {
                 {editable && (
                   <>
                     <Link href={s.editHref} className="tap px-1 text-graphite underline">Edit</Link>
-                    <form action={WITHDRAW[s.kind]}>
-                      <input type="hidden" name="id" value={s.id} />
-                      <button type="submit" className="tap px-1 text-graphite underline hover:text-danger">Withdraw</button>
-                    </form>
+                    {withdraw && (
+                      <form action={withdraw}>
+                        <input type="hidden" name="id" value={s.id} />
+                        <button type="submit" className="tap px-1 text-graphite underline hover:text-danger">Withdraw</button>
+                      </form>
+                    )}
                   </>
                 )}
               </div>
             </div>
 
-            {s.status === "published" && (
+            {s.status === "published" && s.kind !== "profile" && (
               // <details> keeps the row compact until someone actually wants to
               // ask for something — no client JS needed for the toggle.
               <details className="mt-1.5">

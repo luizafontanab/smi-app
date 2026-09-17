@@ -89,6 +89,21 @@ describe("saveStory", () => {
       .rejects.toThrow("NEXT_REDIRECT:/console/stories/new?error=Image%20too%20large%20(8MB%20max)");
     expect(from).not.toHaveBeenCalled();
   });
+
+  it("writes the industry, and clears it when the select is left blank", async () => {
+    // industry_id is what /industry/[slug] filters on. Before this field the
+    // column could only be set by migration 20260909000002's backfill.
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1" }));
+    db({ stories: () => storiesBuilder });
+
+    await expect(saveStory(form({ id: "s1", title: "Tagged", industry_id: "4" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/stories/s1");
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ industry_id: 4 }));
+
+    await expect(saveStory(form({ id: "s1", title: "Untagged", industry_id: "" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/stories/s1");
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ industry_id: null }));
+  });
 });
 
 describe("scheduleStory", () => {

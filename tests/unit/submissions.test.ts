@@ -171,3 +171,65 @@ describe("memberContent", () => {
     expect(isContentFilter("")).toBe(false);
   });
 });
+
+// A member submitting page changes waits on exactly the same approval as a
+// story, and had no way to see it was queued (fix list).
+describe("memberContent — profile revisions", () => {
+  it("lists a pending page edit alongside content, with no slug of its own", async () => {
+    db({
+      member_revisions: () => queryBuilder(dbOk([
+        { id: "r1", status: "awaiting_approval", rejected_reason: null, created_at: "2026-09-05T10:00:00Z" },
+      ], 1)),
+      members: () => queryBuilder(dbOk({ slug: "acme", status: "active" })),
+    });
+
+    const { items, total } = await memberContent("mem1");
+
+    expect(total).toBe(1);
+    expect(items[0]).toMatchObject({
+      kind: "profile",
+      title: "Changes to your company page",
+      editHref: "/dashboard/profile",
+      publicHref: null, // not published, so nothing live to link to
+    });
+  });
+
+  it("points an applied page edit at the member's own public page", async () => {
+    db({
+      member_revisions: () => queryBuilder(dbOk([
+        { id: "r1", status: "published", rejected_reason: null, created_at: "2026-09-05T10:00:00Z" },
+      ], 1)),
+      members: () => queryBuilder(dbOk({ slug: "acme", status: "active" })),
+    });
+
+    const { items } = await memberContent("mem1", { statuses: CONTENT_FILTERS.published });
+
+    expect(items[0].publicHref).toBe("/member/acme");
+  });
+
+  // memberBySlug serves `active` and `grace` only, so a lapsed member's page is
+  // a 404 however applied their revision is. Grace still has a live page.
+  it("withholds the page link when the member itself is no longer public", async () => {
+    const applied = () => queryBuilder(dbOk([
+      { id: "r1", status: "published", rejected_reason: null, created_at: "2026-09-05T10:00:00Z" },
+    ], 1));
+
+    for (const [status, expected] of [["lapsed", null], ["grace", "/member/acme"]] as const) {
+      db({ member_revisions: applied, members: () => queryBuilder(dbOk({ slug: "acme", status })) });
+
+      const { items } = await memberContent("mem1", { statuses: CONTENT_FILTERS.published });
+
+      expect(items[0].publicHref, status).toBe(expected);
+    }
+  });
+
+  it("counts revisions in the total alongside the four content tables", async () => {
+    db({
+      stories: () => queryBuilder(dbOk([row("s1", "2026-09-01T10:00:00Z")], 2)),
+      member_revisions: () => queryBuilder(dbOk([], 3)),
+      members: () => queryBuilder(dbOk({ slug: "acme", status: "active" })),
+    });
+
+    expect((await memberContent("mem1")).total).toBe(5);
+  });
+});

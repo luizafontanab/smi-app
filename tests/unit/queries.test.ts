@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  activePlacements, activeTakeover, eventBySlug, headlineStory, headlineVideo, ilikeTerm, industries, memberBySlug,
-  memberDirectory, newsletterBySlug, pastEvents, publishedStories, publishedVideos, searchSite, sentNewsletters, staticPage,
-  storiesByIndustry, storyBySlug, storyCategories, storyIntros, upcomingEvents, videoBySlug,
+  activePlacements, activeTakeover, eventBySlug, eventsInRange, headlineStory, headlineVideo, ilikeTerm, industries,
+  industryBySlug, memberBySlug, memberDirectory, newsletterBySlug, pastEvents, publishedStories, publishedVideos,
+  searchSite, sentNewsletters, staticPage, storyBySlug, storyCategories, storyIntros, upcomingEventPins, upcomingEvents,
+  videoBySlug,
 } from "@/lib/queries";
 import { publicDb, serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -64,6 +65,47 @@ describe("publishedStories", () => {
 
     expect(storiesBuilder.select).toHaveBeenCalledWith(expect.not.stringContaining("story_categories"), { count: "exact" });
     expect(storiesBuilder.eq).not.toHaveBeenCalledWith("story_categories.category_id", expect.anything());
+  });
+
+  it("filters on the story's own industry_id, with no member join", async () => {
+    const storiesBuilder = queryBuilder(dbOk([{ id: "s1" }], 7));
+    db({
+      stories: () => storiesBuilder,
+      industries: () => queryBuilder(dbOk({ id: "ind1" })),
+    });
+
+    const result = await publishedStories({ industry: "welding", limit: 12, offset: 12 });
+
+    // the member embed must stay a LEFT join: an editorial story with an
+    // industry but no member has to survive the filter (it did not before
+    // migration 20260909000002, which is the point of the direct column)
+    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.not.stringContaining("!inner"), { count: "exact" });
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("industry_id", "ind1");
+    expect(storiesBuilder.range).toHaveBeenCalledWith(12, 23);
+    expect(result).toEqual({ stories: [{ id: "s1" }], total: 7 });
+  });
+
+  it("skips the industry filter entirely for an unknown industry slug", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    db({ stories: () => storiesBuilder, industries: () => queryBuilder(dbOk(null)) });
+
+    await publishedStories({ industry: "bogus" });
+
+    expect(storiesBuilder.eq).not.toHaveBeenCalledWith("industry_id", expect.anything());
+  });
+
+  it("takes a pre-resolved industry id without looking the slug up again", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    // no `industries` entry: fromByTable throws on an unconfigured table, so
+    // this fails loudly if the id path ever regresses into a lookup. That is
+    // the whole point of the option — /industry/[slug] resolves once and fans
+    // the id out to four sections.
+    const from = db({ stories: () => storiesBuilder });
+
+    await publishedStories({ industry: 9 });
+
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("industry_id", 9);
+    expect(from).not.toHaveBeenCalledWith("industries");
   });
 });
 
@@ -143,29 +185,17 @@ describe("industries", () => {
   });
 });
 
-describe("storiesByIndustry", () => {
-  it("returns null for an unknown slug without querying stories", async () => {
-    const from = db({ industries: () => queryBuilder(dbOk(null)) });
-    expect(await storiesByIndustry("bogus")).toBeNull();
-    expect(from).not.toHaveBeenCalledWith("stories");
+describe("industryBySlug", () => {
+  it("returns the row a /industry/[slug] page needs", async () => {
+    db({ industries: () => queryBuilder(dbOk({ id: 4, slug: "welding", name: "Welding" })) });
+    expect(await industryBySlug("welding")).toEqual({ id: 4, slug: "welding", name: "Welding" });
   });
 
-  it("filters on the story's own industry_id, with no member join", async () => {
-    const storiesBuilder = queryBuilder(dbOk([{ id: "s1" }], 7));
-    db({
-      stories: () => storiesBuilder,
-      industries: () => queryBuilder(dbOk({ id: "ind1", slug: "welding", name: "Welding" })),
-    });
-
-    const result = await storiesByIndustry("welding", { limit: 12, offset: 12 });
-
-    // the member embed must stay a LEFT join: an editorial story with an
-    // industry but no member has to survive the filter (it did not before
-    // migration 20260909000002, which is the point of the direct column)
-    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.not.stringContaining("!inner"), { count: "exact" });
-    expect(storiesBuilder.eq).toHaveBeenCalledWith("industry_id", "ind1");
-    expect(storiesBuilder.range).toHaveBeenCalledWith(12, 23);
-    expect(result).toEqual({ industry: { slug: "welding", name: "Welding" }, stories: [{ id: "s1" }], total: 7 });
+  it("returns null for an unknown slug, so the page can 404", async () => {
+    db({ industries: () => queryBuilder(dbOk(null)) });
+    // a distinct slug per case on purpose: industryBySlug is cache()d, so
+    // reusing one within a test would answer from the first call's result
+    expect(await industryBySlug("bogus")).toBeNull();
   });
 });
 
@@ -191,6 +221,25 @@ describe("publishedVideos", () => {
   it("returns rows and total, defaulting an empty result to []", async () => {
     db({ videos: () => queryBuilder(dbOk(null, 0)) });
     expect(await publishedVideos()).toEqual({ videos: [], total: 0 });
+  });
+
+  it("filters on industry_id, alongside the published filter rather than instead of it", async () => {
+    const videosBuilder = queryBuilder(dbOk([], 0));
+    db({ videos: () => videosBuilder, industries: () => queryBuilder(dbOk({ id: 3 })) });
+
+    await publishedVideos({ industry: "welding" });
+
+    expect(videosBuilder.eq).toHaveBeenCalledWith("status", "published");
+    expect(videosBuilder.eq).toHaveBeenCalledWith("industry_id", 3);
+  });
+
+  it("skips the filter for an unknown industry slug", async () => {
+    const videosBuilder = queryBuilder(dbOk([], 0));
+    db({ videos: () => videosBuilder, industries: () => queryBuilder(dbOk(null)) });
+
+    await publishedVideos({ industry: "bogus" });
+
+    expect(videosBuilder.eq).not.toHaveBeenCalledWith("industry_id", expect.anything());
   });
 });
 
@@ -223,6 +272,56 @@ describe("upcomingEvents / pastEvents / eventBySlug — location repair", () => 
   it("eventBySlug returns null on a miss without touching displayLocation's row-list shape", async () => {
     db({ events: () => queryBuilder(dbOk(null)) });
     expect(await eventBySlug("missing")).toBeNull();
+  });
+});
+
+describe("the industry filter on the four event reads", () => {
+  // All four are filtered together on purpose: /event?industry= narrows the
+  // listing, the calendar grid and the map at once. Filtering only the list
+  // would leave the map pinning every trade's events beside a Welding listing.
+  it("narrows upcomingEvents without dropping its date bound", async () => {
+    const eventsBuilder = queryBuilder(dbOk([], 0));
+    db({ events: () => eventsBuilder, industries: () => queryBuilder(dbOk({ id: 5 })) });
+
+    await upcomingEvents({ industry: "welding" });
+
+    expect(eventsBuilder.eq).toHaveBeenCalledWith("industry_id", 5);
+    expect(eventsBuilder.gte).toHaveBeenCalledWith("starts_on", expect.any(String));
+  });
+
+  it("narrows pastEvents without dropping its date bound", async () => {
+    const eventsBuilder = queryBuilder(dbOk([], 0));
+    db({ events: () => eventsBuilder, industries: () => queryBuilder(dbOk({ id: 5 })) });
+
+    await pastEvents({ industry: "welding" });
+
+    expect(eventsBuilder.eq).toHaveBeenCalledWith("industry_id", 5);
+    expect(eventsBuilder.lt).toHaveBeenCalledWith("starts_on", expect.any(String));
+  });
+
+  it("narrows the calendar grid and the map pins too", async () => {
+    const rangeBuilder = queryBuilder(dbOk([]));
+    db({ events: () => rangeBuilder, industries: () => queryBuilder(dbOk({ id: 5 })) });
+    await eventsInRange("2026-09-01", "2026-10-01", { industry: "welding" });
+    expect(rangeBuilder.eq).toHaveBeenCalledWith("industry_id", 5);
+
+    const pinsBuilder = queryBuilder(dbOk([]));
+    db({ events: () => pinsBuilder, industries: () => queryBuilder(dbOk({ id: 5 })) });
+    await upcomingEventPins({ industry: "welding" });
+    expect(pinsBuilder.eq).toHaveBeenCalledWith("industry_id", 5);
+  });
+
+  it("leaves all four unfiltered when no industry is given", async () => {
+    const eventsBuilder = queryBuilder(dbOk([], 0));
+    // no `industries` entry — an unasked-for lookup would throw here
+    db({ events: () => eventsBuilder });
+
+    await upcomingEvents();
+    await pastEvents();
+    await eventsInRange("2026-09-01", "2026-10-01");
+    await upcomingEventPins();
+
+    expect(eventsBuilder.eq).not.toHaveBeenCalledWith("industry_id", expect.anything());
   });
 });
 

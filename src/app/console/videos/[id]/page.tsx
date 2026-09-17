@@ -25,12 +25,19 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
   const [{ data: video }, { data: members }, { data: inds }] = await Promise.all([
     isNew
       ? Promise.resolve({ data: null })
-      : db.from("videos").select("*, member:members(name, logo_path, slug)").eq("id", id).single(),
+      : db.from("videos").select("*, member:members(name, logo_path, slug, industry_id)").eq("id", id).single(),
     db.from("members").select("id, name").eq("status", "active").order("name"),
     db.from("industries").select("id, name").order("sort_order"),
   ]);
   if (!isNew && !video) notFound();
   const thumbnail = mediaUrl(video?.thumbnail_path);
+  // Pre-populate from the subject member when the video has no industry of its
+  // own (fix list) — which is every video created before the field existed, and
+  // every one submitted by a member. An explicit choice on the row always wins.
+  // Read off the row's own member embed, not the dropdown list: that list is
+  // filtered to active members, so a grace or lapsed member's video would
+  // silently get no fallback at all. Matches the story and event editors.
+  const industryDefault = video?.industry_id ?? video?.member?.industry_id ?? "";
   const isPinned = !!video?.pinned_until && new Date(video.pinned_until) > new Date();
 
   return (
@@ -76,7 +83,7 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
               it from the subject member's industry, but nothing could set it
               afterwards — no form wrote the column (fix list). */}
           <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
-          <select id="industry_id" name="industry_id" defaultValue={video?.industry_id ?? ""} className="mt-1 w-full rounded border px-3 py-2">
+          <select id="industry_id" name="industry_id" defaultValue={industryDefault} className="mt-1 w-full rounded border px-3 py-2">
             <option value="">— none —</option>
             {(inds ?? []).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </select>
