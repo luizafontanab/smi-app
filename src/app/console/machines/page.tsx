@@ -9,9 +9,9 @@ export const metadata = { title: "Featured Machine" };
 
 const BADGE: Record<string, string> = {
   awaiting_approval: "bg-brand/20 text-brand",
-  published: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-600",
-  draft: "bg-gray-100 text-gray-500",
+  published: "bg-success/10 text-success",
+  rejected: "bg-danger/10 text-danger",
+  draft: "bg-shade text-graphite",
 };
 
 export default async function MachinesPage() {
@@ -39,18 +39,18 @@ export default async function MachinesPage() {
             {queue.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-3 rounded bg-white p-3 text-sm shadow-sm">
                 <Link href={`/console/machines/${m.id}`} className="font-medium text-ink hover:underline">{m.name}</Link>
-                <span className="text-gray-400">{m.member?.name}</span>
+                <span className="text-graphite">{m.member?.name}</span>
                 <div className="ml-auto flex gap-2">
                   <form action={decideMachine}>
                     <input type="hidden" name="id" value={m.id} />
                     <input type="hidden" name="decision" value="approve" />
-                    <button className="rounded bg-green-600 px-3 py-1.5 text-white">Approve</button>
+                    <button className="rounded bg-success px-3 py-1.5 text-white">Approve</button>
                   </form>
                   <form action={decideMachine} className="flex gap-1">
                     <input type="hidden" name="id" value={m.id} />
                     <input type="hidden" name="decision" value="reject" />
-                    <input name="reason" placeholder="Reason" required className="w-36 rounded border px-2 py-1" />
-                    <button className="rounded border border-red-300 px-2 py-1 text-red-600">Reject</button>
+                    <input name="reason" placeholder="Reason" aria-label={`Reason for rejecting ${m.name}`} required className="w-36 rounded border px-2 py-1" />
+                    <button className="rounded border border-danger/30 px-2 py-1 text-danger">Reject</button>
                   </form>
                 </div>
               </div>
@@ -67,14 +67,14 @@ export default async function MachinesPage() {
               {m.image_path && <Image src={mediaUrl(m.image_path)!} alt="" width={64} height={48} className="rounded object-cover" unoptimized />}
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-ink">{m.name}</p>
-                <p className="text-xs text-gray-500">{m.member?.name}{m.source === "member" && " · member submission"}</p>
+                <p className="text-xs text-graphite">{m.member?.name}{m.source === "member" && " · member submission"}</p>
               </div>
-              {p && <span className="text-xs text-gray-500">Featured {p.starts_on} → {p.ends_on}</span>}
+              {p && <span className="text-xs text-graphite">Featured {p.starts_on} → {p.ends_on}</span>}
               <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${BADGE[m.status] ?? ""}`}>{m.status.replace("_", " ")}</span>
             </Link>
           );
         })}
-        {(machines ?? []).length === 0 && <p className="mt-6 text-sm text-gray-500">No machines yet.</p>}
+        {(machines ?? []).length === 0 && <p className="mt-6 text-sm text-graphite">No machines yet.</p>}
       </div>
     </div>
   );

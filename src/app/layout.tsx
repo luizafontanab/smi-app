@@ -1,21 +1,26 @@
-import type { Metadata } from "next";
-import { Allerta_Stencil, League_Spartan } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { League_Spartan, Source_Sans_3 } from "next/font/google";
 import { cookies } from "next/headers";
+import { DevTaskLauncher } from "@/components/dev-task/DevTaskLauncher";
 import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
-// The client's brand faces, shared by both designs. next/font requires static
-// instantiation here. League Spartan is the body and heading face; the logo
-// face is applied only to the wordmark in components/SiteHeader.tsx.
+// The brand faces, shared by both designs. next/font requires static
+// instantiation here. League Spartan is the display/heading voice; Source Sans 3
+// carries body and UI text (geometric Spartan is ambiguous at reading sizes —
+// I/l/1 — and has no tabular figures, which the console's stats need). The
+// wordmark is the supplied SVG artwork (components/Wordmark.tsx), not a font.
 const leagueSpartan = League_Spartan({
   variable: "--font-league-spartan",
   subsets: ["latin"],
 });
 
-const allertaStencil = Allerta_Stencil({
-  variable: "--font-allerta-stencil",
+const sourceSans = Source_Sans_3({
+  variable: "--font-source-sans",
   subsets: ["latin"],
-  weight: "400", // single-weight family, so next/font requires this explicitly
+  // Editorial bodies out of WordPress carry real <em>; without the italic axis
+  // the browser slants the roman instead.
+  style: ["normal", "italic"],
 });
 
 const SITE_NAME = "Sheet Metal Industries";
@@ -42,6 +47,16 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: SITE_NAME, description: DESCRIPTION },
 };
 
+export const viewport: Viewport = {
+  // width/initial-scale match what Next injects by default — declared so the
+  // rest is explicit: the chrome colour paints the browser UI on mobile, and
+  // colorScheme stops iOS/Android auto-darkening a light-designed page.
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0b0d10",
+  colorScheme: "light",
+};
+
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Stamped for both designs, forge included: a symmetric attribute gives grid a
   // clean CSS hook and a clean test handle. Anything unrecognised — including the
@@ -51,9 +66,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       data-theme={theme}
-      className={`${leagueSpartan.variable} ${allertaStencil.variable} h-full antialiased`}
+      className={`${leagueSpartan.variable} ${sourceSans.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col font-sans">{children}</body>
+      <body className="flex min-h-full flex-col font-sans">
+        {children}
+        <DevTaskLauncher />
+      </body>
     </html>
   );
 }

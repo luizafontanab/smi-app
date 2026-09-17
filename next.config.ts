@@ -33,13 +33,17 @@ const supabaseOrigin = (() => {
  * style-src needs 'unsafe-inline' for Tailwind's injected styles and the
  * per-element styles in global-error.tsx.
  */
+// Dev-only allowance so impeccable live mode can load. Guarded by NODE_ENV.
+const __impeccableLiveDev = isDev ? " http://localhost:8400" : "";
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${__impeccableLiveDev}`,
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob:${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  // tile.openstreetmap.org: the raster tiles behind MemberMap's Leaflet view (A6.4).
+  `img-src 'self' data: blob: https://*.tile.openstreetmap.org${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
   "font-src 'self' data:",
-  `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}${__impeccableLiveDev}`,
   "media-src 'self' https:",
   // nocookie is what /video/[slug] embeds — same player, no ad cookies before consent
   "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
@@ -124,9 +128,36 @@ const legacyRedirects = [
 ];
 
 const nextConfig: NextConfig = {
+  /**
+   * Normally `.next`. The visual-regression suite (tests/visual) sets this to
+   * `.next-visual` so its production build does not clean out the `.next` the
+   * long-lived dev server is using — `next build` wipes the dist dir, which
+   * would kill a running `pnpm dev` (and any parallel session sharing this
+   * tree). Unset everywhere else, so dev/build/start/CI/Vercel are unaffected.
+   */
+  distDir: process.env.VISUAL_DIST_DIR || ".next",
+  /**
+   * The visual suite builds only in order to photograph the result, and this is
+   * a shared working tree — a half-finished edit in some unrelated file should
+   * not stop a screenshot run. Type errors remain a hard failure for `pnpm build`
+   * and `pnpm check`, which is where they belong. Scoped to the visual env var,
+   * so a normal build is unaffected.
+   */
+  typescript: { ignoreBuildErrors: !!process.env.VISUAL_DIST_DIR },
   // Playwright drives the app via 127.0.0.1; without this the dev server 403s
   // client chunks/HMR for that origin (only `localhost` is allowed by default)
   allowedDevOrigins: ["127.0.0.1"],
+  /**
+   * Every upload in this app goes through a server action, and the default
+   * body limit is 1MB — so `uploadImage`'s 8MB cap and `uploadDocument`'s 20MB
+   * cap could never actually be reached: a larger file 500'd with "Body
+   * exceeded 1 MB limit" into the error boundary instead of the readable
+   * message the form is written to show. 22mb covers the document cap plus the
+   * multipart overhead the docs warn about.
+   */
+  experimental: {
+    serverActions: { bodySizeLimit: "22mb" },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
@@ -134,6 +165,10 @@ const nextConfig: NextConfig = {
     return [
       // join flow became multi-step; the old single-form checkout URL retires
       { source: "/join/checkout", destination: "/join/account", permanent: true },
+      // advertise + buy-visibility merged into the advertising hub (fix list item 10);
+      // non-permanent — member-area IA, not SEO
+      { source: "/dashboard/buy", destination: "/dashboard/advertising/buy", permanent: false },
+      { source: "/dashboard/advert/new", destination: "/dashboard/advertising/buy", permanent: false },
       ...legacyRedirects,
     ];
   },

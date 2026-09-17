@@ -3,9 +3,23 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
+import { focusStyle } from "@/lib/focus";
 import { newsletterBySlug } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(props: PageProps<"/newsletters/[slug]">) {
+  const { slug } = await props.params;
+  const issue = await newsletterBySlug(slug).catch(() => null);
+  const title = issue ? `SMI Monthly · Issue ${issue.number} — ${issue.subject}` : "Newsletter";
+  const description = issue?.intro ?? undefined;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/newsletters/${slug}` },
+    openGraph: { url: `/newsletters/${slug}`, title, description },
+  };
+}
 
 export default async function NewsletterIssuePage(props: PageProps<"/newsletters/[slug]">) {
   const { slug } = await props.params;
@@ -25,12 +39,12 @@ export default async function NewsletterIssuePage(props: PageProps<"/newsletters
           <Link key={position} href={`/news/${story.slug}`} className="flex gap-4 rounded-lg border p-3 hover:border-ink">
             {story.cover_path && (
               <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded">
-                <Image src={mediaUrl(story.cover_path)!} alt="" fill sizes="112px" className="object-cover" unoptimized />
+                <Image src={mediaUrl(story.cover_path)!} alt="" fill sizes="112px" style={focusStyle(story.cover_focus)} className="object-cover" unoptimized />
               </div>
             )}
             <div>
               <p className="font-semibold leading-snug">{story.title}</p>
-              {story.excerpt && <p className="mt-1 text-xs text-gray-500 line-clamp-2">{story.excerpt}</p>}
+              {story.excerpt && <p className="mt-1 text-xs text-graphite line-clamp-2">{story.excerpt}</p>}
             </div>
           </Link>
         ))}

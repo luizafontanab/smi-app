@@ -3,9 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { consoleUploadImage, decideStory, saveStory, scheduleStory } from "../../actions";
-import { FocusPicker } from "@/components/FocusPicker";
+import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory } from "../../actions";
+import { CoverField } from "@/components/CoverField";
+import { parseFocus, focusStyle } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { StoryBody } from "@/components/StoryBody";
+import { MemberBacklink } from "@/components/MemberBacklink";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +25,13 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
     ? `/console/stories?view=calendar${/^\d{4}-\d{2}$/.test(String(sp.month ?? "")) ? `&month=${sp.month}` : ""}`
     : "/console/stories";
 
-  const [{ data: story }, { data: cats }, { data: members }] = await Promise.all([
+  const [{ data: story }, { data: cats }, { data: members }, { data: inds }] = await Promise.all([
     isNew
       ? Promise.resolve({ data: null })
-      : db.from("stories").select("*, member:members(name, logo_path, slug)").eq("id", id).single(),
-    db.from("categories").select("id, name").eq("kind", "story").order("name"),
+      : db.from("stories").select("*, member:members(name, logo_path, slug, status, industry_id)").eq("id", id).single(),
+    db.from("categories").select("id, name").order("name"),
     db.from("members").select("id, name").eq("status", "active").order("name"),
+    db.from("industries").select("id, name").order("sort_order"),
   ]);
   if (!isNew && !story) notFound();
   const { data: selectedCats } = isNew
@@ -34,11 +39,16 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
     : await db.from("story_categories").select("category_id").eq("story_id", id);
   const selected = new Set((selectedCats ?? []).map((c) => c.category_id));
   const cover = mediaUrl(story?.cover_path);
-  const focus = (story?.cover_focus ?? { x: 0.5, y: 0.5, scale: 1 }) as { x: number; y: number; scale: number };
+  const focus = parseFocus(story?.cover_focus);
+  const isPinned = !!story?.pinned_until && new Date(story.pinned_until) > new Date();
+  // Same rule the video editor uses: an industry set on the row wins, otherwise
+  // fall back to the subject member's — which is what migration 20260909000002
+  // backfilled, and is right for the stories written before this field existed.
+  const industryDefault = story?.industry_id ?? story?.member?.industry_id ?? "";
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href={backTo} className="text-sm text-gray-400 hover:text-ink">← Story Engine</Link>
+      <Link href={backTo} className="text-sm text-graphite hover:text-ink">← Story Engine</Link>
       <div className="flex items-baseline justify-between">
         <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New story" : "Edit story"}</h1>
         {!isNew && (
@@ -48,10 +58,12 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
         )}
       </div>
       {story?.status === "rejected" && (
-        <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">Rejected: {story.rejected_reason}</p>
+        <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">Rejected: {story.rejected_reason}</p>
       )}
+      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <form action={saveStory} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
+        <UnsavedChangesGuard />
         {!isNew && <input type="hidden" name="id" value={id} />}
         <div>
           <label htmlFor="title" className="text-sm font-medium">Title</label>
@@ -77,6 +89,18 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
             <input type="checkbox" name="is_member_news" defaultChecked={story?.is_member_news ?? false} />
             Member news (badged on the site)
           </label>
+          <div>
+            {/* stories.industry_id has existed since 20260909000002, which
+                backfilled it from the subject member, but nothing could set it
+                afterwards — no form wrote the column. Distinct from Categories
+                below: that is the news-topic list, many per story. */}
+            <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
+            <select id="industry_id" name="industry_id" defaultValue={industryDefault} className="mt-1 w-full rounded border px-3 py-2">
+              <option value="">— none —</option>
+              {(inds ?? []).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-graphite">Drives /industry/* listings and the industry filter.</p>
+          </div>
         </div>
         <fieldset>
           <legend className="text-sm font-medium">Categories</legend>
@@ -89,12 +113,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
             ))}
           </div>
         </fieldset>
-        {cover && (
-          <div>
-            <span className="block text-sm font-medium" id="focus-picker-label">Cover crop focus (pan/zoom — fixes lost heads)</span>
-            <FocusPicker src={cover} initial={focus} />
-          </div>
-        )}
+        <CoverField cover={cover} focus={focus} hint="Landscape works best: at least 1200×675px (16:9), JPG/PNG/WebP, max 8MB. Leaving this empty keeps the current image. The crop fixes lost heads — it applies on the story page, the news cards and the homepage." />
         <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
       </form>
 
@@ -103,23 +122,23 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           {story.status === "awaiting_approval" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Approval</h2>
-              <p className="mt-1 text-xs text-gray-500">Preview shows backlink + logo exactly as it will publish. Edit above first if needed.</p>
+              <p className="mt-1 text-xs text-graphite">Publishes immediately. To approve for a later date instead, use Schedule below.</p>
               <div className="mt-3 flex gap-2">
                 <form action={decideStory}>
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="approve" />
-                  <button className="rounded bg-green-600 px-4 py-2 text-sm text-white">Approve & publish</button>
+                  <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
                 </form>
               </div>
               <form action={decideStory} className="mt-3 flex gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="reject" />
                 <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600">Reject</button>
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
               </form>
             </div>
           )}
-          {(story.status === "draft" || story.status === "rejected" || story.status === "scheduled") && (
+          {(story.status === "draft" || story.status === "rejected" || story.status === "scheduled" || story.status === "awaiting_approval") && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Schedule</h2>
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
@@ -129,15 +148,58 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>
                 <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
               </form>
-              <p className="mt-2 text-xs text-gray-400">Social push follows publication after the configured delay; daily cap applies.</p>
+              <p className="mt-2 text-xs text-graphite">
+                {story.status === "awaiting_approval" && "Scheduling or publishing here also approves the story. "}
+                Social push follows publication after the configured delay; daily cap applies.
+              </p>
+            </div>
+          )}
+          {story.status === "published" && (
+            <div className="rounded-xl bg-white p-5 shadow-sm">
+              <h2 className="font-bold text-ink">Pin to headline</h2>
+              <p className="mt-1 text-xs text-graphite">Pinned stories take over the homepage headline slot.</p>
+              <form action={pinStory} className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <input type="hidden" name="id" value={id} />
+                {isPinned ? (
+                  <>
+                    <p className="text-xs text-graphite">Pinned until {new Date(story.pinned_until!).toLocaleString("en-GB")}</p>
+                    <input type="hidden" name="days" value="0" />
+                    <button className="rounded border px-3 py-1.5">Unpin</button>
+                  </>
+                ) : (
+                  <>
+                    <input type="number" name="days" defaultValue={2} min={1} max={30} className="w-16 rounded border px-2 py-1.5" />
+                    <span className="text-xs text-graphite">days</span>
+                    <button className="rounded bg-ink px-3 py-1.5 text-white">Pin</button>
+                  </>
+                )}
+              </form>
+              {/* Return to draft was previously reachable only by dragging the
+                  card on the board — the matrix allowed it, no button offered
+                  it (fix list). */}
+              <form action={returnToDraft} className="mt-4 border-t pt-3">
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="kind" value="story" />
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <p className="mt-1 text-xs text-graphite">Takes it off the site straight away. The member is not emailed.</p>
+              </form>
             </div>
           )}
           {story.member && (
-            <div className="rounded-xl bg-white p-5 shadow-sm text-sm">
+            <div className="rounded-xl bg-white p-5 shadow-sm text-sm sm:col-span-2">
               <h2 className="font-bold text-ink">Member preview</h2>
-              <div className="mt-2 flex items-center gap-3 rounded border-2 border-brand bg-brand/5 p-3">
-                {story.member.logo_path && <Image src={mediaUrl(story.member.logo_path)!} alt="" width={40} height={40} className="rounded" unoptimized />}
-                <span>Backlink + footer branding → <b>{story.member.name}</b></span>
+              <p className="mt-1 text-xs text-graphite">How this story will look once published.</p>
+              <div className="mt-3 rounded-lg border bg-paper p-4">
+                <h3 className="text-lg font-bold leading-tight text-ink">{story.title}</h3>
+                {cover && (
+                  <div className="relative mt-3 h-48 overflow-hidden rounded">
+                    <Image src={cover} alt="" fill sizes="100vw" style={focusStyle(story.cover_focus)} className="object-cover" unoptimized />
+                  </div>
+                )}
+                <StoryBody segments={[story.body ?? ""]} breaks={[]} className="mt-4" />
+                {["active", "grace"].includes(story.member.status) && (
+                  <MemberBacklink name={story.member.name} slug={story.member.slug} logoUrl={mediaUrl(story.member.logo_path)} />
+                )}
               </div>
             </div>
           )}

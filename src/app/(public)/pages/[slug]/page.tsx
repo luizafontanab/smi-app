@@ -3,7 +3,10 @@ import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys } from "@/lib/blocks/schema";
+import { collapseSections } from "@/lib/collapse-sections";
+import { stripTags } from "@/lib/jsonld";
 import { publishedStories, staticPage } from "@/lib/queries";
+import { renderableHtml } from "@/lib/sanitize";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { RichText } from "@/components/RichText";
 
@@ -12,7 +15,14 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(props: PageProps<"/pages/[slug]">) {
   const { slug } = await props.params;
   const page = await staticPage(slug);
-  return { title: page?.title ?? "Page" };
+  const title = page?.title ?? "Page";
+  const description = page?.body ? stripTags(page.body).slice(0, 160) : undefined;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/pages/${slug}` },
+    openGraph: { url: `/pages/${slug}`, title, description },
+  };
 }
 
 export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
@@ -32,15 +42,27 @@ export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
   const slots = dealSlots(banners, adSlotKeys("static_page", layout));
   record([{ kind: "page_view", path: `/pages/${slug}`, ...ctx }]);
 
+  // Collapsible pages (Policies, FAQ): sanitise first, then wrap each h2/h3
+  // section in <details>. RichText can't render the result — its sanitiser
+  // would strip <details>/<summary> — so this branch renders the transformed,
+  // already-sanitised HTML directly with the same .story-body classes. Each
+  // section carries its own white card, so the flat-card wrapper stays off.
   const pageMain = (
     <>
       <h1 className="mt-6 text-2xl font-bold text-ink">{page.title}</h1>
-      <RichText html={page.body} className="mt-4 rounded-lg bg-white p-6 shadow-sm" />
+      {page.collapsible ? (
+        <div
+          className="story-body story-read mt-1"
+          dangerouslySetInnerHTML={{ __html: collapseSections(renderableHtml(page.body)) }}
+        />
+      ) : (
+        <RichText html={page.body} className="story-read mt-4 rounded-lg bg-white p-6 shadow-sm" />
+      )}
     </>
   );
 
   return (
-    <div className="mx-auto max-w-3xl px-4">
+    <div className="mx-auto max-w-6xl px-4">
       <BlockRenderer
         pageType="static_page"
         layout={layout}
@@ -48,6 +70,7 @@ export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
         latestStories={latest}
         supplierLogos={logos}
         showPlaceholders={showPlaceholders}
+        path={`/pages/${slug}`}
         anchors={{ page_main: pageMain }}
       />
       <div className="my-10" />

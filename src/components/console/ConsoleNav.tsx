@@ -3,36 +3,67 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export type NavItem = { href: string; label: string; muted?: boolean };
+export type NavItem = { href: string; label: string };
+export type NavSection = { key: string; href: string; label: string; children?: NavItem[] };
 
-function isActive(pathname: string, href: string) {
-  return href === "/console" ? pathname === "/console" : pathname === href || pathname.startsWith(`${href}/`);
+function isActive(pathname: string, href: string, root: string) {
+  return href === root ? pathname === root : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-// The console's one shell — a horizontal top bar. Muted items are the modules
-// built beyond the wireframe, still reachable but visually de-emphasised.
-export function ConsoleNav({ items }: { items: NavItem[] }) {
+function isSectionActive(pathname: string, section: NavSection, root: string) {
+  if (section.children) return section.children.some((c) => isActive(pathname, c.href, root));
+  return isActive(pathname, section.href, root);
+}
+
+// The console's shell — a two-row bar. Row 1 is high-level sections; row 2 is
+// always rendered but only populated with the active section's children, so
+// it reads as a persistent sub-menu rather than a dropdown that disappears.
+// The member area reuses it with root="/dashboard" and a flat section list —
+// with no children anywhere, the sub-row is dropped rather than left empty.
+export function ConsoleNav({ items, root = "/console" }: { items: NavSection[]; root?: string }) {
   const pathname = usePathname();
+  const activeSection = items.find((s) => isSectionActive(pathname, s, root));
+  const children = activeSection?.children ?? [];
+  const hasSubRow = items.some((s) => s.children);
 
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto px-4 text-sm">
-      {items.map((n) => {
-        const active = isActive(pathname, n.href);
-        return (
-          <Link
-            key={n.href}
-            href={n.href}
-            aria-current={active ? "page" : undefined}
-            className={`whitespace-nowrap border-b-2 px-3 py-2.5 ${
-              active
-                ? "border-brand bg-chrome-hover font-semibold text-white"
-                : `border-transparent hover:bg-chrome-hover ${n.muted ? "text-white/50" : "text-white/80"}`
-            }`}
-          >
-            {n.label}
-          </Link>
-        );
-      })}
-    </nav>
+    <div>
+      <nav aria-label="Console sections" className="flex items-center gap-1 overflow-x-auto px-4 text-sm">
+        {items.map((s) => {
+          const active = s === activeSection;
+          return (
+            <Link
+              key={s.key}
+              href={s.href}
+              aria-current={active ? "page" : undefined}
+              className={`whitespace-nowrap border-b-2 px-3 py-2.5 ${
+                active
+                  ? "border-brand bg-chrome-hover font-semibold text-white"
+                  : "border-transparent text-white/80 hover:bg-chrome-hover"
+              }`}
+            >
+              {s.label}
+            </Link>
+          );
+        })}
+      </nav>
+      {hasSubRow && <nav aria-label="Section pages" className="flex min-h-[2.25rem] items-center gap-1 overflow-x-auto border-t border-white/10 bg-chrome-hover/40 px-4 text-xs">
+        {children.map((n) => {
+          const active = isActive(pathname, n.href, root);
+          return (
+            <Link
+              key={n.href}
+              href={n.href}
+              aria-current={active ? "page" : undefined}
+              className={`whitespace-nowrap rounded px-3 py-2 ${
+                active ? "bg-white/15 font-semibold text-white" : "text-white/75 hover:text-white"
+              }`}
+            >
+              {n.label}
+            </Link>
+          );
+        })}
+      </nav>}
+    </div>
   );
 }

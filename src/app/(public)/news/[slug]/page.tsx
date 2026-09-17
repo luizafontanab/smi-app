@@ -6,14 +6,18 @@ import { record, requestContext } from "@/lib/analytics";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys, bodyAdSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
-import { storyBySlug, publishedStories } from "@/lib/queries";
+import { focusStyle } from "@/lib/focus";
+import { breadcrumbLd, newsArticleLd } from "@/lib/jsonld";
+import { storyBySlug, publishedStories, storyIndustrySlug } from "@/lib/queries";
 import { splitAtAdBreaks } from "@/lib/sanitize";
 import { AdSlot } from "@/components/AdSlot";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
+import { JsonLd } from "@/components/JsonLd";
 import { MemberBacklink } from "@/components/MemberBacklink";
 import { ShareButtons } from "@/components/ShareButtons";
 import { StoryBody } from "@/components/StoryBody";
 import { MemberBadge } from "@/components/StoryCard";
+import { RecordViewed } from "../RecordViewed";
 
 export const dynamic = "force-dynamic";
 
@@ -44,16 +48,24 @@ export async function generateMetadata(props: PageProps<"/news/[slug]">) {
 
 export default async function StoryPage(props: PageProps<"/news/[slug]">) {
   const { slug } = await props.params;
-  const [story, ctx] = await Promise.all([storyBySlug(slug), requestContext()]);
+  // Banners and the placeholder flag don't depend on the layout, so they join
+  // the first round instead of waiting behind getLayout — only the two
+  // layout-conditional fetches stay in round two.
+  const [story, ctx, banners, showPlaceholders] = await Promise.all([
+    storyBySlug(slug),
+    requestContext(),
+    liveAdverts("banner"),
+    showAdPlaceholders(),
+  ]);
   if (!story) notFound();
 
   const layout = await getLayout("story", story.id);
   const wantsLatest = layout.blocks.some((b) => b.type === "latest_news");
-  const [banners, { stories: more }, logos, showPlaceholders] = await Promise.all([
-    liveAdverts("banner"),
+  const [{ stories: more }, logos, industrySlug] = await Promise.all([
     wantsLatest ? publishedStories({ limit: 5 }) : Promise.resolve({ stories: [] }),
     layout.blocks.some((b) => b.type === "supplier_logos") ? liveAdverts("supplier_logo") : Promise.resolve([]),
-    showAdPlaceholders(),
+    // the story's own industry, for the viewed_cats cookie mount below
+    storyIndustrySlug(story.id),
   ]);
 
   // Split once: the segments render the body and their count is what derives the
@@ -72,6 +84,18 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
   // then post-article blocks. Order comes from the (admin-arranged) layout.
   return (
     <div className="mx-auto max-w-4xl px-4">
+      {/* Notes this story's category + author-industry slugs in the viewed_cats
+          cookie (consent-gated client-side) — feeds /news's "For you" rail. */}
+      <RecordViewed slugs={[...cats.map((c) => c.slug), ...(industrySlug ? [industrySlug] : [])]} />
+      <JsonLd
+        data={[
+          newsArticleLd({ ...story, coverUrl: cover }),
+          breadcrumbLd([
+            { name: "News", path: "/news" },
+            { name: story.title, path: `/news/${slug}` },
+          ]),
+        ]}
+      />
       <BlockRenderer
         pageType="story"
         layout={layout}
@@ -80,6 +104,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
         memberStories={[]}
         supplierLogos={logos}
         showPlaceholders={showPlaceholders}
+        path={`/news/${slug}`}
         anchors={{
           story_header: (
             <header className="mt-4">
@@ -90,7 +115,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
                 ))}
               </div>
               <h1 className="mt-3 text-3xl font-bold leading-tight text-ink">{story.title}</h1>
-              <p className="mt-2 text-sm text-gray-500">
+              <p className="mt-2 text-sm text-graphite">
                 Sheet Metal Industries
                 {story.published_at && ` · ${new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
               </p>
@@ -98,11 +123,11 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
           ),
           story_hero: cover && (
             <div className="relative mt-4 h-96 overflow-hidden rounded-lg">
-              <Image src={cover} alt="" fill sizes="100vw" className="object-cover" preload unoptimized />
+              <Image src={cover} alt="" fill sizes="100vw" style={focusStyle(story.cover_focus)} className="object-cover" preload unoptimized />
             </div>
           ),
           story_body: (
-            <article>
+            <article className="story-read">
               <StoryBody
                 segments={segments}
                 className="mt-6"
@@ -111,13 +136,15 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
                   // same rule as BlockRenderer's ad_banner: the margin-carrying
                   // wrapper must not render around an empty slot
                   return ads.length || showPlaceholders
-                    ? <div className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} /></div>
+                    ? <div className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} path={`/news/${slug}`} /></div>
                     : null;
                 })}
               />
               <ShareButtons />
-              {/* Member backlink + footer branding — the fixed "minor tweak" (req 02/07) */}
-              {story.member && (
+              {/* Member backlink + footer branding — the fixed "minor tweak" (req 02/07).
+                  Gated on member status: a lapsed member's page 404s (memberBySlug filters
+                  to active/grace), so linking there for anyone else would be a dead link. */}
+              {story.member && ["active", "grace"].includes(story.member.status) && (
                 <MemberBacklink name={story.member.name} slug={story.member.slug} logoUrl={mediaUrl(story.member.logo_path)} />
               )}
             </article>

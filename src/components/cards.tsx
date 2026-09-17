@@ -1,8 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { mediaUrl } from "@/lib/db/server";
+import { EVENT_TYPE_LABELS, isEventType } from "@/lib/event-types";
 import { youtubeId } from "@/lib/hero";
 import { excerptFromHtml } from "@/lib/sanitize";
+import { MemberBadge } from "@/components/StoryCard";
 
 /**
  * Content cards shared by both site designs. They live here rather than beside
@@ -17,6 +19,7 @@ export type VideoCardData = {
   title: string;
   url: string;
   thumbnail_path?: string | null;
+  source?: string;
   member?: { name: string } | null;
 };
 
@@ -36,10 +39,11 @@ export function VideoCard({ video, size = "md" }: { video: VideoCardData; size?:
       <div className={`relative ${VIDEO_HEIGHTS[size]} bg-ink`}>
         {img && <Image src={img} alt="" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover opacity-80" unoptimized />}
         <span className={`absolute inset-0 flex items-center justify-center ${PLAY_GLYPH[size]} text-white drop-shadow`}>▶</span>
+        {video.source === "member" && <MemberBadge label="Member video" />}
       </div>
       <div className="p-3">
         <p className={`font-semibold line-clamp-2 ${size === "sm" ? "text-sm" : ""}`}>{video.title}</p>
-        {video.member && <p className="mt-1 text-xs text-gray-500">{video.member.name}</p>}
+        {video.member && <p className="mt-1 text-xs text-graphite">{video.member.name}</p>}
       </div>
     </Link>
   );
@@ -68,8 +72,8 @@ export function FeaturedMemberCard({ member, variant = "card" }: { member: Featu
         )}
         <div className="min-w-0">
           <p className="text-lg font-bold">{member.name}</p>
-          {member.category && <p className="text-xs uppercase tracking-wide text-gray-500">{member.category.name}</p>}
-          {member.description && <p className="mt-1 text-sm text-gray-600 line-clamp-2">{member.description}</p>}
+          {member.category && <p className="text-xs uppercase tracking-wide text-graphite">{member.category.name}</p>}
+          {member.description && <p className="mt-1 text-sm text-graphite line-clamp-2">{member.description}</p>}
         </div>
         <span className="ml-auto hidden shrink-0 text-sm text-graphite group-hover:underline md:block">View member page →</span>
       </Link>
@@ -82,10 +86,56 @@ export function FeaturedMemberCard({ member, variant = "card" }: { member: Featu
         {member.logo_path && <Image src={mediaUrl(member.logo_path)!} alt="" width={48} height={48} className="rounded" unoptimized />}
         <div>
           <p className="font-bold">{member.name}</p>
-          {member.category && <p className="text-xs text-gray-500">{member.category.name}</p>}
+          {member.category && <p className="text-xs text-graphite">{member.category.name}</p>}
         </div>
       </div>
-      {variant !== "compact" && member.description && <p className="mt-2 text-sm text-gray-600 line-clamp-3">{member.description}</p>}
+      {variant !== "compact" && member.description && <p className="mt-2 text-sm text-graphite line-clamp-3">{member.description}</p>}
+    </Link>
+  );
+}
+
+export type MemberTileData = {
+  slug: string;
+  name: string;
+  logo_path: string | null;
+  industry?: { name: string } | null;
+};
+
+const TILE_LOGO = { sm: { box: "h-20 w-20", px: 72 }, md: { box: "h-32 w-32", px: 112 } };
+
+/**
+ * Deliberately spare (fix list item 24): logo, name, industry — nothing else.
+ * The whole card links to the member page, where description and contact
+ * details live. Never emits a trailing slash: e2e selects a[href^='/member/'].
+ *
+ * "md" is the directory tile on /member and is byte-identical to the private
+ * MemberCard it was lifted from, so that page's visual baseline does not move.
+ * "sm" is the industry hub's. `showIndustry` is off there: every member on an
+ * industry page shares the same one, so repeating it under each tile is noise.
+ */
+export function MemberTile({ member: m, size = "md", showIndustry = true }: {
+  member: MemberTileData;
+  size?: "sm" | "md";
+  showIndustry?: boolean;
+}) {
+  const logo = TILE_LOGO[size];
+  return (
+    <Link href={`/member/${m.slug}`} className="block rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
+      <div className="flex items-center gap-4">
+        {m.logo_path ? (
+          // Rounded box bigger than the image inside it, so the corner radius
+          // only ever clips white background, never a non-square logo's artwork.
+          <div className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-white`}>
+            <Image src={mediaUrl(m.logo_path)!} alt="" width={logo.px} height={logo.px} className="object-contain" unoptimized />
+          </div>
+        ) : (
+          <div className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30`}>⚙</div>
+        )}
+        <div className="min-w-0">
+          <p className="font-bold text-ink">{m.name}</p>
+          {showIndustry && m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
+        </div>
+      </div>
     </Link>
   );
 }
@@ -95,16 +145,30 @@ export type EventCardData = {
   title: string;
   location: string | null;
   starts_on: string;
+  starts_time: string | null;
   ends_on: string | null;
   link: string | null;
   description: string | null;
+  type?: string | null;
   member?: { slug: string; name: string } | null;
 };
+
+function EventTypeBadge({ type }: { type: string | null | undefined }) {
+  if (!type || !isEventType(type)) return null;
+  return <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand-text">{EVENT_TYPE_LABELS[type]}</span>;
+}
 
 // starts_on/ends_on are date columns, not timestamps — format in UTC or they
 // shift a day back west of Greenwich.
 const eventDate = (d: string, withYear = true) =>
   new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "long", ...(withYear && { year: "numeric" }), timeZone: "UTC" });
+
+// starts_time is a time column (HH:MM:SS) — parse as a plain wall-clock time,
+// no timezone conversion.
+const eventTime = (t: string) => {
+  const [h, m] = t.split(":");
+  return new Date(2000, 0, 1, Number(h), Number(m)).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
+};
 
 /**
  * "md" is the listing card on /event — description, outbound links, host.
@@ -116,27 +180,36 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
   if (size === "sm") {
     return (
       <Link href={`/event/${event.slug}`} className="block h-full overflow-hidden rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
-        <p className="text-xs uppercase text-brand">{eventDate(event.starts_on, false)}</p>
+        <div className="flex items-center gap-2">
+          {/* graphite, not brand: small orange text on white is 3.3:1 — the
+              exact pairing globals.css forbids for body-size text */}
+          <p className="text-xs font-semibold uppercase text-graphite">{eventDate(event.starts_on, false)}</p>
+          <EventTypeBadge type={event.type} />
+        </div>
         <p className="mt-1 font-semibold line-clamp-2">{event.title}</p>
-        {event.location && <p className="mt-1 text-sm text-gray-500 line-clamp-2 break-words">{event.location}</p>}
+        {event.location && <p className="mt-1 text-sm text-graphite line-clamp-2 break-words">{event.location}</p>}
       </Link>
     );
   }
   const excerpt = excerptFromHtml(event.description);
   return (
     <div className="overflow-hidden rounded-lg bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase text-brand">
-        {eventDate(event.starts_on)}{event.ends_on && event.ends_on > event.starts_on && ` – ${eventDate(event.ends_on)}`}
-      </p>
+      <div className="flex items-center gap-2">
+        <p className="text-xs font-semibold uppercase text-graphite">
+          {eventDate(event.starts_on)}{event.ends_on && event.ends_on > event.starts_on && ` – ${eventDate(event.ends_on)}`}
+          {event.starts_time && `, ${eventTime(event.starts_time)}`}
+        </p>
+        <EventTypeBadge type={event.type} />
+      </div>
       <h2 className="mt-1 text-lg font-bold">
         <Link href={`/event/${event.slug}`} className="hover:text-graphite">{event.title}</Link>
       </h2>
-      {event.location && <p className="text-sm text-gray-500 break-words">{event.location}</p>}
-      {excerpt && <p className="mt-2 text-sm text-gray-600">{excerpt}</p>}
+      {event.location && <p className="text-sm text-graphite break-words">{event.location}</p>}
+      {excerpt && <p className="mt-2 text-sm text-graphite">{excerpt}</p>}
       <div className="mt-2 flex gap-3 text-sm text-graphite">
         <Link href={`/event/${event.slug}`} className="hover:underline">Details →</Link>
         {event.link && <a href={event.link} target="_blank" rel="noopener" className="hover:underline">Event website →</a>}
-        {event.member && <span className="text-gray-500">Hosted by {event.member.name}</span>}
+        {event.member && <span className="text-graphite">Hosted by {event.member.name}</span>}
       </div>
     </div>
   );
@@ -158,7 +231,7 @@ export function MachineCard({ machine }: { machine: MachineCardData }) {
       </div>
       <div className="p-3">
         <p className="text-sm font-semibold line-clamp-2">{machine.name}</p>
-        {machine.member && <p className="mt-1 text-xs text-gray-500">{machine.member.name}</p>}
+        {machine.member && <p className="mt-1 text-xs text-graphite">{machine.member.name}</p>}
       </div>
     </Link>
   );

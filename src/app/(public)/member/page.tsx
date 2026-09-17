@@ -2,50 +2,124 @@ import Image from "next/image";
 import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
-import { mediaUrl, publicDb } from "@/lib/db/server";
-import { memberDirectory } from "@/lib/queries";
+import { mediaUrl } from "@/lib/db/server";
+import { featuredMembers, industries as industryList, memberDirectory, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
-import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { MemberMap } from "@/components/MemberMap";
+import { MultiSelectCombobox } from "@/components/MultiSelectCombobox";
+import { Pagination } from "@/components/Pagination";
+import { MemberTile } from "@/components/cards";
+
+/** A searchParams value is `string | string[] | undefined` — normalise either shape to an array. */
+const asArray = (v: string | string[] | undefined): string[] => (Array.isArray(v) ? v : v ? [v] : []);
+const toggled = (arr: string[], slug: string) => (arr.includes(slug) ? arr.filter((s) => s !== slug) : [...arr, slug]);
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Member Directory" };
+const PAGE_SIZE = 12;
+
+export const metadata = {
+  title: "Member Directory",
+  description: "Find UK sheet metal, fabrication and welding companies — search SMI's member directory by name, industry or location.",
+  alternates: { canonical: "/member" },
+};
 
 export default async function MembersPage(props: PageProps<"/member">) {
   const sp = await props.searchParams;
-  const category = typeof sp.category === "string" ? sp.category : undefined;
+  // `?industry=` since 20260909000002 renamed the taxonomy. `?category=` is
+  // still read because it is a public URL surface — /industry/[slug] linked to
+  // it and external links may exist — but nothing emits it any more.
+  const industrySlugs = [...asArray(sp.industry), ...asArray(sp.category)];
+  const services = asArray(sp.service);
+  const membershipTypeSlugs = asArray(sp.type);
   const rawQ = typeof sp.q === "string" ? sp.q : "";
   const q = rawQ.trim() || undefined;
-  const [members, cats, banners, showPlaceholders, ctx] = await Promise.all([
-    memberDirectory({ category, q }),
-    publicDb().from("categories").select("slug, name").eq("kind", "member").order("name"),
+  const page = Math.max(1, Number(sp.page) || 1);
+  const view = sp.view === "map" ? "map" : "list";
+
+  // Map view shows every filtered match at once — a map naturally shows the
+  // full result set, not a page at a time — so it uses the pin projection
+  // (slug/name/lat/lng) instead of paging the full directory rows.
+  const isMap = view === "map";
+
+  const filters = { industries: industrySlugs, services, membershipTypes: membershipTypeSlugs, q };
+  const [dir, pins, inds, serviceList, typeList, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
+    isMap ? null : memberDirectory({ ...filters, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+    isMap ? memberPins(filters) : null,
+    industryList(),
+    allServices(),
+    membershipTypes(),
+    featuredMembers(),
     liveAdverts("banner"),
     showAdPlaceholders(),
     requestContext(),
   ]);
+  const members = dir?.members ?? [];
+  const pinRows = pins?.members ?? [];
+  const total = (dir ?? pins)?.total ?? 0;
   const slots = dealSlots(banners, ["directory_mid"]);
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   record([{ kind: "page_view", path: "/member", ...ctx }]);
 
-  // Same shape as news/page.tsx — one builder so category and q always survive each
-  // other. Never emits a trailing slash: the e2e suite selects a[href^='/member/'].
-  const qs = (over: Record<string, string | undefined>) => {
+  // Same shape as news/page.tsx — one builder so industry/service/q/view always
+  // survive each other. Never emits a trailing slash: e2e selects a[href^='/member/'].
+  const qs = (over: Record<string, string | string[] | number | undefined>) => {
     const params = new URLSearchParams();
-    const merged: Record<string, string | undefined> = { category, q, ...over };
-    Object.entries(merged).forEach(([k, v]) => v !== undefined && v !== "" && params.set(k, v));
+    const merged: Record<string, string | string[] | number | undefined> = {
+      industry: industrySlugs, service: services, type: membershipTypeSlugs, q, view: view === "map" ? "map" : undefined, page: undefined, ...over,
+    };
+    Object.entries(merged).forEach(([k, v]) => {
+      if (v === undefined || v === "") return;
+      if (Array.isArray(v)) v.forEach((item) => item && params.append(k, item));
+      else params.set(k, String(v));
+    });
     const s = params.toString();
     return s ? `/member?${s}` : "/member";
   };
 
-  const categoryList = cats.data ?? [];
-  const activeCat = categoryList.find((c) => c.slug === category);
+  const industryOptions = inds;
+  const activeIndustries = industryOptions.filter((i) => industrySlugs.includes(i.slug));
+  const withCoords = pinRows.filter((m): m is typeof m & { lat: number; lng: number } => m.lat != null && m.lng != null);
+
+  // A member can hold overlapping featured placements — show each member once.
+  const featured = [...new Map(featuredPlacements.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : []))).values()];
 
   return (
     <div className="mx-auto max-w-6xl px-4">
       <h1 className="mt-6 text-2xl font-bold text-ink">Find a Member</h1>
 
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-        {/* GET submit replaces the whole query string, hence the hidden category */}
+      {/* Paid placement (featured_member), so it sits above the search and both
+          views keep it. The rest of the directory below is deliberately NOT
+          alphabetical — memberDirectory() shuffles it with a daily seed so
+          every member gets roughly the same visibility. */}
+      {featured.length > 0 && (
+        <section aria-labelledby="featured-members-heading" className="mt-4">
+          <h2 id="featured-members-heading" className="text-sm font-semibold uppercase tracking-wide text-graphite">Featured members</h2>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {featured.map((m) => (
+              <Link key={m.slug} href={`/member/${m.slug}`} className="tap flex items-center gap-3 rounded-lg bg-white p-3 shadow-sm">
+                {m.logo_path ? (
+                  <Image src={mediaUrl(m.logo_path)!} alt="" width={48} height={48} className="shrink-0 rounded object-contain" unoptimized />
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-graphite/10 text-xl text-graphite/30">⚙</div>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-ink">{m.name}</p>
+                  {m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <h2 className="mt-16 text-lg font-bold text-ink">All members</h2>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+        {/* GET submit replaces the whole query string, hence the hidden industry/service */}
         <form action="/member" role="search" className="flex min-w-0 flex-1 gap-2">
-          {category && <input type="hidden" name="category" value={category} />}
+          {industrySlugs.map((s) => <input key={s} type="hidden" name="industry" value={s} />)}
+          {services.map((s) => <input key={s} type="hidden" name="service" value={s} />)}
+          {membershipTypeSlugs.map((t) => <input key={t} type="hidden" name="type" value={t} />)}
+          {view === "map" && <input type="hidden" name="view" value="map" />}
           <input
             name="q"
             type="search"
@@ -57,65 +131,80 @@ export default async function MembersPage(props: PageProps<"/member">) {
           <button className="shrink-0 rounded bg-ink px-4 py-2 text-sm text-white">Search</button>
         </form>
 
-        <CategoryCombobox
-          options={categoryList.map((c) => ({ slug: c.slug, name: c.name, href: qs({ category: c.slug }) }))}
-          allHref={qs({ category: undefined })}
-          selected={category}
+        <MultiSelectCombobox
+          label="Services"
+          options={serviceList.map((s) => ({ slug: s.slug, name: s.name, href: qs({ service: toggled(services, s.slug) }) }))}
+          clearHref={qs({ service: undefined })}
+          selectedSlugs={services}
+        />
+        <MultiSelectCombobox
+          label="Membership type"
+          options={typeList.map((t) => ({ slug: t.slug, name: t.name, href: qs({ type: toggled(membershipTypeSlugs, t.slug) }) }))}
+          clearHref={qs({ type: undefined })}
+          selectedSlugs={membershipTypeSlugs}
         />
       </div>
 
-      {/* Keeps the category links in the HTML for crawlers and no-JS users. Inert
-          when scripting is on, so it doesn't affect the combobox or e2e counts. */}
-      <noscript>
-        <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-          <a href={qs({ category: undefined })} className="rounded-full border bg-white px-3 py-1">All</a>
-          {categoryList.map((c) => (
-            <a key={c.slug} href={qs({ category: c.slug })} className="rounded-full border bg-white px-3 py-1">{c.name}</a>
-          ))}
-        </div>
-      </noscript>
+      {/* Industry pills, single-select — same pattern and same underlying data
+          as /news's industry filter (the `industries` table), plain Links so
+          they work with no JS and need no noscript fallback. */}
+      <nav aria-label="Filter by industry" className="mt-3 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+        <Link href={qs({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${industrySlugs.length === 0 ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+        {industryOptions.map((c) => (
+          <Link key={c.slug} href={qs({ industry: [c.slug] })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industrySlugs.includes(c.slug) ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+            {c.name}
+          </Link>
+        ))}
+      </nav>
 
-      {/* aria-live: a soft router.push transition doesn't announce itself */}
-      <p aria-live="polite" className="mt-3 text-sm text-gray-500">
-        {members.length} {members.length === 1 ? "member" : "members"}
-        {activeCat && <> in {activeCat.name}</>}
-        {q && <> matching “{q}”</>}
-        {(q || category) && <> · <Link href="/member" className="text-graphite hover:underline">Clear filters</Link></>}
-      </p>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {members.slice(0, 6).map((m) => <MemberCard key={m.slug} member={m} />)}
-      </div>
-      {members.length === 0 && <p className="mt-10 text-center text-gray-500">No members found.</p>}
-      {/* Format A sells rotation across the directory too (advertising/page.tsx).
-          Mid-list so it never pushes the member results below the fold, and
-          unconditional so a narrow filter result still delivers booked inventory. */}
-      <div className="my-6"><AdSlot slotKey="directory_mid" adverts={slots.get("directory_mid") ?? []} showPlaceholders={showPlaceholders} /></div>
-      {members.length > 6 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {members.slice(6).map((m) => <MemberCard key={m.slug} member={m} />)}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        {/* aria-live: a soft router.push transition doesn't announce itself */}
+        <p aria-live="polite" className="text-sm text-graphite">
+          {total} {total === 1 ? "member" : "members"}
+          {activeIndustries.length > 0 && <> in {activeIndustries.map((i) => i.name).join(", ")}</>}
+          {q && <> matching “{q}”</>}
+          {(q || industrySlugs.length > 0 || services.length > 0 || membershipTypeSlugs.length > 0) && (
+            <> · <Link href={qs({ industry: undefined, service: undefined, type: undefined, q: undefined })} className="text-graphite hover:underline">Clear filters</Link></>
+          )}
+        </p>
+        <div className="flex gap-2 text-sm">
+          <Link href={qs({ view: undefined })} aria-current={view === "list" ? "true" : undefined} className={`tap rounded border px-3 py-1.5 ${view === "list" ? "bg-ink text-white" : "bg-white"}`}>List</Link>
+          <Link href={qs({ view: "map" })} aria-current={view === "map" ? "true" : undefined} className={`tap rounded border px-3 py-1.5 ${view === "map" ? "bg-ink text-white" : "bg-white"}`}>Map</Link>
         </div>
+      </div>
+
+      {view === "map" ? (
+        <div className="mt-6">
+          {/* Coordinates are only as good as what an admin typed in manually —
+              no geocoding exists yet (see docs/GAPS.md A4.5) — so coverage can
+              be genuinely sparse. Say so rather than silently dropping members. */}
+          {withCoords.length < pinRows.length && (
+            <p className="mb-3 text-sm text-graphite">
+              Showing {withCoords.length} of {pinRows.length} members with a known location.
+            </p>
+          )}
+          <MemberMap members={withCoords} />
+        </div>
+      ) : (
+        <>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {members.slice(0, 6).map((m) => <MemberTile key={m.slug} member={m} />)}
+          </div>
+          {members.length === 0 && <p className="mt-10 text-center text-graphite">No members found.</p>}
+          {members.length > 6 && (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {members.slice(6).map((m) => <MemberTile key={m.slug} member={m} />)}
+            </div>
+          )}
+          <Pagination page={page} pages={pages} hrefFor={(p) => qs({ page: p })} />
+        </>
       )}
+
+      {/* Format A sells rotation across the directory too (advertising/page.tsx).
+          Unconditional so a narrow filter result still delivers booked inventory. */}
+      <div className="my-6"><AdSlot slotKey="directory_mid" adverts={slots.get("directory_mid") ?? []} showPlaceholders={showPlaceholders} path="/member" /></div>
       <div className="my-10" />
     </div>
   );
 }
 
-function MemberCard({ member: m }: { member: Awaited<ReturnType<typeof memberDirectory>>[number] }) {
-  return (
-    <div className="rounded-lg bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-3">
-        {m.logo_path && <Image src={mediaUrl(m.logo_path)!} alt="" width={44} height={44} className="rounded" unoptimized />}
-        <div>
-          <Link href={`/member/${m.slug}`} className="font-bold text-ink hover:underline">{m.name}</Link>
-          {m.category && <p className="text-xs text-gray-500">{m.category.name}</p>}
-        </div>
-      </div>
-      <p className="mt-2 text-sm text-gray-600 line-clamp-2">{m.description}</p>
-      <div className="mt-3 flex gap-3 text-xs text-graphite">
-        <Link href={`/member/${m.slug}`} className="hover:underline">Profile</Link>
-        {m.website && <a href={m.website} target="_blank" rel="noopener" className="hover:underline">Website</a>}
-        {m.phone && <a href={`tel:${m.phone}`} className="hover:underline">Call</a>}
-      </div>
-    </div>
-  );
-}

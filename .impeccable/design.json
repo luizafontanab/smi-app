@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-02T21:05:00Z",
+  "title": "Design System: Sheet Metal Industries",
+  "extensions": {
+    "colorMeta": {
+      "hot-cut-orange": {
+        "role": "primary",
+        "displayName": "Hot-Cut Orange",
+        "canonical": "#fe5000",
+        "tonalRamp": ["oklch(20% 0.09 35)", "oklch(30% 0.13 35)", "oklch(40% 0.17 35)", "oklch(50% 0.20 35)", "oklch(60% 0.22 35)", "oklch(67% 0.23 35)", "oklch(80% 0.13 40)", "oklch(93% 0.05 45)"]
+      },
+      "hot-cut-orange-text": {
+        "role": "primary",
+        "displayName": "Hot-Cut Orange (text)",
+        "canonical": "#c84000",
+        "tonalRamp": ["oklch(18% 0.08 35)", "oklch(27% 0.11 35)", "oklch(36% 0.14 35)", "oklch(45% 0.17 35)", "oklch(55% 0.19 35)", "oklch(62% 0.20 35)", "oklch(76% 0.12 40)", "oklch(92% 0.04 45)"]
+      },
+      "furnace-gold": {
+        "role": "secondary",
+        "displayName": "Furnace Gold",
+        "canonical": "#f7a600",
+        "tonalRamp": ["oklch(22% 0.06 75)", "oklch(34% 0.09 75)", "oklch(46% 0.11 75)", "oklch(58% 0.13 75)", "oklch(70% 0.15 75)", "oklch(78% 0.16 78)", "oklch(87% 0.10 82)", "oklch(95% 0.04 85)"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#111418",
+        "tonalRamp": ["#0b0d10", "#111418", "#22262c", "#3a3f47", "#5a6068", "#8a8f96", "#c2c6cb", "#e4e6e9"]
+      },
+      "graphite": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#5a6068",
+        "tonalRamp": ["#181b1f", "#272b31", "#3a3f47", "#4a5058", "#5a6068", "#7e848c", "#aeb3b9", "#dcdfe2"]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#5a6068", "#8a8f96", "#b5b9be", "#d5d8db", "#e4e6e9", "#eff0f2", "#f7f8f9", "#ffffff"]
+      },
+      "chrome": {
+        "role": "neutral",
+        "displayName": "Chrome",
+        "canonical": "#0b0d10",
+        "tonalRamp": ["#06090f", "#0b0d10", "#181b1f", "#22262c", "#343941", "#535963", "#8a8f96", "#c2c6cb"]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "canonical": "#e4e6e9",
+        "tonalRamp": ["#5a6068", "#787d85", "#969ba2", "#b5b9be", "#cfd2d6", "#e4e6e9", "#f1f2f4", "#fafbfb"]
+      },
+      "shade": {
+        "role": "neutral",
+        "displayName": "Shade",
+        "canonical": "#f4f5f6",
+        "tonalRamp": ["#5a6068", "#7e848c", "#a3a8ae", "#c5c9cd", "#dcdfe2", "#eaecee", "#f4f5f6", "#fbfbfc"]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Danger",
+        "canonical": "#b91c1c",
+        "tonalRamp": ["oklch(20% 0.09 27)", "oklch(30% 0.12 27)", "oklch(40% 0.15 27)", "oklch(47% 0.17 27)", "oklch(55% 0.18 27)", "oklch(65% 0.15 27)", "oklch(80% 0.08 27)", "oklch(94% 0.03 27)"]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success",
+        "canonical": "#15803d",
+        "tonalRamp": ["oklch(20% 0.06 152)", "oklch(30% 0.09 152)", "oklch(40% 0.11 152)", "oklch(50% 0.13 152)", "oklch(58% 0.14 152)", "oklch(68% 0.12 152)", "oklch(82% 0.08 152)", "oklch(94% 0.03 152)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Hero stage title only — balanced, max 22ch, clamped to 3 lines." },
+      "headline": { "displayName": "Headline", "purpose": "Article titles (text-3xl) and page H1s (text-2xl) in League Spartan." },
+      "title": { "displayName": "Title", "purpose": "Card and panel headings; console H2 pairs with a 4×14px orange tick." },
+      "body": { "displayName": "Body", "purpose": "UI and card text in Source Sans 3." },
+      "body-small": { "displayName": "Body small", "purpose": "The dense UI step (text-sm): controls, nav, card metadata rows." },
+      "reading": { "displayName": "Reading", "purpose": "Public long-form prose via .story-read: 17px/1.6 at ≤68ch." },
+      "label": { "displayName": "Label", "purpose": "Uppercase tracked labels; #c84000 on light ground." },
+      "label-micro": { "displayName": "Label micro", "purpose": "11px eyebrows, rail labels, hero metadata; 10px is the absolute floor (hero-rail card eyebrow only)." },
+      "logo": { "displayName": "Wordmark", "purpose": "Allerta Stencil, the wordmark only — never a display face." }
+    },
+    "shadows": [
+      { "name": "resting-card", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "Separates a white card from the near-white ground; the universal resting shadow." },
+      { "name": "hover-lift", "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)", "purpose": "Interactive cards on hover, always with a transition." },
+      { "name": "hero-active", "value": "0 18px 34px -12px rgb(0 0 0 / 0.7)", "purpose": "The promoted hero-rail card — the system's one theatrical shadow." }
+    ],
+    "motion": [
+      { "name": "hero-ease", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "easeOutQuint — quick start, long settle; all hero movement." },
+      { "name": "hero-ease-soft", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Opacity crossfades." },
+      { "name": "hero-fade", "value": "520ms", "purpose": "Stage media crossfade — deliberately slow; 200ms reads as flicker." },
+      { "name": "hero-copy", "value": "400ms", "purpose": "Copy layer transitions, entering children staggered 60ms apart." },
+      { "name": "hero-card", "value": "260ms", "purpose": "Rail card promotion." },
+      { "name": "reduced-motion", "value": "150ms linear opacity-only", "purpose": "Everything collapses to this under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The brand CTA — Become a Member, Subscribe, Search. Ink on orange is the AA pairing.",
+      "html": "<button class=\"ds-btn-primary\">Become a Member</button>",
+      "css": ".ds-btn-primary { background: var(--smi-brand, #fe5000); color: var(--smi-ink, #111418); font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.875rem; font-weight: 600; padding: 0.5rem 1rem; border: none; border-radius: 0.25rem; cursor: pointer; transition: filter 150ms linear; } .ds-btn-primary:hover { filter: brightness(1.1); } .ds-btn-primary:focus-visible { outline: 2px solid var(--smi-brand, #fe5000); outline-offset: 2px; }"
+    },
+    {
+      "name": "Dark Button",
+      "kind": "button",
+      "refersTo": "button-dark",
+      "description": "The workhorse action — form submits, Website, Send.",
+      "html": "<button class=\"ds-btn-dark\">Send</button>",
+      "css": ".ds-btn-dark { background: var(--smi-ink, #111418); color: #fff; font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.875rem; font-weight: 600; padding: 0.5rem 1rem; border: none; border-radius: 0.25rem; cursor: pointer; transition: background 150ms linear; } .ds-btn-dark:hover { background: var(--smi-chrome-hover, #22262c); } .ds-btn-dark:focus-visible { outline: 2px solid var(--smi-brand, #fe5000); outline-offset: 2px; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Hairline secondary action — Call, Essential only.",
+      "html": "<button class=\"ds-btn-quiet\">Call</button>",
+      "css": ".ds-btn-quiet { background: #fff; color: var(--smi-ink, #111418); font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.875rem; font-weight: 500; padding: 0.5rem 1rem; border: 1px solid var(--smi-line, #e4e6e9); border-radius: 0.25rem; cursor: pointer; transition: border-color 150ms linear; } .ds-btn-quiet:hover { border-color: var(--smi-graphite, #5a6068); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--smi-brand, #fe5000); outline-offset: 2px; }"
+    },
+    {
+      "name": "Hero CTA Pill",
+      "kind": "button",
+      "refersTo": "hero-cta",
+      "description": "The one pill in the system — white play-action on the chrome hero stage.",
+      "html": "<div class=\"ds-hero-ground\"><button class=\"ds-hero-cta\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M8 5v14l11-7z\"/></svg>Read the story</button></div>",
+      "css": ".ds-hero-ground { background: #06090f; padding: 1.5rem; border-radius: 0.5rem; } .ds-hero-cta { display: inline-flex; align-items: center; gap: 0.5rem; background: #fff; color: #000; font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.875rem; font-weight: 700; padding: 0.6rem 1.4rem; border: none; border-radius: 9999px; cursor: pointer; transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), background-color 200ms linear; } .ds-hero-cta:hover { transform: translateY(-1px); background: rgb(255 255 255 / 0.88); } .ds-hero-cta:focus-visible { outline: 2px solid var(--smi-brand, #fe5000); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "White field with hairline border; global orange focus ring.",
+      "html": "<input class=\"ds-input\" type=\"email\" placeholder=\"you@company.co.uk\" />",
+      "css": ".ds-input { background: #fff; color: var(--smi-ink, #111418); font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.875rem; padding: 0.5rem 0.75rem; border: 1px solid var(--smi-line, #e4e6e9); border-radius: 0.25rem; width: 16rem; } .ds-input::placeholder { color: #6a7178; } .ds-input:focus-visible { outline: 2px solid var(--smi-brand, #fe5000); outline-offset: 2px; }"
+    },
+    {
+      "name": "Content Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The public content unit — white on near-white, resting shadow, hover lift when it links.",
+      "html": "<a class=\"ds-card\" href=\"#\"><div class=\"ds-card-media\"></div><div class=\"ds-card-body\"><p class=\"ds-card-title\">New 6kW fibre laser installed at Rotherham facility</p><p class=\"ds-card-meta\">1 September 2026 · Miller Group Ltd</p></div></a>",
+      "css": ".ds-card { display: block; width: 17rem; background: #fff; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); text-decoration: none; transition: box-shadow 150ms linear; } .ds-card:hover { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); } .ds-card:focus-visible { outline: 2px solid var(--smi-brand, #fe5000); outline-offset: 2px; } .ds-card-media { height: 7rem; background: linear-gradient(140deg, #5a6068, #0b0d10); } .ds-card-body { padding: 0.75rem; } .ds-card-title { margin: 0; font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.9375rem; font-weight: 600; line-height: 1.35; color: var(--smi-ink, #111418); } .ds-card-meta { margin: 0.25rem 0 0; font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.75rem; color: #6a7178; }"
+    },
+    {
+      "name": "Console Panel",
+      "kind": "card",
+      "refersTo": "card-console",
+      "description": "Operator-console surface: rounded-xl, hairline border, orange tick section title, tabular stat.",
+      "html": "<section class=\"ds-panel\"><h2 class=\"ds-panel-title\"><span class=\"ds-panel-tick\"></span>Revenue this month</h2><p class=\"ds-panel-stat\">£11,170</p><p class=\"ds-panel-sub\">118 members × £40/mo</p></section>",
+      "css": ".ds-panel { width: 16rem; background: #fff; border: 1px solid rgb(0 0 0 / 0.05); border-radius: 0.75rem; padding: 1.25rem; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); } .ds-panel-title { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-family: 'League Spartan', Arial, sans-serif; font-size: 1rem; font-weight: 700; color: var(--smi-ink, #111418); } .ds-panel-tick { display: inline-block; width: 4px; height: 14px; border-radius: 9999px; background: var(--smi-brand, #fe5000); } .ds-panel-stat { margin: 0.5rem 0 0; font-family: 'Source Sans 3', Arial, sans-serif; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--smi-ink, #111418); } .ds-panel-sub { margin: 0.25rem 0 0; font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.75rem; color: #6a7178; }"
+    },
+    {
+      "name": "Featured Member Card",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "The corner-tag pattern: 2px Hot-Cut Orange frame with a solid corner tag — one of two sanctioned emphatic frames.",
+      "html": "<a class=\"ds-featured\" href=\"#\"><span class=\"ds-featured-tag\">Featured member</span><p class=\"ds-featured-name\">Bailey and Sons Group</p><p class=\"ds-featured-cat\">Laser Cutting</p></a>",
+      "css": ".ds-featured { position: relative; display: block; width: 15rem; background: #fff; border: 2px solid var(--smi-brand, #fe5000); border-radius: 0.5rem; padding: 2rem 1rem 1rem; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); text-decoration: none; transition: box-shadow 150ms linear; } .ds-featured:hover { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); } .ds-featured-tag { position: absolute; left: 0.5rem; top: 0.5rem; background: var(--smi-brand, #fe5000); color: var(--smi-ink, #111418); font-family: 'Source Sans 3', Arial, sans-serif; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.125rem 0.5rem; border-radius: 0.25rem; } .ds-featured-name { margin: 0; font-family: 'Source Sans 3', Arial, sans-serif; font-weight: 700; color: var(--smi-ink, #111418); } .ds-featured-cat { margin: 0.125rem 0 0; font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6a7178; }"
+    },
+    {
+      "name": "Header Nav Link",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Chrome-band navigation: white text, soft rounded hover fill.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-link\" href=\"#\">Members</a><a class=\"ds-nav-link\" href=\"#\">Featured Machine</a><a class=\"ds-nav-link ds-nav-cta\" href=\"#\">Become a Member</a></nav>",
+      "css": ".ds-nav { display: inline-flex; gap: 0.25rem; align-items: center; background: var(--smi-chrome, #0b0d10); padding: 0.75rem 1rem; border-radius: 0.5rem; } .ds-nav-link { font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.875rem; color: #fff; text-decoration: none; padding: 0.5rem 0.75rem; border-radius: 0.25rem; transition: background 150ms linear; } .ds-nav-link:hover { background: var(--smi-chrome-hover, #22262c); } .ds-nav-link:focus-visible { outline: 2px solid var(--smi-brand, #fe5000); outline-offset: 2px; } .ds-nav-cta { background: var(--smi-brand, #fe5000); color: var(--smi-ink, #111418); font-weight: 600; } .ds-nav-cta:hover { background: var(--smi-brand, #fe5000); filter: brightness(1.1); }"
+    },
+    {
+      "name": "Status Label",
+      "kind": "chip",
+      "refersTo": "label",
+      "description": "The small-label role on light ground — deepened Hot-Cut Orange (#c84000) at 5.0:1.",
+      "html": "<span class=\"ds-label\">Awaiting approval</span>",
+      "css": ".ds-label { font-family: 'Source Sans 3', Arial, sans-serif; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--smi-brand-text, #c84000); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Cut Steel, Clean Paper",
+    "overview": "The system is the laser-cut identity of the trade it serves: crisp forms and hot-metal orange applied sparingly to white paper, with the precision of the cut — not the noise of the shop — as the visual metaphor. Pages are plainspoken and trustworthy, the voice of a trade insider rather than a marketing department; edges are industrial and precise, with exact spacing and engineering-bred type doing the work decoration would otherwise fake. Orange carries the identity; the greys carry the page.\n\nDensity follows the surface. Public pages read like a well-set trade front page: confident League Spartan headlines over calm white cards on near-white paper, led (in the default \"forge\" design) by a cinematic near-black hero stage. The operator console and member dashboard are quieter still — flat white cards, hairline borders, and tabular figures, because the person using them is running a business, not browsing.\n\nTwo looks are deliberately rejected. No generic SaaS gloss: gradient meshes, glassmorphism, purple-blue palettes, rounded-everything friendliness — nothing may look tool-built. And no off-the-shelf magazine-theme clutter: the cramped widgets, sidebar noise, and stock typography of the WordPress site this product replaces.",
+    "keyCharacteristics": [
+      "One accent (Hot-Cut Orange) over a disciplined neutral field of ink, graphite, chrome, and paper",
+      "Two type voices: League Spartan speaks, Source Sans 3 reads",
+      "Flat white surfaces on near-white ground; depth only as a response to state",
+      "Trade-paper density on public pages; operational calm in the console and dashboard",
+      "Two structural design variants (forge / grid) sharing every token"
+    ],
+    "rules": [
+      { "name": "The Cut-Line Rule", "body": "Hot-Cut Orange never sets body-size text on light ground. Small labels on paper use #c84000; small text on ink/chrome may use full #fe5000; ink-on-orange (4.7:1) is the CTA pairing. The contrast table in src/app/globals.css is the measured authority.", "section": "colors" },
+      { "name": "The One Accent Rule", "body": "Orange (with its gold companion) is the only hue. Status greens/reds exist in console badges as semantics, never as decoration. No new hues without a rebrand.", "section": "colors" },
+      { "name": "The Speaks-vs-Reads Rule", "body": "League Spartan speaks (h1–h3 route through --smi-font-heading); Source Sans 3 reads (everything else through --smi-font-sans). Never set paragraphs in Spartan or headlines in Source Sans; never use Allerta Stencil beyond the wordmark.", "section": "typography" },
+      { "name": "The Tabular Rule", "body": "Stats, calendars, and money set tabular-nums — Source Sans 3 carries real tnum, and the console depends on columns that align.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat paper. The soft resting shadow (shadow-sm) exists only to separate a white card from the near-white ground; depth beyond that appears strictly as a response to state — hover raises a card to shadow-md, and the hero's active rail card earns the system's one dramatic shadow. Never decorate a resting surface with a larger shadow, and never use zero-offset halos.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do route every family through its token: --smi-font-heading (League Spartan) for h1–h3, --smi-font-sans (Source Sans 3) for everything else, --smi-font-logo strictly for the wordmark.",
+      "Do keep public long-form prose in .story-read — 1.0625rem/1.6 at ≤68ch, centered, with in-body adverts keeping the container's full width.",
+      "Do use text-brand-text (#c84000) for small labels on light surfaces, and tabular-nums on every stat, price, and calendar figure.",
+      "Do theme the browser's own surfaces: the orange ::selection (30% mix on paper, ink text), the 2px offset focus ring, text-underline-offset: 0.15em on prose links.",
+      "Do verify both design variants (forge and grid) when touching shared components — they share every token and diverge only structurally."
+    ],
+    "donts": [
+      "Don't set small text in #fe5000 on white — 3.3:1 fails AA; the deepened #c84000 exists for exactly this.",
+      "Don't add gradients, glass, backdrop blur, or new hues — the anti-references (SaaS gloss, magazine-theme clutter) are confirmed rejections, and orange is the only voice.",
+      "Don't put more than shadow-sm on a resting surface; depth is a state response (Flat-By-Default).",
+      "Don't use Allerta Stencil outside the wordmark, or League Spartan for paragraphs.",
+      "Don't add thick colored side-borders to cards or callouts; the only emphatic frames are the two sanctioned 2px featured-card frames with corner tags.",
+      "Don't restyle .story-body's editor usage — reading refinements live on .story-read, so the TipTap editing surface stays full-width."
+    ]
+  }
+}

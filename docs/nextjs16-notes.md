@@ -28,4 +28,4 @@ Full docs: `node_modules/next/dist/docs/01-app/`. This digest covers what differ
 
 - After `supabase db reset`, the Kong gateway caches the old storage container IP → storage API returns "invalid response from upstream server". Fix: `docker restart supabase_kong_app` (our project's container only — other Supabase projects run on this machine; never touch theirs).
 - Re-seed: `supabase db reset && docker restart supabase_kong_app && sleep 5 && set -a && source .env.local && set +a && pnpm exec tsx scripts/seed.ts`
-- Logins: jas@smi.local (super_admin), media@smi.local (input_only), member1..3@smi.local (members) — password `local-dev-password`.
+- Logins: jas@smi.local (admin), media@smi.local (member), member1..3@smi.local (members) — password `local-dev-password`.

@@ -84,7 +84,8 @@ describe("validateLayout", () => {
 describe("adSlotKeys", () => {
   it("derives position-indexed keys per page type", () => {
     expect(adSlotKeys("story", DEFAULT_LAYOUTS.story)).toEqual(["story_ad_1", "story_ad_2"]);
-    expect(adSlotKeys("member_profile", DEFAULT_LAYOUTS.member_profile)).toEqual(["member_ad_1"]);
+    // no advert by default on a member's own page (fix list) — zero ad_banner blocks
+    expect(adSlotKeys("member_profile", DEFAULT_LAYOUTS.member_profile)).toEqual([]);
     expect(adSlotKeys("featured_machine", DEFAULT_LAYOUTS.featured_machine)).toEqual(["machine_ad_1"]);
   });
 

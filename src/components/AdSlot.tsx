@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { advertHref, type LiveAdvert } from "@/lib/adverts";
+import { advertHref, pickOne, type LiveAdvert } from "@/lib/adverts";
 import { mediaUrl } from "@/lib/db/server";
 import { AdCreative, type AdShape } from "@/components/AdCreative";
 
@@ -11,13 +11,18 @@ export type { AdShape };
  * unbiased per-request shuffle upstream (lib/adverts.ts) — this component
  * only displays; it must never reorder or filter by advertiser.
  *
+ * A2.10: the slot has up to ~3 eligible adverts but shows one — picked
+ * uniformly at random on this render, so it stays static for the rest of the
+ * page load rather than cycling. Not a carousel, "for now" per the open
+ * question logged in docs/HUMAN-TODO.md §5.4.
+ *
  * `showPlaceholders` draws the slot's footprint when nothing is booked, so
  * layout stays checkable on an empty inventory. It is resolved per request by
  * showAdPlaceholders() and defaults to off, so a caller that forgets to pass it
  * shows readers nothing rather than a hollow box.
  */
-export function AdSlot({ adverts, shape = "banner", slotKey, showPlaceholders = false }: { adverts: LiveAdvert[]; shape?: AdShape; slotKey?: string; showPlaceholders?: boolean }) {
-  const ad = adverts[0];
+export function AdSlot({ adverts, shape = "banner", slotKey, showPlaceholders = false, path }: { adverts: LiveAdvert[]; shape?: AdShape; slotKey?: string; showPlaceholders?: boolean; path: string }) {
+  const ad = pickOne(adverts);
   if (!ad) return showPlaceholders ? <AdPlaceholder shape={shape} slotKey={slotKey} /> : null;
   return (
     <AdCreative
@@ -27,6 +32,7 @@ export function AdSlot({ adverts, shape = "banner", slotKey, showPlaceholders = 
       desktop={mediaUrl(ad.desktopPath)!}
       mobile={mediaUrl(ad.mobilePath)!}
       shape={shape}
+      path={path}
     />
   );
 }
@@ -88,8 +94,8 @@ function PlaceholderLabel({ slotKey, size }: { slotKey?: string; size: string })
   return (
     <>
       <p className="text-xs font-bold uppercase tracking-widest text-graphite">Advert space</p>
-      <p className="font-mono text-[11px] text-gray-400">{slotKey ? `${slotKey} · ${size}` : size}</p>
-      <p className="text-[11px] text-gray-400">No advertiser owns this space</p>
+      <p className="font-mono text-[11px] text-graphite">{slotKey ? `${slotKey} · ${size}` : size}</p>
+      <p className="text-[11px] text-graphite">No advertiser owns this space</p>
     </>
   );
 }
@@ -99,7 +105,7 @@ export function SupplierLogos({ adverts, showPlaceholders = false }: { adverts: 
   return (
     <section className="border-t bg-white py-6">
       <div className="mx-auto max-w-6xl px-4">
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-gray-500">Suppliers</h2>
+        <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-graphite">Suppliers</h2>
         <div className="flex flex-wrap items-center gap-6">
           {adverts.length > 0
             ? adverts.map((ad) => (
@@ -111,7 +117,7 @@ export function SupplierLogos({ adverts, showPlaceholders = false }: { adverts: 
                 <div
                   key={i}
                   aria-hidden="true"
-                  className="flex h-12 w-28 items-center justify-center rounded border-2 border-dashed border-graphite/40 bg-graphite/5 text-[10px] font-bold uppercase tracking-widest text-graphite"
+                  className="flex h-12 w-28 items-center justify-center rounded border-2 border-dashed border-graphite/40 bg-graphite/5 text-[11px] font-bold uppercase tracking-widest text-graphite"
                 >
                   Logo
                 </div>

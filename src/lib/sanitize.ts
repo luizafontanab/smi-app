@@ -42,10 +42,17 @@ export function richTextFromPlain(text: string): string {
  * Legacy-tolerant renderer input: rows written before the editor may hold
  * plain text. HTML-looking values are sanitised; anything else is escaped
  * and paragraph-wrapped. Converges to pure HTML as content is re-saved.
+ *
+ * Detects a real tag anywhere in the string, not just a leading one — a
+ * legacy row can be mostly plain text with one inline tag typed partway
+ * through (e.g. "Founded in 1990, <strong>we</strong> specialise in..."),
+ * which a leading-`<` check would miss and then escape into literal text.
  */
+const HTML_TAG_RE = new RegExp(`<\\/?(?:${(RICH_TEXT_ALLOWLIST.allowedTags as string[]).join("|")})\\b`, "i");
+
 function sanitisedOrWrapped(text: string | null | undefined): string {
   if (!text) return "";
-  return /^\s*</.test(text) ? sanitizeRichText(text) : richTextFromPlain(text);
+  return HTML_TAG_RE.test(text) ? sanitizeRichText(text) : richTextFromPlain(text);
 }
 
 /**

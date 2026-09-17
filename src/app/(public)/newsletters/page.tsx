@@ -3,7 +3,11 @@ import { record, requestContext } from "@/lib/analytics";
 import { sentNewsletters } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Newsletters" };
+export const metadata = {
+  title: "Newsletters",
+  description: "Read every issue of SMI Monthly — the newsletter of the UK sheet metal, fabrication and welding trade.",
+  alternates: { canonical: "/newsletters" },
+};
 
 export default async function NewslettersPage() {
   const [issues, ctx] = await Promise.all([sentNewsletters(), requestContext()]);
@@ -14,11 +18,11 @@ export default async function NewslettersPage() {
       <div className="mt-6 space-y-3">
         {issues.map((i) => (
           <Link key={i.number} href={`/newsletters/${i.web_slug}`} className="block rounded-lg bg-white p-5 shadow-sm hover:shadow-md">
-            <p className="text-xs uppercase text-gray-400">
+            <p className="text-xs uppercase text-graphite">
               Issue {i.number} · {i.sent_at && new Date(i.sent_at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
             </p>
             <p className="mt-1 font-bold text-ink">{i.subject}</p>
-            {i.intro && <p className="mt-1 text-sm text-gray-600 line-clamp-2">{i.intro}</p>}
+            {i.intro && <p className="mt-1 text-sm text-graphite line-clamp-2">{i.intro}</p>}
           </Link>
         ))}
       </div>

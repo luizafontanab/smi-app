@@ -20,7 +20,7 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
   return (
     <div className="mx-auto max-w-2xl px-4 py-20 text-center">
       <h1 className="text-3xl font-bold text-ink">Something went wrong at our end</h1>
-      <p className="mt-4 text-gray-600">
+      <p className="mt-4 text-graphite">
         This one is on us, not on you. Trying again often clears it — the page may have hit a
         temporary problem loading its content.
       </p>
@@ -36,7 +36,7 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
         </Link>
       </div>
       {error.digest && (
-        <p className="mt-8 text-xs text-gray-400">
+        <p className="mt-8 text-xs text-graphite">
           If you get in touch about this, quote reference <code className="font-mono">{error.digest}</code>.
         </p>
       )}

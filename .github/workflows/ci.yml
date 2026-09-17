@@ -1,0 +1,81 @@
+# First CI for the repo. Gates: typecheck + lint + full vitest (including the
+# integration suites — tests/setup.ts hard-fails a CI run whose Supabase key is
+# missing, so they can never silently skip here) + production build. E2E runs
+# as a second, initially non-blocking job — flip continue-on-error off once it
+# has proven stable on this runner.
+name: CI
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start local Supabase stack
+        run: supabase start
+      - name: Export Supabase env for the app
+        # Local-stack keys are deterministic — no repo secrets involved.
+        run: |
+          eval "$(supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON_KEY"
+            echo "SUPABASE_SECRET_KEY=$SERVICE_ROLE_KEY"
+            echo "DATABASE_URL=$DB_URL"
+          } >> "$GITHUB_ENV"
+      - name: Seed
+        # Note: seed.ts pulls ~25 real stories from the live site's public WP
+        # REST API — an external dependency. If this step proves flaky, cache
+        # the fetch or add an offline fixture path to the script.
+        run: pnpm exec tsx scripts/seed.ts
+      - run: pnpm check
+      - run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    continue-on-error: true # non-blocking until proven stable in CI
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start local Supabase stack
+        run: supabase start
+      - name: Export Supabase env for the app
+        run: |
+          eval "$(supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON_KEY"
+            echo "SUPABASE_SECRET_KEY=$SERVICE_ROLE_KEY"
+            echo "DATABASE_URL=$DB_URL"
+          } >> "$GITHUB_ENV"
+      - name: Seed
+        run: pnpm exec tsx scripts/seed.ts
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

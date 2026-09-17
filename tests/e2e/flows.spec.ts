@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import sharp from "sharp";
 
 const PASSWORD = "local-dev-password";
 
@@ -7,7 +8,8 @@ async function login(page: import("@playwright/test").Page, email: string) {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', PASSWORD);
   await page.click("button:has-text('Sign in')");
-  await page.waitForURL(/\/(console|member)/, { timeout: 20_000 });
+  // members land on /dashboard (the member area) — /member is the public directory
+  await page.waitForURL(/\/(console|dashboard)/, { timeout: 20_000 });
 }
 
 test.describe("reader (V1/V2)", () => {
@@ -26,7 +28,8 @@ test.describe("reader (V1/V2)", () => {
 
   test("story page carries the member backlink block when member news", async ({ page }) => {
     await page.goto("/news?filter=members");
-    await page.locator('a[href^="/news/"]:has(h3)').first().click();
+    // scoped to the filtered All-news grid — the rails above it are unfiltered
+    await page.locator('[data-testid="all-news-grid"] a[href^="/news/"]:has(h3)').first().click();
     await expect(page.locator("text=This story features an SMI member")).toBeVisible();
   });
 
@@ -48,60 +51,58 @@ test.describe("reader (V1/V2)", () => {
   });
 });
 
-test.describe("member directory — category combobox + text search", () => {
-  test("the pill wall is gone; the combobox filters by type-ahead", async ({ page }) => {
+test.describe("member directory — industry pills + text search", () => {
+  test("the industry pills filter the directory", async ({ page }) => {
     await page.goto("/member");
-    // the old flat list of category links is no longer rendered (noscript is inert)
-    await expect(page.locator('a[href^="/member?category="]')).toHaveCount(0);
+    const pills = page.getByRole("navigation", { name: "Filter by industry" });
+    // "All industries" plus one per industry — 10 in the dev seed
+    const links = pills.getByRole("link");
+    expect(await links.count()).toBeGreaterThan(1);
 
-    const trigger = page.getByRole("button", { name: /All categories/ });
-    await trigger.click();
-    await expect(trigger).toHaveAttribute("aria-expanded", "true");
-
-    const filter = page.getByRole("combobox", { name: "Filter categories" });
-    await expect(filter).toBeFocused(); // focus moves into the panel on open
-    const total = await page.getByRole("option").count();
-    expect(total).toBeGreaterThan(10);
-
-    await filter.fill("las");
-    expect(await page.getByRole("option").count()).toBeLessThan(total);
-
-    const option = page.getByRole("option").first();
-    const label = (await option.textContent())!.trim();
-    await option.click();
-    await page.waitForURL(/\/member\?category=/);
-    await expect(page.getByRole("button", { name: new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })).toBeVisible();
+    const pill = links.nth(1);
+    const label = (await pill.textContent())!.trim();
+    await pill.click();
+    await page.waitForURL(/\/member\?industry=/);
+    await expect(page.getByText(new RegExp(`in ${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`))).toBeVisible();
   });
 
-  test("Escape closes the panel and returns focus to the trigger", async ({ page }) => {
+  test("Escape closes the services panel and returns focus to the trigger", async ({ page }) => {
     await page.goto("/member");
-    const trigger = page.getByRole("button", { name: /All categories/ });
+    const trigger = page.getByRole("button", { name: "Services", exact: true });
     await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press("Escape");
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
     await expect(trigger).toBeFocused();
   });
 
-  test("category and search term survive each other", async ({ page }) => {
+  test("industry and search term survive each other", async ({ page }) => {
     await page.goto("/member");
     const name = (await page.locator('a[href^="/member/"]').filter({ hasText: /\w/ }).first().textContent())!.trim();
     const term = name.split(/\s+/)[0];
 
-    // pick a category first — the form's hidden field must carry it through the search
-    await page.getByRole("button", { name: /All categories/ }).click();
-    await page.getByRole("option").nth(1).click();
-    await page.waitForURL(/category=/);
-    const chosen = new URL(page.url()).searchParams.get("category")!;
+    // pick an industry first — the form's hidden field must carry it through the search
+    await page.getByRole("navigation", { name: "Filter by industry" }).getByRole("link").nth(1).click();
+    await page.waitForURL(/industry=/);
+    const chosen = new URL(page.url()).searchParams.get("industry")!;
 
     await page.getByRole("searchbox", { name: "Search members" }).fill(term);
     await page.keyboard.press("Enter");
     await page.waitForURL(/q=/);
-    expect(new URL(page.url()).searchParams.get("category")).toBe(chosen);
+    expect(new URL(page.url()).searchParams.get("industry")).toBe(chosen);
 
-    // and the reverse: clearing the category keeps q
-    await page.getByRole("button", { name: "Clear category filter" }).click();
-    await page.waitForURL((u) => !u.searchParams.has("category"));
+    // and the reverse: clearing the industry keeps q
+    await page.getByRole("link", { name: "All industries" }).click();
+    await page.waitForURL((u) => !u.searchParams.has("industry"));
     expect(new URL(page.url()).searchParams.get("q")).toBe(term);
+  });
+
+  test("the legacy ?category= param still filters (external links must not die)", async ({ page }) => {
+    // /industry/[slug] linked here as ?category= before migration 20260909000002.
+    await page.goto("/member?industry=welding");
+    const viaIndustry = (await page.getByText(/\d+ members? in /).textContent())!.trim();
+    await page.goto("/member?category=welding");
+    await expect(page.getByText(/\d+ members? in /)).toHaveText(viaIndustry);
   });
 
   test("a term full of PostgREST delimiters cannot widen the filter", async ({ page }) => {
@@ -123,32 +124,38 @@ test.describe("public header follows the session", () => {
     await expect(page.getByRole("main").getByRole("link", { name: "Become a Member", exact: true })).toBeVisible();
   });
 
-  test("signed-in member sees their name linking to the member area, and no join CTA", async ({ page }) => {
+  test("signed-in member gets the account menu with member links, and no join CTA", async ({ page }) => {
     await login(page, "member2@smi.local");
     // the member area header shows the company name — that's what the public header should echo
-    const company = (await page.locator("header span.text-white\\/60").first().textContent())!.trim();
+    const company = (await page.getByTestId("member-name").textContent())!.trim();
 
     await page.goto("/");
     const header = page.locator("header").first();
     await expect(header.getByRole("link", { name: "Become a Member", exact: true })).toHaveCount(0);
     await expect(header.getByRole("link", { name: "Login" })).toHaveCount(0);
-    const chip = header.getByRole("link", { name: company, exact: true });
-    await expect(chip).toBeVisible();
-    await expect(chip).toHaveAttribute("href", "/dashboard");
+    const trigger = header.getByRole("button", { name: `Account: ${company}` });
+    await expect(trigger).toBeVisible();
 
     // the navy "Become a Member" band is gone for signed-in visitors too
     await expect(page.getByRole("link", { name: "Become a Member", exact: true })).toHaveCount(0);
 
-    await chip.click();
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await expect(header.getByRole("link", { name: "Notifications" })).toBeVisible();
+    await expect(header.getByRole("link", { name: "Help" })).toBeVisible();
+    await header.getByRole("link", { name: "Member area" }).click();
     await page.waitForURL("**/dashboard");
   });
 
-  test("console user gets a console link, not a member one", async ({ page }) => {
+  test("console user gets console entries in the account menu, not member ones", async ({ page }) => {
     await login(page, "jas@smi.local");
     await page.goto("/");
-    const chip = page.locator("header").first().getByRole("link", { name: "Jas", exact: true });
-    await expect(chip).toBeVisible();
-    await expect(chip).toHaveAttribute("href", "/console");
+    const header = page.locator("header").first();
+    const trigger = header.getByRole("button", { name: "Account: Jas" });
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+    await expect(header.getByRole("link", { name: "Admin console" })).toHaveAttribute("href", "/console");
+    await expect(header.getByRole("link", { name: "Help" })).toHaveCount(0);
   });
 
   test("previously-static pages render the session too", async ({ page }) => {
@@ -165,6 +172,9 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
   const title = `E2E loop ${Date.now()}`;
 
   test("WYSIWYG story survives the approval gate; preview shows branding; XSS stays inert", async ({ page }) => {
+    // Nine navigations across two logins — legitimately ~50s on the dev
+    // server, so triple the budget rather than trim the coverage.
+    test.slow();
     // member writes in the WYSIWYG editor
     await login(page, "member2@smi.local");
     await page.goto("/dashboard/story/new");
@@ -177,6 +187,13 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
     await page.keyboard.press("Enter");
     await page.click('button[title="Bold"]');
     await page.keyboard.type("Bold statement.");
+    // a cover is mandatory for member stories (fix list item 32) — the input's
+    // `required` would otherwise block the submit below at the browser
+    await page.setInputFiles('input[name="cover"]', {
+      name: "cover.jpg",
+      mimeType: "image/jpeg",
+      buffer: await sharp({ create: { width: 1200, height: 675, channels: 3, background: { r: 51, g: 65, b: 85 } } }).jpeg().toBuffer(),
+    });
 
     // preview shows the backlink + branding BEFORE publish (req §7 fix)
     await page.click("button:has-text('Preview')");
@@ -191,8 +208,9 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
     await page.goto("/news");
     await expect(page.locator(`text=${title}`)).toHaveCount(0);
 
-    // sign out (from the member area header), editor approves
+    // sign out (from the member area header's account menu), editor approves
     await page.goto("/dashboard");
+    await page.locator('header button[aria-label^="Account:"]').click();
     await page.locator("header form button:has-text('Sign out')").click();
     await page.waitForURL("**/login");
     await login(page, "jas@smi.local");
@@ -215,6 +233,9 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
 test.describe("member equipment → approval (equipment write page)", () => {
   const machine = `E2E machine ${Date.now()}`;
 
+  // The dashboard card for /dashboard/equipment/new is hidden (fix list item 9)
+  // but the route is deliberately still live — this covers the whole
+  // machine-approval pipeline, which the console still uses.
   test("submitted machine reaches the console queue and publishes on approval", async ({ page }) => {
     await login(page, "member2@smi.local");
     await page.goto("/dashboard/equipment/new");
@@ -225,6 +246,7 @@ test.describe("member equipment → approval (equipment write page)", () => {
     await page.waitForURL("**/dashboard?submitted=machine");
 
     await page.goto("/dashboard");
+    await page.locator('header button[aria-label^="Account:"]').click();
     await page.locator("header form button:has-text('Sign out')").click();
     await page.waitForURL("**/login");
     await login(page, "jas@smi.local");
@@ -276,16 +298,29 @@ test.describe("admin block layouts (drag-and-drop, per-page override)", () => {
     await page.click("button:has-text('Save layout')");
     await page.waitForURL("**saved=1**");
 
-    // the overridden story renders no adverts; other stories keep the default's adverts
+    // the overridden story renders no adverts; other stories keep the default's
+    // adverts. Navigate by href rather than clicking the card — a click racing
+    // /news hydration is occasionally swallowed under the runner's tracing
+    // overhead (flake), and click-through from /news is already covered by the
+    // WYSIWYG test above.
     await page.goto("/news");
-    await page.locator(`a[href^="/news/"]`, { hasText: overrideTitle }).first().click();
+    const overrideHref = await page
+      .locator(`a[href^="/news/"]`, { hasText: overrideTitle })
+      .first()
+      .getAttribute("href");
+    await page.goto(overrideHref!);
     await expect(page.locator("h1", { hasText: overrideTitle })).toBeVisible();
     await expect(page.locator('a[aria-label^="Advert:"]')).toHaveCount(0);
 
-    const otherLink = page.locator('a[href^="/news/"]:has(h3)').filter({ hasNotText: overrideTitle });
     await page.goto("/news");
-    await otherLink.first().click();
-    expect(await page.locator('a[aria-label^="Advert:"]').count()).toBeGreaterThan(0);
+    const otherHref = await page
+      .locator('a[href^="/news/"]:has(h3)')
+      .filter({ hasNotText: overrideTitle })
+      .first()
+      .getAttribute("href");
+    await page.goto(otherHref!);
+    await expect(page.locator("h1")).toBeVisible(); // story page rendered…
+    await expect(page.locator('a[aria-label^="Advert:"]').first()).toBeVisible(); // …with its adverts
 
     // clean up: drop the override so reruns start from the default
     await page.goto(`/console/pages?type=story&entity=${storyId}`);
@@ -311,14 +346,17 @@ test.describe("admin (A1/A4)", () => {
     await expect(page.locator(`text=of 4 sold`)).toBeVisible();
     // pipeline strip links to the story engine
     await expect(page.locator('a[href="/console/stories"]', { hasText: "Story pipeline" })).toBeVisible();
-    // nav: wireframe module order first, active state on the current page
+    // nav: current module order first, active state on the current page
+    // (the nav was reorganised after the original wireframe — Analytics was
+    // added, the engines grouped under Content, and Messages moved to the
+    // header bell)
     const labels = await page.locator("header nav a").allTextContents();
     expect(labels.slice(0, 5)).toEqual([
       "Command Centre",
+      "Analytics",
+      "Content",
       "Adverts & Inventory",
       "Members & CRM",
-      "Story Engine (CMS)",
-      "Newsletter",
     ]);
     await expect(page.locator('header nav a[aria-current="page"]')).toHaveText("Command Centre");
   });
@@ -326,7 +364,7 @@ test.describe("admin (A1/A4)", () => {
   test("advert inventory lists live bookings with caps", async ({ page }) => {
     await login(page, "jas@smi.local");
     await page.goto("/console/adverts");
-    await expect(page.locator("text=Live banners")).toBeVisible();
+    await expect(page.locator("text=Live bookings")).toBeVisible();
     expect(await page.locator("td:has-text('live')").count()).toBeGreaterThan(0);
   });
 });

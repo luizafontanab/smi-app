@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase status *)",
+      "Bash(supabase migration list*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm check:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm test:e2e:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(pnpm typecheck 2>&1)",
+      "Bash(tail *)",
+      "Bash(head *)",
+      "Bash(npx tsc --noEmit 2>&1)",
+      "Bash(supabase migration list 2>&1)",
+      "Bash(pnpm exec vitest * 2>&1)",
+      "Bash(pnpm build 2>&1)",
+      "Bash(pnpm lint 2>&1)",
+      "Bash(pnpm check 2>&1)",
+      "Bash(pnpm test:e2e 2>&1)",
+      "Bash(pnpm vitest run *)",
+      "Bash(pnpm exec vitest *)",
+      "Bash(pnpm exec eslint *)",
+      "Bash(pnpm exec tsc *)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(rm -fr:*)",
+      "Bash(git stash:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(git branch -D:*)",
+      "Bash(chmod -R 777:*)",
+      "Bash(curl * | sh:*)",
+      "Bash(curl * | bash:*)"
+    ]
+  }
+}

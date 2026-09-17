@@ -2,7 +2,7 @@ import "server-only";
 import { liveAdvertsByFormat, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { buildHero, withIntros } from "@/lib/hero";
-import { activePlacements, headlineStory, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
+import { activePlacements, featuredMemberPlacements, headlineStory, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
 
 /** Every advert format either design places on the home page. */
 const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_feed"] as const;
@@ -25,13 +25,13 @@ const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_fee
 export async function loadHome() {
   // Limits are sized so the hero can eat from the top of these lists (up to 3
   // stories and 2 videos) and every section below still fills.
-  const [headline, { stories }, { stories: memberNews }, videos, events, placements, adverts, newsletters, directory, categories, showPlaceholders, ctx] = await Promise.all([
+  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx] = await Promise.all([
     headlineStory(),
     publishedStories({ limit: 18 }),
     publishedStories({ limit: 8, memberOnly: true }),
-    publishedVideos(10),
+    publishedVideos({ limit: 10 }),
     // Grid shows four; forge shows three and ignores the rest.
-    upcomingEvents(4),
+    upcomingEvents({ limit: 4 }),
     activePlacements(),
     liveAdvertsByFormat(HOME_AD_FORMATS),
     // The three below are grid-only today. They cost one query each and the
@@ -60,13 +60,18 @@ export async function loadHome() {
     memberNews: memberNews.filter((s) => !hero.storyIds.has(s.id)),
     videos: videos.filter((v) => !hero.videoIds.has(v.id)),
     events,
-    featuredMembers: placements.filter((p) => p.kind === "featured_member"),
+    // Shared filter (queries.ts) — the member directory's featured strip uses
+    // the same definition via featuredMembers().
+    featuredMembers: featuredMemberPlacements(placements),
     featuredMachine: placements.find((p) => p.kind === "featured_machine"),
     newsletters: newsletters.slice(0, 3),
     // Logo wall, not a directory listing — members without a logo have nothing
     // to show in it, so they are filtered out here rather than in each view.
     directory: directory.filter((m) => m.logo_path).slice(0, 12),
-    memberCount: directory.length,
+    memberCount,
+    // Every published story, not the 18 fetched above — the count already
+    // rides along on that query's response, so grid's stats band is free.
+    storyTotal,
     categories,
     adverts,
     showPlaceholders,

@@ -20,6 +20,8 @@ type Props = {
   supplierLogos?: LiveAdvert[];
   /** Draw empty slots' footprints — resolved per request by showAdPlaceholders(). */
   showPlaceholders?: boolean;
+  /** The page this layout renders on — carried into any ad_banner block's impression beacon. */
+  path: string;
 };
 
 /**
@@ -27,7 +29,7 @@ type Props = {
  * upstream by the uniform shuffle — this component must never pick or reorder
  * adverts (rotational-neutral contract).
  */
-export function BlockRenderer({ pageType, layout, anchors, slots, latestStories, memberStories, memberName, supplierLogos, showPlaceholders = false }: Props) {
+export function BlockRenderer({ pageType, layout, anchors, slots, latestStories, memberStories, memberName, supplierLogos, showPlaceholders = false, path }: Props) {
   const keys = adSlotKeys(pageType, layout);
   let adIndex = 0;
 
@@ -43,14 +45,14 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
             const ads = slots?.get(key) ?? [];
             // the wrapper carries margin, so it must not render around a null slot
             return ads.length || showPlaceholders
-              ? <div key={block.id} className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} /></div>
+              ? <div key={block.id} className="my-8"><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} path={path} /></div>
               : null;
           }
           case "back_link": {
             const { label, href } = block.props as { label: string; href: string };
             return (
               <div key={block.id} className="mt-6">
-                <Link href={href} className="text-sm text-gray-400 hover:text-ink">← {label}</Link>
+                <Link href={href} className="text-sm text-graphite hover:text-ink">← {label}</Link>
               </div>
             );
           }
@@ -60,11 +62,14 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
             const limit = typeof block.props?.limit === "number" ? block.props.limit : 4;
             const title = block.type === "latest_news" ? "Latest News" : `Stories featuring ${memberName ?? "this member"}`;
             if (!stories?.length) return null;
+            // limit 0 only ever means "show every story" for member_news — guarded
+            // by block type here too, in case a stale layout row has stray data.
+            const shown = block.type === "member_news" && limit === 0 ? stories : stories.slice(0, limit);
             return (
               <section key={block.id} className="mt-10">
                 <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">{title}</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {stories.slice(0, limit).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
+                  {shown.map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
                 </div>
               </section>
             );

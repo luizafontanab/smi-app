@@ -12,7 +12,7 @@ export default function MemberError({ error, retry }: { error: Error & { digest?
   return (
     <div className="mx-auto max-w-xl py-20 text-center">
       <h1 className="text-xl font-bold text-ink">This page failed to load</h1>
-      <p className="mt-3 text-sm text-gray-600">
+      <p className="mt-3 text-sm text-graphite">
         Your membership and anything you&apos;ve submitted are unaffected — this is a problem
         loading the page, not with your account.
       </p>
@@ -27,7 +27,7 @@ export default function MemberError({ error, retry }: { error: Error & { digest?
           Back to dashboard
         </Link>
       </div>
-      {error.digest && <p className="mt-6 text-xs text-gray-400">Reference {error.digest}</p>}
+      {error.digest && <p className="mt-6 text-xs text-graphite">Reference {error.digest}</p>}
     </div>
   );
 }

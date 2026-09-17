@@ -1,8 +1,10 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { sessionDb, serviceDb } from "./db/server";
+import type { Database } from "./db/types";
 
-export type Role = "super_admin" | "approver" | "viewer" | "input_only" | "member";
+/** Two roles, by design: admins are provisioned directly in the database; members are created by the join funnel and console's createMember. */
+export type Role = Database["public"]["Enums"]["user_role"];
 
 export type CurrentUser = {
   userId: string;
@@ -26,28 +28,23 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
   return {
     userId: user.id,
     email: user.email ?? "",
-    role: profile.role as Role,
+    role: profile.role,
     memberId: profile.member_id,
     displayName: profile.display_name,
   };
 });
 
-const CONSOLE_ROLES: Role[] = ["super_admin", "approver", "viewer", "input_only"];
-
 /** Console access; returns the user or redirects. Call in every console page/action. */
 export async function requireConsole(): Promise<CurrentUser> {
   const user = await currentUser();
   if (!user) redirect("/login?next=/console");
-  if (!CONSOLE_ROLES.includes(user.role)) redirect("/dashboard");
+  if (user.role !== "admin") redirect("/dashboard");
   return user;
 }
 
-/** Mutating console actions: viewer can't write; input_only can only create draft stories. */
-export function canWrite(user: CurrentUser): boolean {
-  return user.role === "super_admin" || user.role === "approver";
-}
-export function canApprove(user: CurrentUser): boolean {
-  return user.role === "super_admin" || user.role === "approver";
+/** Admin-only surface: the dev-task widget, rendered for a possibly-anonymous visitor on any route. */
+export function isAdmin(user: CurrentUser | null): boolean {
+  return user?.role === "admin";
 }
 
 export async function requireMember(): Promise<CurrentUser & { memberId: string }> {

@@ -1,18 +1,29 @@
 @import "tailwindcss";
 
 /*
- * The client's brand. Orange is Pantone Orange 021, supplied as CMYK(0,58,85,0);
+ * The client's brand. Orange is taken from the supplied logo artwork
+ * (public/logo-wide.svg, #ff8200), so the mark and the accent read as one;
  * gold is the lighter gradient stop, supplied as C3 M35 Y100 K0. Everything else
  * is neutral on purpose — orange carries the identity, the greys carry the page.
  *
- * Measured contrast, because orange is a brand colour and not a text colour:
- *   brand on paper   3.3:1  fails AA — large/bold only, NEVER body text
- *   white on brand   3.3:1  same rule: large/bold only
- *   ink   on brand   4.7:1  passes AA — this is the CTA pairing
- *   gold  on ink     7.4:1  use when small text must sit on the accent
+ * Measured contrast (src/lib/contrast.ts is the calculator), because orange is
+ * a brand colour and not a text colour:
+ *   brand on paper   2.5:1  fails AA at ANY size — non-text accent only
+ *   brand on ink     7.4:1  passes AA — small brand labels are fine on dark
+ *   brand-text on paper 5.1:1  the deepened orange for small labels on light
+ *   white on brand   2.5:1  fails AA at any size — never; use ink on brand
+ *   ink   on brand   7.4:1  passes AA — this is the CTA pairing
+ *   gold  on ink     9.2:1  use when small text must sit on the accent
  */
 :root {
-  --smi-brand: #fe5000;
+  --smi-brand: #ff8200;
+  /* Same hue, deepened until 12px text passes on every light surface it sits
+     on — paper (5.4:1), the brand/15 chip tint on white (5.1:1), and the
+     worst case: that tint over a calendar's out-of-month bg-shade/70 cell
+     (4.7:1; axe held #ac5800 at 4.39 and #a35300 at 4.47 there). Use
+     text-brand-text for small labels on light surfaces; text-brand stays for
+     dark surfaces, large/bold type, and non-text accents. */
+  --smi-brand-text: #9d5000;
   --smi-gold: #f7a600;
   --smi-ink: #111418;
   --smi-graphite: #5a6068;
@@ -20,10 +31,31 @@
   --smi-chrome: #0b0d10;
   --smi-chrome-hover: #22262c;
   --smi-line: #e4e6e9;
-  --smi-font-sans: var(--font-league-spartan);
+  /* Semantic status pair — previously ad-hoc Tailwind red/green across 59
+     files. Both pass AA on paper for normal text (danger 6.3:1, success 4.9:1);
+     tint their backgrounds via opacity (bg-danger/10), never a separate hex. */
+  --smi-danger: #b91c1c;
+  --smi-success: #15803d;
+  /* Tint panel between paper and line — the old bg-gray-50/100 role. */
+  --smi-shade: #f4f5f6;
+  /* Categorical series for multi-series charts (StackedTrendChart) — fixed
+     order, never cycled or reassigned by value. Brand orange stays out of this
+     set (it's the single non-categorical accent everywhere else); these five
+     are drawn from the dataviz skill's validated default 8-hue palette,
+     re-validated as this 5-slot subset (node scripts/validate_palette.js
+     "#2a78d6,#1baf7a,#eda100,#e87ba4,#008300" --mode light --surface "#ffffff":
+     all hard gates pass; slots 2/3/4 sit under 3:1 on white, which is why
+     every chart using them also ships a text legend — the required relief). */
+  --smi-series-1: #2a78d6; /* blue */
+  --smi-series-2: #1baf7a; /* aqua */
+  --smi-series-3: #eda100; /* yellow */
+  --smi-series-4: #e87ba4; /* magenta */
+  --smi-series-5: #008300; /* green */
+  /* Two roles on purpose: Source Sans 3 reads (body, UI, data — real tabular
+     figures), League Spartan speaks (headings, hero). Swapping either token
+     re-faces its whole role; nothing selects a family directly. */
+  --smi-font-sans: var(--font-source-sans), sans-serif;
   --smi-font-heading: var(--font-league-spartan);
-  /* Logo face — the wordmark in SiteHeader only, never as a display font. */
-  --smi-font-logo: var(--font-allerta-stencil);
 }
 
 /*
@@ -36,6 +68,7 @@
 
 @theme inline {
   --color-brand: var(--smi-brand);
+  --color-brand-text: var(--smi-brand-text);
   --color-gold: var(--smi-gold);
   --color-ink: var(--smi-ink);
   --color-graphite: var(--smi-graphite);
@@ -43,13 +76,75 @@
   --color-chrome: var(--smi-chrome);
   --color-chrome-hover: var(--smi-chrome-hover);
   --color-line: var(--smi-line);
+  --color-danger: var(--smi-danger);
+  --color-success: var(--smi-success);
+  --color-shade: var(--smi-shade);
   --font-sans: var(--smi-font-sans);
-  --font-logo: var(--smi-font-logo);
+  --font-heading: var(--smi-font-heading);
+}
+
+/*
+ * Grid homepage palette (src/app/(public)/home.grid.tsx and
+ * src/components/grid-home/). Taken from the client's designer comps,
+ * docs/Sheet Metal Industries Home v1.png / v2.png: a white ground separated
+ * by light-grey full-bleed bands, flat hairline-bordered cards and near-square
+ * corners, with orange carrying the section labels.
+ *
+ * These are ADDITIONS, not overrides — nothing outside grid-home/ and the two
+ * Grid* chrome components reads a --gh-* variable — which is why they can sit
+ * on :root safely. Deliberately NOT hung off [data-theme="grid"]: that
+ * attribute is stamped on <html> by the root layout, so a palette attached to
+ * it would repaint every grid-mode route, and only the homepage was designed.
+ * The header and footer are outside the page's own wrapper, so a class-scoped
+ * block would not reach them either.
+ *
+ * Tokens only — no layout, no state. See the CASCADE NOTE further down.
+ */
+:root {
+  --gh-band: #f1f2f2;          /* full-bleed section band */
+  --gh-radius: 2px;            /* the comps are near-square */
+  /* Charcoal, not --smi-chrome: the comps' footer sits directly under a
+     near-black CTA band and has to read as a separate surface. */
+  --gh-footer: #2b2b2b;
+}
+
+/* 44px touch floor on coarse pointers only, so desktop density is untouched.
+   Applied via the `tap` class to the systemic small targets the audit found:
+   header/footer nav, pagination, cookie bar, row-action links. */
+@media (pointer: coarse) {
+  /* :not(.hidden) so this unlayered rule can never override Tailwind's
+     `hidden` (unlayered display beats the layered utility) — without it,
+     responsive-hidden nav links reappear on touch devices and overflow the
+     phone-width header (caught by mobile.spec's scrollWidth checks). */
+  .tap:not(.hidden) {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
 }
 
 body {
   background: var(--smi-paper);
   color: var(--smi-ink);
+}
+
+/* Selection carries the brand the way the focus ring does: orange ground, ink
+   text (4.7:1 — the one AA-passing brand pairing, per the table above). */
+::selection {
+  background: color-mix(in srgb, var(--smi-brand) 30%, var(--smi-paper));
+  color: var(--smi-ink);
+}
+
+/*
+ * Keyboard focus must be visible everywhere, including on the near-black
+ * chrome header/footer where the UA default outline disappears. Brand orange
+ * reads on both the white page (3.3:1 non-text contrast passes the 3:1
+ * indicator floor) and the chrome; the offset keeps it legible on same-hue
+ * CTAs. :focus-visible only — pointer clicks stay outline-free.
+ */
+:focus-visible {
+  outline: 2px solid var(--smi-brand);
+  outline-offset: 2px;
 }
 
 h1, h2, h3 {
@@ -60,9 +155,35 @@ h1, h2, h3 {
   line-height: 1.75;
 }
 .story-body p { margin: 1em 0; }
+
+/*
+ * Reading role — public long-form surfaces only (articles, static pages).
+ * .story-body alone is also the TipTap editor's content class and the dashboard
+ * previews, so the measure and size live on this wrapper, not on .story-body:
+ * the editor keeps its full-width field. Applied as a parent (article pages,
+ * where per-segment .story-body wrappers sit between adverts that must keep the
+ * container's full width) or on the .story-body element itself (static pages).
+ * 17px/1.6 at ≤68ch: Source Sans 3's x-height reads best a step above the 16px
+ * floor, and the tighter leading suits the narrower measure (1.75 was tuned to
+ * the old ~100ch overrun).
+ */
+.story-read,
+.story-read .story-body,
+.story-body.story-read {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+.story-read .story-body,
+.story-body.story-read {
+  max-width: 68ch;
+  margin-inline: auto;
+}
 .story-body h2, .story-body h3 { font-weight: 700; margin: 1.4em 0 0.5em; }
+.story-body ul, .story-body ol { margin: 1em 0; padding-left: 1.5em; }
+.story-body ul { list-style: disc; }
+.story-body ol { list-style: decimal; }
 .story-body img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 1em 0; }
-.story-body a { color: var(--smi-graphite); text-decoration: underline; }
+.story-body a { color: var(--smi-graphite); text-decoration: underline; text-underline-offset: 0.15em; }
 
 /* Advert break — only ever seen while authoring. The public page splits the
  * body on this marker and renders a real slot in the gap, and renderableHtml
@@ -95,6 +216,30 @@ h1, h2, h3 {
 }
 .carousel > * { scroll-snap-align: start; }
 
+/*
+ * The white type on a revealed tile, given its own shadow rather than more
+ * scrim. Two stacked shadows on purpose, the same trick .hero-title uses: a
+ * tight near-opaque one draws the letterform's edge against whatever pixel sits
+ * behind it, and a wide soft one lifts the whole word off a busy background.
+ * Darkening the scrim further would have worked too, but it flattens the
+ * photograph — this leaves the picture alone and fixes only the text.
+ *
+ * Only while the tile is revealed: at rest the type is ink on white, where a
+ * shadow would just look grubby.
+ */
+.gh-tile:hover .gh-tile-text,
+.gh-tile:focus-within .gh-tile-text {
+  /* Three stops rather than two, all at alphas this file already uses
+     (.hero-play 0.6, .hero-intro 0.5, .hero-title 0.45). The tight edge is
+     doubled instead of deepened: two 0.6 layers compound to roughly 0.84, which
+     is the strength the type needs, without introducing a black that is not
+     already part of the design system. */
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.6),
+    0 1px 3px rgb(0 0 0 / 0.6),
+    0 2px 14px rgb(0 0 0 / 0.5);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Home hero — full-bleed stage + hover rail (components/HomeHero.tsx)
  *
@@ -122,9 +267,12 @@ h1, h2, h3 {
 
 /* Grid runs a shorter stage so more of the page shows above the fold — Jas:
    "The main backround image at the top may need to reduce in size to pull the
-   whole page upwards." Only the height moves; the hero component is shared. */
-[data-design="grid"] { --hero-h: min(60vh, 34rem); }
-@media (max-width: 640px) { [data-design="grid"] { --hero-h: min(58vh, 26rem); } }
+   whole page upwards." Only the height moves; the hero component is shared.
+   Today grid's homepage renders no HomeHero at all, so this only matters if a
+   grid page ever mounts the hero — but the selector must match the attribute
+   the root layout actually stamps (data-theme), which it previously didn't. */
+[data-theme="grid"] { --hero-h: min(60vh, 34rem); }
+@media (max-width: 640px) { [data-theme="grid"] { --hero-h: min(58vh, 26rem); } }
 
 .hero {
   position: relative;
@@ -154,17 +302,30 @@ h1, h2, h3 {
   transform: scale(1.06);
   transition: opacity var(--hero-fade) var(--hero-ease-soft),
               transform var(--hero-fade) var(--hero-ease);
+}
+/* will-change only on the active layer: on the base rule it pinned five
+   full-viewport GPU layers of decoded bitmap for the life of the page. The
+   incoming layer gets its hint the same frame data-active flips, which is
+   when its transition starts. */
+.hero-media-layer[data-active="true"] {
+  opacity: 1;
+  transform: scale(1);
+  z-index: 1;
   will-change: opacity, transform;
 }
-.hero-media-layer[data-active="true"] { opacity: 1; transform: scale(1); z-index: 1; }
 
 /* Ken Burns rides the inner <img> so it composes with the layer's own scale
    rather than fighting it. Scoping to [data-active] restarts the drift from
-   frame 0 on every promotion, so each item gets the same entrance. */
+   frame 0 on every promotion, so each item gets the same entrance.
+
+   --focus-scale is the admin's cover crop zoom (see lib/focus.ts), set inline
+   per image. It multiplies into the drift rather than being applied inline,
+   because an animation outranks an inline transform and would drop it. */
+.hero-media { transform: scale(var(--focus-scale, 1)); }
 @keyframes hero-kenburns {
-  0%   { transform: scale(1.04) translate3d(0, 0, 0); }
-  50%  { transform: scale(1.13) translate3d(-1.6%, -1.2%, 0); }
-  100% { transform: scale(1.04) translate3d(0, 0, 0); }
+  0%   { transform: scale(calc(var(--focus-scale, 1) * 1.04)) translate3d(0, 0, 0); }
+  50%  { transform: scale(calc(var(--focus-scale, 1) * 1.13)) translate3d(-1.6%, -1.2%, 0); }
+  100% { transform: scale(calc(var(--focus-scale, 1) * 1.04)) translate3d(0, 0, 0); }
 }
 .hero-media-layer[data-active="true"] .hero-media {
   animation: hero-kenburns 26s var(--hero-ease-soft) infinite;
@@ -256,7 +417,7 @@ h1, h2, h3 {
   font-family: var(--smi-font-heading);
   font-weight: 800;
   font-size: clamp(1.75rem, 3.6vw, 3rem);
-  line-height: 1.06;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   text-wrap: balance;
   text-shadow: 0 2px 24px rgb(0 0 0 / 0.45);
@@ -367,8 +528,8 @@ h1, h2, h3 {
 .hero-card:focus-visible { outline: 3px solid var(--smi-brand); outline-offset: 3px; }
 
 .hero-card-media { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: rgb(0 0 0 / 0.35); }
-.hero-card-img { transition: transform 460ms var(--hero-ease); }
-.hero-card[data-active="true"] .hero-card-img { transform: scale(1.07); }
+.hero-card-img { transition: transform 460ms var(--hero-ease); transform: scale(var(--focus-scale, 1)); }
+.hero-card[data-active="true"] .hero-card-img { transform: scale(calc(var(--focus-scale, 1) * 1.07)); }
 
 .hero-play {
   position: absolute;
@@ -383,7 +544,8 @@ h1, h2, h3 {
 
 .hero-card-body { padding: 0.6rem 0.7rem 0.85rem; }
 .hero-card-eyebrow {
-  font-size: 0.5625rem;
+  /* 10px is the floor for these micro-labels: 9px broke at 200% text scaling */
+  font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -460,7 +622,8 @@ h1, h2, h3 {
   }
   .hero-card,
   .hero-card[data-active="true"] { transform: none !important; }
-  .hero-card-img { transition: none !important; transform: none !important; }
+  /* The crop zoom stays — it is framing, not motion. Only the hover grow goes. */
+  .hero-card-img { transition: none !important; transform: scale(var(--focus-scale, 1)) !important; }
   .hero-card::after { transition: none !important; }
   .hero-cta { transition: none !important; }
 }

@@ -41,9 +41,11 @@ type Props = {
   desktop: string;
   mobile: string;
   shape: AdShape;
+  /** The page this slot renders on — carried into the impression beacon, same literal each page already passes to its own page_view record(). */
+  path: string;
 };
 
-export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Props) {
+export function AdCreative({ advertId, name, href, desktop, mobile, shape, path }: Props) {
   const ref = useRef<HTMLAnchorElement>(null);
   const counted = useRef(false);
   const [loaded, setLoaded] = useState(false);
@@ -73,7 +75,7 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
     // booked advert is as wrong as overcounting one.
     if (typeof IntersectionObserver === "undefined") {
       counted.current = true;
-      reportAdSeen(advertId);
+      reportAdSeen(advertId, path);
       return;
     }
 
@@ -85,7 +87,7 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
             timer ??= setTimeout(() => {
               counted.current = true;
               io.disconnect();
-              reportAdSeen(advertId);
+              reportAdSeen(advertId, path);
             }, VISIBLE_MS);
           } else if (timer) {
             // scrolled away before it earned the impression — start again next time
@@ -102,7 +104,7 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
       if (timer) clearTimeout(timer);
       io.disconnect();
     };
-  }, [advertId, loaded]);
+  }, [advertId, loaded, path]);
 
   return (
     <Link ref={ref} href={href} className="block" aria-label={`Advert: ${name}`}>
@@ -117,7 +119,14 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape }: Pro
         // Desktop artwork at its own aspect; no mobile creative is booked for it.
         <Image src={desktop} alt={name} width={300} height={600} className="w-full rounded" onLoad={checkLoaded} unoptimized />
       ) : shape === "mpu" ? (
-        <Image src={desktop} alt={name} width={300} height={250} className="w-full rounded" onLoad={checkLoaded} unoptimized />
+        // Same 300×250 box at every breakpoint — only the artwork swaps.
+        // A crop meant for a phone-width column is genuinely different
+        // creative from the desktop one, not just a resize, same reasoning
+        // as banner above.
+        <>
+          <Image src={desktop} alt={name} width={300} height={250} className="hidden w-full rounded md:block" onLoad={checkLoaded} unoptimized />
+          <Image src={mobile} alt={name} width={300} height={250} className="w-full rounded md:hidden" onLoad={checkLoaded} unoptimized />
+        </>
       ) : (
         // rail and in_feed both take the squarer mobile creative.
         <Image src={mobile} alt={name} width={370} height={280} className="w-full rounded" onLoad={checkLoaded} unoptimized />

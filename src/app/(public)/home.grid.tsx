@@ -1,260 +1,164 @@
-import Image from "next/image";
-import Link from "next/link";
 import { dealSlots } from "@/lib/adverts";
-import { mediaUrl } from "@/lib/db/server";
-import { AdSlot, SupplierLogos } from "@/components/AdSlot";
-import { EventCard, FeaturedMemberCard, MachineCard, VideoCard } from "@/components/cards";
-import { HomeHero } from "@/components/HomeHero";
-import { JoinCta } from "@/components/JoinCta";
-import { MemberBadge, StoryCard } from "@/components/StoryCard";
+import { AdSlot } from "@/components/AdSlot";
+import {
+  GhEventCard, GhLatestList, GhMachineCard, GhMemberRow, GhMoreNews,
+  GhNewsletterPanel, GhPublicationPanel, GhStatsBand, GhStoryCard, GhVideoCard,
+  type LatestItem,
+} from "@/components/grid-home/cards";
+import { Band, SectionHead } from "@/components/grid-home/ui";
 import { excluding, type HomeData } from "./home.data";
 
 /**
- * The grid home page: mixed vertical rails and horizontal bands, more content
- * types surfaced, and a wider spread of advert positions than forge carries.
+ * The grid home page. Above the fold is two equally-weighted news highlights
+ * beside a column of the two placement cards (featured machine, featured
+ * event); the rotating banner sits under them, then a More News carousel.
+ * Styling comes from the designer's comps, docs/Sheet Metal Industries Home
+ * v1.png and v2.png: a white ground broken by full-bleed grey and near-black
+ * bands, flat hairline-bordered cards, uppercase display headlines, and orange
+ * carrying the section labels.
  *
- * Commercial rules baked into the order below — these are requirements, not
- * taste (requirements/DESIGN-QUOTES.md §1, §7):
- *   · No advert above the fold. News first; the top slot is not for sale.
- *   · The first banner sits below the main stories, the others spread apart.
- *   · Rotation stays random-uniform. Nothing here reorders or filters by
- *     advertiser — dealSlots is called once and its order is used as given.
- *   · Member news is marked wherever it appears among industry news.
- *   · Videos are woven into the feed, not stacked in one band.
+ * The palette lives in components/grid-home/ui.tsx and the --gh-* tokens in
+ * globals.css; this module is composition and nothing else.
+ *
+ * No HomeHero here — the rotating banner in the top slot is a real, sold advert
+ * placement (home_1) rather than an editorial hero, a deliberate exception to
+ * the usual no-ad-above-the-fold stance (requirements/DESIGN-QUOTES.md §1) made
+ * for this design.
+ *
+ * Commercial rules still in force (requirements/DESIGN-QUOTES.md §7):
+ *   · Rotation stays random-uniform — dealSlots is called once per slot family
+ *     and its order used as given, never reordered or filtered.
+ *   · Member news is marked wherever it appears among industry news (the grid
+ *     cards render MemberBadge off `is_member_news`, as the shared ones do).
+ *
+ * INVENTORY — read this before adding anything back. The only advert positions
+ * on this page are the three banners, home_1/2/3. The eight home_rail_* logo
+ * slots, the home_mpu_1 box, the supplier-logo wall and the featured-member
+ * placement were all REMOVED on 17 Sep at the client's direction, pending a
+ * rework of that part of the page. They render nowhere and report no
+ * impressions, so a live booking against any of them currently shows a reader
+ * nothing. Tracked in docs/HUMAN-TODO.md §14.3.
  */
 export function GridHome({
-  heroItems, stories, memberNews, videos, events, newsletters, directory,
-  memberCount, categories, featuredMembers, featuredMachine, adverts, showPlaceholders,
+  stories, memberNews, videos, events, newsletters, featuredMembers, featuredMachine,
+  adverts, showPlaceholders, storyTotal, memberCount,
 }: HomeData) {
-  // One call, this design's own positions. Grid reuses forge's key names where a
-  // position is analogous (home_1/2/3) so impression reporting stays comparable,
-  // and only invents keys for positions forge does not have.
+  // One call per slot family. home_1/2/3 match forge's banner key names so
+  // impression reporting stays comparable across designs.
   const banners = dealSlots(adverts.banner, ["home_1", "home_2", "home_3"]);
-  const boxes = dealSlots(adverts.mpu, ["home_mpu_1", "home_mpu_2"]);
-  const sky = dealSlots(adverts.skyscraper, ["home_sky"]);
-  const inFeed = dealSlots(adverts.in_feed, ["home_infeed"]);
 
-  // Compositional: grid's own counts. 5 in the lead column, 6 in the mixed grid.
-  const lead = stories.slice(0, 5);
-  const mixed = stories.slice(5, 11);
-  const placed = new Set([...lead, ...mixed].map((s) => s.id));
-  const railNews = excluding(memberNews, placed).slice(0, 4);
+  // Compositional slicing: two highlights above the fold, a content spotlight,
+  // and one story for the in-brief list — all disjoint so nothing repeats.
+  const [lead, second, ...rest] = stories;
+  const spotlight = rest[0];
+  const briefStory = rest[1];
+  // Wider than a static row needs: this is a carousel, so it should have
+  // somewhere to scroll to rather than stopping one card past the edge.
+  const moreNews = rest.slice(2, 10);
+  const placedStoryIds = new Set([lead, second, spotlight, briefStory, ...moreNews].filter(Boolean).map((s) => s!.id));
+  const railNews = excluding(memberNews, placedStoryIds);
+  // Only the second placement is read: the first had the left rail, which this
+  // design removed. See the inventory note in the file header.
+  const member2 = featuredMembers[1]?.member;
+  const machine = featuredMachine?.machine;
+
+  // Comp v2's in-brief list — one row per content kind, whatever exists today.
+  const brief: LatestItem[] = [
+    briefStory && { eyebrow: "Latest news", label: briefStory.title, href: `/news/${briefStory.slug}` },
+    events[0] && { eyebrow: "Upcoming event", label: events[0].title, href: `/event/${events[0].slug}` },
+    videos[3] && { eyebrow: "New video", label: videos[3].title, href: `/video/${videos[3].slug}` },
+    newsletters[0] && { eyebrow: "Newsletter", label: newsletters[0].subject, href: `/newsletters/${newsletters[0].web_slug}` },
+    member2 && { eyebrow: "Featured member", label: member2.name, href: `/member/${member2.slug}` },
+  ].filter((i): i is LatestItem => Boolean(i));
 
   return (
     <>
-      {/* data-design scopes the shorter hero in globals.css. The hero component
-          itself is untouched — only --hero-h moves. */}
-      <div data-design="grid">
-        {heroItems.length > 0 && <HomeHero items={heroItems} />}
-      </div>
+      {/* Grid has no editorial hero, so the page's h1 is visually the wordmark
+          in the header — but the document still needs one. */}
+      <h1 className="sr-only">Sheet Metal Industries — UK sheet metal, fabrication and welding news</h1>
 
-      <div className="mx-auto max-w-6xl px-4 pb-12">
-        {/* Jas asked for the search bar on home, news, video and members — one
-            universal tool, and the query log is meant to steer SEO later. */}
-        <form action="/search" className="mt-6 flex gap-2">
-          <input
-            name="q"
-            type="search"
-            aria-label="Search the site"
-            placeholder="Search news, members, machines…"
-            className="min-w-0 flex-1 rounded border border-line px-4 py-2.5 text-sm"
-          />
-          <button className="rounded bg-brand px-5 py-2.5 text-sm font-bold text-ink hover:brightness-110">Search</button>
-        </form>
-
-        {/* ── Lead: horizontal story rows left, vertical rail right ──────── */}
-        <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_20rem]">
-          <section className="min-w-0">
-            <SectionHead title="Latest news" href="/news" />
-            <div className="divide-y divide-line border-t border-line">
-              {lead.map((s) => <StoryRow key={s.id} story={s} />)}
-            </div>
-          </section>
-
-          <aside className="flex flex-col gap-6">
-            <section>
-              <SectionHead title="Member news" href="/news?filter=members" />
-              <ul className="space-y-3 border-t border-line pt-3">
-                {railNews.map((s) => (
-                  <li key={s.id}>
-                    <Link href={`/news/${s.slug}`} className="group flex gap-3">
-                      <span className="mt-0.5 h-10 w-1 shrink-0 rounded-full bg-brand" aria-hidden />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold leading-snug line-clamp-2 group-hover:underline">{s.title}</span>
-                        {s.member && <span className="mt-0.5 block text-xs text-graphite">{s.member.name}</span>}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-                {railNews.length === 0 && <li className="text-sm text-graphite">No member stories this week.</li>}
-              </ul>
-            </section>
-            <AdSlot slotKey="home_mpu_1" adverts={boxes.get("home_mpu_1") ?? []} shape="mpu" showPlaceholders={showPlaceholders} />
-          </aside>
-        </div>
-
-        {/* First advert on the page — below the main stories, per the brief. */}
-        <div className="mt-10"><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} /></div>
-
-        {/* ── The four-column mixed grid Jas asked for ───────────────────── */}
-        <section className="mt-10">
-          <SectionHead title="What's new. What's next" href="/news" />
-          <div className="grid grid-cols-2 gap-4 border-t border-line pt-4 lg:grid-cols-4">
-            {mixed.slice(0, 4).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
-            {videos.slice(0, 2).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
-            {featuredMachine?.machine && <MachineCard machine={featuredMachine.machine} />}
-            {featuredMembers[1]?.member && <FeaturedMemberCard member={featuredMembers[1].member} variant="compact" />}
-            {/* Native slot: a sponsored card in the rhythm of the grid, labelled. */}
-            <SponsoredCard slot={inFeed.get("home_infeed") ?? []} showPlaceholders={showPlaceholders} />
-            {mixed.slice(4).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
+      {/*
+       * ── Above the fold ─────────────────────────────────────────────────
+       * Two rows: the equal news highlights sit in row 1 and the More News
+       * carousel fills row 2 beneath them, while the placement column spans
+       * both. No items-start here on purpose — the two story cards stretch to
+       * each other so their "Read more" links land on one line.
+       */}
+      <Band inner="pt-6">
+        <div className="grid gap-4 lg:grid-cols-[4fr_4fr_3fr]">
+          {lead && <GhStoryCard story={lead} size="lg" eyebrow={null} />}
+          {second && <GhStoryCard story={second} size="lg" eyebrow={null} />}
+          {/* The third column is the two placement cards, stacked, running the
+              full height of the two rows beside it. */}
+          {/* flex-1 on each card so the pair fills the two-row span exactly —
+              the covers absorb the slack rather than leaving it under the
+              second card. */}
+          <div className="flex flex-col gap-4 lg:row-span-2">
+            {machine && <div className="flex-1"><GhMachineCard machine={machine} /></div>}
+            {events[0] && <div className="flex-1"><GhEventCard event={events[0]} /></div>}
           </div>
-        </section>
-
-        {/* ── Videos flanked by the skyscraper ───────────────────────────── */}
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_300px]">
-          <section className="min-w-0">
-            <SectionHead title="Watch" href="/video" />
-            <div className="grid grid-cols-2 gap-4 border-t border-line pt-4 md:grid-cols-3">
-              {videos.slice(2, 8).map((v) => <VideoCard key={v.id} video={v} size="sm" />)}
-            </div>
-          </section>
-          {/* sticky so the tall creative stays with the reader down a long column */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-4">
-              <AdSlot slotKey="home_sky" adverts={sky.get("home_sky") ?? []} shape="skyscraper" showPlaceholders={showPlaceholders} />
-            </div>
-          </aside>
-        </div>
-
-        {/* ── Events, four across ────────────────────────────────────────── */}
-        <section className="mt-10">
-          <SectionHead title="Events" href="/event" />
-          <div className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2 lg:grid-cols-4">
-            {events.map((e) => <EventCard key={e.slug} event={e} size="sm" />)}
+          <div className="lg:col-span-2">
+            <GhMoreNews stories={moreNews} />
           </div>
-        </section>
-
-        <div className="mt-10"><AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} /></div>
-
-        {/* ── Magazine + newsletters: reachable only from the footer before ── */}
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_20rem]">
-          <section className="min-w-0">
-            <SectionHead title="Newsletters &amp; magazine" href="/newsletters" />
-            <div className="grid gap-4 border-t border-line pt-4 sm:grid-cols-3">
-              {newsletters.map((n) => (
-                <Link key={n.web_slug} href={`/newsletters/${n.web_slug}`} className="group block rounded-lg border border-line p-4 hover:shadow-md">
-                  <p className="text-xs font-bold uppercase tracking-widest text-brand">Issue {n.number}</p>
-                  <p className="mt-1 font-semibold leading-snug line-clamp-3 group-hover:underline">{n.subject}</p>
-                  {n.sent_at && (
-                    <p className="mt-2 text-xs text-graphite">
-                      {new Date(n.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-                    </p>
-                  )}
-                </Link>
-              ))}
-              {newsletters.length === 0 && <p className="text-sm text-graphite">No issues sent yet.</p>}
-            </div>
-          </section>
-          <aside>
-            <AdSlot slotKey="home_mpu_2" adverts={boxes.get("home_mpu_2") ?? []} shape="mpu" showPlaceholders={showPlaceholders} />
-          </aside>
         </div>
+      </Band>
 
-        {/* ── Member directory, logo-forward ─────────────────────────────── */}
-        <section className="mt-10">
-          <SectionHead title={`Members${memberCount ? ` · ${memberCount}` : ""}`} href="/member" />
-          <div className="grid grid-cols-3 gap-3 border-t border-line pt-4 sm:grid-cols-4 lg:grid-cols-6">
-            {directory.map((m) => (
-              <Link
-                key={m.slug}
-                href={`/member/${m.slug}`}
-                title={m.name}
-                className="flex h-20 items-center justify-center rounded-lg border border-line bg-white p-3 transition hover:shadow-md"
-              >
-                <Image src={mediaUrl(m.logo_path)!} alt={m.name} width={120} height={60} className="max-h-full w-auto object-contain" unoptimized />
-              </Link>
-            ))}
+      {/* The rotating banner is a real advert slot, not an editorial hero —
+          see the top-of-file note on the above-the-fold exception. */}
+      <Band tone="grey" className="mt-10" inner="py-5">
+        <AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} path="/" />
+      </Band>
+
+      {/* ── Latest videos, with the in-brief list as a sidebar ───────────── */}
+      <Band inner="py-12">
+        <div className="grid items-start gap-5 lg:grid-cols-[9fr_3fr]">
+          <div>
+            <SectionHead title="Latest videos" href="/video" seeAll="See all videos" />
+            <div className="grid gap-5 sm:grid-cols-3">
+              {videos.slice(0, 3).map((v) => <GhVideoCard key={v.id} video={v} />)}
+            </div>
           </div>
-        </section>
+          <GhLatestList items={brief} />
+        </div>
+      </Band>
 
-        {/* ── Browse by topic: the discoverability borrow ────────────────── */}
-        {categories.length > 0 && (
-          <section className="mt-10">
-            <SectionHead title="Browse by topic" />
-            <ul className="flex flex-wrap gap-2 border-t border-line pt-4">
-              {categories.map((c) => (
-                <li key={c.slug}>
-                  <Link
-                    href={`/news?category=${c.slug}`}
-                    className="inline-block rounded-full border border-line px-3 py-1.5 text-sm text-graphite transition hover:border-brand hover:text-ink"
-                  >
-                    {c.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+      <Band inner="pb-12">
+        <AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" />
+      </Band>
 
-        <div className="mt-10"><AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} /></div>
+      {/* ── Industry insight, newsletter and the magazine ────────────────── */}
+      <Band tone="grey" inner="py-12">
+        <div className="grid items-start gap-5 lg:grid-cols-[7fr_5fr]">
+          {spotlight && (
+            <div>
+              <SectionHead title="Industry insight" href="/news" seeAll="All news" />
+              <GhStoryCard story={spotlight} size="lg" eyebrow="Insight" />
+            </div>
+          )}
+          {/* Stacked rather than three across: the signup form needs a column
+              wide enough for the field and its button to sit on one line. */}
+          <div className="grid gap-5">
+            <GhNewsletterPanel />
+            <GhPublicationPanel />
+          </div>
+        </div>
+      </Band>
 
-        <div className="-mx-4 mt-10"><SupplierLogos adverts={adverts.supplier_logo} showPlaceholders={showPlaceholders} /></div>
+      {/* ── Member news ──────────────────────────────────────────────────── */}
+      {railNews.length > 0 && (
+        <Band inner="py-12">
+          <SectionHead title="Featured member news" href="/news" seeAll="More member news" />
+          <div className="grid gap-8 md:grid-cols-3">
+            {railNews.slice(0, 3).map((s) => <GhMemberRow key={s.id} story={s} />)}
+          </div>
+        </Band>
+      )}
 
-        {featuredMembers[0]?.member && (
-          <div className="mt-10"><FeaturedMemberCard member={featuredMembers[0].member} variant="band" /></div>
-        )}
+      <Band inner="pb-12">
+        <AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" />
+      </Band>
 
-        <JoinCta />
-      </div>
+      <GhStatsBand storyTotal={storyTotal} memberCount={memberCount} />
     </>
-  );
-}
-
-function SectionHead({ title, href }: { title: string; href?: string }) {
-  return (
-    <div className="mb-1 flex items-baseline justify-between gap-4">
-      <h2 className="text-sm font-bold uppercase tracking-widest text-ink">
-        <span aria-hidden className="mr-2 inline-block h-2.5 w-2.5 translate-y-[1px] rounded-sm bg-brand" />
-        {title}
-      </h2>
-      {href && <Link href={href} className="shrink-0 text-xs text-graphite hover:text-ink hover:underline">More →</Link>}
-    </div>
-  );
-}
-
-/** Horizontal row: image left, headline right — the shape a scannable lead column wants. */
-function StoryRow({ story }: { story: HomeData["stories"][number] }) {
-  const img = mediaUrl(story.cover_path);
-  return (
-    <Link href={`/news/${story.slug}`} className="group flex gap-4 py-4">
-      <div className="relative h-20 w-32 shrink-0 overflow-hidden rounded bg-graphite/10 sm:h-24 sm:w-40">
-        {img
-          ? <Image src={img} alt="" fill sizes="160px" className="object-cover transition group-hover:scale-[1.03]" unoptimized />
-          : <span className="flex h-full items-center justify-center text-2xl text-graphite/30">⚙</span>}
-        {story.is_member_news && <MemberBadge />}
-      </div>
-      <div className="min-w-0">
-        <h3 className="font-semibold leading-snug line-clamp-2 group-hover:underline sm:text-lg">{story.title}</h3>
-        {story.excerpt && <p className="mt-1 hidden text-sm text-graphite line-clamp-2 sm:block">{story.excerpt}</p>}
-        <p className="mt-1.5 text-[11px] uppercase tracking-wide text-graphite">
-          {story.published_at ? new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : ""}
-          {story.member && <> · {story.member.name}</>}
-        </p>
-      </div>
-    </Link>
-  );
-}
-
-/**
- * In-feed advert. Labelled "Sponsored" because it borrows the shape of editorial
- * content — the label is what keeps that honest, and it is not optional.
- */
-function SponsoredCard({ slot, showPlaceholders }: { slot: Parameters<typeof AdSlot>[0]["adverts"]; showPlaceholders: boolean }) {
-  if (slot.length === 0 && !showPlaceholders) return null;
-  return (
-    <div className="rounded-lg border border-line p-2">
-      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-graphite">Sponsored</p>
-      <AdSlot slotKey="home_infeed" adverts={slot} shape="in_feed" showPlaceholders={showPlaceholders} />
-    </div>
   );
 }

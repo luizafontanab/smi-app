@@ -34,33 +34,151 @@ export type Database = {
   }
   public: {
     Tables: {
-      advert_bookings: {
+      advert_artwork_proposals: {
         Row: {
           advert_id: string
-          bundle_id: string | null
-          created_at: string
-          ends_on: string
+          decided_at: string | null
+          decided_by: string | null
+          desktop_path: string
           id: string
-          notes: string | null
-          starts_on: string
+          mobile_path: string
+          review_reason: string | null
+          source: string
+          status: string
+          submitted_at: string
+          submitted_by: string | null
+          updated_at: string
         }
         Insert: {
           advert_id: string
-          bundle_id?: string | null
-          created_at?: string
-          ends_on: string
+          decided_at?: string | null
+          decided_by?: string | null
+          desktop_path: string
           id?: string
-          notes?: string | null
-          starts_on: string
+          mobile_path: string
+          review_reason?: string | null
+          source: string
+          status?: string
+          submitted_at?: string
+          submitted_by?: string | null
+          updated_at?: string
         }
         Update: {
           advert_id?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          desktop_path?: string
+          id?: string
+          mobile_path?: string
+          review_reason?: string | null
+          source?: string
+          status?: string
+          submitted_at?: string
+          submitted_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advert_artwork_proposals_advert_id_fkey"
+            columns: ["advert_id"]
+            isOneToOne: false
+            referencedRelation: "adverts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advert_artwork_proposals_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "advert_artwork_proposals_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      advert_bookings: {
+        Row: {
+          advert_id: string
+          approved_at: string | null
+          approved_by: string | null
+          bundle_id: string | null
+          created_at: string
+          ended_at: string | null
+          ended_by: string | null
+          ended_note: string | null
+          ended_notified_for: string | null
+          ended_reason: string | null
+          ending_soon_notified_for: string | null
+          ends_on: string
+          id: string
+          notes: string | null
+          product_id: string | null
+          renewed_from: string | null
+          review_reason: string | null
+          source: string
+          starts_on: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          updated_at: string
+          went_live_at: string | null
+        }
+        Insert: {
+          advert_id: string
+          approved_at?: string | null
+          approved_by?: string | null
           bundle_id?: string | null
           created_at?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          ended_note?: string | null
+          ended_notified_for?: string | null
+          ended_reason?: string | null
+          ending_soon_notified_for?: string | null
+          ends_on: string
+          id?: string
+          notes?: string | null
+          product_id?: string | null
+          renewed_from?: string | null
+          review_reason?: string | null
+          source?: string
+          starts_on: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          updated_at?: string
+          went_live_at?: string | null
+        }
+        Update: {
+          advert_id?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          bundle_id?: string | null
+          created_at?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          ended_note?: string | null
+          ended_notified_for?: string | null
+          ended_reason?: string | null
+          ending_soon_notified_for?: string | null
           ends_on?: string
           id?: string
           notes?: string | null
+          product_id?: string | null
+          renewed_from?: string | null
+          review_reason?: string | null
+          source?: string
           starts_on?: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          updated_at?: string
+          went_live_at?: string | null
         }
         Relationships: [
           {
@@ -71,13 +189,87 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "advert_bookings_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "advert_bookings_bundle_fk"
             columns: ["bundle_id"]
             isOneToOne: false
             referencedRelation: "bundles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "advert_bookings_ended_by_fkey"
+            columns: ["ended_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "advert_bookings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "advert_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advert_bookings_renewed_from_fkey"
+            columns: ["renewed_from"]
+            isOneToOne: false
+            referencedRelation: "advert_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advert_bookings_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
         ]
+      }
+      advert_products: {
+        Row: {
+          archived_at: string | null
+          cap: number
+          created_at: string
+          description: string | null
+          format: string
+          id: string
+          rate_pennies: number | null
+          sample_path: string | null
+          short_name: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          cap?: number
+          created_at?: string
+          description?: string | null
+          format: string
+          id?: string
+          rate_pennies?: number | null
+          sample_path?: string | null
+          short_name: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          cap?: number
+          created_at?: string
+          description?: string | null
+          format?: string
+          id?: string
+          rate_pennies?: number | null
+          sample_path?: string | null
+          short_name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       advert_slots: {
         Row: {
@@ -97,75 +289,46 @@ export type Database = {
         }
         Relationships: []
       }
-      advertisers: {
-        Row: {
-          contact_email: string | null
-          created_at: string
-          id: string
-          member_id: string | null
-          name: string
-        }
-        Insert: {
-          contact_email?: string | null
-          created_at?: string
-          id?: string
-          member_id?: string | null
-          name: string
-        }
-        Update: {
-          contact_email?: string | null
-          created_at?: string
-          id?: string
-          member_id?: string | null
-          name?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "advertisers_member_id_fkey"
-            columns: ["member_id"]
-            isOneToOne: false
-            referencedRelation: "members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       adverts: {
         Row: {
-          advertiser_id: string
           created_at: string
           desktop_path: string
           format: string
           id: string
           link_url: string | null
+          member_id: string
           mobile_path: string
           name: string
+          updated_at: string
         }
         Insert: {
-          advertiser_id: string
           created_at?: string
           desktop_path: string
           format?: string
           id?: string
           link_url?: string | null
+          member_id: string
           mobile_path: string
           name: string
+          updated_at?: string
         }
         Update: {
-          advertiser_id?: string
           created_at?: string
           desktop_path?: string
           format?: string
           id?: string
           link_url?: string | null
+          member_id?: string
           mobile_path?: string
           name?: string
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "adverts_advertiser_id_fkey"
-            columns: ["advertiser_id"]
+            foreignKeyName: "adverts_member_id_fkey"
+            columns: ["member_id"]
             isOneToOne: false
-            referencedRelation: "advertisers"
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
@@ -179,6 +342,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -192,6 +356,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -205,48 +370,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
-          referrer?: string | null
-          region?: string | null
-          session_hash?: string | null
-          story_id?: string | null
-        }
-        Relationships: []
-      }
-      analytics_events_2026_05: {
-        Row: {
-          advert_id: string | null
-          company: string | null
-          id: number
-          kind: string
-          member_id: string | null
-          occurred_at: string
-          path: string | null
-          referrer: string | null
-          region: string | null
-          session_hash: string | null
-          story_id: string | null
-        }
-        Insert: {
-          advert_id?: string | null
-          company?: string | null
-          id?: never
-          kind: string
-          member_id?: string | null
-          occurred_at?: string
-          path?: string | null
-          referrer?: string | null
-          region?: string | null
-          session_hash?: string | null
-          story_id?: string | null
-        }
-        Update: {
-          advert_id?: string | null
-          company?: string | null
-          id?: never
-          kind?: string
-          member_id?: string | null
-          occurred_at?: string
-          path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -263,6 +387,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -276,6 +401,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -289,6 +415,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -305,6 +432,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -318,6 +446,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -331,6 +460,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -347,6 +477,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -360,6 +491,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -373,6 +505,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -389,6 +522,7 @@ export type Database = {
           member_id: string | null
           occurred_at: string
           path: string | null
+          platform: string | null
           referrer: string | null
           region: string | null
           session_hash: string | null
@@ -402,6 +536,7 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -415,6 +550,52 @@ export type Database = {
           member_id?: string | null
           occurred_at?: string
           path?: string | null
+          platform?: string | null
+          referrer?: string | null
+          region?: string | null
+          session_hash?: string | null
+          story_id?: string | null
+        }
+        Relationships: []
+      }
+      analytics_events_2026_10: {
+        Row: {
+          advert_id: string | null
+          company: string | null
+          id: number
+          kind: string
+          member_id: string | null
+          occurred_at: string
+          path: string | null
+          platform: string | null
+          referrer: string | null
+          region: string | null
+          session_hash: string | null
+          story_id: string | null
+        }
+        Insert: {
+          advert_id?: string | null
+          company?: string | null
+          id?: never
+          kind: string
+          member_id?: string | null
+          occurred_at?: string
+          path?: string | null
+          platform?: string | null
+          referrer?: string | null
+          region?: string | null
+          session_hash?: string | null
+          story_id?: string | null
+        }
+        Update: {
+          advert_id?: string | null
+          company?: string | null
+          id?: never
+          kind?: string
+          member_id?: string | null
+          occurred_at?: string
+          path?: string | null
+          platform?: string | null
           referrer?: string | null
           region?: string | null
           session_hash?: string | null
@@ -462,35 +643,35 @@ export type Database = {
       }
       bundles: {
         Row: {
-          advertiser_id: string
           created_at: string
           id: string
+          member_id: string
           name: string
           notes: string | null
           price_pennies: number | null
         }
         Insert: {
-          advertiser_id: string
           created_at?: string
           id?: string
+          member_id: string
           name: string
           notes?: string | null
           price_pennies?: number | null
         }
         Update: {
-          advertiser_id?: string
           created_at?: string
           id?: string
+          member_id?: string
           name?: string
           notes?: string | null
           price_pennies?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "bundles_advertiser_id_fkey"
-            columns: ["advertiser_id"]
+            foreignKeyName: "bundles_member_id_fkey"
+            columns: ["member_id"]
             isOneToOne: false
-            referencedRelation: "advertisers"
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
@@ -498,21 +679,36 @@ export type Database = {
       categories: {
         Row: {
           id: number
-          kind: Database["public"]["Enums"]["category_kind"]
           name: string
           slug: string
         }
         Insert: {
           id?: number
-          kind: Database["public"]["Enums"]["category_kind"]
           name: string
           slug: string
         }
         Update: {
           id?: number
-          kind?: Database["public"]["Enums"]["category_kind"]
           name?: string
           slug?: string
+        }
+        Relationships: []
+      }
+      consent_stats: {
+        Row: {
+          consented_requests: number
+          day: string
+          total_requests: number
+        }
+        Insert: {
+          consented_requests?: number
+          day: string
+          total_requests?: number
+        }
+        Update: {
+          consented_requests?: number
+          day?: string
+          total_requests?: number
         }
         Relationships: []
       }
@@ -569,6 +765,71 @@ export type Database = {
           },
         ]
       }
+      dev_tasks: {
+        Row: {
+          assignee: string | null
+          context: Json
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          kind: string | null
+          notes: string
+          page_path: string | null
+          priority: string
+          reporter_email: string | null
+          sort_order: number
+          status: string
+          title: string
+          triage_notes: string
+          updated_at: string
+        }
+        Insert: {
+          assignee?: string | null
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          kind?: string | null
+          notes?: string
+          page_path?: string | null
+          priority?: string
+          reporter_email?: string | null
+          sort_order?: number
+          status?: string
+          title: string
+          triage_notes?: string
+          updated_at?: string
+        }
+        Update: {
+          assignee?: string | null
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          kind?: string | null
+          notes?: string
+          page_path?: string | null
+          priority?: string
+          reporter_email?: string | null
+          sort_order?: number
+          status?: string
+          title?: string
+          triage_notes?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dev_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       engagement_audit: {
         Row: {
           company: string | null
@@ -614,13 +875,22 @@ export type Database = {
           description: string | null
           ends_on: string | null
           id: string
+          industry_id: number | null
+          lat: number | null
           link: string | null
+          lng: number | null
           location: string | null
           member_id: string | null
+          rejected_reason: string | null
           slug: string
+          source: string
           starts_on: string
+          starts_time: string | null
           status: Database["public"]["Enums"]["content_status"]
+          submitted_by: string | null
           title: string
+          type: string | null
+          updated_at: string
         }
         Insert: {
           cover_path?: string | null
@@ -628,13 +898,22 @@ export type Database = {
           description?: string | null
           ends_on?: string | null
           id?: string
+          industry_id?: number | null
+          lat?: number | null
           link?: string | null
+          lng?: number | null
           location?: string | null
           member_id?: string | null
+          rejected_reason?: string | null
           slug: string
+          source?: string
           starts_on: string
+          starts_time?: string | null
           status?: Database["public"]["Enums"]["content_status"]
+          submitted_by?: string | null
           title: string
+          type?: string | null
+          updated_at?: string
         }
         Update: {
           cover_path?: string | null
@@ -642,21 +921,44 @@ export type Database = {
           description?: string | null
           ends_on?: string | null
           id?: string
+          industry_id?: number | null
+          lat?: number | null
           link?: string | null
+          lng?: number | null
           location?: string | null
           member_id?: string | null
+          rejected_reason?: string | null
           slug?: string
+          source?: string
           starts_on?: string
+          starts_time?: string | null
           status?: Database["public"]["Enums"]["content_status"]
+          submitted_by?: string | null
           title?: string
+          type?: string | null
+          updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "events_industry_id_fkey"
+            columns: ["industry_id"]
+            isOneToOne: false
+            referencedRelation: "industries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "events_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -747,6 +1049,27 @@ export type Database = {
         }
         Relationships: []
       }
+      industries: {
+        Row: {
+          id: number
+          name: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          id?: number
+          name: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          id?: number
+          name?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       invoices: {
         Row: {
           amount_pennies: number
@@ -827,6 +1150,80 @@ export type Database = {
         }
         Relationships: []
       }
+      media: {
+        Row: {
+          alt_text: string | null
+          byte_size: number | null
+          content_type: string
+          created_at: string
+          id: string
+          kind: string
+          original_name: string | null
+          path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          alt_text?: string | null
+          byte_size?: number | null
+          content_type: string
+          created_at?: string
+          id?: string
+          kind: string
+          original_name?: string | null
+          path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          alt_text?: string | null
+          byte_size?: number | null
+          content_type?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          original_name?: string | null
+          path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      member_membership_types: {
+        Row: {
+          member_id: string
+          membership_type_id: number
+        }
+        Insert: {
+          member_id: string
+          membership_type_id: number
+        }
+        Update: {
+          member_id?: string
+          membership_type_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_membership_types_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_membership_types_membership_type_id_fkey"
+            columns: ["membership_type_id"]
+            isOneToOne: false
+            referencedRelation: "membership_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_revisions: {
         Row: {
           created_at: string
@@ -865,11 +1262,41 @@ export type Database = {
           },
         ]
       }
+      member_services: {
+        Row: {
+          member_id: string
+          service_id: number
+        }
+        Insert: {
+          member_id: string
+          service_id: number
+        }
+        Update: {
+          member_id?: string
+          service_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_services_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_services_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       members: {
         Row: {
           address: string | null
           billing_mode: string
-          category_id: number | null
+          cancel_requested_at: string | null
           comped_until: string | null
           contact_email: string | null
           created_at: string
@@ -878,11 +1305,14 @@ export type Database = {
           grace_until: string | null
           hero_path: string | null
           id: string
+          industry_id: number | null
+          is_bundle_account: boolean
           joined_at: string | null
           lat: number | null
           lng: number | null
           logo_path: string | null
           name: string
+          onboarding_seen: boolean
           paid_at: string | null
           phone: string | null
           search_tsv: unknown
@@ -890,14 +1320,14 @@ export type Database = {
           social: Json
           status: Database["public"]["Enums"]["member_status"]
           stripe_customer_id: string | null
-          testimonials: Json
+          stripe_subscription_id: string | null
           video_url: string | null
           website: string | null
         }
         Insert: {
           address?: string | null
           billing_mode?: string
-          category_id?: number | null
+          cancel_requested_at?: string | null
           comped_until?: string | null
           contact_email?: string | null
           created_at?: string
@@ -906,11 +1336,14 @@ export type Database = {
           grace_until?: string | null
           hero_path?: string | null
           id?: string
+          industry_id?: number | null
+          is_bundle_account?: boolean
           joined_at?: string | null
           lat?: number | null
           lng?: number | null
           logo_path?: string | null
           name: string
+          onboarding_seen?: boolean
           paid_at?: string | null
           phone?: string | null
           search_tsv?: unknown
@@ -918,14 +1351,14 @@ export type Database = {
           social?: Json
           status?: Database["public"]["Enums"]["member_status"]
           stripe_customer_id?: string | null
-          testimonials?: Json
+          stripe_subscription_id?: string | null
           video_url?: string | null
           website?: string | null
         }
         Update: {
           address?: string | null
           billing_mode?: string
-          category_id?: number | null
+          cancel_requested_at?: string | null
           comped_until?: string | null
           contact_email?: string | null
           created_at?: string
@@ -934,11 +1367,14 @@ export type Database = {
           grace_until?: string | null
           hero_path?: string | null
           id?: string
+          industry_id?: number | null
+          is_bundle_account?: boolean
           joined_at?: string | null
           lat?: number | null
           lng?: number | null
           logo_path?: string | null
           name?: string
+          onboarding_seen?: boolean
           paid_at?: string | null
           phone?: string | null
           search_tsv?: unknown
@@ -946,19 +1382,40 @@ export type Database = {
           social?: Json
           status?: Database["public"]["Enums"]["member_status"]
           stripe_customer_id?: string | null
-          testimonials?: Json
+          stripe_subscription_id?: string | null
           video_url?: string | null
           website?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "members_category_id_fkey"
-            columns: ["category_id"]
+            foreignKeyName: "members_industry_id_fkey"
+            columns: ["industry_id"]
             isOneToOne: false
-            referencedRelation: "categories"
+            referencedRelation: "industries"
             referencedColumns: ["id"]
           },
         ]
+      }
+      membership_types: {
+        Row: {
+          id: number
+          name: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          id?: number
+          name: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          id?: number
+          name?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
       }
       newsletter_ads: {
         Row: {
@@ -995,31 +1452,49 @@ export type Database = {
       }
       newsletter_issues: {
         Row: {
+          clicks_count: number
           created_at: string
           id: string
           intro: string | null
           number: number
+          opens_count: number
+          provider_broadcast_id: string | null
+          scheduled_at: string | null
+          send_error: string | null
           sent_at: string | null
+          sent_count: number | null
           status: string
           subject: string
           web_slug: string | null
         }
         Insert: {
+          clicks_count?: number
           created_at?: string
           id?: string
           intro?: string | null
           number: number
+          opens_count?: number
+          provider_broadcast_id?: string | null
+          scheduled_at?: string | null
+          send_error?: string | null
           sent_at?: string | null
+          sent_count?: number | null
           status?: string
           subject: string
           web_slug?: string | null
         }
         Update: {
+          clicks_count?: number
           created_at?: string
           id?: string
           intro?: string | null
           number?: number
+          opens_count?: number
+          provider_broadcast_id?: string | null
+          scheduled_at?: string | null
+          send_error?: string | null
           sent_at?: string | null
+          sent_count?: number | null
           status?: string
           subject?: string
           web_slug?: string | null
@@ -1028,19 +1503,25 @@ export type Database = {
       }
       newsletter_items: {
         Row: {
+          id: string
           issue_id: string
           position: number
-          story_id: string
+          story_id: string | null
+          video_id: string | null
         }
         Insert: {
+          id?: string
           issue_id: string
           position: number
-          story_id: string
+          story_id?: string | null
+          video_id?: string | null
         }
         Update: {
+          id?: string
           issue_id?: string
           position?: number
-          story_id?: string
+          story_id?: string | null
+          video_id?: string | null
         }
         Relationships: [
           {
@@ -1055,6 +1536,13 @@ export type Database = {
             columns: ["story_id"]
             isOneToOne: false
             referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "newsletter_items_video_id_fkey"
+            columns: ["video_id"]
+            isOneToOne: false
+            referencedRelation: "videos"
             referencedColumns: ["id"]
           },
         ]
@@ -1108,27 +1596,40 @@ export type Database = {
           created_at: string
           emailed_at: string | null
           id: string
+          job_id: string | null
           kind: string
           member_id: string
           payload: Json
+          read_at: string | null
         }
         Insert: {
           created_at?: string
           emailed_at?: string | null
           id?: string
+          job_id?: string | null
           kind: string
           member_id: string
           payload?: Json
+          read_at?: string | null
         }
         Update: {
           created_at?: string
           emailed_at?: string | null
           id?: string
+          job_id?: string | null
           kind?: string
           member_id?: string
           payload?: Json
+          read_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "notifications_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "notifications_member_id_fkey"
             columns: ["member_id"]
@@ -1245,6 +1746,39 @@ export type Database = {
           },
         ]
       }
+      promo_codes: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          months: number
+          used_count: number
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          months: number
+          used_count?: number
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          months?: number
+          used_count?: number
+        }
+        Relationships: []
+      }
       redirects: {
         Row: {
           from_path: string
@@ -1260,6 +1794,30 @@ export type Database = {
           from_path?: string
           status_code?: number
           to_path?: string
+        }
+        Relationships: []
+      }
+      resources: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          path: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          path: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          path?: string
+          title?: string
         }
         Relationships: []
       }
@@ -1290,6 +1848,48 @@ export type Database = {
         }
         Relationships: []
       }
+      search_queries: {
+        Row: {
+          id: number
+          occurred_at: string
+          query: string
+          results_count: number
+          session_hash: string | null
+        }
+        Insert: {
+          id?: never
+          occurred_at?: string
+          query: string
+          results_count?: number
+          session_hash?: string | null
+        }
+        Update: {
+          id?: never
+          occurred_at?: string
+          query?: string
+          results_count?: number
+          session_hash?: string | null
+        }
+        Relationships: []
+      }
+      services: {
+        Row: {
+          id: number
+          name: string
+          slug: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          slug: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           key: string
@@ -1308,6 +1908,7 @@ export type Database = {
       static_pages: {
         Row: {
           body: string
+          collapsible: boolean
           id: string
           slug: string
           title: string
@@ -1315,6 +1916,7 @@ export type Database = {
         }
         Insert: {
           body?: string
+          collapsible?: boolean
           id?: string
           slug: string
           title: string
@@ -1322,6 +1924,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          collapsible?: boolean
           id?: string
           slug?: string
           title?: string
@@ -1337,6 +1940,7 @@ export type Database = {
           created_at: string
           excerpt: string | null
           id: string
+          industry_id: number | null
           is_member_news: boolean
           member_id: string | null
           pinned_until: string | null
@@ -1358,6 +1962,7 @@ export type Database = {
           created_at?: string
           excerpt?: string | null
           id?: string
+          industry_id?: number | null
           is_member_news?: boolean
           member_id?: string | null
           pinned_until?: string | null
@@ -1379,6 +1984,7 @@ export type Database = {
           created_at?: string
           excerpt?: string | null
           id?: string
+          industry_id?: number | null
           is_member_news?: boolean
           member_id?: string | null
           pinned_until?: string | null
@@ -1394,6 +2000,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "stories_industry_id_fkey"
+            columns: ["industry_id"]
+            isOneToOne: false
+            referencedRelation: "industries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stories_member_id_fkey"
             columns: ["member_id"]
@@ -1445,48 +2058,80 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          industry_id: number | null
           member_id: string | null
+          pinned_until: string | null
           published_at: string | null
+          rejected_reason: string | null
+          scheduled_at: string | null
           slug: string
           source: string
           status: Database["public"]["Enums"]["content_status"]
+          submitted_by: string | null
           thumbnail_path: string | null
           title: string
+          updated_at: string
           url: string
         }
         Insert: {
           created_at?: string
           description?: string | null
           id?: string
+          industry_id?: number | null
           member_id?: string | null
+          pinned_until?: string | null
           published_at?: string | null
+          rejected_reason?: string | null
+          scheduled_at?: string | null
           slug: string
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
+          submitted_by?: string | null
           thumbnail_path?: string | null
           title: string
+          updated_at?: string
           url: string
         }
         Update: {
           created_at?: string
           description?: string | null
           id?: string
+          industry_id?: number | null
           member_id?: string | null
+          pinned_until?: string | null
           published_at?: string | null
+          rejected_reason?: string | null
+          scheduled_at?: string | null
           slug?: string
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
+          submitted_by?: string | null
           thumbnail_path?: string | null
           title?: string
+          updated_at?: string
           url?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "videos_industry_id_fkey"
+            columns: ["industry_id"]
+            isOneToOne: false
+            referencedRelation: "industries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "videos_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "videos_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1530,6 +2175,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bump_consent_stats: { Args: { p_consented: boolean }; Returns: undefined }
+      bump_newsletter_metric: {
+        Args: { p_broadcast_id: string; p_metric: string }
+        Returns: undefined
+      }
       current_member_id: { Args: never; Returns: string }
       ensure_analytics_partition: {
         Args: { p_month: string }
@@ -1539,20 +2189,20 @@ export type Database = {
       site_sessions_last_year: { Args: never; Returns: number }
     }
     Enums: {
-      category_kind: "story" | "member"
       content_status:
         | "draft"
         | "awaiting_approval"
         | "scheduled"
         | "published"
         | "rejected"
+        | "withdrawn"
       member_status: "draft" | "active" | "grace" | "lapsed"
       placement_kind:
         | "featured_member"
         | "featured_machine"
         | "grid_block"
         | "takeover"
-      user_role: "super_admin" | "approver" | "viewer" | "input_only" | "member"
+      user_role: "admin" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1683,13 +2333,13 @@ export const Constants = {
   },
   public: {
     Enums: {
-      category_kind: ["story", "member"],
       content_status: [
         "draft",
         "awaiting_approval",
         "scheduled",
         "published",
         "rejected",
+        "withdrawn",
       ],
       member_status: ["draft", "active", "grace", "lapsed"],
       placement_kind: [
@@ -1698,7 +2348,7 @@ export const Constants = {
         "grid_block",
         "takeover",
       ],
-      user_role: ["super_admin", "approver", "viewer", "input_only", "member"],
+      user_role: ["admin", "member"],
     },
   },
 } as const

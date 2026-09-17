@@ -1,4 +1,28 @@
-import { expect, test } from "@playwright/test";
+import { expect, test as base } from "@playwright/test";
+
+/**
+ * Signup is rate-limited to 3/hour per IP (`allowRequest("join", …)`), keyed
+ * on the first x-forwarded-for entry — which is client-settable outside
+ * Vercel's proxy by design. Give every test its own synthetic IP so repeated
+ * local runs isolate from the limiter with zero production code change: the
+ * limiter is a security control and must not grow a test-mode escape.
+ */
+let seq = 0;
+const stamp = Date.now();
+const test = base.extend({
+  // second fixture param renamed from Playwright's conventional `use` —
+  // eslint's react-hooks rule can't tell it apart from a React hook call.
+  contextOptions: async ({ contextOptions }, provide) => {
+    const n = (stamp + seq++ * 7919) % 0xffffff;
+    await provide({
+      ...contextOptions,
+      extraHTTPHeaders: {
+        ...contextOptions.extraHTTPHeaders,
+        "x-forwarded-for": `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`,
+      },
+    });
+  },
+});
 
 const PASSWORD = "local-dev-password";
 
@@ -7,10 +31,13 @@ async function login(page: import("@playwright/test").Page, email: string) {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', PASSWORD);
   await page.click("button:has-text('Sign in')");
-  await page.waitForURL(/\/(console|member)/, { timeout: 20_000 });
+  // members land on /dashboard — /member is the public directory
+  await page.waitForURL(/\/(console|dashboard)/, { timeout: 20_000 });
 }
 
 async function signOut(page: import("@playwright/test").Page) {
+  // Sign out lives inside the header's account menu everywhere now
+  await page.locator('header button[aria-label^="Account:"]').click();
   await page.locator("header form button:has-text('Sign out')").click();
   await page.waitForURL("**/login");
 }
@@ -63,7 +90,7 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
 
     // jas: funnel chips + activate
     await login(page, "jas@smi.local");
-    await page.goto("/console/members");
+    await page.goto(`/console/members?q=${encodeURIComponent(company)}`); // paginated list — search for the row
     const row = page.locator("tr", { hasText: company });
     await expect(row.getByText(/^comped → /)).toBeVisible();
     await expect(row.getByText("page ✓")).toBeVisible();
@@ -95,7 +122,7 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
     await createAccount(page, `E2E Card Ltd ${ts}`, `e2e-card-${ts}@test.local`);
     await page.click("button:has-text('Pay £40/month')"); // no promo → simulated card payment
     await page.waitForURL("**/dashboard?submitted=paid");
-    await page.goto("/dashboard/billing");
+    await page.goto("/dashboard/settings/billing");
     await expect(page.locator("text=SMI-JOIN-").first()).toBeVisible();
   });
 
@@ -108,7 +135,7 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
     await signOut(page);
 
     await login(page, "jas@smi.local");
-    await page.goto("/console/members");
+    await page.goto(`/console/members?q=${encodeURIComponent(company)}`); // paginated list — search for the row
     const row = page.locator("tr", { hasText: company });
     await expect(row.getByText("unpaid", { exact: true })).toBeVisible();
     await expect(row.getByText("awaiting payment")).toBeVisible();

@@ -1,11 +1,21 @@
 import Image from "next/image";
-import { adPreview } from "@/lib/adverts";
+import Link from "next/link";
+import { adPreview, bookingPhase } from "@/lib/adverts";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { AdPreviewToggle } from "@/components/console/AdPreviewToggle";
-import { endBooking, saveBooking } from "../actions";
+import { saveBooking, saveSlotCap } from "../actions";
 
 export const dynamic = "force-dynamic";
+
+const PHASE_LABELS: Record<string, string> = {
+  draft: "draft",
+  awaiting: "awaiting approval",
+  changes_needed: "changes needed",
+  upcoming: "upcoming",
+  live: "live",
+  ended: "ended",
+};
 
 export default async function AdvertsPage() {
   await requireConsole();
@@ -15,15 +25,17 @@ export default async function AdvertsPage() {
   const today = new Date(now).toISOString().slice(0, 10);
   const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
 
-  const [{ data: adverts }, { data: bookings }, { data: slots }, { data: placements }, previewOn] = await Promise.all([
-    db.from("adverts").select("id, name, format, desktop_path, advertiser:advertisers(name, member:members(name))").order("created_at"),
-    db.from("advert_bookings").select("id, advert_id, starts_on, ends_on, advert:adverts(name, format)").order("ends_on"),
+  const [{ data: adverts }, { data: bookings }, { data: slots }, { data: placements }, { data: products }, { count: openInterest }, previewOn] = await Promise.all([
+    db.from("adverts").select("id, name, format, desktop_path, member:members(name)").order("created_at", { ascending: false }).limit(500),
+    db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").order("ends_on").limit(500),
     db.from("advert_slots").select("*").order("key"),
-    db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on"),
+    db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on").limit(500),
+    db.from("advert_products").select("id, short_name, format").is("archived_at", null).order("short_name"),
+    db.from("visibility_requests").select("id", { count: "exact", head: true }).eq("status", "requested"),
     adPreview(),
   ]);
 
-  const live = (bookings ?? []).filter((b) => b.starts_on <= today && b.ends_on >= today);
+  const live = (bookings ?? []).filter((b) => bookingPhase(b, today) === "live");
   // Tallied per format rather than two hard-coded counters, so a format added to
   // the check constraint shows up here without another edit.
   const byFormat = live.reduce<Record<string, number>>((acc, b) => {
@@ -36,77 +48,125 @@ export default async function AdvertsPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="text-2xl font-bold text-ink">Adverts &amp; Inventory</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-graphite">
         Rotation is random-uniform — no advertiser can buy position. Impressions are the headline metric.
       </p>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl bg-white p-4 shadow-sm">
-          <p className="text-xs uppercase text-gray-400">Live bookings</p>
+          <p className="text-xs uppercase text-graphite">Live bookings</p>
           <p className="text-2xl font-bold text-ink">{live.length}</p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-graphite">
             {liveFormats.length ? liveFormats.map(([f, n]) => `${n} ${f.replace(/_/g, " ")}`).join(" · ") : "nothing booked"}
           </p>
         </div>
         <div className="rounded-xl bg-white p-4 shadow-sm">
-          <p className="text-xs uppercase text-gray-400">Formats sold</p>
+          <p className="text-xs uppercase text-graphite">Formats sold</p>
           <p className="text-2xl font-bold text-ink">{liveFormats.length}</p>
-          <p className="mt-1 text-xs text-gray-500">of 7 bookable</p>
+          <p className="mt-1 text-xs text-graphite">of 7 bookable</p>
         </div>
-        <div className="rounded-xl bg-white p-4 shadow-sm"><p className="text-xs uppercase text-gray-400">Slots &amp; caps</p>
-          <p className="text-xs text-gray-500">{(slots ?? []).map((s) => `${s.key}:${s.cap}`).join(" · ")}</p>
+        <div className="rounded-xl bg-white p-4 shadow-sm"><p className="text-xs uppercase text-graphite">Interest</p>
+          <p className="text-2xl font-bold text-ink">{openInterest ?? 0}</p>
+          <p className="mt-1 text-xs text-graphite">
+            <Link href="/console/adverts/interest" className="underline">members waiting to hear back</Link>
+          </p>
         </div>
       </div>
 
       <div className="mt-4"><AdPreviewToggle initialOn={previewOn} /></div>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-ink">Slot inventory</h2>
+        <p className="mt-1 text-xs text-graphite">
+          How many adverts each position holds. Guidance for selling — it never affects rotation, which stays random-uniform.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {(slots ?? []).map((s) => (
+            <form key={s.key} action={saveSlotCap} className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm">
+              <input type="hidden" name="key" value={s.key} />
+              <span className="grow truncate" title={s.label}>{s.label}</span>
+              <input name="cap" type="number" min={0} defaultValue={s.cap} aria-label={`Capacity for ${s.label}`} className="w-16 rounded border px-2 py-1 text-right" />
+              <button className="text-xs text-graphite hover:underline">save</button>
+            </form>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Bookings</h2>
-        <table className="mt-2 w-full text-sm">
-          <thead><tr className="text-left text-xs uppercase text-gray-400"><th className="py-1">Advert</th><th>Format</th><th>Start</th><th>End</th><th /><th /></tr></thead>
+        <div className="overflow-x-auto mt-2">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Advert</th><th scope="col">Format</th><th scope="col">Start</th><th scope="col">End</th><th scope="col" /><th scope="col" /></tr></thead>
           <tbody>
             {(bookings ?? []).map((b) => {
-              const isLive = b.starts_on <= today && b.ends_on >= today;
-              const expiring = isLive && b.ends_on <= weekOut;
+              // Phase, not raw dates: a draft or sent-back booking whose dates
+              // happen to span today shows nothing publicly, and must not be
+              // labelled "live" here either.
+              const phase = bookingPhase(b, today);
+              const expiring = phase === "live" && b.ends_on <= weekOut;
               return (
                 <tr key={b.id} className="border-t">
-                  <td className="py-2">{b.advert?.name}</td>
-                  <td className="text-gray-500">{b.advert?.format}</td>
+                  <td className="py-2">
+                    <Link href={`/console/adverts/${b.id}`} className="hover:underline">{b.advert?.name}</Link>
+                  </td>
+                  <td className="text-graphite">{b.advert?.format}</td>
                   <td>{b.starts_on}</td>
-                  <td className={expiring ? "font-semibold text-brand" : ""}>{b.ends_on}{expiring && " ⚠"}</td>
-                  <td>{isLive ? <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">live</span> : b.starts_on > today ? "upcoming" : "ended"}</td>
+                  <td className={expiring ? "font-semibold text-brand-text" : ""}>{b.ends_on}{expiring && " ⚠"}</td>
+                  <td>
+                    {phase === "live"
+                      ? <span className="rounded bg-success/10 px-2 py-0.5 text-xs text-success">live</span>
+                      : phase === "awaiting"
+                      ? <span className="rounded bg-brand/15 px-2 py-0.5 text-xs font-semibold text-brand-text">awaiting approval</span>
+                      : PHASE_LABELS[phase]}
+                  </td>
                   <td className="text-right">
-                    {isLive && (
-                      <form action={endBooking}><input type="hidden" name="id" value={b.id} /><button className="text-xs text-red-500 hover:underline">remove</button></form>
-                    )}
+                    <Link href={`/console/adverts/${b.id}`} className="text-xs text-graphite hover:underline">open</Link>
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        </div>
       </section>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">New booking</h2>
         <form action={saveBooking} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
-          <label className="block">Advert
-            <select name="advert_id" className="mt-1 block rounded border px-3 py-2">
+          <label className="block max-w-full">Advert
+            <select name="advert_id" className="mt-1 block max-w-full rounded border px-3 py-2">
               {(adverts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.format})</option>)}
+            </select>
+          </label>
+          <label className="block max-w-full">Sold as
+            <select name="product_id" className="mt-1 block max-w-full rounded border px-3 py-2">
+              <option value="">— not set —</option>
+              {(products ?? []).map((p) => <option key={p.id} value={p.id}>{p.short_name}</option>)}
             </select>
           </label>
           <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block rounded border px-3 py-2" /></label>
           <label className="block">End<input type="date" name="ends_on" required className="mt-1 block rounded border px-3 py-2" /></label>
-          <label className="block grow">Notes<input name="notes" className="mt-1 block w-full rounded border px-3 py-2" placeholder="bundle ref, rate…" /></label>
+          <label className="block grow">Notes<input name="notes" className="mt-1 block w-full rounded border px-3 py-2" placeholder="rate, PO ref…" /></label>
           <button className="rounded bg-ink px-4 py-2 text-white">Book</button>
         </form>
-        <p className="mt-2 text-xs text-gray-400">Artwork is swappable mid-run from the advert record; dates stay. Media library upload arrives with the storage UI.</p>
+        <p className="mt-2 text-xs text-graphite">
+          Booking it here approves it — it goes live on its start date. Artwork is swappable mid-run from{" "}
+          <Link href="/console/adverts/artwork" className="underline">Artwork</Link>; the dates stay put.
+        </p>
       </section>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Paid placements (hold their spot for the paid period)</h2>
-        <table className="mt-2 w-full text-sm">
-          <thead><tr className="text-left text-xs uppercase text-gray-400"><th className="py-1">Kind</th><th>Who / what</th><th>Position</th><th>From</th><th>To</th></tr></thead>
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-bold text-ink">Paid placements (hold their spot for the paid period)</h2>
+          <span className="flex gap-3 text-xs">
+            <Link href="/console/adverts/takeover" className="text-graphite hover:underline">Book a homepage takeover →</Link>
+            <Link href="/console/adverts/featured-member" className="text-graphite hover:underline">Book Featured Member →</Link>
+            <Link href="/console/adverts/bundles" className="text-graphite hover:underline">Bundles →</Link>
+          </span>
+        </div>
+        <div className="overflow-x-auto mt-2">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Kind</th><th scope="col">Who / what</th><th scope="col">Position</th><th scope="col">From</th><th scope="col">To</th></tr></thead>
           <tbody>
             {(placements ?? []).map((p) => (
               <tr key={p.id} className="border-t">
@@ -119,19 +179,20 @@ export default async function AdvertsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Creative preview</h2>
+        <h2 className="font-bold text-ink">Artwork preview</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {/* Every format, not just banners — a skyscraper or box you cannot see
-              is a creative you cannot check before it goes live. */}
+              is artwork you cannot check before it goes live. */}
           {(adverts ?? []).map((a) => (
             <div key={a.id} className="rounded border p-2">
               {/* h-auto matters now the formats differ in aspect: without it the
                   width/height attributes squash a 300×600 skyscraper to a strip. */}
               <Image src={mediaUrl(a.desktop_path)!} alt={a.name} width={640} height={85} className="h-auto w-full rounded" unoptimized />
-              <p className="mt-1 text-xs text-gray-500">{a.name} · {a.advertiser?.name} · {a.format}</p>
+              <p className="mt-1 text-xs text-graphite">{a.name} · {a.member?.name} · {a.format}</p>
             </div>
           ))}
         </div>

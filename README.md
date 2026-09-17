@@ -5,10 +5,12 @@ Custom rebuild of sheetmetalindustries.com: public site, member area, operator c
 ## Run locally
 
 ```bash
-supabase start                 # Postgres/Auth/Storage on ports 563xx (see supabase/config.toml)
-pnpm dev                       # app on http://127.0.0.1:3100
+supabase start                 # Postgres/Auth/Storage on ports 563xx (see supabase/config.toml); no-op if already running
+pnpm dev:start                 # detached Next.js dev server on http://127.0.0.1:3100; no-op if already running
 pnpm exec tsx scripts/job-runner.ts   # optional: background jobs (publishing, notifications)
 ```
+
+`pnpm dev:start` runs `next dev --turbopack` detached from the current terminal, logging to `.dev-server/dev.log` (gitignored) — it keeps running after the terminal closes, so there's no need to keep a foreground window open or restart it between sessions. `pnpm dev:logs` tails the log, `pnpm dev:status` reports whether it's up, and `pnpm dev:stop` shuts it down. Only actually stop/restart it for an env var change, a `next.config.ts` edit, or a new/updated dependency — Turbopack's HMR already picks up source file edits live. Plain `pnpm dev` in the foreground still works too, if you'd rather have it tied to your terminal.
 
 First-time / reset seed (real stories fetched from the live site + synthetic everything else):
 
@@ -17,7 +19,7 @@ supabase db reset && docker restart supabase_kong_app && sleep 5 \
   && set -a && source .env.local && set +a && pnpm exec tsx scripts/seed.ts
 ```
 
-**Logins** (password `local-dev-password`): `jas@smi.local` (super admin) · `media@smi.local` (input-only) · `member1..3@smi.local` (members).
+**Logins** (password `local-dev-password`): `jas@smi.local` (admin) · `media@smi.local` (member, draft-only) · `member1..3@smi.local` (members).
 
 ## Deploy to hosted Supabase
 
@@ -39,8 +41,16 @@ The same three names must be set in Vercel — `NEXT_PUBLIC_*` are inlined at bu
 |---|---|---|
 | `CRON_SECRET` | **Yes in production** | `/api/cron` fails closed and returns 503 — **no background job runs at all** (scheduled publishing, comp expiry, daily rollups, and the analytics partition top-up that rides on them). Vercel injects `Authorization: Bearer $CRON_SECRET` on its own cron requests once this is set on the project. Set it locally too, or `scripts/job-runner.ts` refuses to start. |
 | `ADMIN_EMAIL` | Recommended | Admin notification emails are skipped with a logged warning. Enquiries and funnel events still land in the console inbox, so nothing is lost — but nobody is told. Has no fallback on purpose: the old `jas@smi.local` default bounced silently. |
-| `SITE_URL` | Optional | Falls back to the deployment's own origin (`VERCEL_PROJECT_PRODUCTION_URL`, then `VERCEL_URL`, then localhost). Set it once there is a real domain, so `sitemap.xml`, `robots.txt` and canonical/OG tags use it. Read at request time — no rebuild needed. |
-| `RESEND_API_KEY`, `BUFFER_ACCESS_TOKEN` | Optional | Adapters fall back to logging stubs (`src/lib/adapters/`). |
+| `SITE_URL` | Optional | Falls back to the deployment's own origin (`VERCEL_PROJECT_PRODUCTION_URL`, then `VERCEL_URL`, then localhost). Set it once there is a real domain, so `sitemap.xml`, `robots.txt`, canonical/OG tags **and every link in an outgoing email** use it. Read at request time — no rebuild needed. |
+| `RESEND_API_KEY` | **Yes in production** | No mail is sent. Falls back to local Mailpit when `MAILPIT_URL` is set, otherwise a console log. Nothing is lost — member notifications are also rows in `notifications` — but nobody is told anything: no approvals, no advert notices, no password reset. When it **is** set the sender throws on a provider rejection, so a bad key or unverified domain surfaces as a dead job in "Needs You Today" instead of failing silently. |
+| `EMAIL_FROM` | Optional | Defaults to `SMI <noreply@sheetmetalindustries.com>`. Point staging at its own verified subdomain so a mistake there cannot damage the production domain's sending reputation. |
+| `EMAIL_REPLY_TO` | Recommended | Replies go to the no-reply address, i.e. nowhere. A member answering "your advert needs a change" reaches no one. |
+| `RESEND_SEGMENT_ID` | Needed for the newsletter | The newsletter falls back to the logging stub even with a key set (and says so). Issues are not marked sent. |
+| `RESEND_WEBHOOK_SECRET` | Needed for the newsletter | `/api/webhooks/resend` fails closed with 503, so unsubscribes and spam complaints made at Resend's end never reach our `contacts` table and the list silently goes stale. |
+| `MAILPIT_URL` | Dev only | The dev sender logs instead of delivering. From `supabase status`. |
+| `BUFFER_ACCESS_TOKEN` | Optional | Adapter falls back to a logging stub (`src/lib/adapters/`). |
+
+A full template with commentary lives in [`.env.example`](.env.example).
 
 ### ⚠ Cron runs once a day — revisit before launch
 
@@ -65,7 +75,7 @@ pnpm seed:prod --stories-limit 300  # real WP content; --remote guard is baked i
 Then in the dashboard: **Authentication → URL Configuration** → set Site URL + redirect URLs to the deployed app.
 
 - **New Postgres functions are callable by `anon` unless you revoke from `PUBLIC`.** Two things grant it: migration 0006's `alter default privileges … grant execute on functions to anon, authenticated`, and Postgres's own default of granting `EXECUTE` to `PUBLIC` at creation. `revoke … from anon, authenticated` alone does **not** work — the roles still inherit through `PUBLIC`. Any maintenance or `security definer` function needs `revoke execute on function f() from public;` plus an explicit `grant … to service_role;` (see `20260816000002`).
-- **Never run `supabase config push`.** It would overwrite hosted auth settings with the local values in `config.toml` — `site_url = 127.0.0.1:3000`, `enable_confirmations = false`, and a 2-emails/hour rate limit.
+- **Never run `supabase config push`.** It would overwrite hosted auth settings with the local values in `config.toml` — `site_url = 127.0.0.1:3100`, a localhost-only redirect allow-list, `enable_confirmations = false`, and a 2-emails/hour rate limit. Local auth config is now load-bearing (password reset reads it), so there is more to clobber than there used to be, not less.
 - The seed expects a **fresh database** — it uses plain `.insert()`, so a second run collides. Re-deploy by resetting the remote schema, not by re-seeding.
 - `--stories-limit N` bounds the media upload too (only media referenced by seeded rows is uploaded). All 1,992 stories = 1.00 GiB, exactly the free-tier storage cap; 300 stories ≈ 306 MiB. Members/videos/events contribute a fixed 164 MiB regardless.
 - The `media` bucket is created by the seed script, not by a migration — a schema-only deploy leaves prod with no bucket and every image 404ing.
@@ -82,10 +92,12 @@ pnpm test:e2e                 # playwright (approval-gate loop, member-first sea
 
 - **Advert neutrality is structural**: selection is an unbiased shuffle in `src/lib/adverts.ts`; the schema has no weight/priority column and must never gain one.
 - **Approval gate**: no code path publishes content without editor action; RLS keeps non-published rows invisible to the public role.
-- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer), CRM (Bigin), newsletter (undecided — deliverability gate), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
+- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer), CRM (Bigin), newsletter (**Resend, as the candidate under test** — the MailChimp deliverability gate is still open and still Jas's call; the sender exists so the test can be run), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
 - **Jobs**: Postgres queue (`jobs` table) driven by `/api/cron` (Vercel Cron in prod, `scripts/job-runner.ts` locally). Dead-lettered jobs surface in the console's "Needs You Today".
 - **Analytics**: first-party, partitioned `analytics_events` + nightly rollups. Numbers shown to members are real — no padding, by requirement.
 
 ## Still parked (needs approval / external accounts)
 
-GitHub org + repo transfer to SMI ownership · **Supabase EU/UK project** (deployed to `ca-central-1` for the demo — see above) · Vercel project + Cron (`/api/cron` is unauthenticated unless `CRON_SECRET` is set) · Resend/Buffer/MaxMind keys · Stripe test wiring · real WP export import at cutover · newsletter deliverability test · Content OS (module 6, priced separately).
+Step-by-step, with what breaks until each is done: **[`docs/HUMAN-TODO.md`](docs/HUMAN-TODO.md)**.
+
+GitHub org + repo transfer to SMI ownership · **Supabase EU/UK project** (deployed to `ca-central-1` for the demo — see above) · Vercel project + Cron (`/api/cron` is unauthenticated unless `CRON_SECRET` is set) · **Resend account (SMI-owned) + verified sending domain with SPF/DKIM/DMARC, plus Resend SMTP set in the hosted Supabase dashboard for auth mail** · Buffer/MaxMind keys · Stripe test wiring · real WP export import at cutover · Content OS (module 6, priced separately).

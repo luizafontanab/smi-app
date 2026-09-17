@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { savePrefs } from "../actions";
+import { SettingsTabs } from "./SettingsTabs";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Notification settings" };
+export const metadata = { title: "Settings" };
 
 export default async function SettingsPage(props: PageProps<"/dashboard/settings">) {
   const user = await requireMember();
@@ -13,10 +13,10 @@ export default async function SettingsPage(props: PageProps<"/dashboard/settings
 
   return (
     <div className="mx-auto max-w-xl">
-      <Link href="/dashboard" className="text-sm text-gray-400 hover:text-ink">← Dashboard</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">Notification settings</h1>
-      {sp.saved && <p className="mt-2 rounded bg-green-50 p-2 text-sm text-green-700">Saved.</p>}
-      <p className="mt-1 text-sm text-gray-500">We&apos;d rather email you too little than too much — you choose the cadence.</p>
+      {sp.saved && <p className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      <p className="mt-1 text-sm text-graphite">We&apos;d rather email you too little than too much — you choose the cadence.</p>
+      <SettingsTabs active="notifications" />
       <form action={savePrefs} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm text-sm">
         <div>
           <label htmlFor="stats_frequency" className="font-medium">Statistics summaries</label>

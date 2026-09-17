@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { focusVars } from "@/lib/focus";
 import type { HeroItem } from "@/lib/hero";
 
 /**
@@ -59,6 +60,9 @@ export function HomeHero({ items }: { items: HeroItem[] }) {
                 fill
                 sizes="100vw"
                 unoptimized
+                // --focus-scale, not an inline transform: ken-burns owns
+                // `transform` here and an animation outranks inline styles.
+                style={focusVars(item.focus)}
                 className="hero-media object-cover"
                 // Layer 0 is the LCP element and is always a story cover.
                 // loading="lazy" would not defer 1-4 (they are in-viewport at
@@ -146,7 +150,7 @@ function RailCard({ item, active, onActivate }: { item: HeroItem; active: boolea
     <>
       <div className="hero-card-media">
         {item.image ? (
-          <Image src={item.image} alt="" fill sizes="220px" unoptimized className="hero-card-img object-cover" />
+          <Image src={item.image} alt="" fill sizes="220px" unoptimized style={focusVars(item.focus)} className="hero-card-img object-cover" />
         ) : (
           <div className="hero-card-img hero-media--empty">⚙</div>
         )}

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { consoleUploadImage, decideMachine, saveMachine, saveMachinePlacement } from "../../actions";
+import { consoleUploadImage, decideMachine, returnToDraft, saveMachine, saveMachinePlacement } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +24,14 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/machines" className="text-sm text-gray-400 hover:text-ink">← Featured Machine</Link>
+      <Link href="/console/machines" className="text-sm text-graphite hover:text-ink">← Featured Machine</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New machine" : "Edit machine"}</h1>
       {machine?.status === "rejected" && (
-        <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-600">Rejected: {machine.rejected_reason}</p>
+        <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">Rejected: {machine.rejected_reason}</p>
       )}
 
       <form action={saveMachine} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
+        <UnsavedChangesGuard />
         {!isNew && <input type="hidden" name="id" value={id} />}
         <div>
           <label htmlFor="name" className="text-sm font-medium">Machine name</label>
@@ -65,32 +67,41 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
           {machine.status === "awaiting_approval" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Approval</h2>
-              <p className="mt-1 text-xs text-gray-500">Member submission — publishing does not feature it; book a slot below once live.</p>
+              <p className="mt-1 text-xs text-graphite">Member submission — publishing does not feature it; book a slot below once live.</p>
               <div className="mt-3 flex gap-2">
                 <form action={decideMachine}>
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="approve" />
-                  <button className="rounded bg-green-600 px-4 py-2 text-sm text-white">Approve & publish</button>
+                  <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
                 </form>
               </div>
               <form action={decideMachine} className="mt-3 flex gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="reject" />
                 <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600">Reject</button>
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
               </form>
             </div>
           )}
           {machine.status === "published" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Feature this machine (A11)</h2>
-              <p className="mt-1 text-xs text-gray-500">Paid slot — shows on the Featured Machine page for the booked period, then auto-expires.</p>
+              <p className="mt-1 text-xs text-graphite">Paid slot — shows on the Featured Machine page for the booked period, then auto-expires.</p>
               <form action={saveMachinePlacement} className="mt-3 flex flex-wrap items-center gap-2 text-sm">
                 <input type="hidden" name="machine_id" value={id} />
                 <input type="date" name="starts_on" required className="rounded border px-3 py-1.5" />
-                <span className="text-gray-400">→</span>
+                <span className="text-graphite">→</span>
                 <input type="date" name="ends_on" required className="rounded border px-3 py-1.5" />
                 <button className="rounded bg-ink px-4 py-2 text-white">Book slot</button>
+              </form>
+              {/* Equipment had no route back from published either (fix list).
+                  Note this does not cancel a booked placement — expire or
+                  re-book that separately if the machine is going away for good. */}
+              <form action={returnToDraft} className="mt-4 border-t pt-3">
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="kind" value="machine" />
+                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <p className="mt-1 text-xs text-graphite">Hides it from the public page. Any booked slot above stays as it is.</p>
               </form>
             </div>
           )}

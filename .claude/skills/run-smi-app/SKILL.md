@@ -9,30 +9,23 @@ Three moving parts. Only the first two are needed to look at a page.
 
 1. **Supabase** (Postgres/Auth/Storage, Docker, ports `563xx`) — every page reads from it; without it the app boots but errors on data.
 2. **`pnpm dev`** — Next.js 16 + Turbopack on **port 3100**.
-3. **`scripts/job-runner.ts`** — optional background jobs (scheduled publishing, notifications). Skip unless the change touches jobs.
+3. **`scripts/job-runner.ts`** — the clock-driven jobs only (scheduled publishing, the daily sweeps). Member notifications no longer need it in dev — see Background jobs. Skip unless you're working on something time-based.
 
 ## Start
 
 ```bash
 supabase status        # already up? then skip the next line
 supabase start         # ~30s cold; leaves Docker containers running between sessions
-pnpm dev               # background it — see below
+pnpm dev:start          # idempotent: no-ops with "Already running" if it's already up
 ```
 
-Run the dev server backgrounded (`run_in_background: true`), then poll until it answers rather than sleeping a fixed amount:
+`dev:start` (`scripts/dev-server.sh`) runs `next dev --turbopack -p 3100` detached, so it survives this session ending — don't use `run_in_background: true` for it, it isn't needed. It polls `http://127.0.0.1:3100/` itself and only returns once the server answers (or after ~60s if something's wrong), so the command finishing is your readiness signal — no separate curl loop to write.
 
-```bash
-for i in $(seq 1 60); do
-  curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3100/ | grep -qE "^[23]" && echo READY && break
-  sleep 1
-done
-```
+Config comes from `.env.local` (gitignored, points at the local stack). `pnpm dev:logs` tails `.dev-server/dev.log`, which should show `- Environments: .env.local` — if that line is missing, the file is gone and every Supabase call will fail.
 
-Ready in well under a second on a warm cache; the first request compiles the route and takes ~2s.
+Port 3100 is fixed in `package.json` and in `playwright.config.ts`'s `baseURL`; don't move it. `dev:start` already refuses to spawn a second server if the port is occupied — it reports whatever's already listening (tracked or not) instead of starting a duplicate.
 
-Config comes from `.env.local` (gitignored, points at the local stack). `next dev` prints `- Environments: .env.local` — if that line is missing, the file is gone and every Supabase call will fail.
-
-Port 3100 is fixed in `package.json` and in `playwright.config.ts`'s `baseURL`; don't move it. If it's occupied, that's usually a dev server from an earlier session — reuse it instead of starting a second.
+Only run `pnpm dev:stop` when something actually needs a fresh process: an env var change, an edit to `next.config.ts`, or a new/updated dependency. Plain source edits are already covered by Turbopack's HMR — no restart needed.
 
 ## Drive it
 
@@ -49,8 +42,8 @@ node scripts/screenshot.mjs / shot.png '[data-stage-card]'   # 3rd arg hovers fi
 
 | Email | Role |
 |---|---|
-| `jas@smi.local` | super admin — `/console/*` |
-| `media@smi.local` | input-only operator |
+| `jas@smi.local` | admin — `/console/*` |
+| `media@smi.local` | member (external contributor) — `/dashboard/*`, drafts only |
 | `member1@smi.local` … `member3@smi.local` | members — `/dashboard/*` |
 
 Sign in at `/login` (`input[name="email"]`, `input[name="password"]`); `tests/e2e/flows.spec.ts` has the helper if you need it in a script.
@@ -80,7 +73,12 @@ For real content instead of synthetic data, swap `scripts/seed.ts` for `scripts/
 set -a && source .env.local && set +a && CRON_SECRET=local pnpm exec tsx scripts/job-runner.ts
 ```
 
-Without it, scheduled publishing and notification jobs simply never run — pages stay in the state the seed left them.
+**In development you mostly don't need it.** A job that is already due runs as soon as the response is sent (`runDueJobInlineInDev`, `src/lib/jobs.ts`), so a member notification and its email land immediately — the queue no longer looks like a no-op when the runner isn't up. Dev only; production leaves all of it to Vercel Cron, which currently runs once a day (HUMAN-TODO §13.1).
+
+Two things it does *not* cover, and this is why the runner still exists:
+
+- **Delayed jobs keep their delay.** `social_push` is enqueued at +30 minutes and dev does not shortcut that.
+- **Time-based sweeps never self-trigger.** `publish_scheduled`, `comp_expiry`, `membership_lapse`, `advert_lifecycle`, `admin_digest` and the rest only fire from the runner. Without it a story scheduled for 10am stays scheduled.
 
 ## Tests
 

@@ -1,0 +1,484 @@
+{
+  "fingerprint": {
+    "platform": "darwin-arm64",
+    "chromium": "151.0.7922.34",
+    "next": "16.3.0",
+    "capturedAt": "2026-09-09T19:29:41.930Z"
+  },
+  "routes": {
+    "home": {
+      "acceptedAt": "2026-09-09T19:22:16.351Z",
+      "sha256": "cff52fa66b8d2b6b5d8d9421484f2ecbe70d4d54d092daacbb847ca786ebb2fd",
+      "path": "/",
+      "from": "missing-baseline"
+    },
+    "advertising": {
+      "acceptedAt": "2026-09-09T19:22:16.357Z",
+      "sha256": "472bdf8b2359e435c6414126f4450e5e5e03c7367396803c666b9027c8c5be78",
+      "path": "/advertising",
+      "from": "missing-baseline"
+    },
+    "contact": {
+      "acceptedAt": "2026-09-09T19:22:16.360Z",
+      "sha256": "dd01c85fa542f0bd7a62ad5b96aac13a0f1f30a7551913fd7004064e288f6ef3",
+      "path": "/contact",
+      "from": "missing-baseline"
+    },
+    "event": {
+      "acceptedAt": "2026-09-09T19:22:16.362Z",
+      "sha256": "87a77a1350b0009afe1d5fac8647db81428a4e811e4ed49b4b06e16c9340be65",
+      "path": "/event",
+      "from": "missing-baseline"
+    },
+    "featured-machine": {
+      "acceptedAt": "2026-09-09T19:22:16.366Z",
+      "sha256": "8887eb8bd06e35f9d14400b5699ffbdb419e10168a6cc071ffb9572fa6c4f834",
+      "path": "/featured-machine",
+      "from": "missing-baseline"
+    },
+    "join": {
+      "acceptedAt": "2026-09-09T19:22:16.367Z",
+      "sha256": "9d67f5e4b4f167674e1b783a712fe97232899e24f61e3515d174fdd3a9449f9a",
+      "path": "/join",
+      "from": "missing-baseline"
+    },
+    "join_account": {
+      "acceptedAt": "2026-09-09T19:22:16.368Z",
+      "sha256": "313a1726326427df5109d39c3ea03adc7053d7cca3f477985b505c14135cf0da",
+      "path": "/join/account",
+      "from": "missing-baseline"
+    },
+    "member": {
+      "acceptedAt": "2026-09-09T19:22:16.370Z",
+      "sha256": "fe5bda9f9c5145d0cefa21d40eb1445ec610effe03b9ae2fc1391de77ad0d17c",
+      "path": "/member",
+      "from": "missing-baseline"
+    },
+    "news": {
+      "acceptedAt": "2026-09-09T19:22:16.376Z",
+      "sha256": "031169b042aca1feb9300123fa2f62f136df3ffd45f9deee8a613400caa5fcaf",
+      "path": "/news",
+      "from": "missing-baseline"
+    },
+    "newsletters": {
+      "acceptedAt": "2026-09-09T19:22:16.377Z",
+      "sha256": "64d91eb1777dd0433bfa4b1fc5967454104aac55213088aa7e6b3cb85f60e7fc",
+      "path": "/newsletters",
+      "from": "missing-baseline"
+    },
+    "search": {
+      "acceptedAt": "2026-09-09T19:22:16.382Z",
+      "sha256": "c8f48efebc0d4703ed4a9c253e5137b88296f34a7bdf5f6fc1e31f434773872f",
+      "path": "/search?q=laser",
+      "from": "missing-baseline"
+    },
+    "video": {
+      "acceptedAt": "2026-09-09T19:22:16.385Z",
+      "sha256": "d24f6274a29c0870028c0e95b9f824090dfe1958f026927fa3189becb138009d",
+      "path": "/video",
+      "from": "missing-baseline"
+    },
+    "login": {
+      "acceptedAt": "2026-09-09T19:22:16.386Z",
+      "sha256": "8190ed42f7ad82e29409e6fd48542707a21ae8de116a406621a92dcf2f49ab2d",
+      "path": "/login",
+      "from": "missing-baseline"
+    },
+    "reset": {
+      "acceptedAt": "2026-09-09T19:22:16.386Z",
+      "sha256": "8b1689b1ab217332979bfcb991e0a698db40503b1a446a99b88ca28df3236c9b",
+      "path": "/reset",
+      "from": "missing-baseline"
+    },
+    "unsubscribe": {
+      "acceptedAt": "2026-09-09T19:22:16.387Z",
+      "sha256": "1d7fec1d9896dbbb4c7a0fd34b2542457fd84f4decfd2adc1a23dda663f6cde6",
+      "path": "/unsubscribe",
+      "from": "missing-baseline"
+    },
+    "reset_new": {
+      "acceptedAt": "2026-09-09T19:29:42.624Z",
+      "sha256": "30fd3e009afb4e371feb93b29715204d7266e4284f8b6cb6899b8f33a7d14d5d",
+      "path": "/reset/new",
+      "from": "changed"
+    },
+    "home@grid": {
+      "acceptedAt": "2026-09-09T19:22:16.389Z",
+      "sha256": "75bb0be5c63d75122dc0355be8493de4298f6f256194a0cb0a8dade89d6a0899",
+      "path": "/",
+      "from": "missing-baseline"
+    },
+    "news_slug": {
+      "acceptedAt": "2026-09-09T19:22:16.391Z",
+      "sha256": "89c8778e460e7dc136ba191a048d1f1b99c4e9c0c8b6f88c92c2bff1b82da366",
+      "path": "/news/t-level-scholars-secure-full-time-futures-at-steel-benders-uk",
+      "from": "missing-baseline"
+    },
+    "member_slug": {
+      "acceptedAt": "2026-09-09T19:22:16.392Z",
+      "sha256": "db5a1f6a6e6b3c34f63d7b8a92c829ecbf05b0880aa6a0f5aa56deee494c65e9",
+      "path": "/member/amob-uk",
+      "from": "missing-baseline"
+    },
+    "video_slug": {
+      "acceptedAt": "2026-09-09T19:22:16.396Z",
+      "sha256": "0f1efb49276a35adbfb4ee6a2573ee0a03c24c07f5025cba1c89846dd34825d8",
+      "path": "/video/the-making-of-a-shufflebottom-building",
+      "from": "missing-baseline"
+    },
+    "event_slug": {
+      "acceptedAt": "2026-09-09T19:22:16.397Z",
+      "sha256": "82af449c61044bd96362d720ea3f940bc4f23dc271ecc3c5f1c0bc21328ce8ac",
+      "path": "/event/sheet-metal-industries-golf-challenge-2026",
+      "from": "missing-baseline"
+    },
+    "industry_slug": {
+      "acceptedAt": "2026-09-09T19:22:16.398Z",
+      "sha256": "26376e2c99058559c20f46261f581813f965068511691cfb4f5594d2b1872cee",
+      "path": "/industry/automation-robotics",
+      "from": "missing-baseline"
+    },
+    "pages_slug": {
+      "acceptedAt": "2026-09-09T19:22:16.399Z",
+      "sha256": "5465b4c769c93ce34aa7927dad2689569e9b6bb6f217955845346bb566210c5b",
+      "path": "/pages/about",
+      "from": "missing-baseline"
+    },
+    "dashboard": {
+      "acceptedAt": "2026-09-09T19:22:16.400Z",
+      "sha256": "f67aa06780fb75a0ff856b87472f518a174a851168c99772b23bf041469fed0f",
+      "path": "/dashboard",
+      "from": "missing-baseline"
+    },
+    "dashboard_advertising": {
+      "acceptedAt": "2026-09-09T19:22:16.401Z",
+      "sha256": "9ee178f33e0dab894ed208bc34c17e61f014fbd1c964351afc082356a3032419",
+      "path": "/dashboard/advertising",
+      "from": "missing-baseline"
+    },
+    "dashboard_advertising_buy": {
+      "acceptedAt": "2026-09-09T19:22:16.402Z",
+      "sha256": "063ba64c034637f17391b92ce50575d9fe2f5a3659bca9e25a9959d0f7c468c9",
+      "path": "/dashboard/advertising/buy",
+      "from": "missing-baseline"
+    },
+    "dashboard_advertising_manage": {
+      "acceptedAt": "2026-09-09T19:22:16.403Z",
+      "sha256": "f8b3b1220a86fc6aa34fc571acde6638bd26bbed6f03f5f26b73859cd9d4a355",
+      "path": "/dashboard/advertising/manage",
+      "from": "missing-baseline"
+    },
+    "dashboard_billing": {
+      "acceptedAt": "2026-09-09T19:29:42.626Z",
+      "sha256": "9e4927c8c27aff3f512d759f90a3999d7d4d465c55157c88c76e9b3988117d25",
+      "path": "/dashboard/billing",
+      "from": "changed"
+    },
+    "dashboard_equipment_new": {
+      "acceptedAt": "2026-09-09T19:29:42.627Z",
+      "sha256": "3740fd79d132f2208bbdae14e51daccb81d00f64d4359c9c124618a048e56e6e",
+      "path": "/dashboard/equipment/new",
+      "from": "changed"
+    },
+    "dashboard_event_new": {
+      "acceptedAt": "2026-09-09T19:22:16.406Z",
+      "sha256": "a07cb939d1963fee1756722e32f2126baf94e3d296e2dba4f67eb34bc44ce653",
+      "path": "/dashboard/event/new",
+      "from": "missing-baseline"
+    },
+    "dashboard_help": {
+      "acceptedAt": "2026-09-09T19:22:16.406Z",
+      "sha256": "d1599127047193136051cb4375939bc6b1825231a540c8951318a4257732e6bd",
+      "path": "/dashboard/help",
+      "from": "missing-baseline"
+    },
+    "dashboard_notifications": {
+      "acceptedAt": "2026-09-09T19:22:16.407Z",
+      "sha256": "f723fb03dff8328807013945421737abca7df7856d4ceacfb2b410ab538a0dd7",
+      "path": "/dashboard/notifications",
+      "from": "missing-baseline"
+    },
+    "dashboard_pay": {
+      "acceptedAt": "2026-09-09T19:29:42.628Z",
+      "sha256": "f67aa06780fb75a0ff856b87472f518a174a851168c99772b23bf041469fed0f",
+      "path": "/dashboard/pay",
+      "from": "changed"
+    },
+    "dashboard_profile": {
+      "acceptedAt": "2026-09-09T19:22:16.408Z",
+      "sha256": "c9034deaa91a7d21169a5af32dff0ee8796435ad47cf3700599f78b17e39fb4d",
+      "path": "/dashboard/profile",
+      "from": "missing-baseline"
+    },
+    "dashboard_resources": {
+      "acceptedAt": "2026-09-09T19:22:16.409Z",
+      "sha256": "352d392793b0432a41deaef51e456f957f7777d6b84f9f694a02954614035b38",
+      "path": "/dashboard/resources",
+      "from": "missing-baseline"
+    },
+    "dashboard_settings": {
+      "acceptedAt": "2026-09-09T19:22:16.410Z",
+      "sha256": "f90d0873b39359db88b8931dbaf5898cad9ba058cee4ada35585168147ddf561",
+      "path": "/dashboard/settings",
+      "from": "missing-baseline"
+    },
+    "dashboard_settings_billing": {
+      "acceptedAt": "2026-09-09T19:29:42.629Z",
+      "sha256": "9e4927c8c27aff3f512d759f90a3999d7d4d465c55157c88c76e9b3988117d25",
+      "path": "/dashboard/settings/billing",
+      "from": "changed"
+    },
+    "dashboard_settings_security": {
+      "acceptedAt": "2026-09-09T19:22:16.411Z",
+      "sha256": "0f111e84541574e7a1756d8f69fa2b8f88cdd6d07def9c43197526ae3f07ad78",
+      "path": "/dashboard/settings/security",
+      "from": "missing-baseline"
+    },
+    "dashboard_stats": {
+      "acceptedAt": "2026-09-09T19:29:42.629Z",
+      "sha256": "f27569ca9a4d7feae53fd8ab03828521248c39cf43b1ea8b348749e42032a5dd",
+      "path": "/dashboard/stats",
+      "from": "changed"
+    },
+    "dashboard_story_new": {
+      "acceptedAt": "2026-09-09T19:22:16.415Z",
+      "sha256": "ebddaf5ec8e5b60502adcd209a67671367ecb38f83769e331bd38178cb2d0042",
+      "path": "/dashboard/story/new",
+      "from": "missing-baseline"
+    },
+    "dashboard_submissions": {
+      "acceptedAt": "2026-09-09T19:22:16.416Z",
+      "sha256": "dcd5405920298013ff55aa8731109dffbd44db1f04c7697f31fbce4f1ca68ff6",
+      "path": "/dashboard/submissions",
+      "from": "missing-baseline"
+    },
+    "dashboard_video_new": {
+      "acceptedAt": "2026-09-09T19:22:16.417Z",
+      "sha256": "058a8970578744983d7591ffc7d35857a672c2eebe3bf29bd6bbfaa3d492ce81",
+      "path": "/dashboard/video/new",
+      "from": "missing-baseline"
+    },
+    "dashboard_advert_id": {
+      "acceptedAt": "2026-09-09T19:22:16.418Z",
+      "sha256": "dc23ada9ca5932f89caba81a39eb5c4d99c025f2074da354ecde18b02dd12da1",
+      "path": "/dashboard/advert/6c85bdd1-e527-43c7-9d89-020bb1b6e375",
+      "from": "missing-baseline"
+    },
+    "console": {
+      "acceptedAt": "2026-09-09T19:29:42.631Z",
+      "sha256": "1633416c61b02b6a516748fd420a468f51deaf9e5d28318a5c19f92f86c7ae41",
+      "path": "/console",
+      "from": "changed"
+    },
+    "console_analytics": {
+      "acceptedAt": "2026-09-09T19:22:16.419Z",
+      "sha256": "42ed733b71aa9c588fc627817c2a1d2ca476c8a51732dc0fd9cb623a41516a01",
+      "path": "/console/analytics",
+      "from": "missing-baseline"
+    },
+    "console_adverts": {
+      "acceptedAt": "2026-09-09T19:22:16.423Z",
+      "sha256": "f1b1822213c5785cd80d9b1702351a0282a1b790835c4056eeeee9efe3377971",
+      "path": "/console/adverts",
+      "from": "missing-baseline"
+    },
+    "console_adverts_artwork": {
+      "acceptedAt": "2026-09-09T19:22:16.424Z",
+      "sha256": "c4df9c3b6b58157fac6cc6977cde15d6b9e81e995e59a0a4c80695ee88133cad",
+      "path": "/console/adverts/artwork",
+      "from": "missing-baseline"
+    },
+    "console_adverts_bundles": {
+      "acceptedAt": "2026-09-09T19:22:16.424Z",
+      "sha256": "d74ed9f40fdab1edcbea40f4ff3a1f95a9e9a797a532abfb4a9678e707f02462",
+      "path": "/console/adverts/bundles",
+      "from": "missing-baseline"
+    },
+    "console_adverts_featured-member": {
+      "acceptedAt": "2026-09-09T19:22:16.425Z",
+      "sha256": "37553a7a1d9fefa1e624a15593bf761243034938be0161fbbaa11c993f354d91",
+      "path": "/console/adverts/featured-member",
+      "from": "missing-baseline"
+    },
+    "console_adverts_interest": {
+      "acceptedAt": "2026-09-09T19:22:16.426Z",
+      "sha256": "914f5d99f241a846d0fac9e692a2e3c61001bb623b7abf0e6730affa4110cd65",
+      "path": "/console/adverts/interest",
+      "from": "missing-baseline"
+    },
+    "console_adverts_spots": {
+      "acceptedAt": "2026-09-09T19:22:16.427Z",
+      "sha256": "4554469357fed6af3b7c9070524537d946e14d097c1b85540f418c2596e27d4b",
+      "path": "/console/adverts/spots",
+      "from": "missing-baseline"
+    },
+    "console_adverts_takeover": {
+      "acceptedAt": "2026-09-09T19:29:42.632Z",
+      "sha256": "db3fb5958c638e150b49bff4dfeeb36e77afb79bf6ef465afb6987672b169bf5",
+      "path": "/console/adverts/takeover",
+      "from": "changed"
+    },
+    "console_categories": {
+      "acceptedAt": "2026-09-09T19:22:16.429Z",
+      "sha256": "0d11bdc35fb9d4631813c4b431874350bed8ec138e8c021cd954a28a8ac6dfc9",
+      "path": "/console/categories",
+      "from": "missing-baseline"
+    },
+    "console_content-pages": {
+      "acceptedAt": "2026-09-09T19:22:16.430Z",
+      "sha256": "d78d69bc24a2fe032143d6874dbae1732891644199c0d45e5f31e74276712598",
+      "path": "/console/content-pages",
+      "from": "missing-baseline"
+    },
+    "console_crm": {
+      "acceptedAt": "2026-09-09T19:22:16.431Z",
+      "sha256": "a39581c399bb034cf9c5afd9dbef5db6377bd46c5344d1dc444e2b593c5ad98f",
+      "path": "/console/crm",
+      "from": "missing-baseline"
+    },
+    "console_dev": {
+      "acceptedAt": "2026-09-09T19:22:16.432Z",
+      "sha256": "17590245cc2e1bd73ee5c01b37c8c2547339f67837ba18845c0119d39bdcd342",
+      "path": "/console/dev",
+      "from": "missing-baseline"
+    },
+    "console_events": {
+      "acceptedAt": "2026-09-09T19:22:16.432Z",
+      "sha256": "9f7278412dd756e2d454bdb89f2386d9b3bf29264a80e151e56f65ab278e358a",
+      "path": "/console/events",
+      "from": "missing-baseline"
+    },
+    "console_machines": {
+      "acceptedAt": "2026-09-09T19:22:16.434Z",
+      "sha256": "7224c683a7853847bd23d4bf77396e6717c6aecfdec12aa04b1c2c37360a976e",
+      "path": "/console/machines",
+      "from": "missing-baseline"
+    },
+    "console_media": {
+      "acceptedAt": "2026-09-09T19:22:16.435Z",
+      "sha256": "d600493ba7266f30b73065f09aa11c73732a29bbaf534fd0f5258e1942cdfd60",
+      "path": "/console/media",
+      "from": "missing-baseline"
+    },
+    "console_members": {
+      "acceptedAt": "2026-09-09T19:22:16.437Z",
+      "sha256": "60c2b9c0c4f67891cb185e5d3191b81a0041c83b34ec7ffba258edc48411e40a",
+      "path": "/console/members",
+      "from": "missing-baseline"
+    },
+    "console_messages": {
+      "acceptedAt": "2026-09-09T19:22:16.441Z",
+      "sha256": "1085541019a2bb5e2c9adae70086232679040d8e2f69079fc2e030a24afe3455",
+      "path": "/console/messages",
+      "from": "missing-baseline"
+    },
+    "console_newsletter": {
+      "acceptedAt": "2026-09-09T19:22:16.445Z",
+      "sha256": "807e929c8e211cd46b8bfdcfe96c54e482c45c09c99ffd32558a0d853bc1dff7",
+      "path": "/console/newsletter",
+      "from": "missing-baseline"
+    },
+    "console_pages": {
+      "acceptedAt": "2026-09-09T19:22:16.446Z",
+      "sha256": "98e4f3b3e580ef08ec77d075954e6f7bb929962b0b56d7867d5614d39683e9a1",
+      "path": "/console/pages",
+      "from": "missing-baseline"
+    },
+    "console_promo-codes": {
+      "acceptedAt": "2026-09-09T19:29:42.633Z",
+      "sha256": "7b0c0363656c04bfa02b1220b3f1c1d5949ac68ad5808aa04b4e493be7ca950c",
+      "path": "/console/promo-codes",
+      "from": "changed"
+    },
+    "console_resources": {
+      "acceptedAt": "2026-09-09T19:22:16.449Z",
+      "sha256": "2f18024ef5b5b4b5fbe530725e96b8bb359f9aef543cf2a87c17e2d11515516e",
+      "path": "/console/resources",
+      "from": "missing-baseline"
+    },
+    "console_stories": {
+      "acceptedAt": "2026-09-09T19:22:16.452Z",
+      "sha256": "16052ec6e94c16e665deaf9dc3b8ab9f9b2e41d1e9639ccff75f0f4808236ae5",
+      "path": "/console/stories",
+      "from": "missing-baseline"
+    },
+    "console_videos": {
+      "acceptedAt": "2026-09-09T19:22:16.453Z",
+      "sha256": "4af5283fdef9fdcad829c4d990f5d856e56c098d94d6313969ee3d77bbaf67ae",
+      "path": "/console/videos",
+      "from": "missing-baseline"
+    },
+    "console_stories_new": {
+      "acceptedAt": "2026-09-09T19:29:42.634Z",
+      "sha256": "97257147623281325b8674db572d752c16e1e9e34f339744a657b039f8b18586",
+      "path": "/console/stories/new",
+      "from": "changed"
+    },
+    "console_videos_new": {
+      "acceptedAt": "2026-09-09T19:22:16.455Z",
+      "sha256": "fe82efdbfef018453e730f5fa3a7230664d5427c7ad79b25635dd807d746a34d",
+      "path": "/console/videos/new",
+      "from": "missing-baseline"
+    },
+    "console_events_new": {
+      "acceptedAt": "2026-09-09T19:22:16.455Z",
+      "sha256": "ebce0e77faac674d60d9a4922725b9d0de62921bbae08077302747e18b09c45a",
+      "path": "/console/events/new",
+      "from": "missing-baseline"
+    },
+    "console_machines_new": {
+      "acceptedAt": "2026-09-09T19:29:42.634Z",
+      "sha256": "765de451d735c0ec3fbc66eefa324946e0b30a07c215ceb26f108be2ed7e045d",
+      "path": "/console/machines/new",
+      "from": "changed"
+    },
+    "console_categories_new": {
+      "acceptedAt": "2026-09-09T19:29:42.635Z",
+      "sha256": "54e856ec810ec6602233b99ce2e13c4c1338a3c004ec58e668823f487e6ec66d",
+      "path": "/console/categories/new",
+      "from": "changed"
+    },
+    "console_dev_new": {
+      "acceptedAt": "2026-09-09T19:22:16.457Z",
+      "sha256": "5c26da211c63a0987d2dadb395e760c50df71c77f3133fa92a00d67efa9a8067",
+      "path": "/console/dev/new",
+      "from": "missing-baseline"
+    },
+    "console_members_new": {
+      "acceptedAt": "2026-09-09T19:29:42.635Z",
+      "sha256": "afbd003b77a2efab41368efd36aec082ad3fc82b34b0c1b3195f6556954a8c9f",
+      "path": "/console/members/new",
+      "from": "changed"
+    },
+    "console_content-pages_new": {
+      "acceptedAt": "2026-09-09T19:22:16.459Z",
+      "sha256": "bbcf4c895c2473eb55fcc516a0e0600e4033967b5227571b13bbaa83b4021d64",
+      "path": "/console/content-pages/new",
+      "from": "missing-baseline"
+    },
+    "console_adverts_artwork_new": {
+      "acceptedAt": "2026-09-09T19:29:42.636Z",
+      "sha256": "60a9fd19a2ee253ec5b0be87b55a46e7259e4a16b8141174e6d592957503b0de",
+      "path": "/console/adverts/artwork/new",
+      "from": "changed"
+    },
+    "console_adverts_spots_new": {
+      "acceptedAt": "2026-09-09T19:22:16.460Z",
+      "sha256": "797b6a4e6ddd5cfd8523435ee9a82ea8868e60b40883207ffcaacbf3148e8c55",
+      "path": "/console/adverts/spots/new",
+      "from": "missing-baseline"
+    },
+    "console_advert_id": {
+      "acceptedAt": "2026-09-09T19:29:42.637Z",
+      "sha256": "2f6b5fa6a8d8abe2f4de728e155b13e01d0ce40dc8b1e906088e59aafa16b6f1",
+      "path": "/console/adverts/3f47b54d-e236-497a-931b-fbc423a97616",
+      "from": "changed"
+    },
+    "console_message_id": {
+      "acceptedAt": "2026-09-09T19:29:42.638Z",
+      "sha256": "88506913fddf1453c7182ae6d66abf68a656e361ecb07cb2f3d57afc8c76022f",
+      "path": "/console/messages/44894901-5d1a-4c72-9200-40ae867e4216",
+      "from": "changed"
+    }
+  }
+}

@@ -3,6 +3,7 @@ import { AdSlot, SupplierLogos } from "@/components/AdSlot";
 import { EventCard, FeaturedMemberCard, MachineCard, VideoCard } from "@/components/cards";
 import { HomeHero } from "@/components/HomeHero";
 import { JoinCta } from "@/components/JoinCta";
+import { SearchForm } from "@/components/SearchForm";
 import { Carousel, StoryCard } from "@/components/StoryCard";
 import { excluding, type HomeData } from "./home.data";
 
@@ -33,9 +34,18 @@ export function ForgeHome({
       {/* Full-bleed: a sibling of the max-w-6xl column, not inside it. The public
           layout's <main> imposes no width, so this spans the viewport without a
           100vw hack (which would overflow by the scrollbar width). */}
-      {heroItems.length > 0 && <HomeHero items={heroItems} />}
+      {/* The page's only h1 lives inside HomeHero (sr-only) — when there is
+          nothing to put in the hero, keep the heading so the page never ships
+          without one. */}
+      {heroItems.length > 0
+        ? <HomeHero items={heroItems} />
+        : <h1 className="sr-only">Sheet Metal Industries — news for UK sheet metal, fabrication and welding</h1>}
 
       <div className="mx-auto max-w-6xl px-4">
+      {/* Jas asked for the search bar on home, news, video and members — one
+          universal tool, and the query log is meant to steer SEO later. */}
+      <SearchForm />
+
       {/* The band that used to sit beside the headline. No advert here — the
           first one on the page is now home_1, below the news carousel. */}
       {featuredMembers[0]?.member && (
@@ -48,7 +58,7 @@ export function ForgeHome({
         ))}
       </Carousel>
 
-      <div className="mt-8"><AdSlot slotKey="home_1" adverts={slots.get("home_1") ?? []} showPlaceholders={showPlaceholders} /></div>
+      <div className="mt-8"><AdSlot slotKey="home_1" adverts={slots.get("home_1") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
 
       {/* Rotating mixed grid — a bought block keeps its position for the paid period */}
       <section className="mt-8">
@@ -73,11 +83,11 @@ export function ForgeHome({
           </Carousel>
         </div>
         <aside className="mt-8 flex flex-col gap-4">
-          <AdSlot slotKey="siderail_b" adverts={slots.get("siderail_b") ?? []} shape="rail" showPlaceholders={showPlaceholders} />
+          <AdSlot slotKey="siderail_b" adverts={slots.get("siderail_b") ?? []} shape="rail" showPlaceholders={showPlaceholders} path="/" />
         </aside>
       </div>
 
-      <div className="mt-8"><AdSlot slotKey="home_2" adverts={slots.get("home_2") ?? []} showPlaceholders={showPlaceholders} /></div>
+      <div className="mt-8"><AdSlot slotKey="home_2" adverts={slots.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
 
       <section className="mt-8">
         <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">Events</h2>
@@ -86,7 +96,7 @@ export function ForgeHome({
         </div>
       </section>
 
-      <div className="my-8"><AdSlot slotKey="home_3" adverts={slots.get("home_3") ?? []} showPlaceholders={showPlaceholders} /></div>
+      <div className="my-8"><AdSlot slotKey="home_3" adverts={slots.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
 
       <div className="-mx-4"><SupplierLogos adverts={adverts.supplier_logo} showPlaceholders={showPlaceholders} /></div>
 

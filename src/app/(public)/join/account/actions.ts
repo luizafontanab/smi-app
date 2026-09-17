@@ -5,6 +5,7 @@ import { sessionDb } from "@/lib/db/server";
 import { provisionMember } from "@/lib/membership";
 import { notifyAdminFunnel } from "@/lib/notify-admin";
 import { allowRequest, HOUR } from "@/lib/rate-limit";
+import { EMAIL_RE, parsePhone } from "@/lib/validate";
 
 /**
  * V13 step 1 of 4 — account + draft company page. Payment is step 2
@@ -15,17 +16,27 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const company = String(formData.get("company") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const website = String(formData.get("website") ?? "").trim();
+  const address = String(formData.get("address") ?? "").trim();
 
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { message: "Please enter a valid email." };
+  if (!EMAIL_RE.test(email)) return { message: "Please enter a valid email." };
   if (password.length < 8) return { message: "Password needs at least 8 characters." };
   if (!company) return { message: "Company name is required." };
+  const parsedPhone = parsePhone(phone);
+  if (parsedPhone && typeof parsedPhone === "object") return { message: parsedPhone.error };
   // This creates a real auth user and a draft member row; unthrottled it is a
   // free account-and-record generator for anyone who finds the page.
   if (!(await allowRequest("join", 3, HOUR))) {
     return { message: "Too many attempts just now — please try again shortly." };
   }
 
-  const result = await provisionMember({ email, password, company });
+  const result = await provisionMember({
+    email, password, company,
+    ...(phone ? { phone } : {}),
+    ...(website ? { website } : {}),
+    ...(address ? { address } : {}),
+  });
   if ("error" in result) return { message: result.error };
 
   await notifyAdminFunnel({
@@ -34,6 +45,20 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
     message: `Started the join flow: account created, draft company page in place. Next step: payment.`,
     emailSubject: `New member signup: ${company}`,
   });
+
+  // The member's own welcome. provisionMember sets email_confirm, so Supabase
+  // sends nothing — without this a new member hears from us for the first time
+  // only when Jas activates their page, which can be days later.
+  //
+  // Guarded for the same reason notifyAdminFunnel is: the account and the draft
+  // page already exist by this point, so failing the signup over an unsent
+  // welcome would strand a real member behind an error they cannot retry past.
+  try {
+    const { enqueue } = await import("@/lib/jobs");
+    await enqueue("notify_member", { member_id: result.memberId, kind: "welcome" });
+  } catch (e) {
+    console.error("[join] welcome email could not be queued:", e);
+  }
 
   const session = await sessionDb();
   await session.auth.signInWithPassword({ email, password });
