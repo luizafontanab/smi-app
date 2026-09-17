@@ -24,10 +24,18 @@ const LINKS = [
  * the same reason: focus trap, Escape-to-close and an inert background for
  * free, and the top layer sidesteps a z-index fight with CookieConsent (z-50).
  */
-export function MobileNav({ user, accountLinks = [], signOutAction }: {
+export function MobileNav({ user, accountLinks = [], signOutAction, triggerClassName = "hover:bg-chrome-hover" }: {
   user: CurrentUser | null;
   accountLinks?: { href: string; label: string; badge?: number }[];
   signOutAction?: () => Promise<void>;
+  /**
+   * Hover treatment for the trigger, which inherits its header's foreground.
+   * The default suits the near-black chrome header; the grid design's light
+   * header passes a light hover, because chrome-hover there would paint a
+   * near-black block behind ink-coloured text. The drawer itself carries its
+   * own dark palette and does not change.
+   */
+  triggerClassName?: string;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -47,7 +55,7 @@ export function MobileNav({ user, accountLinks = [], signOutAction }: {
         type="button"
         onClick={open}
         aria-label="Open menu"
-        className="rounded px-3 py-2 hover:bg-chrome-hover lg:hidden"
+        className={`rounded px-3 py-2 lg:hidden ${triggerClassName}`}
       >
         ☰
       </button>

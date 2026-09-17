@@ -2,7 +2,18 @@
 import { useActionState } from "react";
 import { subscribeNewsletter } from "@/app/(public)/actions";
 
-export function NewsletterSignup() {
+/**
+ * `tone` is the submit button only — the form is otherwise surface-agnostic.
+ * "brand" (the default, unchanged) is the orange button on the dark footer and
+ * on light bands; "dark" is for the grid homepage's orange newsletter panel,
+ * where an orange button on orange would be invisible.
+ */
+const BUTTON_TONES = {
+  brand: "bg-brand text-ink",
+  dark: "bg-ink text-white",
+} as const;
+
+export function NewsletterSignup({ tone = "brand" }: { tone?: keyof typeof BUTTON_TONES }) {
   const [state, formAction, pending] = useActionState(subscribeNewsletter, { message: "" });
   return (
     <form action={formAction} className="flex gap-2">
@@ -17,7 +28,7 @@ export function NewsletterSignup() {
         placeholder="you@company.co.uk"
         className="w-full rounded px-3 py-2 text-sm text-ink placeholder:text-graphite bg-white"
       />
-      <button disabled={pending} className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50">
+      <button disabled={pending} className={`rounded px-4 py-2 text-sm font-semibold disabled:opacity-50 ${BUTTON_TONES[tone]}`}>
         {pending ? "…" : "Subscribe"}
       </button>
       {/* Always rendered: a live region announces only if it existed before

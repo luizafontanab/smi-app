@@ -9,8 +9,17 @@ import Image from "next/image";
  * instead. Deliberately not recoloured via --smi-brand:
  * official artwork stays as supplied, so it sits out sponsor-takeover
  * recolouring.
+ *
+ * `tone="light"` swaps in logo-wide-ink.svg for the grid design's light
+ * header. It is the same file with its single fill="#fff" path — the wordmark
+ * text — set to --smi-ink; the orange is untouched, so the supplied brand
+ * colour still ships exactly as delivered. Generated, not redrawn: regenerate
+ * it from logo-wide.svg if the client ever supplies new artwork.
  */
-export function Wordmark() {
+export function Wordmark({ tone = "dark" }: {
+  /** The surface the mark sits on — "dark" is the near-black chrome header. */
+  tone?: "dark" | "light";
+}) {
   // Intrinsic ratio 1786.05 × 276.97 ≈ 6.45:1 — the mark is ~6.5× wider than
   // tall, so the height classes step with the header's own breakpoints: full
   // size only from xl (lg is where the header shows every nav link, and a
@@ -19,7 +28,7 @@ export function Wordmark() {
   // phone-width row without wrapping.
   return (
     <Image
-      src="/logo-wide.svg"
+      src={tone === "light" ? "/logo-wide-ink.svg" : "/logo-wide.svg"}
       alt="Sheet Metal Industries"
       width={413}
       height={64}

@@ -25,7 +25,7 @@ const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_fee
 export async function loadHome() {
   // Limits are sized so the hero can eat from the top of these lists (up to 3
   // stories and 2 videos) and every section below still fills.
-  const [headline, { stories }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx] = await Promise.all([
+  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx] = await Promise.all([
     headlineStory(),
     publishedStories({ limit: 18 }),
     publishedStories({ limit: 8, memberOnly: true }),
@@ -69,6 +69,9 @@ export async function loadHome() {
     // to show in it, so they are filtered out here rather than in each view.
     directory: directory.filter((m) => m.logo_path).slice(0, 12),
     memberCount,
+    // Every published story, not the 18 fetched above — the count already
+    // rides along on that query's response, so grid's stats band is free.
+    storyTotal,
     categories,
     adverts,
     showPlaceholders,

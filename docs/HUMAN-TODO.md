@@ -457,6 +457,59 @@ Do these in order.
 
 ---
 
+## 14 · Grid homepage restyle (16 Sep) — decisions for you
+
+The `grid` design's homepage was moved onto the palette from the designer comps
+(`docs/Sheet Metal Industries Home v1.png` / `v2.png`), with its own light
+header and footer. Code-complete; these two need a person.
+
+- [ ] **14.1 — Confirm the social-reach figure, or drop the stat.** The closing
+      stats band shows three numbers. Two are real and live: published articles
+      (the count already returned by `publishedStories`) and member companies
+      (`memberCount`). The third, "social media reach", has **no source in the
+      database** — it ships as `SOCIAL_REACH = 347_000` in
+      `src/components/grid-home/cards.tsx`, taken from comp v1's artwork. Either
+      give me the real number (and say whether it should be editable, which
+      needs a `settings` row and a console field), or say drop it and the band
+      becomes two stats. It is presented to readers as fact today, so this is
+      worth answering before the design goes anywhere near production.
+- [ ] **14.2 — Accept the `home@grid` visual baseline.** The restyle changes
+      that page completely, so `pnpm visual` will report it as changed (exit 1)
+      until someone looks at the picture and runs `pnpm visual:accept home@grid`.
+      I have not run it — accepting a baseline asserts you looked, per §11.1.
+      Note the grid design's header and footer now apply to **every** grid-mode
+      route, not just `/` (there is one public layout). No other route has a
+      grid baseline, so nothing else in the suite moves, but grid-mode `/news`,
+      `/member` and the rest do look different now. That was the agreed
+      trade-off, not an oversight.
+- [ ] **14.3 — Nine advert positions are currently removed from the homepage.**
+      The 16-17 Sep layout passes took out both side rails and then, at the
+      client's direction, the holding row and the supplier-logo band that had
+      been carrying their contents. The grid homepage now has **three** advert
+      positions — the banners `home_1`, `home_2`, `home_3` — and nothing else.
+      Gone from the page: the eight `home_rail_1…8` logo slots, the
+      `home_mpu_1` box, the supplier-logo wall, and the featured-member
+      placement. They render nowhere and report no impressions
+      (`components/AdCreative.tsx` → `/api/seen`), so **a live booking against
+      any of them shows a reader nothing today**. Luiza is reworking that part
+      of the page; this entry is the reminder that the inventory has to come
+      back somewhere, or be withdrawn from sale. Worth knowing while deciding:
+      `home_rail_1…8` were never registered in `advert_slots` (no `cap` row, no
+      presence in `/console/adverts/spots`) — they existed only as string
+      literals in the view, so this is also the moment to decide whether they
+      should be real, capped slots. `tests/unit/home-grid.test.tsx` asserts the
+      current three so the count cannot drift unnoticed.
+- [ ] **14.4 — "Featured event" is editorial, not sellable.** The new second
+      placement card on the fold shows whichever event `upcomingEvents()`
+      returns first. It cannot be booked: `placement_kind`
+      (`supabase/migrations/20260808000002_commerce.sql`) has `featured_member`,
+      `featured_machine`, `grid_block` and `takeover` but no `featured_event`.
+      The client's wireframe labels that position "Advert — Featured Event". If
+      it is meant to be sold, it needs a new enum value and console support —
+      say the word and I will write the migration.
+
+---
+
 ## Not in this list
 
 Other approval-gated externals — MaxMind/GeoLite2, Buffer, the

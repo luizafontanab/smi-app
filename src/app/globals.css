@@ -83,6 +83,31 @@
   --font-heading: var(--smi-font-heading);
 }
 
+/*
+ * Grid homepage palette (src/app/(public)/home.grid.tsx and
+ * src/components/grid-home/). Taken from the client's designer comps,
+ * docs/Sheet Metal Industries Home v1.png / v2.png: a white ground separated
+ * by light-grey full-bleed bands, flat hairline-bordered cards and near-square
+ * corners, with orange carrying the section labels.
+ *
+ * These are ADDITIONS, not overrides — nothing outside grid-home/ and the two
+ * Grid* chrome components reads a --gh-* variable — which is why they can sit
+ * on :root safely. Deliberately NOT hung off [data-theme="grid"]: that
+ * attribute is stamped on <html> by the root layout, so a palette attached to
+ * it would repaint every grid-mode route, and only the homepage was designed.
+ * The header and footer are outside the page's own wrapper, so a class-scoped
+ * block would not reach them either.
+ *
+ * Tokens only — no layout, no state. See the CASCADE NOTE further down.
+ */
+:root {
+  --gh-band: #f1f2f2;          /* full-bleed section band */
+  --gh-radius: 2px;            /* the comps are near-square */
+  /* Charcoal, not --smi-chrome: the comps' footer sits directly under a
+     near-black CTA band and has to read as a separate surface. */
+  --gh-footer: #2b2b2b;
+}
+
 /* 44px touch floor on coarse pointers only, so desktop density is untouched.
    Applied via the `tap` class to the systemic small targets the audit found:
    header/footer nav, pagination, cookie bar, row-action links. */
@@ -190,6 +215,30 @@ h1, h2, h3 {
   scrollbar-width: thin;
 }
 .carousel > * { scroll-snap-align: start; }
+
+/*
+ * The white type on a revealed tile, given its own shadow rather than more
+ * scrim. Two stacked shadows on purpose, the same trick .hero-title uses: a
+ * tight near-opaque one draws the letterform's edge against whatever pixel sits
+ * behind it, and a wide soft one lifts the whole word off a busy background.
+ * Darkening the scrim further would have worked too, but it flattens the
+ * photograph — this leaves the picture alone and fixes only the text.
+ *
+ * Only while the tile is revealed: at rest the type is ink on white, where a
+ * shadow would just look grubby.
+ */
+.gh-tile:hover .gh-tile-text,
+.gh-tile:focus-within .gh-tile-text {
+  /* Three stops rather than two, all at alphas this file already uses
+     (.hero-play 0.6, .hero-intro 0.5, .hero-title 0.45). The tight edge is
+     doubled instead of deepened: two 0.6 layers compound to roughly 0.84, which
+     is the strength the type needs, without introducing a black that is not
+     already part of the design system. */
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.6),
+    0 1px 3px rgb(0 0 0 / 0.6),
+    0 2px 14px rgb(0 0 0 / 0.5);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Home hero — full-bleed stage + hover rail (components/HomeHero.tsx)
