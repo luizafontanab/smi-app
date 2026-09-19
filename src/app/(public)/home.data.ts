@@ -5,7 +5,7 @@ import { buildHero, withIntros } from "@/lib/hero";
 import { activePlacements, featuredMemberPlacements, headlineStory, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
 
 /** Every advert format either design places on the home page. */
-const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_feed"] as const;
+const HOME_AD_FORMATS = ["banner", "banner_narrow", "supplier_logo", "skyscraper", "mpu", "in_feed"] as const;
 
 /**
  * Everything the home page needs, fetched once and shared by both designs.

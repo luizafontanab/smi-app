@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { League_Spartan, Source_Sans_3 } from "next/font/google";
 import { cookies } from "next/headers";
 import { DevTaskLauncher } from "@/components/dev-task/DevTaskLauncher";
+import { ThemeLauncher } from "@/components/ThemeLauncher";
 import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
@@ -71,6 +72,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col font-sans">
         {children}
         <DevTaskLauncher />
+        {/* After DevTaskLauncher so the Feedback button keeps its tab position;
+            both are admin-only and render nothing for everyone else. */}
+        <ThemeLauncher />
       </body>
     </html>
   );

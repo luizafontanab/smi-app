@@ -1,5 +1,7 @@
 /**
- * Payments adapter (TECH-DECISIONS #16): Stripe in production, stub locally.
+ * Payments adapter: Stripe in production, stub locally. (This used to cite
+ * TECH-DECISIONS #16 — that number is Lead generation; Stripe has no numbered
+ * row in that table.)
  * Constraint: existing Stripe subscriptions are never touched; members never
  * interact with Stripe directly (invoices served via the member area).
  */

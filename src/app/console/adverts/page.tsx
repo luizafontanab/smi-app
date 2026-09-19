@@ -63,7 +63,7 @@ export default async function AdvertsPage() {
         <div className="rounded-xl bg-white p-4 shadow-sm">
           <p className="text-xs uppercase text-graphite">Formats sold</p>
           <p className="text-2xl font-bold text-ink">{liveFormats.length}</p>
-          <p className="mt-1 text-xs text-graphite">of 7 bookable</p>
+          <p className="mt-1 text-xs text-graphite">of 8 bookable</p>
         </div>
         <div className="rounded-xl bg-white p-4 shadow-sm"><p className="text-xs uppercase text-graphite">Interest</p>
           <p className="text-2xl font-bold text-ink">{openInterest ?? 0}</p>

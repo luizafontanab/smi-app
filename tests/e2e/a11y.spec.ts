@@ -6,7 +6,9 @@ import { expect, test } from "@playwright/test";
  * violations fail the build — moderate/minor are reported in the failure
  * output but tolerated, so this stays a floor rather than a treadmill.
  */
-const PAGES = ["/", "/news", "/member", "/industry/welding", "/join", "/login", "/contact", "/search"];
+// Bare /member is the word cloud now, so the tile list needs naming explicitly
+// or it loses the coverage it had when it was the default view.
+const PAGES = ["/", "/news", "/member", "/member?view=list", "/industry/welding", "/join", "/login", "/contact", "/search"];
 
 const PASSWORD = "local-dev-password";
 
@@ -48,11 +50,17 @@ test("axe: / (grid variant) has no serious or critical violations", async ({ pag
 // Auth-walled surfaces: these never appeared in the public scan, which is
 // exactly where unlabelled-control drift accumulated (2026-09 audit). Kept to
 // the highest-traffic operator/member pages so the suite stays a floor.
-const CONSOLE_PAGES = ["/console", "/console/stories", "/console/dev", "/console/newsletter", "/console/industries"];
+// /console/leads earns a slot: a three-control search form plus three submit
+// buttons per row is exactly the unlabelled-control shape this suite floors.
+// /console/email-templates/[kind] earns a slot over its own list page: two
+// monospace textareas, a token reference list, a sandboxed preview iframe and
+// three separate submit buttons on one screen is the densest control cluster
+// in the console.
+const CONSOLE_PAGES = ["/console", "/console/stories", "/console/dev", "/console/newsletter", "/console/industries", "/console/leads", "/console/email-templates/welcome"];
 // /dashboard/submissions earns a slot: it gained status tabs, a <details>
 // disclosure and an inline form per published row, which is exactly the shape
 // unlabelled-control drift takes.
-const DASHBOARD_PAGES = ["/dashboard", "/dashboard/story/new", "/dashboard/submissions", "/dashboard/profile"];
+const DASHBOARD_PAGES = ["/dashboard", "/dashboard/story/new", "/dashboard/submissions", "/dashboard/profile", "/dashboard/leads"];
 
 test.describe("axe: console (admin)", () => {
   for (const path of CONSOLE_PAGES) {

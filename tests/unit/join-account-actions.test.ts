@@ -77,7 +77,9 @@ describe("createAccount", () => {
       .rejects.toThrow("NEXT_REDIRECT:/dashboard/pay");
 
     expect(provisionMember).toHaveBeenCalledWith({ email: "founder@acme.example", password: "correcthorse", company: "Acme Ltd" });
-    expect(notifyAdminFunnel).toHaveBeenCalledWith(expect.objectContaining({ emailSubject: "New member signup: Acme Ltd" }));
+    // The funnel takes a template kind now, not a subject string: the wording
+    // lives in /console/email-templates where it can be edited.
+    expect(notifyAdminFunnel).toHaveBeenCalledWith(expect.objectContaining({ kind: "admin_new_signup", name: "Acme Ltd" }));
     expect(enqueue).toHaveBeenCalledWith("notify_member", { member_id: "m1", kind: "welcome" });
     expect(signIn).toHaveBeenCalledWith({ email: "founder@acme.example", password: "correcthorse" });
   });

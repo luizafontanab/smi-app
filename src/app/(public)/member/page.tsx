@@ -5,6 +5,7 @@ import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
 import { featuredMembers, industries as industryList, memberDirectory, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
+import { MemberCloud } from "@/components/MemberCloud";
 import { MemberMap } from "@/components/MemberMap";
 import { MultiSelectCombobox } from "@/components/MultiSelectCombobox";
 import { Pagination } from "@/components/Pagination";
@@ -34,16 +35,21 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const rawQ = typeof sp.q === "string" ? sp.q : "";
   const q = rawQ.trim() || undefined;
   const page = Math.max(1, Number(sp.page) || 1);
-  const view = sp.view === "map" ? "map" : "list";
+  // Cloud is the landing view; list and map are opt-in. `?view=list` is a real
+  // URL surface now, so it has to be emitted (and preserved) like `map` is.
+  const view = sp.view === "map" ? "map" : sp.view === "list" ? "list" : "cloud";
 
-  // Map view shows every filtered match at once — a map naturally shows the
-  // full result set, not a page at a time — so it uses the pin projection
-  // (slug/name/lat/lng) instead of paging the full directory rows.
+  // Neither map nor cloud pages: a map naturally plots the whole filtered set,
+  // and a word map of twelve names is not a word map. Both take every match at
+  // once — the map via the pin projection (slug/name/lat/lng), the cloud via
+  // memberDirectory's existing no-limit contract (the homepage logo wall relies
+  // on the same one, so its return shape must not change).
   const isMap = view === "map";
+  const isList = view === "list";
 
   const filters = { industries: industrySlugs, services, membershipTypes: membershipTypeSlugs, q };
   const [dir, pins, inds, serviceList, typeList, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
-    isMap ? null : memberDirectory({ ...filters, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+    isMap ? null : memberDirectory({ ...filters, ...(isList ? { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE } : {}) }),
     isMap ? memberPins(filters) : null,
     industryList(),
     allServices(),
@@ -65,7 +71,8 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const qs = (over: Record<string, string | string[] | number | undefined>) => {
     const params = new URLSearchParams();
     const merged: Record<string, string | string[] | number | undefined> = {
-      industry: industrySlugs, service: services, type: membershipTypeSlugs, q, view: view === "map" ? "map" : undefined, page: undefined, ...over,
+      // Cloud is the default, so it is the one view that emits no param.
+      industry: industrySlugs, service: services, type: membershipTypeSlugs, q, view: view === "cloud" ? undefined : view, page: undefined, ...over,
     };
     Object.entries(merged).forEach(([k, v]) => {
       if (v === undefined || v === "") return;
@@ -82,6 +89,12 @@ export default async function MembersPage(props: PageProps<"/member">) {
 
   // A member can hold overlapping featured placements — show each member once.
   const featured = [...new Map(featuredPlacements.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : []))).values()];
+  // The cloud's big orange names are the same paid placement as the strip
+  // above, not a second notion of "featured" — reuse the deduped list.
+  const featuredSlugs = new Set(featured.map((m) => m.slug));
+  // Same shape as memberDirectory's own shuffle seed, so the cloud's layout
+  // holds still for the day and rotates with the listing at UTC midnight.
+  const cloudSeed = `${new Date().toISOString().slice(0, 10)}|${industrySlugs.join(",")}|${services.join(",")}|${membershipTypeSlugs.join(",")}|${q ?? ""}`;
 
   return (
     <div className="mx-auto max-w-6xl px-4">
@@ -119,7 +132,9 @@ export default async function MembersPage(props: PageProps<"/member">) {
           {industrySlugs.map((s) => <input key={s} type="hidden" name="industry" value={s} />)}
           {services.map((s) => <input key={s} type="hidden" name="service" value={s} />)}
           {membershipTypeSlugs.map((t) => <input key={t} type="hidden" name="type" value={t} />)}
-          {view === "map" && <input type="hidden" name="view" value="map" />}
+          {/* Both non-default views, or searching from the list silently throws
+              you into the cloud and the view is lost on every search. */}
+          {view !== "cloud" && <input type="hidden" name="view" value={view} />}
           <input
             name="q"
             type="search"
@@ -167,9 +182,19 @@ export default async function MembersPage(props: PageProps<"/member">) {
             <> · <Link href={qs({ industry: undefined, service: undefined, type: undefined, q: undefined })} className="text-graphite hover:underline">Clear filters</Link></>
           )}
         </p>
+        {/* "Map" is the geographic one and keeps that name; the word map is
+            "Cloud" so the two are never confused in a toggle. */}
         <div className="flex gap-2 text-sm">
-          <Link href={qs({ view: undefined })} aria-current={view === "list" ? "true" : undefined} className={`tap rounded border px-3 py-1.5 ${view === "list" ? "bg-ink text-white" : "bg-white"}`}>List</Link>
-          <Link href={qs({ view: "map" })} aria-current={view === "map" ? "true" : undefined} className={`tap rounded border px-3 py-1.5 ${view === "map" ? "bg-ink text-white" : "bg-white"}`}>Map</Link>
+          {([["list", "List"], ["cloud", "Cloud"], ["map", "Map"]] as const).map(([key, label]) => (
+            <Link
+              key={key}
+              href={qs({ view: key === "cloud" ? undefined : key })}
+              aria-current={view === key ? "true" : undefined}
+              className={`tap rounded border px-3 py-1.5 ${view === key ? "bg-ink text-white" : "bg-white"}`}
+            >
+              {label}
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -185,12 +210,26 @@ export default async function MembersPage(props: PageProps<"/member">) {
           )}
           <MemberMap members={withCoords} />
         </div>
+      ) : members.length === 0 ? (
+        /* Hoisted out of the list branch: the cloud is the default view now, so
+           this is what an over-narrow filter lands on. e2e asserts the literal
+           string. (Map has its own coverage note above instead.) */
+        <p className="mt-10 text-center text-graphite">No members found.</p>
+      ) : view === "cloud" ? (
+        <MemberCloud
+          seed={cloudSeed}
+          members={members.map((m) => ({
+            slug: m.slug,
+            name: m.name,
+            logoUrl: mediaUrl(m.logo_path),
+            featured: featuredSlugs.has(m.slug),
+          }))}
+        />
       ) : (
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {members.slice(0, 6).map((m) => <MemberTile key={m.slug} member={m} />)}
           </div>
-          {members.length === 0 && <p className="mt-10 text-center text-graphite">No members found.</p>}
           {members.length > 6 && (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {members.slice(6).map((m) => <MemberTile key={m.slug} member={m} />)}

@@ -47,6 +47,7 @@ const CONSOLE_SECTIONS: NavSection[] = [
     children: [
       { href: "/console/members", label: "Members" },
       { href: "/console/crm", label: "CRM" },
+      { href: "/console/leads", label: "Lead Gen" },
       { href: "/console/promo-codes", label: "Promo Codes" },
     ],
   },
@@ -62,6 +63,7 @@ const CONSOLE_SECTIONS: NavSection[] = [
       { href: "/console/industries", label: "Industries" },
       { href: "/console/media", label: "Media Library" },
       { href: "/console/resources", label: "Member Resources" },
+      { href: "/console/email-templates", label: "Email Templates" },
     ],
   },
 ];

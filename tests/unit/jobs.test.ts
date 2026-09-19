@@ -354,6 +354,28 @@ describe("runJob kinds", () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: "acme@example.com" }), { idempotencyKey: `notify-${j.id}` });
   });
 
+  it("notify_member — sends the console's edited copy, not the shipped default", async () => {
+    // The whole point of email_templates: an edit made in the console has to
+    // reach the member on the very next tick, with no deploy and no cache to
+    // invalidate. Everything either side of this is inference.
+    const j = job("notify_member", { payload: { member_id: "m1", kind: "story_live" } });
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
+      members: () => queryBuilder(dbOk({ id: "m1", name: "Acme", contact_email: "acme@example.com" })),
+      notifications: () => queryBuilder(dbOk(null)),
+      email_templates: () =>
+        queryBuilder(dbOk([{ kind: "story_live", subject: "You're on the front page", body_text: null }])),
+    });
+
+    await runJobById(j.id);
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: "You're on the front page" }),
+      { idempotencyKey: `notify-${j.id}` },
+    );
+    // body_text was left null, so the shipped paragraph still comes through.
+    expect(callsOf(send)[0]?.[0]).toMatchObject({ text: expect.stringContaining("has been approved") });
+  });
+
   it("admin_digest — sends nothing on a quiet day (every count is zero)", async () => {
     const j = job("admin_digest");
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {

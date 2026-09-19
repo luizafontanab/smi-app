@@ -11,7 +11,7 @@ import { unreadNotificationCount } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 
-// Flat — seven top-level pages don't need the console's two-tier treatment.
+// Flat — these top-level pages don't need the console's two-tier treatment.
 // The advertising hub carries its own Information/Buy/Manage strip.
 const NAV: NavSection[] = [
   { key: "overview", href: "/dashboard", label: "Dashboard" },
@@ -21,6 +21,7 @@ const NAV: NavSection[] = [
   { key: "submissions", href: "/dashboard/submissions", label: "Your content" },
   { key: "advertising", href: "/dashboard/advertising", label: "Advertising" },
   { key: "stats", href: "/dashboard/stats", label: "Stats" },
+  { key: "leads", href: "/dashboard/leads", label: "Leads" },
   { key: "help", href: "/dashboard/help", label: "Help" },
   { key: "settings", href: "/dashboard/settings", label: "Settings" },
 ];

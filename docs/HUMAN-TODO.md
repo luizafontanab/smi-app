@@ -52,6 +52,13 @@ Do these in order; later steps depend on earlier ones.
 - [ ] **1.5 — Decide the reply-to address.** Without `EMAIL_REPLY_TO`, replies go
       to `noreply@` and reach nobody — including a member answering "your advert
       needs a change before it runs", which is a message that invites a reply.
+- [ ] **1.7 — Know that "Send a test" in the console is inert until 1.1–1.4 are
+      done.** `/console/email-templates` has a "send yourself a copy" button on
+      every template (fix-list 63). Locally it lands in Mailpit; in production,
+      with no `RESEND_API_KEY` set, it logs to the server console and reports
+      nothing arriving. The page says so, but the first person to press it will
+      reasonably file it as a bug otherwise. Nothing to do here except the steps
+      above — this is a note, not a task.
 - [ ] **1.6 — Smoke-test before pointing it at real people.** Send to Resend's
       test addresses, which exercise the real API and webhooks:
       `delivered@resend.dev`, `bounced@resend.dev`, `complained@resend.dev`
@@ -482,23 +489,30 @@ header and footer. Code-complete; these two need a person.
       grid baseline, so nothing else in the suite moves, but grid-mode `/news`,
       `/member` and the rest do look different now. That was the agreed
       trade-off, not an oversight.
-- [ ] **14.3 — Nine advert positions are currently removed from the homepage.**
+- [ ] **14.3 — Ten advert positions are still removed from the homepage.**
       The 16-17 Sep layout passes took out both side rails and then, at the
       client's direction, the holding row and the supplier-logo band that had
-      been carrying their contents. The grid homepage now has **three** advert
-      positions — the banners `home_1`, `home_2`, `home_3` — and nothing else.
-      Gone from the page: the eight `home_rail_1…8` logo slots, the
-      `home_mpu_1` box, the supplier-logo wall, and the featured-member
-      placement. They render nowhere and report no impressions
-      (`components/AdCreative.tsx` → `/api/seen`), so **a live booking against
-      any of them shows a reader nothing today**. Luiza is reworking that part
-      of the page; this entry is the reminder that the inventory has to come
-      back somewhere, or be withdrawn from sale. Worth knowing while deciding:
-      `home_rail_1…8` were never registered in `advert_slots` (no `cap` row, no
-      presence in `/console/adverts/spots`) — they existed only as string
-      literals in the view, so this is also the moment to decide whether they
-      should be real, capped slots. `tests/unit/home-grid.test.tsx` asserts the
-      current three so the count cannot drift unnoticed.
+      been carrying their contents. The grid homepage has **three** advert
+      positions — `home_1`, `home_2` and `home_3`, all of them the full-width
+      1280×170 banner — and nothing else. Still gone from the page: the
+      eight `home_rail_1…8` logo slots, the `home_mpu_1` box, the supplier-logo
+      wall, and — new since 18 Sep — `home_2_narrow`, the one-day-old narrow
+      slot that `home_2` replaced again (fix-list 64, and see §14.5). They
+      render nowhere and report no
+      impressions (`components/AdCreative.tsx` → `/api/seen`), so **a live
+      booking against any of them shows a reader nothing today**. The inventory
+      has to come back somewhere, or be withdrawn from sale. Worth knowing
+      while deciding: `home_rail_1…8` were never registered in `advert_slots`
+      (no `cap` row, no presence in `/console/adverts/spots`) — they existed
+      only as string literals in the view, so this is also the moment to decide
+      whether they should be real, capped slots.
+      `tests/unit/home-grid.test.tsx` asserts the current three so the count
+      cannot drift unnoticed.
+      **Partly closed 17 Sep:** the **featured-member placement is back**, as
+      the "Featured members" box down the left of the Latest videos band
+      (fix-list 61). A live `featured_member` placement renders again. Note it
+      is a static list, not the carousel that `src/lib/visibility-products.ts`
+      and the rate card both promise — see §14.6.
 - [ ] **14.4 — "Featured event" is editorial, not sellable.** The new second
       placement card on the fold shows whichever event `upcomingEvents()`
       returns first. It cannot be booked: `placement_kind`
@@ -507,13 +521,86 @@ header and footer. Code-complete; these two need a person.
       The client's wireframe labels that position "Advert — Featured Event". If
       it is meant to be sold, it needs a new enum value and console support —
       say the word and I will write the migration.
+- [ ] **14.5 — Do not sell the 830×170 banner: it renders nowhere.** This item
+      used to ask you to publish the narrow artwork spec. **It is withdrawn** —
+      on 18 Sep the client asked for every homepage banner to be the same size,
+      so the grid homepage's second position went back to the full-width
+      `home_2` slot (fix-list 64) and nothing on the site renders
+      `banner_narrow` any more.
+      What is left behind, all of it live in the database and the console:
+      the `banner_narrow` value in the `advert_format` enum and the
+      `home_2_narrow` row in `advert_slots`
+      (`supabase/migrations/20260917000001`); the "Banner — narrow (830×170
+      desktop / 370×280 mobile)" option in the console's advert and spot
+      pickers; a `banner_narrow` advert and a "Homepage banner (narrow)"
+      product in both seeds; and £650/month in `ADVERT_FORMAT_PENNIES`
+      (`src/lib/pricing.ts`). None of it was ripped out, because a Postgres
+      enum value cannot be dropped cleanly and the format may yet find a home.
+      Two things for a person:
+      **(a) A booking against `home_2_narrow` shows a reader nothing.** Same
+      problem as §14.3's removed slots. Nothing has been sold against it as far
+      as the code can tell, but check before assuming.
+      **(b) Decide whether it goes or stays.** If it stays, it needs a position
+      on a page; if it goes, say so and I will strip the console options, the
+      price, the seed rows and the slot row in one pass. It never reached the
+      public rate card (`DEFAULT_AD_FORMATS` in `src/lib/advert-formats.ts`
+      still offers "Desktop 1280×170px" only) and it was never on the member's
+      own advert form, so no advertiser has been told the size exists — which
+      makes this cheap to reverse in either direction, today.
+- [ ] **14.6 — "Featured Member" is sold as a carousel; it is a list.**
+      `src/lib/visibility-products.ts` offers it as "Homepage carousel + higher
+      directory ranking" and `DEFAULT_AD_FORMATS` key B says "your logo and
+      profile in the homepage carousel". Neither design has ever had a
+      featured-member carousel: forge shows a band under the hero, and grid now
+      shows the static "Featured members" box (fix-list 61). Either the copy
+      changes or the component does — a copy question, so it is yours. Both
+      strings are shown on the advertising hub's Information, Buy and Manage
+      pages, i.e. to the member at the point of sale.
+
+---
+
+## 15 · Buffer social posting (17 Sep) — blocks every auto-post
+
+The publisher was ported off Buffer's v1 REST API, which has been closed to new
+developer credentials since 2019, onto their current GraphQL API (`GAPS.md`
+B4.4). The code is written and tested; nothing has ever run against the real
+Buffer, because no key has ever existed. Until these are done, every scheduled
+story and video still publishes on the site but its social push only logs.
+
+- [ ] **15.1 — Create the Buffer API key.** Buffer → Settings → API. **Only an
+      organisation owner can create one** — a member account will be prompted to
+      switch orgs and cannot proceed. Set it as `BUFFER_ACCESS_TOKEN`. Note this
+      is a *personal API key* on the current API, not a v1 developer app
+      credential; those are the ones Buffer stopped issuing, which is why the
+      old code path could never have worked. Quota is per plan (Free: 3,000
+      requests / 30 days) and we spend one request **per channel per post**, so
+      three posts a day across two channels is ~180/month.
+- [ ] **15.2 — Set the channel ids** at `/console/stories` → "Buffer channels".
+      Until this is filled in, the adapter fails closed on every post by design.
+      ⚠ If that field already shows a warning about "v1 profile ids", the stored
+      values are from the old API and must be replaced — we deliberately do not
+      convert them, because a v1 profile id and a GraphQL channel id are not
+      known to be the same value and guessing could post to the wrong account.
+- [ ] **15.3 — Confirm two enum literals against the live schema**, by
+      introspection or one test post. `SHARE_MODE` and `SCHEDULING_TYPE` at the
+      top of `src/lib/adapters/social.ts` are currently `"shareNow"` / `"custom"`
+      and are **unverified**. They must mean *post now*: our own job queue
+      already applies the +30 min delay and the daily cap, so a queue-shaped
+      mode would stack Buffer's scheduling on top of ours, break the "posted
+      ~30 min after publish" expectation, and make the cap accounting fiction.
+      A wrong literal here is the one failure mode the tests cannot catch.
+- [ ] **15.4 — Check the first real post's image actually rendered.** Media is
+      passed as a public URL, not an upload. In production that resolves to the
+      Supabase public `media` bucket and should be fine; locally it resolves to
+      `127.0.0.1` and will legitimately fail, which is not a bug.
 
 ---
 
 ## Not in this list
 
-Other approval-gated externals — MaxMind/GeoLite2, Buffer, the
+Other approval-gated externals — MaxMind/GeoLite2, the
 GitHub/Vercel/Supabase ownership transfers, and the London-region Supabase
 project — are tracked in [`README.md`](../README.md) under "Outstanding" and in
-`GAPS.md` Part B. Stripe and Bigin moved into §6/§7 above once their adapters
-were built. This file covers what the Resend email work left open, plus §6/§7.
+`GAPS.md` Part B. Stripe, Bigin and Buffer moved into §6/§7/§15 above once their
+adapters were built. This file covers what the Resend email work left open,
+plus §6/§7/§15.

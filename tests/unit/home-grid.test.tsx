@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { GridHome } from "@/app/(public)/home.grid";
 import {
-  GhLatestList, GhMoreNews, GhStatsBand, GhStoryCard,
+  GhEventCard, GhFeaturedMembers, GhMoreNews, GhNewsletterCard, GhNewsletterPanel,
+  GhPublicationPanel, GhStatsBand, GhStoryCard, type GhFeaturedMemberData,
 } from "@/components/grid-home/cards";
+import { SectionHead } from "@/components/grid-home/ui";
 import type { HomeData } from "@/app/(public)/home.data";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -84,23 +86,32 @@ describe("GhMoreNews", () => {
   });
 });
 
-describe("GhLatestList", () => {
-  it("renders one row per supplied kind, keeping the caller's order", () => {
-    render(
-      <GhLatestList
-        items={[
-          { eyebrow: "Latest news", label: "Steel tariffs", href: "/news/x" },
-          { eyebrow: "Upcoming event", label: "EuroBLECH 2026", href: "/event/eb" },
-        ]}
-      />,
-    );
-    expect(screen.getByText("Latest news")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /EuroBLECH 2026/ })).toHaveAttribute("href", "/event/eb");
+describe("GhFeaturedMembers", () => {
+  const member = (over: Partial<GhFeaturedMemberData> = {}): GhFeaturedMemberData => ({
+    slug: "acme",
+    name: "Acme Fabrications",
+    logo_path: null,
+    industry: { name: "Laser cutting" },
+    ...over,
+  });
+
+  it("renders one row per member, linking to the member page", () => {
+    render(<GhFeaturedMembers members={[member(), member({ slug: "bradley", name: "Bradley Sheet Metal" })]} />);
+    expect(screen.getByRole("link", { name: /Acme Fabrications/ })).toHaveAttribute("href", "/member/acme");
+    expect(screen.getByRole("link", { name: /Bradley Sheet Metal/ })).toHaveAttribute("href", "/member/bradley");
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
 
-  it("renders nothing when no kind has content", () => {
-    const { container } = render(<GhLatestList items={[]} />);
+  it("shows the industry, and copes with a member that has none", () => {
+    render(<GhFeaturedMembers members={[member(), member({ slug: "x", name: "No Industry Ltd", industry: null })]} />);
+    expect(screen.getByText("Laser cutting")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /No Industry Ltd/ })).toBeInTheDocument();
+  });
+
+  // Paid inventory: an empty panel labelled "Featured members" reads as a
+  // product nobody bought, and it would leave a dead column beside the videos.
+  it("renders nothing rather than an empty panel", () => {
+    const { container } = render(<GhFeaturedMembers members={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
 });
@@ -110,14 +121,14 @@ describe("GhStatsBand", () => {
     render(await GhStatsBand({ storyTotal: 1968, memberCount: 82 }));
     expect(screen.getByText("1,968")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Sign up for membership/i })).toHaveAttribute("href", "/join");
+    expect(screen.getByRole("link", { name: /Become a Member/i })).toHaveAttribute("href", "/join");
   });
 
   it("keeps the numbers but drops the CTA for a signed-in member", async () => {
     currentUser.mockResolvedValue({ email: "member1@smi.local" });
     render(await GhStatsBand({ storyTotal: 1968, memberCount: 82 }));
     expect(screen.getByText("1,968")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Sign up for membership/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Become a Member/i })).not.toBeInTheDocument();
   });
 });
 
@@ -134,6 +145,43 @@ function slotKeys(node: ReactNode, found: string[] = []): string[] {
   return found;
 }
 
+/** Every element of one component type in a returned tree, with its props. */
+function propsOf<P>(node: ReactNode, type: unknown, found: P[] = []): P[] {
+  if (Array.isArray(node)) {
+    for (const child of node) propsOf(child, type, found);
+    return found;
+  }
+  if (!isValidElement(node)) return found;
+  if (node.type === type) found.push(node.props as P);
+  propsOf((node.props as { children?: ReactNode }).children, type, found);
+  return found;
+}
+
+const eventCards = (n: ReactNode) => propsOf<{ event: { slug: string }; featured?: boolean }>(n, GhEventCard);
+const newsletterCards = (n: ReactNode) => propsOf<{ issue: { number: number } }>(n, GhNewsletterCard).map((p) => p.issue);
+const sectionTitles = (n: ReactNode) => propsOf<{ title: string }>(n, SectionHead).map((p) => p.title);
+
+/** How many times a given component appears in a returned element tree. */
+function countOf(node: ReactNode, type: unknown): number {
+  if (Array.isArray(node)) return node.reduce<number>((n, child) => n + countOf(child, type), 0);
+  if (!isValidElement(node)) return 0;
+  const props = node.props as { children?: ReactNode };
+  return (node.type === type ? 1 : 0) + countOf(props.children, type);
+}
+
+/** Every className string in a returned element tree, joined. */
+function classNames(node: ReactNode, found: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const child of node) classNames(child, found);
+    return found;
+  }
+  if (!isValidElement(node)) return found;
+  const props = node.props as { className?: string; children?: ReactNode };
+  if (typeof props.className === "string") found.push(props.className);
+  classNames(props.children, found);
+  return found;
+}
+
 const homeData = (over: Partial<HomeData> = {}): HomeData => ({
   heroItems: [],
   stories: [],
@@ -147,7 +195,7 @@ const homeData = (over: Partial<HomeData> = {}): HomeData => ({
   memberCount: 0,
   storyTotal: 0,
   categories: [],
-  adverts: { banner: [], supplier_logo: [], skyscraper: [], mpu: [], in_feed: [] },
+  adverts: { banner: [], banner_narrow: [], supplier_logo: [], skyscraper: [], mpu: [], in_feed: [] },
   showPlaceholders: true,
   ...over,
 } as unknown as HomeData);
@@ -162,12 +210,17 @@ describe("GridHome", () => {
   /*
    * Advert inventory, asserted rather than left to a reader of the JSX.
    *
-   * As of 17 Sep this page carries THREE positions — the banners — and nothing
-   * else. The eight home_rail_* logo slots and the home_mpu_1 box were removed
-   * at the client's direction while that part of the page is reworked
-   * (docs/HUMAN-TODO.md §14.3). That is a deliberate reduction, not drift, and
-   * this test is what makes it visible if someone changes it again in either
-   * direction.
+   * This page carries THREE positions and nothing else. The eight home_rail_*
+   * logo slots and the home_mpu_1 box were removed at the client's direction
+   * while that part of the page is reworked (docs/HUMAN-TODO.md §14.3). That
+   * is a deliberate reduction, not drift, and this test is what makes it
+   * visible if someone changes it again in either direction.
+   *
+   * All three are the full-width banner, at the client's direction (18 Sep) —
+   * home_2, not the 830×170 home_2_narrow it took for a day while it sat in
+   * the column beside the Featured members box. That slot and its
+   * banner_narrow format are still registered and now render nowhere
+   * (docs/HUMAN-TODO.md §14.5), which is what this assertion pins down.
    */
   it("carries exactly the advert inventory the design ships with", () => {
     const keys = slotKeys(GridHome(homeData()));
@@ -175,6 +228,100 @@ describe("GridHome", () => {
     // Every key appears once: a slot dealt into two positions would bill one
     // booking twice on a single page load.
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  /*
+   * The Upcoming events row starts at events[1]: events[0] is the fold's
+   * placement card, and the same event in both places reads as a bug. Only the
+   * fold card is `featured`, which is what carries the warm border and the
+   * "Featured event" label — a row of editorial events wearing a placement's
+   * highlight would be a commercial signal that means nothing.
+   */
+  it("places the fold's event once, and the rest in the events row", () => {
+    const ev = (slug: string) => ({ slug, title: `Event ${slug}`, location: null, starts_on: "2026-10-20" });
+    const tree = GridHome(homeData({ events: [ev("a"), ev("b"), ev("c"), ev("d"), ev("e")] as never }));
+    const cards = eventCards(tree);
+    expect(cards.map((c) => c.event.slug)).toEqual(["a", "b", "c", "d"]);
+    expect(cards.filter((c) => c.featured).map((c) => c.event.slug)).toEqual(["a"]);
+  });
+
+  // Both rows are gated on having something to show — an empty band with a
+  // section head and nothing under it is worse than no band.
+  it("drops the events and newsletter rows when there is nothing for them", () => {
+    const heads = sectionTitles(GridHome(homeData()));
+    expect(heads).not.toContain("Upcoming events");
+    expect(heads).not.toContain("Latest newsletters");
+  });
+
+  // web_slug is nullable, and /newsletters/null is not a page. An issue
+  // without one is skipped rather than rendered as a dead card.
+  it("skips a newsletter issue with no page to link to", () => {
+    const issue = (number: number, web_slug: string | null) => ({ number, subject: `Issue ${number}`, intro: null, web_slug, sent_at: null });
+    const tree = GridHome(homeData({ newsletters: [issue(9, "nine"), issue(8, null), issue(7, "seven")] as never }));
+    expect(sectionTitles(tree)).toContain("Latest newsletters");
+    expect(newsletterCards(tree).map((i) => i.number)).toEqual([9, 7]);
+  });
+
+  /*
+   * The newsletter signup and the magazine promo moved out of their own band
+   * and into the videos band on 18 Sep, where the narrow advert used to sit.
+   * Both are unconditional — no data gates them — so a move that dropped one
+   * would show as an empty half-column and nothing else. Neither may appear
+   * twice: two signup forms on one page means two id="…" collisions and a
+   * second subscribe POST target.
+   */
+  it("carries the newsletter and magazine panels exactly once each", () => {
+    const tree = GridHome(homeData());
+    expect(countOf(tree, GhNewsletterPanel)).toBe(1);
+    expect(countOf(tree, GhPublicationPanel)).toBe(1);
+  });
+
+  /*
+   * The videos band splits into two columns only when there is a Featured
+   * members box to put in the left one. Leaving the column definition in place
+   * with no box drops the videos into the 3fr column — half-width videos beside
+   * an empty gutter — so the class has to switch with the data, and one array
+   * has to decide both. Asserted because the failure is silent at build time.
+   */
+  it("only splits the videos band into columns when a member is featured", () => {
+    const placement = { member: { slug: "acme", name: "Acme", logo_path: null, industry: { name: "Laser" } } };
+    const withBox = classNames(GridHome(homeData({ featuredMembers: [placement] as never }))).join(" ");
+    expect(withBox).toContain("lg:grid-cols-[3fr_9fr]");
+
+    const without = classNames(GridHome(homeData())).join(" ");
+    expect(without).not.toContain("lg:grid-cols-[3fr_9fr]");
+  });
+
+  // A placement whose member row is missing (members.member_id is nullable)
+  // must not count towards the box, or the page splits into two columns and
+  // renders nothing in the left one.
+  it("ignores a featured placement with no member attached", () => {
+    const tree = GridHome(homeData({ featuredMembers: [{ member: null }] as never }));
+    expect(classNames(tree).join(" ")).not.toContain("lg:grid-cols-[3fr_9fr]");
+  });
+
+  /*
+   * Regression guard for a whole story going missing. The fold takes stories
+   * 0-1 and the More News carousel takes the run straight after them — so the
+   * ids placed on the page must be a contiguous prefix with no hole in it.
+   * It caught exactly that when the Industry insight band was removed on
+   * 18 Sep and its story index would otherwise have been skipped. The
+   * duplicate test below cannot see an omission.
+   */
+  it("places a contiguous run of stories, skipping none", () => {
+    const stories = Array.from({ length: 14 }, (_, i) => story({ id: `s${i}`, slug: `s${i}`, title: `Story ${i}` }));
+    const placed = new Set<string>();
+    const walk = (node: ReactNode): void => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!isValidElement(node)) return;
+      const props = node.props as { story?: StoryCardType; stories?: StoryCardType[]; children?: ReactNode };
+      if (props.story) placed.add(props.story.id);
+      props.stories?.forEach((s) => placed.add(s.id));
+      walk(props.children);
+    };
+    walk(GridHome(homeData({ stories })));
+    const indexes = [...placed].map((id) => Number(id.slice(1))).sort((a, b) => a - b);
+    expect(indexes).toEqual(Array.from({ length: indexes.length }, (_, i) => i));
   });
 
   it("never places the same story twice across the page's sections", () => {

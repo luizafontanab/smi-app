@@ -14,11 +14,28 @@ const post = (over: Partial<SocialPost> = {}): SocialPost => ({
 });
 
 /** Configures serviceDb() to return the given "social_channels" settings row. */
-function withChannels(profileIds: string[]) {
+function withChannels(channelIds: string[]) {
+  vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+    from: () => queryBuilder(dbOk({ value: { channelIds } })),
+  })));
+}
+
+/** The v1 settings row, as it may still exist on disk from before the GraphQL migration. */
+function withLegacyProfileIds(profileIds: string[]) {
   vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
     from: () => queryBuilder(dbOk({ value: { profileIds } })),
   })));
 }
+
+/** A Buffer GraphQL success, which is an HTTP 200 like every other outcome. */
+const ok = () =>
+  new Response(JSON.stringify({ data: { createPost: { __typename: "PostActionSuccess", post: { id: "p1" } } } }), {
+    status: 200,
+  });
+
+/** The `input` object sent on the nth fetch call. */
+const inputOf = (spy: ReturnType<typeof vi.spyOn>, n = 0) =>
+  JSON.parse(spy.mock.calls[n][1]?.body as string).variables.input;
 
 describe("getSocialPublisher — local dev stub", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
@@ -82,52 +99,75 @@ describe("getSocialPublisher — Buffer", () => {
     errorSpy.mockRestore();
   });
 
-  it("posts to the Buffer API with the token, text, and each configured channel", async () => {
-    withChannels(["profile-1", "profile-2"]);
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+  it("sends one createPost mutation per configured channel, with the token and text", async () => {
+    withChannels(["channel-1", "channel-2"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ok());
 
     await getSocialPublisher().publish(post({ text: "Hello world" }));
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // profile_ids[] is gone — the GraphQL API takes a single channelId per call.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("https://api.bufferapp.com/1/updates/create.json");
+    expect(url).toBe("https://api.buffer.com");
     expect(init?.method).toBe("POST");
     expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer buffer-token");
-    const body = new URLSearchParams(init?.body as string);
-    expect(body.get("text")).toBe("Hello world");
-    expect(body.getAll("profile_ids[]")).toEqual(["profile-1", "profile-2"]);
+    expect((init?.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    expect(inputOf(fetchSpy, 0).text).toBe("Hello world");
+    expect(inputOf(fetchSpy, 0).channelId).toBe("channel-1");
+    expect(inputOf(fetchSpy, 1).channelId).toBe("channel-2");
   });
 
-  it("appends tag handles to the text body — real @-tagging support is unresolved (B4.3)", async () => {
-    withChannels(["profile-1"]);
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+  it("posts immediately and schedules nothing of its own — our job queue owns the timing", async () => {
+    withChannels(["channel-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ok());
+
+    await getSocialPublisher().publish(post());
+
+    // A queue-shaped mode or a dueAt would stack Buffer's delay on top of the
+    // +30 min our own publish_scheduled job already applied.
+    const input = inputOf(fetchSpy);
+    expect(input.mode).toBe("shareNow");
+    expect(input.schedulingType).toBe("custom");
+    expect(input.dueAt).toBeUndefined();
+  });
+
+  it("appends tag handles to the text body — real @-tagging needs an org URN we don't store (B4.3)", async () => {
+    withChannels(["channel-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ok());
 
     await getSocialPublisher().publish(post({ text: "Hello", tagHandles: { linkedin: "acme-ltd" } }));
 
-    const body = new URLSearchParams(fetchSpy.mock.calls[0][1]?.body as string);
-    expect(body.get("text")).toBe("Hello\n\nlinkedin:acme-ltd");
+    expect(inputOf(fetchSpy).text).toBe("Hello\n\nlinkedin:acme-ltd");
   });
 
-  it("attaches the image when imagePath resolves to a URL", async () => {
-    withChannels(["profile-1"]);
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+  it("attaches the image by public URL when imagePath resolves", async () => {
+    withChannels(["channel-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ok());
 
     await getSocialPublisher().publish(post({ imagePath: "stories/cover.jpg" }));
 
-    const body = new URLSearchParams(fetchSpy.mock.calls[0][1]?.body as string);
-    expect(body.get("media[photo]")).toContain("stories/cover.jpg");
+    expect(inputOf(fetchSpy).assets[0].image.url).toContain("stories/cover.jpg");
   });
 
   it("refuses to post when no Buffer channel is configured, without ever calling fetch", async () => {
     withChannels([]);
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ok());
 
     await expect(getSocialPublisher().publish(post())).rejects.toThrow(/no buffer channel/i);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("treats leftover v1 profile ids as no channels at all, and says so", async () => {
+    withLegacyProfileIds(["profile-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ok());
+
+    // Coercing a v1 profile id into a channelId would post to the wrong account.
+    await expect(getSocialPublisher().publish(post())).rejects.toThrow(/v1 profile ids/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("throws with the response detail when Buffer rejects the request", async () => {
-    withChannels(["profile-1"]);
+    withChannels(["channel-1"]);
     fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad token", { status: 401 }));
 
     await expect(getSocialPublisher().publish(post())).rejects.toThrow(/401/);
@@ -135,11 +175,56 @@ describe("getSocialPublisher — Buffer", () => {
   });
 
   it("logs and rethrows on a network failure so the job retries", async () => {
-    withChannels(["profile-1"]);
+    withChannels(["channel-1"]);
     const failure = new Error("network down");
     fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(failure);
 
     await expect(getSocialPublisher().publish(post())).rejects.toThrow("network down");
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  // The four below all return HTTP 200. The pre-migration `!res.ok` check read
+  // every one of them as a successful post.
+
+  it("fails on a MutationError returned with HTTP 200", async () => {
+    withChannels(["channel-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: { createPost: { __typename: "MutationError", message: "Channel not found" } } }), { status: 200 }),
+    );
+
+    await expect(getSocialPublisher().publish(post())).rejects.toThrow(/Channel not found/);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("fails on a top-level GraphQL error returned with HTTP 200", async () => {
+    withChannels(["channel-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ errors: [{ message: "Cannot query field createPost" }] }), { status: 200 }),
+    );
+
+    await expect(getSocialPublisher().publish(post())).rejects.toThrow(/Cannot query field createPost/);
+  });
+
+  it("fails on a non-JSON 200 body rather than reading undefined as success", async () => {
+    withChannels(["channel-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("<html>gateway</html>", { status: 200 }),
+    );
+
+    await expect(getSocialPublisher().publish(post())).rejects.toThrow(/non-JSON/i);
+  });
+
+  it("attempts every channel even when one fails, and names the failure", async () => {
+    withChannels(["channel-1", "channel-2"]);
+    fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { createPost: { __typename: "MutationError", message: "revoked" } } }), { status: 200 }),
+      );
+
+    // One bad channel must not stop the others, and the error has to say which.
+    await expect(getSocialPublisher().publish(post())).rejects.toThrow(/channel-2: revoked/);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });

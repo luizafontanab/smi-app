@@ -38,6 +38,39 @@ describe("renderIssueHtml", () => {
     expect(rendered!.text).toContain("/news/acme-news");
   });
 
+  it("keeps Resend's unsubscribe placeholder intact through our own substitution", async () => {
+    // Our {{token}} substitution deliberately never matches the triple-brace
+    // form. A naive /\{\{(\w+)\}\}/ eats the INNER two braces of {{{X}}} and
+    // leaves a stray brace around a dead link — a PECR problem, not a cosmetic
+    // one, so this is asserted rather than assumed.
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 9, subject: "s", intro: null, web_slug: null })),
+      newsletter_items: () => queryBuilder(dbOk([])),
+      newsletter_ads: () => queryBuilder(dbOk([])),
+    });
+
+    const rendered = await renderIssueHtml("iss1");
+
+    expect(rendered!.html).toContain('href="{{{RESEND_UNSUBSCRIBE_URL}}}"');
+    expect(rendered!.text).toContain("Unsubscribe: {{{RESEND_UNSUBSCRIBE_URL}}}");
+  });
+
+  it("renders through the editable wrapper, so the console can reword the chrome", async () => {
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 9, subject: "Autumn issue", intro: null, web_slug: null })),
+      newsletter_items: () => queryBuilder(dbOk([])),
+      newsletter_ads: () => queryBuilder(dbOk([])),
+      email_templates: () =>
+        queryBuilder(dbOk([{ kind: "_newsletter_shell", body_html: "<html><body><h1>{{subject}}</h1>{{items}}<a href=\"{{unsubscribe_url}}\">Out</a></body></html>" }])),
+    });
+
+    const rendered = await renderIssueHtml("iss1");
+
+    expect(rendered!.html).toContain("<h1>Autumn issue</h1>");
+    // Still carries a live unsubscribe link, whatever the wrapper says.
+    expect(rendered!.html).toContain("{{{RESEND_UNSUBSCRIBE_URL}}}");
+  });
+
   it("skips a newsletter_items row whose story has been deleted", async () => {
     db({
       newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: null })),

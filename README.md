@@ -48,7 +48,7 @@ The same three names must be set in Vercel — `NEXT_PUBLIC_*` are inlined at bu
 | `RESEND_SEGMENT_ID` | Needed for the newsletter | The newsletter falls back to the logging stub even with a key set (and says so). Issues are not marked sent. |
 | `RESEND_WEBHOOK_SECRET` | Needed for the newsletter | `/api/webhooks/resend` fails closed with 503, so unsubscribes and spam complaints made at Resend's end never reach our `contacts` table and the list silently goes stale. |
 | `MAILPIT_URL` | Dev only | The dev sender logs instead of delivering. From `supabase status`. |
-| `BUFFER_ACCESS_TOKEN` | Optional | Adapter falls back to a logging stub (`src/lib/adapters/`). |
+| `BUFFER_ACCESS_TOKEN` | Optional | Adapter falls back to a logging stub (`src/lib/adapters/`). A Buffer personal API key (Settings → API, org owner only), not a v1 developer credential. Channel ids are set in `/console/stories`, not here. |
 
 A full template with commentary lives in [`.env.example`](.env.example).
 
@@ -92,7 +92,7 @@ pnpm test:e2e                 # playwright (approval-gate loop, member-first sea
 
 - **Advert neutrality is structural**: selection is an unbiased shuffle in `src/lib/adverts.ts`; the schema has no weight/priority column and must never gain one.
 - **Approval gate**: no code path publishes content without editor action; RLS keeps non-published rows invisible to the public role.
-- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer), CRM (Bigin), newsletter (**Resend, as the candidate under test** — the MailChimp deliverability gate is still open and still Jas's call; the sender exists so the test can be run), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
+- **Integrations** are adapters with working local stubs (`src/lib/adapters/`): email (Resend), social (Buffer's GraphQL API), CRM (Bigin), newsletter (**Resend, as the candidate under test** — the MailChimp deliverability gate is still open and still Jas's call; the sender exists so the test can be run), IP→company (region-first GeoLite2), payments (Stripe). Real wiring lands per-service as credentials/decisions arrive.
 - **Jobs**: Postgres queue (`jobs` table) driven by `/api/cron` (Vercel Cron in prod, `scripts/job-runner.ts` locally). Dead-lettered jobs surface in the console's "Needs You Today".
 - **Analytics**: first-party, partitioned `analytics_events` + nightly rollups. Numbers shown to members are real — no padding, by requirement.
 

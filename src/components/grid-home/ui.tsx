@@ -36,10 +36,21 @@ export function Eyebrow({ children }: { children: React.ReactNode }) {
   return <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-brand-text">{children}</p>;
 }
 
-/** Flat white card — hairline border, near-square corners, no shadow. */
-export function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+/**
+ * Flat white card — hairline border, near-square corners, no shadow.
+ *
+ * `border` is its own prop rather than something to pass through className:
+ * both are border-colour utilities of equal specificity, so which one won
+ * would come down to Tailwind's output order, not the order they are written
+ * in. The placement cards on the fold pass the warm one.
+ */
+export function Panel({ children, className = "", border = "border-line" }: {
+  children: React.ReactNode;
+  className?: string;
+  border?: "border-line" | "border-brand/50";
+}) {
   return (
-    <div className={`rounded-[var(--gh-radius)] border border-line bg-white ${className}`}>{children}</div>
+    <div className={`rounded-[var(--gh-radius)] border ${border} bg-white ${className}`}>{children}</div>
   );
 }
 

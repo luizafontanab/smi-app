@@ -51,6 +51,89 @@ test.describe("reader (V1/V2)", () => {
   });
 });
 
+test.describe("member directory — cloud view", () => {
+  test("/member opens on the cloud, and the list is one click away", async ({ page }) => {
+    await page.goto("/member");
+    await expect(page.locator("#member-cloud")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Cloud", exact: true })).toHaveAttribute("aria-current", "true");
+
+    await page.getByRole("link", { name: "List", exact: true }).click();
+    await page.waitForURL(/view=list/);
+    await expect(page.locator("#member-cloud")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "List", exact: true })).toHaveAttribute("aria-current", "true");
+  });
+
+  test("the cloud shows every match at once, while the list still pages", async ({ page }) => {
+    await page.goto("/member");
+    const total = Number((await page.getByText(/^\d+ members?/).textContent())!.match(/\d+/)![0]);
+    // The whole point of the view: a word map of one page of twelve is not one.
+    expect(await page.locator("li.cloud-item").count()).toBe(total);
+
+    await page.goto("/member?view=list");
+    expect(await page.locator("a[href^='/member/']").count()).toBeLessThan(total);
+  });
+
+  test("hovering a name reveals its logo without moving the page", async ({ page }) => {
+    await page.goto("/member");
+    // The cloud repacks itself once the real font metrics are known, and eases
+    // into the correction — measure after that, or this test races the settle
+    // rather than the thing it is about.
+    await page.locator("#member-cloud-refined").waitFor({ state: "attached" });
+    await page.waitForTimeout(900); // the 700ms settle transition
+
+    const item = page.locator("li.cloud-item").first();
+    const card = item.locator(".cloud-card");
+    await expect(card).toHaveCSS("opacity", "0");
+
+    // A word map that reflowed on hover would be unusable — this is the
+    // requirement most likely to regress silently, so pin a neighbour. Pick a
+    // non-drifting one: the largest names carry an ambient drift by design.
+    const neighbour = page.locator("li.cloud-item:not([data-drift])").first();
+    // Measured against the cloud, not the viewport: hover() scrolls the target
+    // into view, so a viewport-relative box changes by the scroll distance and
+    // would fail this for a reason that has nothing to do with reflow.
+    const position = () =>
+      neighbour.evaluate((el) => {
+        const cloud = document.getElementById("member-cloud")!.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return { dx: Math.round(r.left - cloud.left), dy: Math.round(r.top - cloud.top), w: Math.round(r.width) };
+      });
+
+    const before = await position();
+    await item.locator(".cloud-name").hover();
+    await expect(card).toHaveCSS("opacity", "1");
+    expect(await position()).toEqual(before);
+  });
+
+  test("the logo is reachable by keyboard, not just by mouse", async ({ page }) => {
+    await page.goto("/member");
+    const item = page.locator("li.cloud-item").first();
+    await item.locator(".cloud-name").focus();
+    await expect(item.locator(".cloud-card")).toHaveCSS("opacity", "1");
+  });
+
+  test("filters apply to the cloud and names link through", async ({ page }) => {
+    await page.goto("/member");
+    await page.getByRole("navigation", { name: "Filter by industry" }).getByRole("link").nth(1).click();
+    await page.waitForURL(/\/member\?industry=/);
+    const total = Number((await page.getByText(/^\d+ members?/).textContent())!.match(/\d+/)![0]);
+    expect(await page.locator("li.cloud-item").count()).toBe(total);
+
+    const first = page.locator("li.cloud-item a[href^='/member/']").first();
+    const href = await first.getAttribute("href");
+    expect(href).toMatch(/^\/member\/[^/]+$/); // no trailing slash
+    await first.click();
+    await page.waitForURL(href!);
+  });
+
+  test("an empty result still says so in the cloud view", async ({ page }) => {
+    // Cloud is the default, so this message can no longer live in the list branch.
+    await page.goto("/member?q=zzzznosuchmemberzzzz");
+    await expect(page.getByText("No members found.")).toBeVisible();
+    await expect(page.locator("li.cloud-item")).toHaveCount(0);
+  });
+});
+
 test.describe("member directory — industry pills + text search", () => {
   test("the industry pills filter the directory", async ({ page }) => {
     await page.goto("/member");

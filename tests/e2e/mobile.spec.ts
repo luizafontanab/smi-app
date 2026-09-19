@@ -54,3 +54,27 @@ test("member billing table is reachable and contained", async ({ page }) => {
   const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(pageOverflow).toBeLessThanOrEqual(0);
 });
+
+test("the member cloud reveals a logo on first tap and follows the link on the second", async ({ page }) => {
+  await page.goto("/member");
+  // A phone has no hover, so the logo needs a tap of its own — but the name must
+  // still be a link, not a button, for everyone else.
+  const item = page.locator("li.cloud-item").first();
+  const name = item.locator(".cloud-name");
+  const href = await name.getAttribute("href");
+  expect(href).toMatch(/^\/member\/[^/]+$/);
+
+  await name.tap();
+  await expect(item.locator(".cloud-card")).toHaveCSS("opacity", "1");
+  expect(new URL(page.url()).pathname).toBe("/member");
+
+  await name.tap();
+  await page.waitForURL(href!);
+});
+
+test("the member cloud does not push the page sideways", async ({ page }) => {
+  await page.goto("/member");
+  await expect(page.locator("#member-cloud")).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});

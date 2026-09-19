@@ -62,6 +62,13 @@ async function unsubscribedContacts() {
   return data ?? [];
 }
 
+/**
+ * Resend swaps this for a per-recipient link at send time. Triple braces are
+ * ITS syntax, not ours — `lib/email/render.ts` never matches the triple-brace
+ * form precisely so this survives a pass through our own substitution.
+ */
+const UNSUBSCRIBE_URL = "{{{RESEND_UNSUBSCRIBE_URL}}}";
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -148,47 +155,40 @@ export async function renderIssueHtml(issueId: string): Promise<{ subject: strin
     })
     .join("");
 
-  const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(issue.subject)}</title></head>
-<body style="margin:0;padding:0;background:#f4f5f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f6;padding:24px 12px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #e4e6e9;border-radius:6px;overflow:hidden;font-family:'League Spartan',Helvetica,Arial,sans-serif;">
-        <tr><td style="background:#0b0d10;padding:20px 28px;">
-          <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#ff8200;">SMI Monthly · Issue ${issue.number}</p>
-          <p style="margin:6px 0 0;font-size:21px;font-weight:700;color:#ffffff;">${escapeHtml(issue.subject)}</p>
-          ${issue.intro ? `<p style="margin:8px 0 0;font-size:15px;line-height:1.5;color:#ffffff;opacity:0.8;">${escapeHtml(issue.intro)}</p>` : ""}
-        </td></tr>
-        <tr><td style="padding:8px 28px 24px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${storyHtml}${adHtml}</table>
-        </td></tr>
-        <tr><td style="border-top:1px solid #e4e6e9;padding:18px 28px;">
-          <p style="margin:0;font-size:13px;line-height:1.6;color:#5a6068;">
-            Sheet Metal Industries${issue.web_slug ? ` · <a href="${escapeHtml(base)}/newsletters/${escapeHtml(issue.web_slug)}" style="color:#5a6068;">Read this issue online</a>` : ""}<br>
-            <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:#5a6068;">Unsubscribe</a>
-          </p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
-
+  // The wrapper is editable in /console/email-templates (fix-list 63); the
+  // story and advert markup above is not, because it is generated from
+  // newsletter_items / newsletter_ads and carries the /visit/[id] click routing
+  // a paid slot needs to bill correctly (GAPS A5.4).
+  //
+  // `unsubscribe_url` is Resend's own `{{{RESEND_UNSUBSCRIBE_URL}}}`, passed as
+  // a value rather than left as a literal in the template: our substitution
+  // deliberately never matches the triple-brace form, so a template that still
+  // contains it verbatim keeps working either way.
+  const [{ renderNewsletterShell }, { loadEmailTemplates }] = await Promise.all([
+    import("../email/templates"),
+    import("../email/store"),
+  ]);
   const videos = (items ?? []).flatMap((item) => (item.video ? [item.video] : []));
-  const text = [
-    `SMI Monthly — Issue ${issue.number}`,
-    issue.subject,
-    issue.intro ?? "",
-    "",
-    ...stories.map((story) => `- ${story.title}\n  ${base}/news/${story.slug}`),
-    ...videos.map((video) => `- ${video.title}\n  ${base}/video/${video.slug}`),
-    "",
-    "Unsubscribe: {{{RESEND_UNSUBSCRIBE_URL}}}",
-  ]
-    .filter((line) => line !== null)
-    .join("\n");
+  const rendered = renderNewsletterShell(
+    {
+      issue_number: String(issue.number),
+      subject: issue.subject,
+      intro: issue.intro ?? "",
+      items: storyHtml,
+      adverts: adHtml,
+      items_text: [
+        ...stories.map((story) => `- ${story.title}\n  ${base}/news/${story.slug}`),
+        ...videos.map((video) => `- ${video.title}\n  ${base}/video/${video.slug}`),
+      ].join("\n"),
+      online_link: issue.web_slug
+        ? ` · <a href="${escapeHtml(base)}/newsletters/${escapeHtml(issue.web_slug)}" style="color:#5a6068;">Read this issue online</a>`
+        : "",
+      unsubscribe_url: UNSUBSCRIBE_URL,
+    },
+    await loadEmailTemplates(),
+  );
 
-  return { subject: issue.subject, html, text };
+  return { subject: issue.subject, html: rendered.html, text: rendered.text };
 }
 
 class LoggingNewsletterStub implements NewsletterSender {

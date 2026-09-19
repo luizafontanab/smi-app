@@ -1,20 +1,40 @@
 /**
- * Every member-facing email in one place: subject, plain text and HTML.
+ * Renders one notification into a ready-to-send email: subject, plain text and
+ * HTML.
  *
- * This replaces the stacked ternary that used to live inline in `lib/jobs.ts`,
- * where each new notification kind meant another branch and `machine_*` sat for
- * a while silently falling through to the generic line. A total `Record` over
- * the kind union makes that failure mode a type error instead.
+ * This is the engine only. The copy lives in `./defaults.ts` as a total
+ * `Record` over the kind union — which is what makes a new kind without copy a
+ * type error, the guarantee this file's header used to claim while `copyFor`
+ * was a `switch (kind: string)` with a `default:` branch that quietly absorbed
+ * anything missing. An admin's edits arrive as an `EmailTemplateMap` read from
+ * `email_templates` and override the defaults field by field.
  *
  * Text is the source of truth; HTML is the enhancement. Both are always sent.
  *
- * Colour rules come from `app/globals.css` and are not negotiable: brand orange
- * on paper measures 3.3:1 and FAILS AA, so it never carries body text here —
- * orange appears only on the near-black chrome (5.5:1) or as a CTA fill behind
- * ink (4.7:1, the documented pairing).
+ * **Deliberately synchronous.** Two member surfaces call `notificationLabel`
+ * from inside sync JSX callbacks, and the exhaustiveness suite calls
+ * `renderNotification` with no database in sight. So the overrides are passed
+ * in rather than fetched here; `./store.ts` owns the one read.
  */
 
 import { siteUrl } from "../site-url";
+import {
+  DASHBOARD_CTA,
+  EMAIL_DEFAULTS,
+  GENERIC_KIND,
+  NEWSLETTER_SHELL_KIND,
+  SHELL_KIND,
+  type TemplateDefault,
+  ctaMarkup,
+} from "./defaults";
+import {
+  collapseBlankLines,
+  dropEmptyParagraphs,
+  escapeHtml,
+  interpolate,
+  validateTemplate,
+  type TemplateVars,
+} from "./render";
 
 export const NOTIFICATION_KINDS = [
   "story_live",
@@ -50,6 +70,25 @@ export const NOTIFICATION_KINDS = [
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
+/**
+ * The emails that go to Jas rather than to a member.
+ *
+ * Deliberately a separate union from `NOTIFICATION_KINDS`, not an addition to
+ * it. `jobs.ts` writes a `notifications` row per member kind and
+ * `notification-links.ts` asserts every member kind links somewhere, so an
+ * admin kind in that union would imply an in-app notification that does not
+ * exist and fail a test that exists to catch exactly that.
+ */
+export const ADMIN_EMAIL_KINDS = [
+  "admin_digest",
+  "admin_contact_enquiry",
+  "admin_new_signup",
+  "admin_member_message",
+  "admin_change_request",
+] as const;
+
+export type AdminEmailKind = (typeof ADMIN_EMAIL_KINDS)[number];
+
 export type NotificationPayload = {
   kind?: string;
   reason?: string;
@@ -70,275 +109,342 @@ export function isNotificationKind(kind: string): kind is NotificationKind {
 }
 
 /**
- * Human label for a kind. Shared with the in-app notification feed, which used
- * to render the raw enum — a member genuinely saw "advert_scheduled" (GAPS
- * A4.10). One table now feeds both surfaces so they can't drift.
+ * One `email_templates` row. Every copy column is nullable because a row is a
+ * *partial* override: changing one subject line must not freeze that kind's
+ * body at whatever shipped that day, with no later code fix able to reach it.
  */
-const LABELS: Record<NotificationKind, string> = {
-  story_live: "Your story is live",
-  story_rejected: "Your story needs a change",
-  video_live: "Your video is live",
-  video_rejected: "Your video needs a change",
-  event_published: "Your event is live",
-  event_rejected: "Your event needs a change",
-  page_live: "Your member page is live",
-  page_changes_live: "Your page changes are live",
-  page_changes_rejected: "Your page changes need a look",
-  machine_live: "Your featured machine is live",
-  machine_rejected: "Your featured machine needs a change",
-  advert_live: "Your advert is running",
-  advert_scheduled: "Your advert is approved and scheduled",
-  advert_changes_needed: "Your advert needs a change",
-  advert_ending_soon: "Your advert run ends soon",
-  advert_ended: "Your advert run has ended",
-  advert_artwork_approved: "Your new artwork is live",
-  advert_artwork_rejected: "Your artwork swap needs a change",
-  visibility_confirmed: "Your visibility request is confirmed",
-  visibility_declined: "About your visibility request",
-  welcome: "Welcome to SMI",
-  payment_receipt: "Membership payment received",
-  comp_applied: "Your promo code has been applied",
-  account_created: "Your SMI account is ready",
-  membership_lapsed: "Your membership has lapsed",
-  membership_cancel_requested: "Your cancellation is scheduled",
-  membership_cancelled: "Your membership has ended",
-  stats_summary: "Your statistics summary",
-  lead_alert: "New companies engaging with your page",
+export type EmailTemplateOverride = {
+  subject?: string | null;
+  label?: string | null;
+  body_html?: string | null;
+  body_text?: string | null;
+  cta_label?: string | null;
 };
 
-export function notificationLabel(kind: string): string {
-  return isNotificationKind(kind) ? LABELS[kind] : "Update from SMI";
-}
-
-type Copy = {
-  subject: string;
-  paragraphs: string[];
-  cta?: { label: string; href: string };
-};
+/** Keyed by kind. Absent keys, and null fields within a key, fall through to the defaults. */
+export type EmailTemplateMap = Record<string, EmailTemplateOverride>;
 
 const FALLBACK = "Log in to your member area for details.";
 
-function copyFor(kind: string, payload: NotificationPayload, base: string): Copy {
-  const dashboard = { label: "Open your member area", href: `${base}/dashboard` };
-  // The advert emails carry booking_id, so they can land the member directly on
-  // the renewal form. That page is otherwise reachable only by bookmark (GAPS
-  // A2.5) — "log in and renew" was advice a member could not actually follow.
-  const booking = payload.booking_id
-    ? { label: "View this advert run", href: `${base}/dashboard/advert/${payload.booking_id}` }
-    : dashboard;
+/** Unknown kinds render the catch-all rather than an empty email. `jobs.ts` can enqueue one. */
+function templateKey(kind: string): string {
+  return Object.hasOwn(EMAIL_DEFAULTS, kind) ? kind : GENERIC_KIND;
+}
+
+/** The shipped copy for a kind, with any admin edits merged over it field by field. */
+export function resolveTemplate(kind: string, overrides?: EmailTemplateMap): TemplateDefault {
+  const key = templateKey(kind);
+  const base = EMAIL_DEFAULTS[key as keyof typeof EMAIL_DEFAULTS];
+  const row = overrides?.[key];
+  if (!row) return base;
+  return {
+    ...base,
+    subject: row.subject ?? base.subject,
+    label: row.label ?? base.label,
+    bodyHtml: row.body_html ?? base.bodyHtml,
+    bodyText: row.body_text ?? base.bodyText,
+    ctaLabel: row.cta_label ?? base.ctaLabel,
+  };
+}
+
+/**
+ * Human label for a kind. Shared with the in-app notification feed, which used
+ * to render the raw enum — a member genuinely saw "advert_scheduled" (GAPS
+ * A4.10). One table feeds both surfaces so they can't drift.
+ */
+export function notificationLabel(kind: string, overrides?: EmailTemplateMap): string {
+  return resolveTemplate(kind, overrides).label ?? "Update from SMI";
+}
+
+/**
+ * The token values for one email, computed in code.
+ *
+ * Every conditional and every plural that used to sit inside a template literal
+ * lives here. Optional *sentences* are whole tokens rather than values — the
+ * receipt's reference line disappears completely when there is no reference, so
+ * `{{invoice_line}}` is the sentence and not the number inside it.
+ */
+function varsFor(kind: string, payload: NotificationPayload): TemplateVars {
   const reason = payload.reason?.trim();
 
   switch (kind) {
-    case "story_live":
-      return { subject: "Your story is live on SMI", paragraphs: ["Your story has been approved and is now published on Sheet Metal Industries."], cta: dashboard };
     case "story_rejected":
-      return { subject: "About your submitted story", paragraphs: ["We've had a look at your story and it needs a change before it can go live.", reason ?? FALLBACK], cta: dashboard };
-    case "video_live":
-      return { subject: "Your video is live on SMI", paragraphs: ["Your video has been approved and is now published on Sheet Metal Industries."], cta: dashboard };
     case "video_rejected":
-      return { subject: "About your submitted video", paragraphs: ["We've had a look at your video and it needs a change before it can go live.", reason ?? FALLBACK], cta: dashboard };
-    case "event_published":
-      return { subject: "Your event is live on SMI", paragraphs: ["Your event has been approved and now appears in the SMI events listing."], cta: dashboard };
     case "event_rejected":
-      return { subject: "About your submitted event", paragraphs: ["We've had a look at your event and it needs a change before it can be listed.", reason ?? FALLBACK], cta: dashboard };
-    case "page_live":
-      return { subject: "Your SMI member page is live", paragraphs: ["Your company page has been approved and is now live in the SMI member directory."], cta: dashboard };
-    case "page_changes_live":
-      return { subject: "Your page changes are live", paragraphs: ["The edits you submitted to your company page have been approved and are now live in the member directory."], cta: dashboard };
     case "page_changes_rejected":
-      return { subject: "About your page changes", paragraphs: ["We've had a look at the edits you submitted to your company page and they need a change before they can go live.", reason ?? FALLBACK], cta: dashboard };
-    case "machine_live":
-      return { subject: "Your featured machine is live on SMI", paragraphs: ["Your featured machine has been approved and is now showing on Sheet Metal Industries."], cta: dashboard };
     case "machine_rejected":
-      return { subject: "About your featured machine", paragraphs: ["We've had a look at your featured machine and it needs a change before it can go live.", reason ?? FALLBACK], cta: dashboard };
-    case "advert_live":
-      return { subject: "Your advert is now running on SMI", paragraphs: ["Your advert run has started and your artwork is now showing on Sheet Metal Industries."], cta: booking };
-    case "advert_scheduled":
-      return { subject: "Your advert is approved and scheduled", paragraphs: ["Your advert has been approved and is booked in. We'll email you again on the day it starts running."], cta: booking };
     case "advert_changes_needed":
-      return { subject: "Your advert needs a change before it runs", paragraphs: ["Your advert booking needs a change before we can schedule it.", reason ?? FALLBACK], cta: booking };
-    case "advert_ending_soon":
-      return {
-        subject: "Your advert run ends soon",
-        paragraphs: [
-          `Your advert run ends on ${payload.ends_on ?? "soon"}.`,
-          "If you'd like to keep it running, you can rebook the same artwork for new dates from the link below.",
-        ],
-        cta: booking,
-      };
-    case "advert_ended":
-      return { subject: "Your advert run has ended", paragraphs: ["Your advert run has finished. You can rebook the same artwork for new dates whenever you're ready."], cta: booking };
-    case "advert_artwork_approved":
-      return { subject: "Your new artwork is live", paragraphs: ["The new artwork you sent has been approved and is now showing in place of the old version — the run's dates haven't changed."], cta: dashboard };
     case "advert_artwork_rejected":
-      return { subject: "About your artwork swap", paragraphs: ["We've had a look at the new artwork you sent and it needs a change before it can replace what's currently running.", reason ?? FALLBACK], cta: dashboard };
+    case GENERIC_KIND:
+      return { reason: reason ?? FALLBACK };
+
     case "visibility_confirmed":
-      return { subject: "Your visibility request is confirmed", paragraphs: ["Thanks — we've confirmed the extra visibility you asked about and we'll be in touch with the details.", reason ?? ""].filter(Boolean), cta: dashboard };
+      return { reason_line: reason ?? "" };
+
     case "visibility_declined":
-      return { subject: "About your visibility request", paragraphs: ["We've looked at the extra visibility you asked about and can't take it forward right now.", reason ?? "Do get in touch if you'd like to talk it through."], cta: dashboard };
-    case "welcome":
-      return {
-        subject: "Welcome to Sheet Metal Industries",
-        paragraphs: [
-          "Thanks for joining Sheet Metal Industries — your account is ready.",
-          "The next step is to build your company page. Once you submit it, we'll review it and let you know as soon as it's live in the member directory.",
-        ],
-        cta: dashboard,
-      };
+      return { reason: reason ?? "Do get in touch if you'd like to talk it through." };
+
+    case "advert_ending_soon":
+      return { ends_on: String(payload.ends_on ?? "soon") };
+
     case "payment_receipt":
       return {
-        subject: "Your SMI membership receipt",
-        paragraphs: [
-          payload.amount ? `We've received your membership payment of ${payload.amount}. Thank you.` : "We've received your membership payment. Thank you.",
-          payload.invoice_ref ? `Your reference is ${payload.invoice_ref}.` : "",
-        ].filter(Boolean),
-        cta: dashboard,
+        amount_phrase: payload.amount ? ` of ${payload.amount}` : "",
+        invoice_line: payload.invoice_ref ? `Your reference is ${payload.invoice_ref}.` : "",
       };
-    case "account_created":
-      return {
-        subject: "Your SMI account is ready",
-        paragraphs: [
-          "We've set up your Sheet Metal Industries account. Use the link below to choose your own password.",
-          "Once you're in, the next step is to build your company page — we'll review it and let you know when it's live in the member directory.",
-          "If you weren't expecting this, you can ignore this email and nothing will change.",
-        ],
-        // Never the password itself: an emailed credential lives in an inbox
-        // forever, whereas this link expires and only the member can use it.
-        cta: payload.action_link ? { label: "Choose your password", href: payload.action_link } : dashboard,
-      };
+
     case "comp_applied": {
       const months = Number(payload.months ?? 0);
-      const span = months > 0 ? `${months} month${months === 1 ? "" : "s"} of ` : "";
       return {
-        subject: "Your promo code has been applied",
-        paragraphs: [
-          `Your promo code is applied — you have ${span}SMI membership at no charge.`,
-          payload.comped_until ? `Your membership is covered until ${payload.comped_until}.` : "",
-          "The next step is to build your company page so we can get it live.",
-        ].filter(Boolean),
-        cta: dashboard,
+        comp_span: months > 0 ? `${months} month${months === 1 ? "" : "s"} of ` : "",
+        comped_line: payload.comped_until ? `Your membership is covered until ${payload.comped_until}.` : "",
       };
     }
-    case "membership_lapsed":
-      return {
-        subject: "Your SMI membership has lapsed",
-        paragraphs: [
-          "Your grace period has ended and your membership is now lapsed. Your page is no longer visible in the member directory.",
-          "Get in touch to reactivate — we'll pick up right where things left off.",
-        ],
-        cta: dashboard,
-      };
-    case "membership_cancel_requested":
-      return {
-        subject: "Your SMI membership cancellation is scheduled",
-        paragraphs: [
-          "We've received your cancellation request. Your membership stays active for the rest of your current billing period, and won't renew after that.",
-          "Changed your mind? Get in touch before the period ends and we'll pick up right where things left off.",
-        ],
-        cta: dashboard,
-      };
-    case "membership_cancelled":
-      return {
-        subject: "Your SMI membership has ended",
-        paragraphs: [
-          "Your cancellation has taken effect and your membership has now ended. Your page is no longer visible in the member directory.",
-          "You're welcome back any time — get in touch and we'll help you rejoin.",
-        ],
-        cta: dashboard,
-      };
+
     case "stats_summary": {
       const views = Number(payload.page_views ?? 0);
-      return {
-        subject: "Your SMI statistics summary",
-        paragraphs: [`Your page had ${views} view${views === 1 ? "" : "s"} in the last 30 days.`, "See the full breakdown, including advert performance and story reach, in your member area."],
-        cta: { label: "View your statistics", href: `${base}/dashboard/stats` },
-      };
+      return { views: String(views), views_s: views === 1 ? "" : "s" };
     }
+
     case "lead_alert": {
       const count = Number(payload.count ?? 0);
-      return {
-        subject: "New companies engaging with your page",
-        paragraphs: [`${count} compan${count === 1 ? "y has" : "ies have"} engaged with your page recently.`, "See who's interested in your member area."],
-        cta: { label: "View who's engaging", href: `${base}/dashboard/stats` },
-      };
+      return { count: String(count), companies_phrase: count === 1 ? "company has" : "companies have" };
     }
+
     default:
-      // Unknown kinds still produce a sane email rather than an empty one.
-      return { subject: "Update from SMI", paragraphs: [reason ?? FALLBACK], cta: dashboard };
+      return {};
   }
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-const INK = "#111418";
-const GRAPHITE = "#5a6068";
-const BRAND = "#ff8200";
-const CHROME = "#0b0d10";
-const LINE = "#e4e6e9";
-
 /**
- * Table-based with inline styles — the only layout Outlook and the desktop
- * clients render predictably. Deliberately plain: one accent bar, one CTA.
+ * Where the button goes. Never editable, and never authored.
+ *
+ * `account_created`'s destination is a Supabase-generated password-set link —
+ * an admin-editable href on that row would be a credential-redirect primitive
+ * with nobody reviewing it. The advert kinds deep-link to the renewal form,
+ * which is otherwise reachable only by bookmark (GAPS A2.5): "log in and renew"
+ * was advice a member could not actually follow.
+ *
+ * `specific` is false when the payload lacked the id the real destination needs.
+ * The button then falls back to the member area — and so must its label, or it
+ * promises a page it isn't opening.
  */
-function layout(copy: Copy, base: string): string {
-  const body = copy.paragraphs
-    .map((p) => `<p style="margin:0 0 16px;font-size:16px;line-height:1.55;color:${INK};">${escapeHtml(p)}</p>`)
-    .join("");
+function ctaFor(kind: string, payload: NotificationPayload, base: string): { href: string; specific: boolean } {
+  const dashboard = `${base}/dashboard`;
 
-  const cta = copy.cta
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 8px;">
-             <tr><td style="background:${BRAND};border-radius:4px;">
-               <a href="${escapeHtml(copy.cta.href)}" style="display:inline-block;padding:12px 22px;font-size:16px;font-weight:700;color:${INK};text-decoration:none;">${escapeHtml(copy.cta.label)}</a>
-             </td></tr>
-           </table>`
-    : "";
+  switch (kind) {
+    case "advert_live":
+    case "advert_scheduled":
+    case "advert_changes_needed":
+    case "advert_ending_soon":
+    case "advert_ended":
+      return payload.booking_id
+        ? { href: `${base}/dashboard/advert/${payload.booking_id}`, specific: true }
+        : { href: dashboard, specific: false };
 
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(copy.subject)}</title></head>
-<body style="margin:0;padding:0;background:#f4f5f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f6;padding:24px 12px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid ${LINE};border-radius:6px;overflow:hidden;font-family:'League Spartan',Helvetica,Arial,sans-serif;">
-        <tr><td style="background:${CHROME};padding:18px 28px;">
-          <span style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">Sheet Metal <span style="color:${BRAND};">Industries</span></span>
-        </td></tr>
-        <tr><td style="padding:28px;">
-          <h1 style="margin:0 0 18px;font-size:21px;line-height:1.3;color:${INK};">${escapeHtml(copy.subject)}</h1>
-          ${body}
-          ${cta}
-        </td></tr>
-        <tr><td style="border-top:1px solid ${LINE};padding:18px 28px;">
-          <p style="margin:0;font-size:13px;line-height:1.5;color:${GRAPHITE};">
-            You're receiving this because you have a Sheet Metal Industries member account.<br>
-            <a href="${escapeHtml(base)}/dashboard" style="color:${GRAPHITE};">Manage your account</a>
-          </p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
+    case "account_created": {
+      const link = typeof payload.action_link === "string" ? payload.action_link.trim() : "";
+      return link ? { href: link, specific: true } : { href: dashboard, specific: false };
+    }
+
+    case "stats_summary":
+    case "lead_alert":
+      return { href: `${base}/dashboard/stats`, specific: true };
+
+    default:
+      return { href: dashboard, specific: true };
+  }
 }
 
-function toText(copy: Copy): string {
-  const parts = [...copy.paragraphs];
-  if (copy.cta) parts.push(`${copy.cta.label}: ${copy.cta.href}`);
-  return parts.join("\n\n");
+export type RenderedEmail = { subject: string; text: string; html: string };
+
+/** Body, button and shell, given values that are already worked out. */
+function assemble(
+  kind: string,
+  vars: TemplateVars,
+  cta: { href: string; specific: boolean },
+  base: string,
+  overrides?: EmailTemplateMap,
+): RenderedEmail {
+  const tpl = resolveTemplate(kind, overrides);
+  const raw = tpl.tokens.filter((t) => t.raw).map((t) => t.token);
+
+  // The subject is plain text in a mail header; it only gets escaped where the
+  // shell drops it into `<title>` and `<h1>` below.
+  const subject = interpolate(tpl.subject, vars);
+
+  const bodyHtml = dropEmptyParagraphs(interpolate(tpl.bodyHtml, vars, { escape: true, raw }));
+  const bodyText = collapseBlankLines(interpolate(tpl.bodyText, vars));
+
+  const ctaLabel = cta.specific ? tpl.ctaLabel : DASHBOARD_CTA;
+  const label = ctaLabel ? interpolate(ctaLabel, vars) : "";
+  const ctaHtml = label ? ctaMarkup(label, cta.href, escapeHtml) : "";
+  const ctaText = label ? `${label}: ${cta.href}` : "";
+
+  const shell = resolveTemplate(SHELL_KIND, overrides);
+  const html = interpolate(
+    shell.bodyHtml,
+    { subject, body: bodyHtml, cta: ctaHtml, base },
+    { escape: true, raw: ["body", "cta"] },
+  );
+  const text = collapseBlankLines(
+    interpolate(shell.bodyText, { body: [bodyText, ctaText].filter(Boolean).join("\n\n") }),
+  );
+
+  return { subject, text, html };
 }
 
 /** Render one notification into a ready-to-send email. */
-export function renderNotification(payload: NotificationPayload): {
-  subject: string;
-  text: string;
-  html: string;
-} {
+export function renderNotification(payload: NotificationPayload, overrides?: EmailTemplateMap): RenderedEmail {
   const base = siteUrl();
-  const copy = copyFor(String(payload.kind ?? ""), payload, base);
-  return { subject: copy.subject, text: toText(copy), html: layout(copy, base) };
+  const kind = templateKey(String(payload.kind ?? ""));
+  return assemble(kind, varsFor(kind, payload), ctaFor(kind, payload, base), base, overrides);
+}
+
+/* ---------- what the console needs ---------- */
+
+/** Every template an admin can edit, in the order the list page shows them. */
+export const EDITABLE_KINDS: readonly string[] = Object.keys(EMAIL_DEFAULTS);
+
+/** The tokens this template is allowed to use. */
+export function allowedTokensFor(kind: string): string[] {
+  return resolveTemplate(kind, undefined).tokens.map((t) => t.token);
+}
+
+/**
+ * Stand-in values, so the preview shows a finished email rather than a page of
+ * braces — and so a save can be rendered before it is stored.
+ */
+export function sampleVarsFor(kind: string): TemplateVars {
+  const vars: TemplateVars = {};
+  for (const spec of resolveTemplate(kind, undefined).tokens) vars[spec.token] = spec.sample;
+  return vars;
+}
+
+/**
+ * A payload plausible enough that every kind's button resolves to its real
+ * destination rather than the degraded one — the preview should show the
+ * normal case, which is the one with the ids present.
+ */
+function samplePayload(base: string): NotificationPayload {
+  return {
+    booking_id: "00000000-0000-0000-0000-000000000000",
+    action_link: `${base}/reset/confirm?token=example`,
+  };
+}
+
+/**
+ * One of your own emails. Plain text unless somebody has written HTML for it —
+ * see the note on `adminEmail` in `./defaults.ts` for why that is the default.
+ */
+export function renderAdminEmail(
+  kind: AdminEmailKind,
+  vars: TemplateVars,
+  overrides?: EmailTemplateMap,
+): { subject: string; text: string; html?: string } {
+  const tpl = resolveTemplate(kind, overrides);
+  const raw = tpl.tokens.filter((t) => t.raw).map((t) => t.token);
+  const subject = interpolate(tpl.subject, vars);
+  const text = collapseBlankLines(interpolate(tpl.bodyText, vars));
+  const authored = tpl.bodyHtml.trim();
+  if (!authored) return { subject, text };
+  return { subject, text, html: dropEmptyParagraphs(interpolate(tpl.bodyHtml, vars, { escape: true, raw })) };
+}
+
+/** The wrapper around a newsletter issue. Its stories and adverts arrive as finished markup. */
+export function renderNewsletterShell(
+  vars: TemplateVars,
+  overrides?: EmailTemplateMap,
+): { html: string; text: string } {
+  const tpl = resolveTemplate(NEWSLETTER_SHELL_KIND, overrides);
+  const raw = tpl.tokens.filter((t) => t.raw).map((t) => t.token);
+  return {
+    html: dropEmptyParagraphs(interpolate(tpl.bodyHtml, vars, { escape: true, raw })),
+    text: collapseBlankLines(interpolate(tpl.bodyText, vars)),
+  };
+}
+
+/** A text-only email still needs something to show in the preview frame. */
+function plainTextPreview(text: string): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:24px;background:#f4f5f6;font-family:ui-monospace,Menlo,Consolas,monospace;">
+<pre style="margin:0;white-space:pre-wrap;font-size:13px;line-height:1.6;color:#111418;">${escapeHtml(text)}</pre>
+</body></html>`;
+}
+
+/** Render a template with sample values, for the console preview. */
+export function renderPreview(kind: string, overrides?: EmailTemplateMap): RenderedEmail {
+  const base = siteUrl();
+  const key = templateKey(kind);
+  const family = resolveTemplate(key, undefined).family;
+
+  if (key === SHELL_KIND) {
+    // The shell has no message of its own, so it is previewed by rendering a
+    // real notification through it — which is also the only way to see whether
+    // an edit has broken every member email at once.
+    return renderNotification({ kind: "page_live" }, overrides);
+  }
+
+  if (family === "newsletter") {
+    const issue = renderNewsletterShell(sampleVarsFor(key), overrides);
+    return { subject: sampleVarsFor(key).subject ?? "", text: issue.text, html: issue.html };
+  }
+
+  if (family === "admin") {
+    const mail = renderAdminEmail(key as AdminEmailKind, sampleVarsFor(key), overrides);
+    return { subject: mail.subject, text: mail.text, html: mail.html ?? plainTextPreview(mail.text) };
+  }
+
+  return assemble(key, sampleVarsFor(key), ctaFor(key, samplePayload(base), base), base, overrides);
+}
+
+/** Where this template's button points, for the console to show read-only. */
+export function ctaDestinationFor(kind: string): string {
+  const base = siteUrl();
+  return ctaFor(templateKey(kind), samplePayload(base), base).href;
+}
+
+/**
+ * Checks an edit before it is stored: no unknown tokens, nothing a template
+ * cannot work without left out, and it has to actually render.
+ *
+ * Returns a human message, or null when the edit is sound.
+ */
+/** The field names the console shows, so an error names what is on screen. */
+const FIELD_LABELS: Record<string, string> = {
+  subject: "subject line",
+  label: "in-app wording",
+  body_html: "HTML body",
+  body_text: "plain-text body",
+  cta_label: "button wording",
+};
+
+export function validateEmailTemplate(kind: string, fields: Record<string, string | null | undefined>): string | null {
+  const key = templateKey(kind);
+  const structural = validateTemplate({
+    allowed: allowedTokensFor(key),
+    required: resolveTemplate(key, undefined).required,
+    fields: Object.fromEntries(Object.entries(fields).map(([k, v]) => [FIELD_LABELS[k] ?? k, v])),
+  });
+  if (structural) return structural;
+
+  const trial: EmailTemplateMap = {
+    [key]: {
+      subject: fields.subject ?? null,
+      label: fields.label ?? null,
+      body_html: fields.body_html ?? null,
+      body_text: fields.body_text ?? null,
+      cta_label: fields.cta_label ?? null,
+    },
+  };
+
+  try {
+    const mail = renderPreview(key, trial);
+    if (!mail.subject.trim() && key !== SHELL_KIND) return "Give this email a subject line.";
+    if (!mail.text.trim()) return "This email would go out with nothing in it. Check the body.";
+  } catch (e) {
+    return `That template couldn't be rendered: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  return null;
 }

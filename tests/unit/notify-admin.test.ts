@@ -39,20 +39,37 @@ describe("notifyAdminFunnel", () => {
     expect(builder.insert).toHaveBeenCalledWith({
       kind: "membership", name: "Acme Ltd", email: "acme@example.com", message: "Wants to join",
     });
-    expect(send).not.toHaveBeenCalled(); // no emailSubject given
+    expect(send).not.toHaveBeenCalled(); // no kind given — console-only by design
   });
 
-  it("emails ADMIN_EMAIL when a subject is given and it's configured", async () => {
+  it("emails ADMIN_EMAIL when a kind is given and it's configured", async () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb()));
     const { notifyAdminFunnel } = await freshNotifyAdmin("jas@sheetmetalindustries.com");
 
-    await notifyAdminFunnel({ name: "Acme Ltd", email: "acme@example.com", message: "Wants to join", emailSubject: "New member" });
+    await notifyAdminFunnel({ name: "Acme Ltd", email: "acme@example.com", message: "Wants to join", kind: "admin_new_signup" });
 
+    // Wording comes from the editable template, not from a subject string built
+    // at the call site. Still plain text: these have never been HTML, and
+    // changing that is a question for Jas rather than a refactor.
     expect(send).toHaveBeenCalledWith({
       to: "jas@sheetmetalindustries.com",
-      subject: "New member",
+      subject: "New member signup: Acme Ltd",
       text: "Acme Ltd <acme@example.com>\n\nWants to join",
     });
+  });
+
+  it("uses the console's edited wording when there is some", async () => {
+    const from = vi.fn((table: string) =>
+      table === "email_templates"
+        ? queryBuilder(dbOk([{ kind: "admin_new_signup", subject: "Someone new: {{name}}" }]))
+        : queryBuilder(dbOk(null)),
+    );
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from })));
+    const { notifyAdminFunnel } = await freshNotifyAdmin("jas@sheetmetalindustries.com");
+
+    await notifyAdminFunnel({ name: "Acme Ltd", email: "acme@example.com", message: "Wants to join", kind: "admin_new_signup" });
+
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ subject: "Someone new: Acme Ltd" }));
   });
 
   it("warns instead of emailing when ADMIN_EMAIL isn't set", async () => {
@@ -60,7 +77,7 @@ describe("notifyAdminFunnel", () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb()));
     const { notifyAdminFunnel } = await freshNotifyAdmin(undefined);
 
-    await notifyAdminFunnel({ name: "Acme Ltd", email: "acme@example.com", message: "Wants to join", emailSubject: "New member" });
+    await notifyAdminFunnel({ name: "Acme Ltd", email: "acme@example.com", message: "Wants to join", kind: "admin_new_signup" });
 
     expect(send).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalled();

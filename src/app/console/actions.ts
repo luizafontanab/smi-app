@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { geocodeAddress } from "@/lib/adapters/geocode";
+import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
 import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
 import type { SocialChannels } from "@/lib/social-channels";
@@ -1279,14 +1280,20 @@ export async function saveSocialCaps(formData: FormData) {
   revalidatePath("/console/stories");
 }
 
-/** GAPS B4.1: which Buffer-connected channel profiles auto-posts go to. */
+/**
+ * GAPS B4.4: which Buffer-connected channels auto-posts go to. Buffer's GraphQL
+ * API takes one `channelId` per mutation, so this list is what the publisher
+ * fans out over. Writing channel ids here also clears any stale v1 `profileIds`
+ * left in the row, since the upsert replaces the whole value.
+ */
 export async function saveSocialChannels(formData: FormData) {
   await requireConsole();
-  const profileIds = String(formData.get("profile_ids") ?? "")
+  const channelIds = String(formData.get("channel_ids") ?? "")
     .split(/[\n,]/)
     .map((id) => id.trim())
     .filter(Boolean);
-  const value: SocialChannels = { profileIds };
+  const organizationId = String(formData.get("organization_id") ?? "").trim();
+  const value: SocialChannels = { channelIds, ...(organizationId ? { organizationId } : {}) };
   await serviceDb().from("settings").upsert({ key: "social_channels", value });
   revalidatePath("/console/stories");
 }
@@ -1704,7 +1711,11 @@ async function sendAccountInvite(email: string): Promise<boolean> {
 
     const { getEmailSender } = await import("@/lib/adapters/email");
     const { renderNotification } = await import("@/lib/email/templates");
-    await getEmailSender().send({ to: email, ...renderNotification({ kind: "account_created", action_link: link }) });
+    const { loadEmailTemplates } = await import("@/lib/email/store");
+    await getEmailSender().send({
+      to: email,
+      ...renderNotification({ kind: "account_created", action_link: link }, await loadEmailTemplates()),
+    });
     return true;
   } catch (e) {
     console.error("[console] account invite failed:", e);
@@ -2193,4 +2204,138 @@ export async function moveDevTask(input: { id: string; status: string; orderedId
 
   await Promise.all(orderedIds.map((id, index) => db.from("dev_tasks").update({ status, sort_order: index }).eq("id", id)));
   revalidatePath("/console/dev");
+}
+
+/* ---------- lead gen ---------- */
+
+/**
+ * GAPS A8.3 / USE-CASES A29: mark a prospect to call, email, or add to a
+ * sequence. The prospect itself lives in the `LeadGenSource` adapter, not our
+ * database, so all that is persisted is the mark — see the adapter for why
+ * Phase 1's source is a fixture.
+ */
+export async function markProspect(formData: FormData) {
+  await requireConsole();
+  const ref = String(formData.get("ref") ?? "").trim();
+  const action = String(formData.get("action") ?? "");
+  // The DB check constraint is the backstop, not the gate.
+  if (!ref || !isProspectAction(action)) return;
+
+  await getLeadGenSource().mark(ref, action, { memberId: null });
+
+  const q = String(formData.get("q") ?? "");
+  revalidatePath("/console/leads");
+  // Back to the same search, rather than dumping the operator on an empty panel.
+  redirect(`/console/leads?${q ? `${q}&` : ""}saved=1`);
+}
+
+/* ---------- email templates ---------- */
+
+/**
+ * Editing the copy of every email the site sends (fix-list 63).
+ *
+ * `email_templates` is an override table: a blank field is stored as null and
+ * falls back to the copy shipped in `src/lib/email/defaults.ts`, so a kind
+ * nobody has touched still picks up copy fixes made in code. "Reset to default"
+ * is therefore a DELETE, not a re-write.
+ */
+
+const templateFail = (kind: string, message: string): never =>
+  redirect(`/console/email-templates/${encodeURIComponent(kind)}?error=${encodeURIComponent(message)}`);
+
+/** Blank means "fall back to the default", so it is stored as null rather than "". */
+const orNull = (formData: FormData, field: string): string | null => {
+  const value = String(formData.get(field) ?? "").trim();
+  return value ? value : null;
+};
+
+export async function saveEmailTemplate(formData: FormData) {
+  const user = await requireConsole();
+  const kind = String(formData.get("kind") ?? "").trim();
+
+  const { EDITABLE_KINDS, validateEmailTemplate } = await import("@/lib/email/templates");
+  if (!EDITABLE_KINDS.includes(kind)) {
+    redirect(`/console/email-templates?error=${encodeURIComponent("That email doesn't exist.")}`);
+  }
+
+  const fields = {
+    subject: orNull(formData, "subject"),
+    label: orNull(formData, "label"),
+    body_html: orNull(formData, "body_html"),
+    body_text: orNull(formData, "body_text"),
+    cta_label: orNull(formData, "cta_label"),
+  };
+
+  // A mistyped token renders as literal braces in a member's inbox and the
+  // person who typed it never finds out, so this refuses the save rather than
+  // warning about it.
+  const invalid = validateEmailTemplate(kind, fields);
+  if (invalid) templateFail(kind, invalid);
+
+  const { EMAIL_DEFAULTS } = await import("@/lib/email/defaults");
+  const family = EMAIL_DEFAULTS[kind as keyof typeof EMAIL_DEFAULTS].family;
+
+  const { error } = await serviceDb().from("email_templates").upsert({
+    kind,
+    family,
+    ...fields,
+    // Stamped by hand: no triggers in this database, by convention.
+    updated_at: new Date().toISOString(),
+    updated_by: user.userId,
+  });
+  if (error) templateFail(kind, error.message);
+
+  revalidatePath("/console/email-templates");
+  revalidatePath(`/console/email-templates/${kind}`);
+  // The in-app notification feed reads its labels from the same row.
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/notifications");
+  redirect(`/console/email-templates/${encodeURIComponent(kind)}?saved=1`);
+}
+
+export async function resetEmailTemplate(formData: FormData) {
+  await requireConsole();
+  const kind = String(formData.get("kind") ?? "").trim();
+  if (!kind || formData.get("confirm") !== "1") {
+    templateFail(kind, "Tick the confirm box to put this email back to its original wording.");
+  }
+
+  // Deleting the row IS the reset: with nothing stored, every field falls back
+  // to the copy in src/lib/email/defaults.ts.
+  const { error } = await serviceDb().from("email_templates").delete().eq("kind", kind);
+  if (error) templateFail(kind, error.message);
+
+  revalidatePath("/console/email-templates");
+  revalidatePath(`/console/email-templates/${kind}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/notifications");
+  redirect(`/console/email-templates/${encodeURIComponent(kind)}?reset=1`);
+}
+
+/**
+ * Sends the logged-in admin a copy of this email, as it currently stands.
+ *
+ * Always to `user.email` and never to a typed address: a free-text recipient
+ * field here would be an authenticated open relay on the SMI sending domain.
+ */
+export async function sendTestEmail(formData: FormData) {
+  const user = await requireConsole();
+  const kind = String(formData.get("kind") ?? "").trim();
+  if (!user.email) templateFail(kind, "Your console account has no email address to send to.");
+
+  const [{ getEmailSender }, { renderPreview }, { loadEmailTemplates }] = await Promise.all([
+    import("@/lib/adapters/email"),
+    import("@/lib/email/templates"),
+    import("@/lib/email/store"),
+  ]);
+
+  const mail = renderPreview(kind, await loadEmailTemplates());
+  try {
+    // The sender throws on a provider rejection by design, so that a bad key or
+    // an unverified domain is visible rather than silent.
+    await getEmailSender().send({ to: user.email!, subject: `[Test] ${mail.subject}`, text: mail.text, html: mail.html });
+  } catch (e) {
+    templateFail(kind, e instanceof Error ? e.message : "The test email could not be sent.");
+  }
+  redirect(`/console/email-templates/${encodeURIComponent(kind)}?tested=1`);
 }

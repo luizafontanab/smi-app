@@ -8,6 +8,11 @@ export const FEATURED_SLOTS = { cap: 4, pennies: 40000 };
 // Per-format fallback when a booking carries no bundle price.
 export const ADVERT_FORMAT_PENNIES: Record<string, number> = {
   banner: 65000,
+  // Same rate as a banner until Jas prices it: it is the same height and the
+  // same position, just cut for a narrower column. Without an entry here a
+  // banner_narrow booking with no product price counts as `unpriced` and
+  // quietly drops out of the console's revenue figure.
+  banner_narrow: 65000,
   supplier_logo: 10000,
 };
 

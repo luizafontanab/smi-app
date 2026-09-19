@@ -6,10 +6,11 @@ import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
 import { youtubeId } from "@/lib/hero";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
-import type { FeaturedMemberData, MachineCardData, VideoCardData } from "@/components/cards";
+import type { MachineCardData, VideoCardData } from "@/components/cards";
 import { NewsletterSignup } from "@/components/NewsletterSignup";
 import { MemberBadge } from "@/components/StoryCard";
-import { Band, BtnBrand, BtnDark, CardTitle, Chip, Eyebrow, Meta, Panel } from "./ui";
+import { MoreNewsScroller } from "./MoreNewsScroller";
+import { Band, BtnBrand, BtnDark, CardTitle, Chip, Eyebrow, Meta, MoreLink, Panel } from "./ui";
 
 /**
  * Cards for the grid design's homepage, drawn from the client's comps.
@@ -124,10 +125,17 @@ export function GhVideoCard({ video, eyebrow = "Videos" }: { video: VideoCardDat
   );
 }
 
-/** Featured machine — a sold placement, so it keeps an explicit label. */
+/**
+ * Featured machine — a sold placement, so it keeps an explicit label.
+ *
+ * Warm border rather than the hairline grey: the two placement cards on the
+ * fold sit beside editorial ones and get a touch of the brand to mark them
+ * apart. Decorative only — the "Featured machine" eyebrow is what actually
+ * says what this is, so nothing rests on a reader seeing the colour.
+ */
 export function GhMachineCard({ machine }: { machine: MachineCardData }) {
   return (
-    <Panel className="group flex h-full flex-col overflow-hidden">
+    <Panel border="border-brand/50" className="group flex h-full flex-col overflow-hidden">
       <Link href="/featured-machine" className="flex h-full flex-col">
         <div className="relative min-h-32 flex-1 overflow-hidden bg-graphite/10">
           {machine.image_path && (
@@ -153,15 +161,21 @@ export type GhEventData = {
 };
 
 /**
- * The next upcoming event, as the fold's second placement card.
+ * An upcoming event: the fold's second placement card at `featured`, and an
+ * ordinary card in the Upcoming events row otherwise.
  *
- * Note this is EDITORIAL, not a sold slot: `placement_kind` has no
+ * `featured` drives the warm border and the eyebrow together, on purpose. The
+ * orange hairline marks a placement, so a row of editorial events must not
+ * wear it — one prop rather than two keeps the colour and the label from ever
+ * disagreeing about which of those a card is.
+ *
+ * Note the fold card is EDITORIAL too: `placement_kind` has no
  * `featured_event` member (supabase/migrations/20260808000002_commerce.sql), so
  * there is nothing to book against it. It shows whatever `upcomingEvents()`
  * returns first. The wireframe labels the position "Advert — Featured Event";
  * making that real needs a new placement kind, which is a schema change.
  */
-export function GhEventCard({ event }: { event: GhEventData }) {
+export function GhEventCard({ event, featured = false }: { event: GhEventData; featured?: boolean }) {
   const img = mediaUrl(event.cover_path ?? null);
   // starts_on is a date column, not a timestamp — format in UTC or it shifts a
   // day back west of Greenwich (same rule as components/cards.tsx:117).
@@ -169,7 +183,9 @@ export function GhEventCard({ event }: { event: GhEventData }) {
     day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
   });
   return (
-    <Panel className="group flex h-full flex-col overflow-hidden">
+    // Warm border only when featured, matching the machine card beside it on
+    // the fold — see the note there.
+    <Panel border={featured ? "border-brand/50" : "border-line"} className="group flex h-full flex-col overflow-hidden">
       <Link href={`/event/${event.slug}`} className="flex h-full flex-col">
         <div className="relative min-h-32 flex-1 overflow-hidden bg-graphite/10">
           {img ? (
@@ -179,7 +195,7 @@ export function GhEventCard({ event }: { event: GhEventData }) {
           )}
         </div>
         <div className="p-4">
-          <Eyebrow>Featured event</Eyebrow>
+          <Eyebrow>{featured ? "Featured event" : "Event"}</Eyebrow>
           <CardTitle className="mt-1.5 text-sm line-clamp-2 group-hover:underline">{event.title}</CardTitle>
           <p className="mt-2 text-[11px] font-semibold text-brand-text">{date}</p>
           {event.location && <p className="mt-1 text-xs text-graphite line-clamp-1">{event.location}</p>}
@@ -189,20 +205,108 @@ export function GhEventCard({ event }: { event: GhEventData }) {
   );
 }
 
-/** Featured member — a sold placement, labelled as one. */
-export function GhMemberCard({ member }: { member: FeaturedMemberData }) {
+/** A sent issue as sentNewsletters() returns one. */
+export type GhNewsletterData = {
+  number: number;
+  subject: string;
+  intro: string | null;
+  web_slug: string | null;
+  sent_at: string | null;
+};
+
+/**
+ * A back issue, for the Latest newsletters row.
+ *
+ * `sent_at` is a timestamp, not a date column, so it needs no UTC pin — unlike
+ * the event card above. Month and year only: the issues are monthly, and an
+ * exact day says nothing a reader wants here.
+ *
+ * web_slug is nullable in the schema; an issue without one has no page to link
+ * to, so it is skipped by the caller rather than rendered as a dead card.
+ */
+export function GhNewsletterCard({ issue }: { issue: GhNewsletterData }) {
+  const sent = issue.sent_at
+    ? new Date(issue.sent_at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    : null;
   return (
-    <Panel className="group overflow-hidden">
-      <Link href={`/member/${member.slug}`} className="block p-4">
-        <Eyebrow>Featured member</Eyebrow>
-        <div className="mt-3 flex items-center gap-3">
-          {member.logo_path && (
-            <Image src={mediaUrl(member.logo_path)!} alt="" width={44} height={44} className="shrink-0 rounded-[var(--gh-radius)]" unoptimized />
-          )}
-          <CardTitle className="text-sm line-clamp-2 group-hover:underline">{member.name}</CardTitle>
-        </div>
-        {member.description && <p className="mt-2.5 text-xs leading-relaxed text-graphite line-clamp-3">{member.description}</p>}
+    <Panel className="group flex h-full flex-col p-4">
+      <Link href={`/newsletters/${issue.web_slug}`} className="flex h-full flex-col">
+        <Eyebrow>Issue {issue.number}</Eyebrow>
+        <CardTitle className="mt-1.5 text-sm line-clamp-2 group-hover:underline">{issue.subject}</CardTitle>
+        {issue.intro && <p className="mt-2 text-xs leading-relaxed text-graphite line-clamp-3">{issue.intro}</p>}
+        {/* mt-auto: the dates line up across the row whatever the intros do. */}
+        {sent && <p className="mt-auto pt-3 text-[11px] font-semibold text-brand-text">{sent}</p>}
       </Link>
+    </Panel>
+  );
+}
+
+/**
+ * A featured member as the placement query returns one. Deliberately NOT
+ * components/cards.tsx's FeaturedMemberData: that type's taxonomy field is
+ * `category`, but activePlacements() selects `industry:industries(name)`, so
+ * the two have never lined up (which is why the forge homepage's
+ * FeaturedMemberCard renders no taxonomy at all — noted in docs/fix-list.md).
+ */
+export type GhFeaturedMemberData = {
+  slug: string;
+  name: string;
+  logo_path: string | null;
+  industry?: { name: string } | null;
+};
+
+/**
+ * The sidebar box of sold `featured_member` placements, beside Latest videos.
+ *
+ * Paid inventory, so it renders placements and nothing else — never a
+ * directory top-up dressed as a placement. The caller decides emptiness (it
+ * also drives the band's column classes) and simply doesn't render this when
+ * there is nothing sold; the guard here is belt and braces.
+ *
+ * h-full because this spans two grid rows — the videos and the newsletter /
+ * magazine panels beneath them — so the box's bottom edge lands flush with
+ * theirs.
+ */
+export function GhFeaturedMembers({ members, className = "" }: { members: GhFeaturedMemberData[]; className?: string }) {
+  if (members.length === 0) return null;
+  return (
+    <Panel className={`flex h-full flex-col p-4 ${className}`}>
+      <Chip>Featured members</Chip>
+      {/* The rows share the panel's spare height rather than stacking at the
+          top of it: this box spans two grid rows, and the cap is four
+          placements, so on a month with one or two sold a top-aligned list
+          leaves the panel looking half-drawn. */}
+      <ul className="mt-3 flex flex-1 flex-col divide-y divide-line">
+        {members.map((m) => (
+          <li key={m.slug} className="flex flex-1 flex-col py-3 first:pt-0 last:pb-0">
+            {/* The logo is the point of this placement, so it takes most of
+                the row: a flex-1 box that absorbs the panel's spare height,
+                with the name and industry as a caption under it. object-left
+                keeps a square mark on the panel's left rail with the text
+                rather than floating centred above it; object-contain means a
+                wide mark and a square one both fit without distortion. */}
+            <Link href={`/member/${m.slug}`} className="group flex h-full flex-col gap-2">
+              {m.logo_path ? (
+                <span className="relative block min-h-20 flex-1">
+                  <Image src={mediaUrl(m.logo_path)!} alt="" fill sizes="(min-width: 1024px) 220px, 50vw" className="object-contain object-left" unoptimized />
+                </span>
+              ) : (
+                <span aria-hidden="true" className="flex min-h-20 flex-1 items-center justify-center rounded-[var(--gh-radius)] bg-graphite/10 text-3xl text-graphite/30">⚙</span>
+              )}
+              <span className="min-w-0">
+                <CardTitle className="text-[0.8125rem] line-clamp-2 group-hover:underline">{m.name}</CardTitle>
+                {m.industry && <span className="mt-1 block text-xs text-graphite line-clamp-1">{m.industry.name}</span>}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {/* mt-auto: on a quiet month this box holds one or two rows but still
+          spans both grid rows, so the link sits at the foot of the panel
+          rather than leaving the slack under it. */}
+      <div className="mt-auto pt-4">
+        <MoreLink href="/member">See all members</MoreLink>
+      </div>
     </Panel>
   );
 }
@@ -246,7 +350,10 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
        ends up being keeps their bottoms flush with it without tuning a magic
        number. All tiles stay equal height, and hover only changes width — the
        row never jumps. */
-    <ul className="carousel flex h-full gap-3 overflow-x-auto pb-1.5">
+    /* MoreNewsScroller is the <ul>: a client island adding edge-hover
+       auto-scroll. The tiles below are still server-rendered and handed to it
+       as children. */
+    <MoreNewsScroller className="carousel flex h-full gap-3 overflow-x-auto pb-1.5">
       {stories.map((s) => {
         const img = mediaUrl(s.cover_path);
         return (
@@ -323,34 +430,7 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
           </li>
         );
       })}
-    </ul>
-  );
-}
-
-export type LatestItem = { eyebrow: string; label: string; href: string };
-
-/**
- * Comp v2's mixed list beside the lead story — one row per content kind
- * (latest news, upcoming event, new video, newsletter, featured member),
- * hairline-separated. Rows are supplied already resolved by the page, so a
- * kind with nothing to show simply isn't passed.
- */
-export function GhLatestList({ items, title = "In brief" }: { items: LatestItem[]; title?: string }) {
-  if (items.length === 0) return null;
-  return (
-    <Panel className="p-4">
-      <Chip>{title}</Chip>
-      <ul className="mt-3 divide-y divide-line">
-        {items.map((item) => (
-          <li key={`${item.eyebrow}-${item.href}`} className="py-3 first:pt-0 last:pb-0">
-            <Link href={item.href} className="group block">
-              <Eyebrow>{item.eyebrow}</Eyebrow>
-              <CardTitle className="mt-1 text-[0.8125rem] line-clamp-2 group-hover:underline">{item.label}</CardTitle>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </Panel>
+    </MoreNewsScroller>
   );
 }
 
@@ -420,13 +500,13 @@ export async function GhStatsBand({ storyTotal, memberCount }: { storyTotal: num
     { label: "Promote your business", value: SOCIAL_REACH, caption: "Social media reach" },
   ];
   return (
-    <Band tone="dark" inner="py-12 text-center">
+    <Band tone="dark" inner="py-10 text-center">
       <h2 className="font-heading text-2xl font-extrabold">Brand awareness that reaches the right buyers</h2>
       <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-white/70">
         SMI publishes the UK sheet metal trade&apos;s news, and helps the companies in it promote their
         strengths, products and services to the people specifying and buying equipment.
       </p>
-      <dl className="mx-auto mt-10 grid max-w-3xl gap-8 sm:grid-cols-3">
+      <dl className="mx-auto mt-8 grid max-w-3xl gap-8 sm:grid-cols-3">
         {/* Each div holds exactly one dt then one dd — axe's definition-list
             rule rejects any other direct child, so the caption lives inside
             the dd rather than as a sibling <p>. */}
@@ -442,8 +522,10 @@ export async function GhStatsBand({ storyTotal, memberCount }: { storyTotal: num
         ))}
       </dl>
       {!signedIn && (
-        <div className="mt-10">
-          <BtnBrand href="/join">Sign up for membership</BtnBrand>
+        <div className="mt-8">
+          {/* Same wording as the header's join button on purpose — one CTA
+              phrased one way across the page, not two names for /join. */}
+          <BtnBrand href="/join">Become a Member</BtnBrand>
         </div>
       )}
     </Band>

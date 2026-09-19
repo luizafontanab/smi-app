@@ -830,6 +830,50 @@ export type Database = {
           },
         ]
       }
+      email_templates: {
+        Row: {
+          body_html: string | null
+          body_text: string | null
+          cta_label: string | null
+          family: string
+          kind: string
+          label: string | null
+          subject: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          body_html?: string | null
+          body_text?: string | null
+          cta_label?: string | null
+          family: string
+          kind: string
+          label?: string | null
+          subject?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          body_html?: string | null
+          body_text?: string | null
+          cta_label?: string | null
+          family?: string
+          kind?: string
+          label?: string | null
+          subject?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       engagement_audit: {
         Row: {
           company: string | null
@@ -1778,6 +1822,51 @@ export type Database = {
           used_count?: number
         }
         Relationships: []
+      }
+      prospect_marks: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          id: string
+          member_id: string | null
+          note: string | null
+          prospect_ref: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          member_id?: string | null
+          note?: string | null
+          prospect_ref: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          member_id?: string | null
+          note?: string | null
+          prospect_ref?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_marks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "prospect_marks_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       redirects: {
         Row: {

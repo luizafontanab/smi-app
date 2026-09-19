@@ -324,14 +324,18 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       if (!member.contact_email) return; // pre-funnel members may have no address; in-app notification still lands
       if (existing?.emailed_at) return; // already sent on a prior attempt of this same job
 
-      const [{ getEmailSender }, { renderNotification }] = await Promise.all([
+      const [{ getEmailSender }, { renderNotification }, { loadEmailTemplates }] = await Promise.all([
         import("./adapters/email"),
         import("./email/templates"),
+        import("./email/store"),
       ]);
+      // Request-scoped, so a tick that emails thirty members reads the table
+      // once — and an edit made in the console lands on the very next tick.
+      const templates = await loadEmailTemplates();
       // Deliberately unguarded: a provider rejection throws, the job retries
       // with backoff and eventually dead-letters into "Needs You Today". A
       // swallowed failure here is how a member silently never hears back.
-      await getEmailSender().send({ to: member.contact_email, ...renderNotification(payload) }, { idempotencyKey: `notify-${jobId}` });
+      await getEmailSender().send({ to: member.contact_email, ...renderNotification(payload, templates) }, { idempotencyKey: `notify-${jobId}` });
       if (noteId) {
         await db.from("notifications").update({ emailed_at: new Date().toISOString() }).eq("id", noteId);
       }
@@ -380,18 +384,25 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       if (!lines.length) return;
 
       const total = lines.reduce((sum, [, count]) => sum + count, 0);
-      const { getEmailSender } = await import("./adapters/email");
-      await getEmailSender().send({
-        to: ADMIN_EMAIL,
-        subject: `SMI — ${total} item${total === 1 ? "" : "s"} waiting for you`,
-        text: [
-          `${total} item${total === 1 ? "" : "s"} waiting in the console:`,
-          "",
-          ...lines.map(([label, count]) => `  ${count} — ${label}`),
-          "",
-          `${siteUrl()}/console`,
-        ].join("\n"),
-      });
+      const [{ getEmailSender }, { renderAdminEmail }, { loadEmailTemplates }] = await Promise.all([
+        import("./adapters/email"),
+        import("./email/templates"),
+        import("./email/store"),
+      ]);
+      // The per-line markup stays in code: it is generated from counts, so
+      // there is nothing in it for anyone to word differently. The sentence
+      // around it, and the subject, are editable.
+      const mail = renderAdminEmail(
+        "admin_digest",
+        {
+          total: String(total),
+          total_s: total === 1 ? "" : "s",
+          lines: lines.map(([label, count]) => `  ${count} — ${label}`).join("\n"),
+          console_url: `${siteUrl()}/console`,
+        },
+        await loadEmailTemplates(),
+      );
+      await getEmailSender().send({ to: ADMIN_EMAIL, ...mail });
       break;
     }
     case "newsletter_sync": {

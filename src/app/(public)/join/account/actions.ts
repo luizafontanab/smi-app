@@ -43,7 +43,7 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
     name: company,
     email,
     message: `Started the join flow: account created, draft company page in place. Next step: payment.`,
-    emailSubject: `New member signup: ${company}`,
+    kind: "admin_new_signup",
   });
 
   // The member's own welcome. provisionMember sets email_confirm, so Supabase

@@ -4,8 +4,12 @@
  * scripts first). Alternative to seed.ts: real members/stories/video/event
  * plus the minimal infra rows (auth users, advert slots, settings, layouts) and
  * SAMPLE-stamped adverts so the slots have something to rotate (--no-adverts
- * skips them). Other synthetic operational data (analytics, newsletters,
- * contacts) is NOT seeded — run seed.ts instead when demoing those consoles.
+ * skips them). On a LOCAL run it also adds a few synthetic upcoming events and
+ * sent newsletter issues (--no-demo-rows skips them, --remote refuses them):
+ * the extract has no newsletters at all and its real events have mostly gone
+ * past, so without these two sections of the grid homepage render nothing.
+ * Other synthetic operational data (analytics, contacts) is still NOT seeded —
+ * run seed.ts instead when demoing those consoles.
  *
  * Expects a fresh DB (supabase db reset). Defaults to local; seeding a hosted
  * project needs --remote (see `pnpm seed:prod`).
@@ -18,6 +22,10 @@
  * Run: pnpm exec tsx scripts/seed-real.ts [--stories-limit N] [--skip-media]
  *        [--no-adverts]    seed everything except the sample adverts
  *        [--adverts-only]  add sample adverts to an already-seeded DB, nothing else
+ *        [--demo-rows]     add the synthetic upcoming events and sent newsletter
+ *                          issues to an already-seeded DB, nothing else —
+ *                          idempotent, needs no extract, local targets only
+ *        [--no-demo-rows]  leave them out of a full run
  *        [--pages-only]    upsert static pages into an already-seeded DB, nothing else
  *        [--taxonomies-only] repair industries/services/membership-type links on an
  *                          already-seeded DB — idempotent, writes no content or media
@@ -88,6 +96,12 @@ const PAGES_ONLY = process.argv.includes("--pages-only");
 // before the taxonomy split and so has no services/member_services rows and no
 // real industry assignment. Every write is an upsert, so it is re-runnable.
 const TAXONOMIES_ONLY = process.argv.includes("--taxonomies-only");
+// --demo-rows: add the synthetic upcoming events and sent newsletter issues to
+// an already-seeded DB, nothing else. Also part of a normal local run;
+// --no-demo-rows opts out, and --remote refuses them outright (see
+// seedDemoRows). Idempotent, so it is safe to re-run on a populated local DB.
+const DEMO_ROWS_ONLY = process.argv.includes("--demo-rows");
+const NO_DEMO_ROWS = process.argv.includes("--no-demo-rows");
 // --dry-run: print what --taxonomies-only would change and write nothing.
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -139,7 +153,11 @@ async function seedAdverts(
   };
   const banners = adMembers.slice(0, 8);
   const logos = adMembers.slice(8, 13);
-  console.log(`— sample adverts (${banners.length} banners, ${logos.length} supplier logos)`);
+  // 830×170, for the grid homepage's narrow column. Its own format, so its own
+  // rotation pool — this artwork must never be dealt into a full-width slot
+  // (migration 20260917000001).
+  const narrowBanners = adMembers.slice(13, 15);
+  console.log(`— sample adverts (${banners.length} banners, ${narrowBanners.length} narrow banners, ${logos.length} supplier logos)`);
   // Seeded bookings are admin-sold and already approved: without a status they
   // would take the 'draft' default and render nothing.
   const booked = { status: "live", source: "admin", approved_at: today.toISOString(), went_live_at: monthsAgo.toISOString() };
@@ -165,6 +183,21 @@ async function seedAdverts(
     });
   }
 
+  for (let i = 0; i < narrowBanners.length; i++) {
+    const m = narrowBanners[i];
+    const name = String(m.name);
+    const [dPath, mPath] = await Promise.all([
+      putSvg(`panels/narrow-${i}-wide.svg`, svgBanner(name, 830, 170, palette[(i + 2) % 8], { sample: true })),
+      putSvg(`panels/narrow-${i}-mobile.svg`, svgBanner(name, 370, 280, palette[(i + 2) % 8], { sample: true })),
+    ]);
+    const { data: ad, error: adErr } = await db
+      .from("adverts")
+      .insert({ member_id: memberId(m.wp_member_id), name: `${name} narrow banner`, desktop_path: dPath, mobile_path: mPath, format: "banner_narrow" })
+      .select("id").single();
+    if (adErr) throw adErr;
+    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+  }
+
   for (let i = 0; i < logos.length; i++) {
     const m = logos[i];
     const name = String(m.name);
@@ -181,6 +214,7 @@ async function seedAdverts(
   // products, not just the synthetic scripts/seed.ts.
   await db.from("advert_products").insert([
     { short_name: "Homepage banner", format: "banner", cap: 3, rate_pennies: 65000 },
+    { short_name: "Homepage banner (narrow)", format: "banner_narrow", cap: 3, rate_pennies: 65000 },
     { short_name: "Skyscraper", format: "skyscraper", cap: 3, rate_pennies: 55000 },
     { short_name: "MPU box", format: "mpu", cap: 3, rate_pennies: 45000 },
     { short_name: "In-feed card", format: "in_feed", cap: 3, rate_pennies: 40000 },
@@ -202,6 +236,121 @@ async function seedAdverts(
  * Members are matched to the extract by SLUG: `members` carries no
  * wp_member_id, and slug is the only stable identifier both sides share.
  */
+/**
+ * Synthetic upcoming events and sent newsletter issues — the two things the
+ * real extract cannot supply in a useful quantity, and the reason two sections
+ * of the grid homepage render nothing on a freshly seeded machine.
+ *
+ * Why this is needed at all:
+ *   · EVENTS — the extract's events are real, and real events go past. Only
+ *     one is still in the future, so "Upcoming events" (which takes events[1]
+ *     onward, events[0] being the fold's placement card) has nothing to show.
+ *     Three more, dated forward from today, so the row fills whenever it runs.
+ *   · NEWSLETTERS — the extract has none at all. The WordPress site kept its
+ *     issues in Mailchimp, not in the CMS, so there is nothing to extract.
+ *
+ * Same principle as the SAMPLE adverts above: seed enough that every surface
+ * has something in it, and be explicit that it is not real. Covers are
+ * borrowed from real events already in storage, so this uploads nothing.
+ *
+ * NEVER on --remote. A fabricated trade event on the live site is not a
+ * placeholder, it is misinformation — someone could plan a trip around it.
+ * The caller enforces this; the guard is repeated here because the cost of
+ * getting it wrong is a real person driving to Birmingham.
+ *
+ * Re-runnable: events upsert on their unique slug, issues on their unique
+ * number, and each issue's items are cleared before they are rewritten.
+ */
+async function seedDemoRows(): Promise<void> {
+  if (REMOTE) throw new Error("seedDemoRows must never run against a remote target");
+  // One prefix, used both to name these rows and to exclude them from the
+  // cover lookup below. They are also the handle for removing them by hand.
+  const DEMO_SLUG_PREFIX = "smi-demo-";
+
+  const day = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  // Real covers, so the cards carry pictures rather than the empty-state cog.
+  // Newest first: the most recent events are the ones whose media is certain
+  // to have been uploaded by this same run.
+  //
+  // Excluding this function's own rows is what makes a re-run stable. Without
+  // it the second run reads back the covers it wrote on the first — the demo
+  // events are dated furthest into the future, so they ARE the newest three —
+  // and the row ends up showing the same picture two or three times.
+  const { data: covered } = await db
+    .from("events")
+    .select("cover_path")
+    .not("cover_path", "is", null)
+    .not("slug", "like", `${DEMO_SLUG_PREFIX}%`)
+    .order("starts_on", { ascending: false })
+    .limit(3);
+  const cover = (i: number) => covered?.[i % Math.max(covered.length, 1)]?.cover_path ?? null;
+
+  const events = [
+    { slug: `${DEMO_SLUG_PREFIX}fabrication-north`, title: "Fabrication North Open Day", location: "Leeds, LS11 5BD", lat: 53.7797, lng: -1.5492, starts_on: day(26) },
+    { slug: `${DEMO_SLUG_PREFIX}press-brake-live`, title: "Press Brake Technology Live", location: "Birmingham NEC, B40 1NT", lat: 52.4506, lng: -1.7180, starts_on: day(54) },
+    { slug: `${DEMO_SLUG_PREFIX}welding-skills`, title: "Welding Skills Showcase", location: "Manchester, M17 1HH", lat: 53.4670, lng: -2.3200, starts_on: day(88) },
+  ].map((e, i) => ({
+    ...e,
+    status: "published",
+    cover_path: cover(i),
+    description: "Sample event seeded for local development — not a real date in the trade calendar.",
+  }));
+
+  const { error: evErr } = await db.from("events").upsert(events, { onConflict: "slug" });
+  if (evErr) throw evErr;
+
+  // Issues need stories to list, or /newsletters/[slug] renders an empty page.
+  const { data: pubStories } = await db.from("stories").select("id").eq("status", "published").limit(24);
+  const stories = pubStories ?? [];
+
+  const monthsAgo = (n: number) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - n, 3);
+    return d.toISOString();
+  };
+  const monthName = (n: number) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - n, 3);
+    return d.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  };
+
+  // Descending numbers so the newest issue is the highest, as a real archive
+  // would be — sentNewsletters() orders on number, not on sent_at.
+  const issues = [0, 1, 2].map((n) => ({
+    number: 47 - n,
+    subject: `SMI Monthly — ${monthName(n + 1)}`,
+    status: "sent",
+    web_slug: `smi-monthly-${47 - n}`,
+    sent_at: monthsAgo(n + 1),
+    intro: "Sample issue seeded for local development: the month's news, new machinery and the events worth your time.",
+  }));
+
+  const { data: written, error: nlErr } = await db
+    .from("newsletter_issues")
+    .upsert(issues, { onConflict: "number" })
+    .select("id, number");
+  if (nlErr) throw nlErr;
+
+  // newsletter_items has no natural key to upsert on, so a re-run replaces
+  // each issue's list rather than doubling it.
+  for (const issue of written ?? []) {
+    await db.from("newsletter_items").delete().eq("issue_id", issue.id);
+    const slice = stories.slice((47 - issue.number) * 8, (47 - issue.number) * 8 + 8);
+    if (slice.length === 0) continue;
+    const { error } = await db
+      .from("newsletter_items")
+      .insert(slice.map((s, i) => ({ issue_id: issue.id, story_id: s.id, position: i })));
+    if (error) throw error;
+  }
+
+  console.log(`— demo rows: ${events.length} upcoming events, ${issues.length} sent newsletter issues (SAMPLE content, local only)`);
+}
+
 async function backfillTaxonomies(
   memberRows: { wp_member_id: number; slug: string }[],
   catRows: { kind: string; slug: string; name: string }[],
@@ -392,6 +541,13 @@ async function uploadMedia(
 }
 
 async function main() {
+  // First, and before anything reads EXTRACT_DIR: these rows are synthesised,
+  // not extracted, so this mode works on a machine that has no export at all.
+  if (DEMO_ROWS_ONLY) {
+    await seedDemoRows();
+    return;
+  }
+
   console.log(`— real-content seed from ${EXTRACT_DIR}`);
   // storage can lag behind kong for a while after `supabase db reset`
   for (let i = 0; ; i++) {
@@ -701,6 +857,9 @@ async function main() {
   await db.from("advert_slots").insert([
     { key: "home_1", label: "Homepage banner 1", cap: 3 },
     { key: "home_2", label: "Homepage banner 2", cap: 3 },
+    // The grid design's replacement for home_2 — same position, narrow column
+    // (migration 20260917000001).
+    { key: "home_2_narrow", label: "Homepage banner 2 — grid design (830×170)", cap: 3 },
     { key: "home_3", label: "Homepage banner 3", cap: 3 },
     { key: "siderail_a", label: "Side rail A", cap: 3 },
     { key: "siderail_b", label: "Side rail B", cap: 3 },
@@ -718,6 +877,17 @@ async function main() {
     { key: "grid", value: { blocks: 12, mix: { news: 6, video: 2, member_news: 2, featured_member: 1, featured_machine: 1 } } },
     { key: "social_caps", value: { per_day: 3, delay_minutes: 30 } },
   ]);
+  // No `prospect_marks` here, unlike scripts/seed.ts: those marks point at the
+  // LeadGenSource mock's fictional prospects, and this seed builds the real
+  // WordPress content. Seeding invented lead-gen state next to real member data
+  // is how sample prospects end up being treated as leads.
+  //
+  // No `email_templates` either, and for a stronger reason than that one: it is
+  // an override table, and an absent row means "send the copy shipped in
+  // src/lib/email/defaults.ts". Real data should go out on the real wording, so
+  // empty is the correct state. scripts/seed.ts inserts a single row only to
+  // give the console one "Customised" example to render.
+
   const { DEFAULT_LAYOUTS } = await import("../src/lib/blocks/defaults");
   await db.from("page_layouts").insert(
     Object.entries(DEFAULT_LAYOUTS).map(([page_type, layout]) => ({ page_type, entity_id: null, layout })),
@@ -760,6 +930,46 @@ async function main() {
   } else {
     console.warn("— featured machine: salvagnini-uk-ireland not found in this seed run, skipped");
   }
+
+  /*
+   * Featured members — the grid homepage's "Featured members" box and the
+   * directory's featured strip both render live `featured_member` placements
+   * and nothing else, so without these two rows this seed shows an empty
+   * sidebar and the videos band silently falls back to one column. The
+   * synthetic seed has had them since day one (scripts/seed.ts); this one
+   * never did, which is why the box looked unbuilt on real data.
+   *
+   * Members with a logo, since the box leads with one. Same month-long term as
+   * the machine above: placements are date-driven, with no job to flip them.
+   */
+  console.log("— featured member placements");
+  const { data: featureable } = await db
+    .from("members")
+    .select("id")
+    .eq("status", "active")
+    .not("logo_path", "is", null)
+    .order("name")
+    .limit(3);
+  if (featureable?.length) {
+    const today = new Date();
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const { error: fmPlErr } = await db.from("placements").insert(
+      featureable.map((m) => ({
+        kind: "featured_member" as const,
+        member_id: m.id,
+        starts_on: iso(new Date(today.getFullYear(), today.getMonth(), 1)),
+        ends_on: iso(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+      })),
+    );
+    if (fmPlErr) throw fmPlErr;
+  } else {
+    console.warn("— featured members: no active member has a logo, skipped");
+  }
+
+  // Last, and after the real events are in: it borrows their covers, and it
+  // needs published stories to fill each newsletter issue. Local only —
+  // seedDemoRows refuses a remote target outright.
+  if (!NO_DEMO_ROWS && !REMOTE) await seedDemoRows();
 
   console.log("Real-content seed complete.");
   const counts = await Promise.all(

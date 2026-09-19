@@ -46,7 +46,13 @@ const PUBLIC: Route[] = [
   anon("/featured-machine"),
   anon("/join"),
   anon("/join/account"),
+  // Bare /member is the word-cloud view now, not the tile list. The existing
+  // `member` baseline therefore changes meaning wholesale and needs a human
+  // accept. The explicit id is mandatory on the list entry: idFor() strips the
+  // query string, so the default would collide with `member` and trip the
+  // duplicate guard at the foot of this file.
   anon("/member"),
+  { id: "member_list", path: "/member?view=list", role: "anon" },
   anon("/news"),
   anon("/newsletters"),
   anon("/search?q=laser"),
@@ -98,6 +104,7 @@ const DASHBOARD: Route[] = [
   member("/dashboard/equipment/new"),
   member("/dashboard/event/new"),
   member("/dashboard/help"),
+  member("/dashboard/leads"),
   member("/dashboard/notifications"),
   member("/dashboard/pay"),
   member("/dashboard/profile"),
@@ -162,7 +169,9 @@ const CONSOLE: Route[] = [
   admin("/console/content-pages"),
   admin("/console/crm"),
   admin("/console/dev"),
+  admin("/console/email-templates"),
   admin("/console/events"),
+  admin("/console/leads"),
   admin("/console/machines"),
   admin("/console/media"),
   admin("/console/members"),
@@ -195,6 +204,10 @@ const CONSOLE_NEW: Route[] = [
 ];
 
 const CONSOLE_PINNED: Route[] = [
+  admin("/console/email-templates/welcome", {
+    id: "console_email_template",
+    pin: "the one row scripts/seed.ts customises, so this captures the edited state; every other kind renders the shipped default",
+  }),
   admin("/console/adverts/3f47b54d-e236-497a-931b-fbc423a97616", {
     id: "console_advert_id",
     pin: "first booking on /console/adverts",

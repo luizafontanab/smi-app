@@ -25,6 +25,11 @@ type Props = {
  * Formats a member may ask for, with the footprint they need to supply. The
  * pixel sizes mirror AdCreative.tsx — if those change, these captions are the
  * thing an advertiser will have designed against, so they change together.
+ *
+ * banner_narrow (830×170) is deliberately absent. It renders only in the grid
+ * design's homepage, which is behind the smi-theme cookie and is not the
+ * default, so a member self-booking it would buy a position most readers never
+ * see. Console-only until Jas decides to sell it (docs/HUMAN-TODO.md §14.3).
  */
 const FORMATS = [
   { value: "banner", label: "Banner", desktop: "1280×170", mobile: "370×280" },

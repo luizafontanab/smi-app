@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   deleteCategory, deleteContentPage, deleteIndustry, deleteMedia, markInboxRead, renameMedia, saveCategory,
-  saveContentPage, saveIndustry,
+  markProspect, saveContentPage, saveIndustry, saveSocialChannels,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -242,5 +242,87 @@ describe("deleteIndustry", () => {
 
     await expect(deleteIndustry(form({ id: "3", confirm: "1" })))
       .rejects.toThrow("NEXT_REDIRECT:/console/industries?deleted=1");
+  });
+});
+
+describe("saveSocialChannels", () => {
+  it("stores channel ids from either separator, trimmed, blanks dropped", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    await saveSocialChannels(form({ channel_ids: "c-1\n c-2 ,,c-3\n\n" }));
+
+    expect(builder.upsert).toHaveBeenCalledWith({
+      key: "social_channels",
+      value: { channelIds: ["c-1", "c-2", "c-3"] },
+    });
+  });
+
+  it("omits the organisation id when it's blank, rather than storing an empty string", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    await saveSocialChannels(form({ channel_ids: "c-1", organization_id: "  " }));
+
+    expect(builder.upsert).toHaveBeenCalledWith({ key: "social_channels", value: { channelIds: ["c-1"] } });
+  });
+
+  it("keeps the organisation id when given", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    await saveSocialChannels(form({ channel_ids: "c-1", organization_id: "org-1" }));
+
+    expect(builder.upsert).toHaveBeenCalledWith({
+      key: "social_channels",
+      value: { channelIds: ["c-1"], organizationId: "org-1" },
+    });
+  });
+
+  it("replaces the whole row, so saving clears any leftover v1 profileIds", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    await saveSocialChannels(form({ channel_ids: "c-1" }));
+
+    // Exact match, so the absence of a `profileIds` key is part of the assertion:
+    // the upsert writes a whole new value rather than merging into the old one.
+    expect(builder.upsert).toHaveBeenCalledWith({ key: "social_channels", value: { channelIds: ["c-1"] } });
+  });
+});
+
+describe("markProspect", () => {
+  it("redirects to login when not an admin", async () => {
+    requireConsole.mockRejectedValueOnce(new Error("NEXT_REDIRECT:/login?next=/console"));
+
+    await expect(markProspect(form({ ref: "https://www.linkedin.com/company/acme", action: "call" })))
+      .rejects.toThrow("NEXT_REDIRECT:/login?next=/console");
+  });
+
+  it("marks a prospect and returns to the same search", async () => {
+    db({ prospect_marks: () => queryBuilder(dbOk(null)) });
+
+    await expect(markProspect(form({ ref: "https://www.linkedin.com/company/acme", action: "call", q: "company_type=software" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/leads?company_type=software&saved=1");
+  });
+
+  it("ignores an action that isn't one of the four", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ prospect_marks: () => builder });
+
+    // No redirect thrown means it returned early — the DB check constraint is
+    // the backstop here, not the gate.
+    await markProspect(form({ ref: "https://www.linkedin.com/company/acme", action: "drop_table" }));
+
+    expect(builder.upsert).not.toHaveBeenCalled();
+  });
+
+  it("ignores a blank ref", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ prospect_marks: () => builder });
+
+    await markProspect(form({ ref: "  ", action: "call" }));
+
+    expect(builder.upsert).not.toHaveBeenCalled();
   });
 });

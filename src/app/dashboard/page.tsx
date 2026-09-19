@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { loadEmailTemplates } from "@/lib/email/store";
 import { notificationLabel, type NotificationPayload } from "@/lib/email/templates";
 import { notificationHref } from "@/lib/notification-links";
 import { notificationSlugs } from "@/lib/notifications";
@@ -47,6 +48,9 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
   ]);
 
   const slugs = await notificationSlugs(notifications ?? [], user.memberId);
+  // Labels are console-editable, so the feed reads them from the same table the
+  // emails do (GAPS A4.10) rather than from a copy in the page.
+  const templates = await loadEmailTemplates();
 
   // nudge: "the last time you posted a story was six months ago"
   // eslint-disable-next-line react-hooks/purity -- per-request render
@@ -137,7 +141,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
         </div>
         {(notifications ?? []).length > 0
           ? (notifications ?? []).map((n, i) => {
-              const label = n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind);
+              const label = notificationLabel(n.kind, templates);
               const href = notificationHref(n.kind, (n.payload ?? {}) as NotificationPayload, slugs);
               return (
                 <p key={i} className="mt-2 border-t pt-2 text-sm text-graphite">

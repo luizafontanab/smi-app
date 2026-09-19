@@ -9,6 +9,9 @@ export const dynamic = "force-dynamic";
 // Mirrors the adverts.format check constraint; sizes match AdCreative.tsx.
 const FORMATS = [
   { value: "banner", label: "Banner (1280×170 desktop / 370×280 mobile)" },
+  // Grid homepage only, and deliberately absent from the member's own advert
+  // form — see the note in dashboard/advert/AdvertForm.tsx.
+  { value: "banner_narrow", label: "Banner — narrow (830×170 desktop / 370×280 mobile)" },
   { value: "skyscraper", label: "Skyscraper (300×600, desktop only)" },
   { value: "mpu", label: "MPU (300×250)" },
   { value: "in_feed", label: "In-feed (native card)" },

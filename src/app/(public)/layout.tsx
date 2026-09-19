@@ -58,8 +58,13 @@ export default async function PublicLayout({ children }: { children: React.React
           <img src={mediaUrl(takeover.bannerPath)!} alt="" className="w-full" />
         )
       )}
-      <IndustryBar industries={industries} tone={isGrid ? "light" : "dark"} />
+      {/* The strip sits above the header on forge and below the nav on grid —
+          the client's placement for each design, not an inconsistency. On grid
+          it follows the sticky nav bar, so it scrolls away while the nav stays
+          pinned; on forge it is the first thing on the page as before. */}
+      {!isGrid && <IndustryBar industries={industries} tone="dark" />}
       <Header user={user} unread={unread} />
+      {isGrid && <IndustryBar industries={industries} tone="light" />}
       <main id="main" className="flex-1">{children}</main>
       <Footer />
       <CookieConsent />

@@ -1,6 +1,7 @@
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import Link from "next/link";
+import { loadEmailTemplates } from "@/lib/email/store";
 import { notificationLabel, type NotificationPayload } from "@/lib/email/templates";
 import { notificationHref } from "@/lib/notification-links";
 import { notificationSlugs, unreadNotificationCount } from "@/lib/notifications";
@@ -25,6 +26,9 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
     unreadNotificationCount(user.memberId),
   ]);
   const slugs = await notificationSlugs(notifications ?? [], user.memberId);
+  // Labels are console-editable, so the feed reads them from the same table
+  // the emails do (GAPS A4.10) rather than from a copy in the page.
+  const templates = await loadEmailTemplates();
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
   const qs = (p: number) => (p > 1 ? `/dashboard/notifications?page=${p}` : "/dashboard/notifications");
 
@@ -50,7 +54,7 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
                   when something went live, the member's own editor when it was
                   sent back. Unlinked only when there is genuinely nowhere to go. */}
               {(() => {
-                const label = n.kind === "story_live" ? "Your story went live 🎉" : notificationLabel(n.kind);
+                const label = notificationLabel(n.kind, templates);
                 const href = notificationHref(n.kind, (n.payload ?? {}) as NotificationPayload, slugs);
                 const cls = n.read_at ? "text-graphite" : "font-semibold text-ink";
                 return href

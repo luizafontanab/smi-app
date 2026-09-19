@@ -48,12 +48,21 @@ export async function sendContactMessage(_prev: { message: string }, formData: F
     return { message: "Thanks — we'll come back to you shortly." };
   }
   try {
-    const { getEmailSender } = await import("@/lib/adapters/email");
-    await getEmailSender().send({
-      to: ADMIN_EMAIL,
-      subject: `New ${kind} enquiry from ${name}`,
-      text: `${name} <${email}>\n\n${message}`,
-    });
+    // Not routed through notifyAdminFunnel: the inbox row above is written with
+    // this form's own `kind` ('contact' / 'advertising'), which the funnel
+    // helper would overwrite with 'membership'. The wording still comes from
+    // the same editable template table (fix-list 63).
+    const [{ getEmailSender }, { renderAdminEmail }, { loadEmailTemplates }] = await Promise.all([
+      import("@/lib/adapters/email"),
+      import("@/lib/email/templates"),
+      import("@/lib/email/store"),
+    ]);
+    const mail = renderAdminEmail(
+      "admin_contact_enquiry",
+      { name, email, message, enquiry_kind: kind },
+      await loadEmailTemplates(),
+    );
+    await getEmailSender().send({ to: ADMIN_EMAIL, ...mail });
   } catch (e) {
     // The sender throws on a provider rejection so failures are visible. The
     // enquiry is already safe in the console inbox (line 35), so the visitor

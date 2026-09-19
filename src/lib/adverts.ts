@@ -47,6 +47,11 @@ export async function showAdPlaceholders(): Promise<boolean> {
 /** Mirrors the adverts.format check constraint. Mobile is artwork, not a format. */
 export type AdvertFormat =
   | "banner"
+  // 830×170 — the grid homepage's narrow column. Its own format, not a render
+  // variant: an advert row has one desktop_path and dealSlots pools every
+  // 'banner' booking across every banner slot, so the two sizes cannot share
+  // a pool without the narrow artwork leaking into full-width positions.
+  | "banner_narrow"
   | "supplier_logo"
   | "newsletter_banner"
   | "association_logo"

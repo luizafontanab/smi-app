@@ -3,6 +3,7 @@ import {
   cancelMembership, editEvent, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
   memberUploadImage, memberUploadVideoImage, proposeOwnArtworkSwap, renewAdvertBooking, requestVisibility,
   resubmitAdvert, savePrefs, submitAdvert, submitEvent, submitMachine, submitProfileEdit, submitStory, submitVideo,
+  markProspectFollowUp, unmarkProspect,
   withdrawEvent, withdrawMachine, withdrawStory, withdrawVideo,
 } from "@/app/dashboard/actions";
 import { serviceDb } from "@/lib/db/server";
@@ -26,6 +27,12 @@ vi.mock("@/lib/auth", () => ({ requireMember }));
 vi.mock("@/lib/media", () => ({ uploadImage, removeMedia }));
 vi.mock("@/lib/notify-admin", () => ({ notifyAdminFunnel }));
 vi.mock("@/lib/adapters/geocode", () => ({ geocodeAddress }));
+
+const { getLeadGenSource } = vi.hoisted(() => ({ getLeadGenSource: vi.fn() }));
+vi.mock("@/lib/adapters/leadgen", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getLeadGenSource,
+}));
 
 // cancelMembership loads @/lib/membership dynamically; keep the module's other
 // exports real so anything else in this graph (statuses, slugify) still works.
@@ -563,5 +570,77 @@ describe("proposeOwnArtworkSwap", () => {
       .rejects.toThrow("NEXT_REDIRECT:/dashboard/advert/b1?submitted=swap");
 
     expect(proposalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", advert_id: "ad1" }));
+  });
+});
+
+describe("markProspectFollowUp — ownership", () => {
+  /** The adapter's mock, with a known window for this member. */
+  function withSource(refs: string[]) {
+    const mark = vi.fn(async () => {});
+    vi.mocked(getLeadGenSource).mockReturnValue({
+      search: vi.fn(async () => refs.map((ref) => ({
+        ref, name: "N", company: "C", email: null, phone: null,
+        linkedinUrl: ref, companyType: null, location: null, distanceMiles: 1,
+      }))),
+      mark,
+    });
+    return mark;
+  }
+
+  it("marks a prospect the member can actually see", async () => {
+    const mark = withSource(["https://www.linkedin.com/company/acme"]);
+
+    await markProspectFollowUp(form({ ref: "https://www.linkedin.com/company/acme" }));
+
+    expect(mark).toHaveBeenCalledWith("https://www.linkedin.com/company/acme", "follow_up", { memberId: "mem1" });
+  });
+
+  it("ignores a ref outside this member's own results", async () => {
+    // Stands in for assertOwnsRow: there is no row of ours to check, so the
+    // adapter's own scoped result set is the ownership boundary. Without this a
+    // member could mark a competitor's prospect once the source is live.
+    const mark = withSource(["https://www.linkedin.com/company/acme"]);
+
+    await markProspectFollowUp(form({ ref: "https://www.linkedin.com/company/someone-elses" }));
+
+    expect(mark).not.toHaveBeenCalled();
+  });
+
+  it("takes member_id from the session, never the form", async () => {
+    const mark = withSource(["https://www.linkedin.com/company/acme"]);
+
+    await markProspectFollowUp(form({ ref: "https://www.linkedin.com/company/acme", member_id: "mem-someone-else" }));
+
+    expect(mark).toHaveBeenCalledWith(expect.any(String), "follow_up", { memberId: "mem1" });
+  });
+
+  it("cannot be talked into an admin-only action by a crafted POST", async () => {
+    // call/email/sequence are A29 capabilities. The action is hard-coded, so a
+    // form field naming one is simply ignored.
+    const mark = withSource(["https://www.linkedin.com/company/acme"]);
+
+    await markProspectFollowUp(form({ ref: "https://www.linkedin.com/company/acme", action: "sequence" }));
+
+    expect(mark).toHaveBeenCalledWith(expect.any(String), "follow_up", expect.anything());
+  });
+});
+
+describe("unmarkProspect", () => {
+  it("deletes only a mark belonging to this member", async () => {
+    const marks = queryBuilder(dbOk({ id: "mark1", member_id: "mem1" }));
+    db({ prospect_marks: () => marks });
+
+    await unmarkProspect(form({ id: "mark1" }));
+
+    expect(marks.delete).toHaveBeenCalled();
+  });
+
+  it("leaves another member's mark alone", async () => {
+    const marks = queryBuilder(dbOk({ id: "mark1", member_id: "mem-other" }));
+    db({ prospect_marks: () => marks });
+
+    await unmarkProspect(form({ id: "mark1" }));
+
+    expect(marks.delete).not.toHaveBeenCalled();
   });
 });

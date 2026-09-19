@@ -1,12 +1,13 @@
 import Link from "next/link";
 
 /**
- * Slim industry strip above the header. Data comes from the public layout —
- * this stays presentational.
+ * Slim industry strip. Data and position come from the public layout — this
+ * stays presentational. Forge puts it above the header; grid puts it below the
+ * nav bar, which is where the client's comps have it.
  *
- * `tone` follows the header it sits above: "dark" (the default) is forge's
+ * `tone` follows the header it sits with: "dark" (the default) is forge's
  * near-black chrome; "light" is the grid design's light header, where a
- * near-black strip would read as a stray band above the page.
+ * near-black strip would read as a stray band across the page.
  */
 const TONES = {
   dark: {

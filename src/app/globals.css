@@ -601,9 +601,175 @@ h1, h2, h3 {
   }
 }
 
+/* ─────────────────────────── Member cloud (/member?view=cloud) ────────────
+   The word-map view of the directory. Positions, sizes and gaps all come from
+   src/lib/cloud-layout.ts as container-query units, so the browser rescales
+   the whole cloud with its container and a resize needs no JS at all.
+
+   CASCADE NOTE applies with teeth here: font-size and color below are unlayered
+   and will beat any Tailwind text utility on the same element. Do NOT add
+   text-sm / text-ink / text-brand-text to .cloud-name — set it here or not at
+   all, or the className becomes a lie. */
+
+.member-cloud {
+  position: relative;
+  container-type: inline-size;
+  /* Height follows the packing, in the same units as everything else. */
+  aspect-ratio: calc(100 / var(--cloud-h, 60));
+  /* Room for a card hanging off the top or bottom row, since the cards
+     deliberately paint outside the packed area.
+     `clip` on the inline axis only, with the block axis left visible: the
+     packer already keeps names and cards inside the container, so this catches
+     nothing but sub-pixel drift between the measured width and the painted
+     glyphs — and it guarantees the page can never scroll sideways, which
+     mobile.spec checks. `hidden` would force the block axis to scroll too. */
+  overflow-x: clip;
+  overflow-y: visible;
+  padding-block: 5rem;
+}
+
+.cloud-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate3d(calc(var(--x) * 1cqw), calc(var(--y) * 1cqw), 0);
+}
+
+.cloud-name {
+  display: inline-block;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--smi-ink);
+  /* The floor stops the smallest names becoming unreadable on a phone; the
+     narrow bucket is packed at a density that reaches it only below ~340px. */
+  font-size: max(0.8125rem, calc(var(--s) * 1cqw));
+  line-height: 1.1;
+  animation: cloud-in 520ms var(--hero-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 14ms);
+}
+
+/* Hot-Cut Orange is 2.5:1 on paper and fails AA as text at ANY size, so a
+   featured name is set in the deepened orange and the true brand orange
+   carries it as a rule underneath — a non-text accent, which is the only role
+   the Cut-Line Rule allows it on light ground. */
+.cloud-item[data-featured="true"] .cloud-name {
+  font-family: var(--smi-font-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--smi-brand-text);
+  border-bottom: 3px solid var(--smi-brand);
+}
+
+/* Only the largest names drift — 300 infinite composited layers would not be
+   free, and the cap is set in cloud-layout.ts. */
+.cloud-item[data-drift="true"] .cloud-name {
+  will-change: transform;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cloud-item[data-drift="true"] .cloud-name {
+    animation:
+      cloud-in 520ms var(--hero-ease) backwards,
+      cloud-drift var(--dur, 24s) var(--hero-ease-soft) infinite alternate;
+    animation-delay: calc(var(--i, 0) * 14ms), var(--delay, 0s);
+  }
+}
+
+/* Stop drifting the moment someone aims at a name. A target that never stops
+   moving is awkward to click and, because it is never "stable", is unclickable
+   to Playwright's actionability check — so this is correctness as well as
+   manners. */
+.cloud-item:hover .cloud-name,
+.cloud-item:focus-within .cloud-name,
+.cloud-item[data-revealed="true"] .cloud-name {
+  animation-play-state: paused;
+}
+
+/* The settle: the server packs against estimated text widths, the browser
+   measures and corrects. CloudRefine adds this flag before writing the
+   corrected values, so the difference eases instead of jumping. Position is a
+   transform, so this contributes nothing to CLS. */
+.member-cloud[data-settled="true"] .cloud-item {
+  transition: transform 700ms var(--hero-ease);
+}
+
+.cloud-card {
+  position: absolute;
+  left: calc(var(--cx) * 1cqw);
+  top: calc(var(--cy) * 1cqw);
+  width: 9cqw;
+  height: 9.5cqw;
+  min-width: 68px;
+  min-height: 72px;
+  display: block;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  /* The card floats over other names, so it needs a hairline as well as the
+     resting shadow to read as a surface rather than a logo pasted on the page. */
+  border: 1px solid var(--smi-line);
+  background: var(--smi-paper);
+  padding: 0.375rem;
+  box-shadow: 0 4px 10px -2px rgb(0 0 0 / 0.12);
+  opacity: 0;
+  transform: translate3d(0, 4px, 0) scale(0.96);
+  transition: opacity 180ms var(--hero-ease-soft), transform 180ms var(--hero-ease);
+  /* Never steals a click from the name it belongs to, or from a neighbour it
+     happens to overlap. */
+  pointer-events: none;
+  /* 100+ hidden cards should cost nothing until one is shown. */
+  content-visibility: auto;
+  z-index: 1;
+}
+
+/* focus-within matters as much as hover: without it the logo is a mouse-only
+   affordance and a keyboard reader never sees it. data-revealed is the touch
+   path, set by CloudRefine on first tap. */
+.cloud-item:hover .cloud-card,
+.cloud-item:focus-within .cloud-card,
+.cloud-item[data-revealed="true"] .cloud-card {
+  opacity: 1;
+  transform: none;
+  z-index: 2;
+}
+.cloud-item:hover,
+.cloud-item:focus-within,
+.cloud-item[data-revealed="true"] {
+  z-index: 3;
+}
+
+@keyframes cloud-in {
+  from { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cloud-drift {
+  to { transform: translate3d(var(--dx, 0), var(--dy, 0), 0); }
+}
+
+/* Below the wide/narrow breakpoint, swap in the separately-packed layout. Not
+   a scaled copy of the desktop one: the font-size floor above stops the
+   smallest names shrinking further, which would close the gaps a uniform scale
+   depends on. */
+@media (max-width: 639px) {
+  .member-cloud {
+    aspect-ratio: calc(100 / var(--cloud-hn, 200));
+    padding-block: 3.5rem;
+  }
+  .cloud-item { transform: translate3d(calc(var(--xn) * 1cqw), calc(var(--yn) * 1cqw), 0); }
+  .cloud-name { font-size: max(0.8125rem, calc(var(--sn) * 1cqw)); }
+  .cloud-card { left: calc(var(--cxn) * 1cqw); top: calc(var(--cyn) * 1cqw); }
+}
+
 /* Crossfades are kept (shortened); motion is removed. Opacity is tolerated
    under reduced-motion — translation, scaling and an infinite pan are not. */
 @media (prefers-reduced-motion: reduce) {
+  /* The cloud's positions stay; only the movement goes. The card's opacity
+     fade survives under the same licence the hero takes. */
+  .cloud-name { animation: none !important; will-change: auto; }
+  .member-cloud[data-settled="true"] .cloud-item { transition: none !important; }
+  .cloud-card {
+    transform: none !important;
+    transition: opacity 150ms linear !important;
+  }
+
   .hero-media-stack,
   .hero-copy-layer[data-initial="true"] > *,
   .hero-rail > li,

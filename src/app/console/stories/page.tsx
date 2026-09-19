@@ -3,7 +3,7 @@ import { serviceDb } from "@/lib/db/server";
 import { requireConsole } from "@/lib/auth";
 import { saveSocialCaps, saveSocialChannels } from "../actions";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
-import { DEFAULT_SOCIAL_CHANNELS, type SocialChannels } from "@/lib/social-channels";
+import { readSocialChannels } from "@/lib/social-channels";
 import { CalendarView, monthGrid, parseMonth, type CalendarStory } from "./CalendarView";
 import { StoryBoard } from "./StoryBoard";
 
@@ -44,7 +44,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
     db.from("settings").select("value").eq("key", "social_channels").maybeSingle(),
   ]);
   const caps: SocialCaps = { ...DEFAULT_SOCIAL_CAPS, ...(capsSetting?.value as Partial<SocialCaps> | null) };
-  const channels: SocialChannels = { ...DEFAULT_SOCIAL_CHANNELS, ...(channelsSetting?.value as Partial<SocialChannels> | null) };
+  const channels = readSocialChannels(channelsSetting?.value);
 
   return (
     <div>
@@ -91,16 +91,31 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
 
         <h2 className="mt-5 text-sm font-bold text-ink">Buffer channels</h2>
         <p className="mt-1 text-xs text-graphite">
-          Which connected Buffer profiles auto-posts go to — Buffer has no &quot;post everywhere&quot; default, so this must be set before any post can send.
+          Which connected Buffer channels auto-posts go to — Buffer sends one post per channel, with no &quot;post everywhere&quot; default, so this must be set before any post can send.
         </p>
+        {channels.legacyProfileIds.length > 0 && (
+          <p className="mt-2 rounded bg-danger/10 p-2 text-xs text-danger">
+            The saved ids ({channels.legacyProfileIds.join(", ")}) are Buffer v1 <em>profile</em> ids. The current
+            Buffer API does not accept them — re-enter them as channel ids, or no post will send.
+          </p>
+        )}
         <form action={saveSocialChannels} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
           <label className="flex flex-1 flex-col">
-            Profile IDs (one per line, or comma-separated)
+            Channel IDs (one per line, or comma-separated)
             <textarea
-              name="profile_ids"
+              name="channel_ids"
               rows={2}
-              defaultValue={channels.profileIds.join("\n")}
+              defaultValue={channels.channelIds.join("\n")}
               className="mt-1 w-full rounded border px-2 py-1"
+            />
+          </label>
+          <label className="flex flex-col">
+            Organisation ID (optional)
+            <input
+              type="text"
+              name="organization_id"
+              defaultValue={channels.organizationId ?? ""}
+              className="mt-1 w-56 rounded border px-2 py-1"
             />
           </label>
           <button className="rounded bg-ink px-4 py-2 text-white">Save</button>

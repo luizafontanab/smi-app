@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { geocodeAddress } from "@/lib/adapters/geocode";
+import { getLeadGenSource } from "@/lib/adapters/leadgen";
 import { mediaUrl, serviceDb, sessionDb } from "@/lib/db/server";
 import { isEventType } from "@/lib/event-types";
 import { removeMedia, uploadImage } from "@/lib/media";
@@ -20,7 +21,7 @@ const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
 
 /**
  * These member-area actions use the service role, which bypasses RLS, so
- * ownership has to be checked by hand before every read or write. The three
+ * ownership has to be checked by hand before every read or write. The four
  * helpers below are the single place that happens, so a new action can't
  * forget the check the way a one-off inline comparison could.
  */
@@ -48,6 +49,12 @@ async function assertOwnsBooking(db: ReturnType<typeof serviceDb>, id: string, m
     .single();
   if (!data || data.advert?.member_id !== memberId) return null;
   return { id: data.id, status: data.status, advert_id: data.advert_id, product_id: data.product_id };
+}
+
+/** True when the `prospect_marks` row `id` is this member's own — never an admin mark. */
+async function assertOwnsMark(db: ReturnType<typeof serviceDb>, id: string, memberId: string): Promise<boolean> {
+  const { data } = await db.from("prospect_marks").select("id, member_id").eq("id", id).single();
+  return data?.member_id === memberId;
 }
 
 /** Editor image upload — returns the public URL for insertion as <img src>. */
@@ -488,7 +495,7 @@ export async function sendMemberMessage(formData: FormData) {
     name: member?.name ?? user.displayName ?? user.email,
     email: user.email,
     message,
-    emailSubject: `Member message from ${member?.name ?? user.email}`,
+    kind: "admin_member_message",
   });
   redirect("/dashboard/help?sent=1");
 }
@@ -525,7 +532,7 @@ export async function requestContentChange(formData: FormData) {
     name: member?.name ?? user.displayName ?? user.email,
     email: user.email,
     message: `Change requested on published ${kind || "content"} “${title}”:\n\n${note}`,
-    emailSubject: `Change request from ${member?.name ?? user.email}`,
+    kind: "admin_change_request",
   });
   redirect(`${back}${back.includes("?") ? "&" : "?"}requested=1`);
 }
@@ -779,4 +786,52 @@ export async function proposeOwnArtworkSwap(formData: FormData) {
   }
   revalidatePath("/dashboard/advert");
   redirect(`/dashboard/advert/${String(formData.get("booking_id"))}?submitted=swap`);
+}
+
+/* ---------- lead gen ---------- */
+
+/**
+ * GAPS A8.4 / USE-CASES M14: a member marks a prospect to follow up on.
+ *
+ * There is no row of ours to assert ownership of — the prospect comes from the
+ * `LeadGenSource` adapter — so the usual `assertOwns*` pattern doesn't apply
+ * directly. Three checks stand in for it, and all three matter because this
+ * action is reachable by direct POST:
+ *
+ *   1. `member_id` comes from the session, never the form. A crafted POST
+ *      carrying someone else's id is ignored, not honoured.
+ *   2. `action` is hard-coded. Call / email / add-to-sequence are admin-only
+ *      capabilities (A29) and must not be reachable from here at all.
+ *   3. `ref` is validated against this member's own results. Without it a
+ *      member could attach marks to arbitrary strings, and once the source is
+ *      live, to prospects scoped to a competitor.
+ */
+export async function markProspectFollowUp(formData: FormData) {
+  const user = await requireMember();
+  if (!user.memberId) return;
+
+  const ref = String(formData.get("ref") ?? "").trim();
+  if (!ref) return;
+
+  const source = getLeadGenSource();
+  const visible = await source.search({ memberId: user.memberId });
+  if (!visible.some((p) => p.ref === ref)) return;
+
+  await source.mark(ref, "follow_up", { memberId: user.memberId });
+  revalidatePath("/dashboard/leads");
+}
+
+/** Undo a follow-up mark. Deletes by id, scoped to this member's own rows. */
+export async function unmarkProspect(formData: FormData) {
+  const user = await requireMember();
+  if (!user.memberId) return;
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+
+  const db = serviceDb();
+  if (!(await assertOwnsMark(db, id, user.memberId))) return;
+
+  await db.from("prospect_marks").delete().eq("id", id);
+  revalidatePath("/dashboard/leads");
 }

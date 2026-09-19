@@ -9,13 +9,15 @@ import { reportAdSeen } from "@/lib/ad-impressions";
  * Slot footprints. Declared here rather than in AdSlot because AdSlot reaches
  * into server-only modules, and this is the client leaf both sides can share.
  *
- *   banner      1280×170 desktop / 370×280 mobile — the only two-creative shape
- *   rail        370×280 in a sidebar column
- *   skyscraper  300×600, desktop only
- *   mpu         300×250 box
- *   in_feed     native card, sized to StoryCard size="sm"
+ *   banner         1280×170 desktop / 370×280 mobile — a two-creative shape
+ *   banner_narrow   830×170 desktop / 370×280 mobile — same, for the grid
+ *                  homepage's 9fr column beside the Featured members box
+ *   rail           370×280 in a sidebar column
+ *   skyscraper     300×600, desktop only
+ *   mpu            300×250 box
+ *   in_feed        native card, sized to StoryCard size="sm"
  */
-export type AdShape = "banner" | "rail" | "skyscraper" | "mpu" | "in_feed";
+export type AdShape = "banner" | "banner_narrow" | "rail" | "skyscraper" | "mpu" | "in_feed";
 
 /**
  * The visible half of an advert slot, and the only place an impression is
@@ -33,6 +35,15 @@ export type AdShape = "banner" | "rail" | "skyscraper" | "mpu" | "in_feed";
 
 const VISIBLE_RATIO = 0.5;
 const VISIBLE_MS = 1000;
+
+/**
+ * Desktop widths for the two banner shapes; both are 170 tall. These set the
+ * intrinsic ratio the browser reserves before the artwork decodes — the image
+ * itself is w-full, so a file cut to the wrong size will still render at its
+ * own aspect and simply look wrong. That is what the separate banner_narrow
+ * advert format exists to prevent (lib/adverts.ts).
+ */
+const BANNER_DESKTOP = { banner: 1280, banner_narrow: 830 } as const;
 
 type Props = {
   advertId: string;
@@ -108,11 +119,14 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape, path 
 
   return (
     <Link ref={ref} href={href} className="block" aria-label={`Advert: ${name}`}>
-      {shape === "banner" ? (
-        // The only shape with two creatives: a 1280×170 strip cannot survive a
-        // phone, so the mobile artwork is a different shape, not a resize.
+      {shape === "banner" || shape === "banner_narrow" ? (
+        // The two-creative shapes: a wide strip cannot survive a phone, so the
+        // mobile artwork is a different shape, not a resize. Both swap at md:,
+        // not lg: — between 768 and 1024 the grid column is still full width,
+        // and upscaling a 830×170 strip is mild where upscaling the 370×280
+        // mobile creative to ~1000px would render it three times too tall.
         <>
-          <Image src={desktop} alt={name} width={1280} height={170} className="hidden w-full rounded md:block" onLoad={checkLoaded} unoptimized />
+          <Image src={desktop} alt={name} width={BANNER_DESKTOP[shape]} height={170} className="hidden w-full rounded md:block" onLoad={checkLoaded} unoptimized />
           <Image src={mobile} alt={name} width={370} height={280} className="w-full rounded md:hidden" onLoad={checkLoaded} unoptimized />
         </>
       ) : shape === "skyscraper" ? (

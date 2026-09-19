@@ -82,6 +82,16 @@ function AdPlaceholder({ shape, slotKey }: { shape: AdShape; slotKey?: string })
       </div>
     );
   }
+  if (shape === "banner_narrow") {
+    // Same height as a banner, narrower — the grid homepage's 9fr column. Same
+    // mobile creative, so only the desktop footprint differs.
+    return (
+      <div aria-hidden="true">
+        <div className={`${PLACEHOLDER_BOX} hidden aspect-[830/170] md:flex`}><PlaceholderLabel slotKey={slotKey} size="830×170" /></div>
+        <div className={`${PLACEHOLDER_BOX} flex aspect-[370/280] md:hidden`}><PlaceholderLabel slotKey={slotKey} size="370×280" /></div>
+      </div>
+    );
+  }
   return (
     <div aria-hidden="true">
       <div className={`${PLACEHOLDER_BOX} hidden aspect-[1280/170] md:flex`}><PlaceholderLabel slotKey={slotKey} size="1280×170" /></div>

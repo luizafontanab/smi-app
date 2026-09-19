@@ -1,9 +1,9 @@
 import { dealSlots } from "@/lib/adverts";
 import { AdSlot } from "@/components/AdSlot";
 import {
-  GhEventCard, GhLatestList, GhMachineCard, GhMemberRow, GhMoreNews,
-  GhNewsletterPanel, GhPublicationPanel, GhStatsBand, GhStoryCard, GhVideoCard,
-  type LatestItem,
+  GhEventCard, GhFeaturedMembers, GhMachineCard, GhMemberRow, GhMoreNews,
+  GhNewsletterCard, GhNewsletterPanel, GhPublicationPanel, GhStatsBand,
+  GhStoryCard, GhVideoCard,
 } from "@/components/grid-home/cards";
 import { Band, SectionHead } from "@/components/grid-home/ui";
 import { excluding, type HomeData } from "./home.data";
@@ -31,45 +31,60 @@ import { excluding, type HomeData } from "./home.data";
  *   · Member news is marked wherever it appears among industry news (the grid
  *     cards render MemberBadge off `is_member_news`, as the shared ones do).
  *
- * INVENTORY — read this before adding anything back. The only advert positions
- * on this page are the three banners, home_1/2/3. The eight home_rail_* logo
- * slots, the home_mpu_1 box, the supplier-logo wall and the featured-member
- * placement were all REMOVED on 17 Sep at the client's direction, pending a
- * rework of that part of the page. They render nowhere and report no
- * impressions, so a live booking against any of them currently shows a reader
- * nothing. Tracked in docs/HUMAN-TODO.md §14.3.
+ * INVENTORY — read this before adding anything back. Three advert positions,
+ * home_1, home_2 and home_3, all of them the full-width 1280×170 banner and
+ * all dealt from one pool. At the client's direction (18 Sep) every banner on
+ * this page is the same size, so the second position went back to the shared
+ * home_2 key across the page rather than the 830×170 banner_narrow it briefly
+ * took while it lived in the column beside the Featured members box.
+ *
+ * That leaves the banner_narrow FORMAT and the home_2_narrow slot registered —
+ * in the enum, in advert_slots, in the console's pickers, in both seeds and in
+ * ADVERT_FORMAT_PENNIES — and rendering nowhere. Deliberately not ripped out;
+ * see docs/HUMAN-TODO.md §14.5 before selling anyone that size.
+ *
+ * The featured-member placement is back, as the sidebar box. Still REMOVED
+ * since 17 Sep, and rendering nowhere: the eight home_rail_* logo slots, the
+ * home_mpu_1 box and the supplier-logo wall. A live booking against any of
+ * those still shows a reader nothing. Tracked in docs/HUMAN-TODO.md §14.3.
  */
 export function GridHome({
   stories, memberNews, videos, events, newsletters, featuredMembers, featuredMachine,
   adverts, showPlaceholders, storyTotal, memberCount,
 }: HomeData) {
-  // One call per slot family. home_1/2/3 match forge's banner key names so
-  // impression reporting stays comparable across designs.
+  // One call, because a slot family is a FORMAT and all three positions now
+  // take the same full-width banner. The keys match forge's so impression
+  // reporting stays comparable across the two designs.
   const banners = dealSlots(adverts.banner, ["home_1", "home_2", "home_3"]);
 
-  // Compositional slicing: two highlights above the fold, a content spotlight,
-  // and one story for the in-brief list — all disjoint so nothing repeats.
+  // Compositional slicing: two highlights above the fold, then the carousel
+  // takes the run straight after them — disjoint, so nothing repeats.
   const [lead, second, ...rest] = stories;
-  const spotlight = rest[0];
-  const briefStory = rest[1];
   // Wider than a static row needs: this is a carousel, so it should have
   // somewhere to scroll to rather than stopping one card past the edge.
-  const moreNews = rest.slice(2, 10);
-  const placedStoryIds = new Set([lead, second, spotlight, briefStory, ...moreNews].filter(Boolean).map((s) => s!.id));
+  const moreNews = rest.slice(0, 8);
+  const placedStoryIds = new Set([lead, second, ...moreNews].filter(Boolean).map((s) => s!.id));
   const railNews = excluding(memberNews, placedStoryIds);
-  // Only the second placement is read: the first had the left rail, which this
-  // design removed. See the inventory note in the file header.
-  const member2 = featuredMembers[1]?.member;
   const machine = featuredMachine?.machine;
 
-  // Comp v2's in-brief list — one row per content kind, whatever exists today.
-  const brief: LatestItem[] = [
-    briefStory && { eyebrow: "Latest news", label: briefStory.title, href: `/news/${briefStory.slug}` },
-    events[0] && { eyebrow: "Upcoming event", label: events[0].title, href: `/event/${events[0].slug}` },
-    videos[3] && { eyebrow: "New video", label: videos[3].title, href: `/video/${videos[3].slug}` },
-    newsletters[0] && { eyebrow: "Newsletter", label: newsletters[0].subject, href: `/newsletters/${newsletters[0].web_slug}` },
-    member2 && { eyebrow: "Featured member", label: member2.name, href: `/member/${member2.slug}` },
-  ].filter((i): i is LatestItem => Boolean(i));
+  // events[0] is the fold's placement card, so the row below takes what's
+  // after it. An issue with no web_slug has no page to link to.
+  const upcomingEvents = events.slice(1, 4);
+  const issues = newsletters.filter((i) => i.web_slug);
+
+  /*
+   * Sold featured-member placements, for the sidebar box. Deduplicated on slug
+   * because a member can hold overlapping placements — the same rule and the
+   * same one-liner as the directory's featured strip (member/page.tsx). It
+   * doubles as the null-member filter: placements.member_id is nullable.
+   *
+   * Resolved here rather than inside the box because it also decides the
+   * band's column classes below. Two predicates would eventually disagree and
+   * leave a 3fr column of nothing down the left of the section.
+   */
+  const featured = [...new Map(
+    featuredMembers.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : [])),
+  ).values()];
 
   return (
     <>
@@ -95,7 +110,7 @@ export function GridHome({
               second card. */}
           <div className="flex flex-col gap-4 lg:row-span-2">
             {machine && <div className="flex-1"><GhMachineCard machine={machine} /></div>}
-            {events[0] && <div className="flex-1"><GhEventCard event={events[0]} /></div>}
+            {events[0] && <div className="flex-1"><GhEventCard event={events[0]} featured /></div>}
           </div>
           <div className="lg:col-span-2">
             <GhMoreNews stories={moreNews} />
@@ -105,48 +120,59 @@ export function GridHome({
 
       {/* The rotating banner is a real advert slot, not an editorial hero —
           see the top-of-file note on the above-the-fold exception. */}
-      <Band tone="grey" className="mt-10" inner="py-5">
+      <Band tone="grey" className="mt-6" inner="py-4">
         <AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} path="/" />
       </Band>
 
-      {/* ── Latest videos, with the in-brief list as a sidebar ───────────── */}
-      <Band inner="py-12">
-        <div className="grid items-start gap-5 lg:grid-cols-[9fr_3fr]">
-          <div>
+      {/*
+       * ── Latest videos, with the featured members box as a left sidebar ──
+       *
+       * The newsletter and magazine panels live inside this band rather than
+       * in one of their own, so the sidebar can span both rows and finish
+       * flush with their bottom edge. DOM order is videos → members → panels,
+       * which is the reading order on a phone; the explicit col/row-start
+       * classes put the sidebar back on the left at lg.
+       *
+       * No items-start: the sidebar has to stretch. That stretches the videos
+       * column too, which is fine — the cards are already h-full.
+       *
+       * With nothing sold the box is absent, and the thing that has to give is
+       * the COLUMN definition, not the placement classes — leaving
+       * lg:grid-cols-[3fr_9fr] in place would drop the videos into the 3fr
+       * column. Both class strings appear here whole so Tailwind's scanner
+       * sees them.
+       */}
+      <Band inner="py-8">
+        <div className={`grid gap-5 ${featured.length > 0 ? "lg:grid-cols-[3fr_9fr]" : ""}`}>
+          <div className="lg:col-start-2 lg:row-start-1">
             <SectionHead title="Latest videos" href="/video" seeAll="See all videos" />
             <div className="grid gap-5 sm:grid-cols-3">
               {videos.slice(0, 3).map((v) => <GhVideoCard key={v.id} video={v} />)}
             </div>
           </div>
-          <GhLatestList items={brief} />
-        </div>
-      </Band>
-
-      <Band inner="pb-12">
-        <AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" />
-      </Band>
-
-      {/* ── Industry insight, newsletter and the magazine ────────────────── */}
-      <Band tone="grey" inner="py-12">
-        <div className="grid items-start gap-5 lg:grid-cols-[7fr_5fr]">
-          {spotlight && (
-            <div>
-              <SectionHead title="Industry insight" href="/news" seeAll="All news" />
-              <GhStoryCard story={spotlight} size="lg" eyebrow="Insight" />
+          <GhFeaturedMembers members={featured} className="lg:col-start-1 lg:row-start-1 lg:row-span-2" />
+          {/* Side by side, not stacked: half of this column is still wide
+              enough for the signup field and its button to sit on one line,
+              and stacking them would leave the sidebar stretching past three
+              member rows into a tall column of white. */}
+          <div className="lg:col-start-2 lg:row-start-2">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <GhNewsletterPanel />
+              <GhPublicationPanel />
             </div>
-          )}
-          {/* Stacked rather than three across: the signup form needs a column
-              wide enough for the field and its button to sit on one line. */}
-          <div className="grid gap-5">
-            <GhNewsletterPanel />
-            <GhPublicationPanel />
           </div>
         </div>
       </Band>
 
+      {/* Grey, like home_1 — the page alternates white and grey bands, and
+          this one replaces the grey band that carried the panels before. */}
+      <Band tone="grey" inner="py-4">
+        <AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" />
+      </Band>
+
       {/* ── Member news ──────────────────────────────────────────────────── */}
       {railNews.length > 0 && (
-        <Band inner="py-12">
+        <Band inner="py-8">
           <SectionHead title="Featured member news" href="/news" seeAll="More member news" />
           <div className="grid gap-8 md:grid-cols-3">
             {railNews.slice(0, 3).map((s) => <GhMemberRow key={s.id} story={s} />)}
@@ -154,7 +180,37 @@ export function GridHome({
         </Band>
       )}
 
-      <Band inner="pb-12">
+      {/*
+       * ── Upcoming events, then the newsletter archive ───────────────────
+       *
+       * Both rows exist to put content between home_2 and home_3 rather than
+       * two banners near each other, and both are free: loadHome() already
+       * fetches four events and three sent issues for every render, and grid
+       * was reading neither of them (the fold takes events[0] and nothing
+       * else). No new query, no new limit to keep in step.
+       *
+       * The events row starts at index 1 — events[0] is the fold's placement
+       * card, and showing it twice on one page is the thing to avoid.
+       */}
+      {upcomingEvents.length > 0 && (
+        <Band tone="grey" inner="py-8">
+          <SectionHead title="Upcoming events" href="/event" seeAll="All events" />
+          <div className="grid gap-5 sm:grid-cols-3">
+            {upcomingEvents.map((e) => <GhEventCard key={e.slug} event={e} />)}
+          </div>
+        </Band>
+      )}
+
+      {issues.length > 0 && (
+        <Band inner="py-8">
+          <SectionHead title="Latest newsletters" href="/newsletters" seeAll="Newsletter archive" />
+          <div className="grid gap-5 sm:grid-cols-3">
+            {issues.map((i) => <GhNewsletterCard key={i.number} issue={i} />)}
+          </div>
+        </Band>
+      )}
+
+      <Band inner="pb-8">
         <AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" />
       </Band>
 

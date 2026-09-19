@@ -101,6 +101,33 @@
         ],
         "createdAt": "2026-09-03T14:40:35.302Z",
         "reason": "email HTML renders in mail clients, not the app; sizes are email-specific"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "*",
+        "files": [
+          "src/lib/email/defaults.ts"
+        ],
+        "createdAt": "2026-09-18T04:16:58.120Z",
+        "reason": "Email HTML, not web UI: table layout with inline styles for Outlook. These values are carried verbatim from the pre-existing layout() in src/lib/email/templates.ts and are governed by email-client rendering, not DESIGN.md."
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "*",
+        "files": [
+          "src/lib/email/defaults.ts"
+        ],
+        "createdAt": "2026-09-18T04:17:04.397Z",
+        "reason": "Email HTML, not web UI: inline font sizes for email clients, carried verbatim from the pre-existing layout() in src/lib/email/templates.ts."
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          "src/lib/email/templates.ts"
+        ],
+        "createdAt": "2026-09-19T03:09:51.068Z",
+        "reason": "Monospace stack inside a preview iframe rendering a plain-text email, not web UI typography; matches the file-scoped ignores already on src/lib/email/defaults.ts."
       }
     ]
   }

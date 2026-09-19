@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  ADMIN_EMAIL_KINDS,
   NOTIFICATION_KINDS,
+  type EmailTemplateMap,
   isNotificationKind,
   notificationLabel,
+  renderAdminEmail,
   renderNotification,
+  sampleVarsFor,
 } from "@/lib/email/templates";
 
 /**
@@ -86,10 +90,129 @@ describe("html safety", () => {
     expect(mail.html).toContain("&lt;script&gt;");
   });
 
-  it("keeps brand orange off body text", () => {
+  it.each(NOTIFICATION_KINDS)("keeps brand orange off %s's body text", (kind) => {
     // globals.css: brand on paper is 3.3:1 and fails AA. It may only appear on
     // the dark header or as a CTA fill behind ink.
-    const mail = renderNotification({ kind: "page_live" });
-    expect(mail.html).not.toMatch(/<p[^>]*color:#fe5000/);
+    //
+    // This guarded #fe5000 until 18 Sep 2026 — a hex the app stopped using, so
+    // it could never fail. It now names the brand orange that is actually in
+    // globals.css and templates.ts, and covers every kind rather than one,
+    // because these defaults are the only templates a test can still police:
+    // the console can author HTML that no check here will ever see.
+    const mail = renderNotification({ kind });
+    expect(mail.html).not.toMatch(/<p[^>]*color:#ff8200/i);
+  });
+});
+
+/**
+ * The console stores only the fields an admin actually changed. The property
+ * that matters is the one a full-row override would quietly destroy: a subject
+ * edit must not freeze the body, or a copy fix shipped in code stops reaching
+ * every template anyone has ever touched.
+ */
+describe("admin overrides", () => {
+  const overrides = (map: EmailTemplateMap) => map;
+
+  it("takes an edited subject and leaves the rest on the shipped default", () => {
+    const stock = renderNotification({ kind: "page_live" });
+    const mail = renderNotification(
+      { kind: "page_live" },
+      overrides({ page_live: { subject: "Your page is up" } }),
+    );
+    expect(mail.subject).toBe("Your page is up");
+    expect(mail.text).toBe(stock.text);
+    expect(mail.html).toContain("member directory");
+  });
+
+  it("takes an edited body and still interpolates the payload into it", () => {
+    const mail = renderNotification(
+      { kind: "advert_ending_soon", ends_on: "30 September" },
+      overrides({ advert_ending_soon: { body_text: "Ends {{ends_on}}. Rebook any time." } }),
+    );
+    expect(mail.text).toContain("Ends 30 September.");
+  });
+
+  it("edits the in-app label and the email subject from the same row", () => {
+    // GAPS A4.10: one table feeds both surfaces so they cannot drift.
+    const map = overrides({ story_live: { label: "Story published", subject: "Story published" } });
+    expect(notificationLabel("story_live", map)).toBe("Story published");
+    expect(renderNotification({ kind: "story_live" }, map).subject).toBe("Story published");
+  });
+
+  it("ignores a null field rather than blanking the default", () => {
+    const stock = renderNotification({ kind: "welcome" });
+    const mail = renderNotification({ kind: "welcome" }, overrides({ welcome: { subject: null, body_html: null } }));
+    expect(mail.subject).toBe(stock.subject);
+    expect(mail.html).toBe(stock.html);
+  });
+
+  it("escapes a member's words into an edited body, so authored HTML can't be injected through the payload", () => {
+    const mail = renderNotification(
+      { kind: "story_rejected", reason: '<img src=x onerror="alert(1)">' },
+      overrides({ story_rejected: { body_html: "<div>{{reason}}</div>" } }),
+    );
+    expect(mail.html).toContain("&lt;img");
+    expect(mail.html).not.toContain("<img");
+  });
+
+  it("wraps every email in an edited shell", () => {
+    const mail = renderNotification(
+      { kind: "page_live" },
+      overrides({ _shell: { body_html: "<html><body><main>{{body}}</main></body></html>" } }),
+    );
+    expect(mail.html).toContain("<main>");
+    expect(mail.html).toContain("member directory");
+    expect(mail.html).not.toContain("Sheet Metal <span");
+  });
+
+  it("leaves the button's destination alone when only its label is edited", () => {
+    // An editable href on account_created would be a credential-redirect primitive.
+    const mail = renderNotification(
+      { kind: "account_created", action_link: "https://smi.test/set?token=abc" },
+      overrides({ account_created: { cta_label: "Set your password" } }),
+    );
+    expect(mail.text).toContain("Set your password: https://smi.test/set?token=abc");
+  });
+});
+
+/**
+ * The same exhaustiveness guarantee the member kinds get. `machine_live` once
+ * sat for weeks silently sending "Update from SMI" because nothing checked, and
+ * an admin kind with no copy would fail the same way — quietly, to the one
+ * person who would assume the feature simply wasn't finished.
+ */
+describe("admin email coverage", () => {
+  it.each(ADMIN_EMAIL_KINDS)("%s has its own subject and body", (kind) => {
+    const mail = renderAdminEmail(kind, sampleVarsFor(kind));
+    expect(mail.subject.trim().length).toBeGreaterThan(0);
+    expect(mail.text.trim().length).toBeGreaterThan(0);
+    expect(mail.subject).not.toContain("{{");
+  });
+
+  it.each(ADMIN_EMAIL_KINDS)("%s stays plain text until someone writes HTML for it", (kind) => {
+    // These have always been text-only. Turning Jas's inbox into branded HTML
+    // is a question in docs/ask-jas.md, not something this change decides.
+    expect(renderAdminEmail(kind, sampleVarsFor(kind)).html).toBeUndefined();
+  });
+
+  it("sends HTML once there is some, without the member shell around it", () => {
+    // The member shell's footer says "you have a member account", which is not
+    // true of the person reading these.
+    const mail = renderAdminEmail(
+      "admin_digest",
+      { total: "3", total_s: "s", lines: "  3 — Stories", console_url: "https://smi.test/console" },
+      { admin_digest: { body_html: "<p>{{total}} waiting</p>" } },
+    );
+    expect(mail.html).toBe("<p>3 waiting</p>");
+    expect(mail.html).not.toContain("member account");
+  });
+
+  it("keeps the digest's generated lines as markup rather than escaping them", () => {
+    const mail = renderAdminEmail(
+      "admin_digest",
+      { total: "3", total_s: "s", lines: "  3 — Stories awaiting approval", console_url: "https://smi.test/console" },
+    );
+    expect(mail.subject).toBe("SMI — 3 items waiting for you");
+    expect(mail.text).toContain("3 — Stories awaiting approval");
   });
 });
