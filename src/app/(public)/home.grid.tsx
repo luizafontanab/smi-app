@@ -193,7 +193,7 @@ export function GridHome({
        * card, and showing it twice on one page is the thing to avoid.
        */}
       {upcomingEvents.length > 0 && (
-        <Band tone="grey" inner="py-8">
+        <Band inner="py-8">
           <SectionHead title="Upcoming events" href="/event" seeAll="All events" />
           <div className="grid gap-5 sm:grid-cols-3">
             {upcomingEvents.map((e) => <GhEventCard key={e.slug} event={e} />)}

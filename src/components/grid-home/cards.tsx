@@ -83,11 +83,10 @@ export function GhStoryCard({ story, size = "md", eyebrow = "News" }: {
           {story.excerpt && size !== "sm" && (
             <p className="mt-2 text-sm leading-relaxed text-graphite line-clamp-2">{story.excerpt}</p>
           )}
-          {/* Date and link share one line — a separate right-aligned row below
-              the meta was the single biggest source of dead space in the fold. */}
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <Meta date={story.published_at} />
-            <span className="shrink-0 text-xs font-bold text-brand-text">
+          {/* No date on the fold's cards — the link is the whole row, kept
+              tight against the copy so the fold doesn't grow dead space. */}
+          <div className="mt-2">
+            <span className="text-xs font-bold text-brand-text">
               Read more <span aria-hidden="true">→</span>
             </span>
           </div>
@@ -407,24 +406,19 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
                    softened the picture the hover exists to reveal. */
                 <div className="absolute inset-0 bg-gradient-to-t from-[rgb(6_9_15/0.94)] via-[rgb(6_9_15/0.58)] to-[rgb(6_9_15/0.12)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none" />
               )}
-              <div className="relative flex h-full flex-col justify-between gap-2 p-3">
+              <div className="relative flex h-full flex-col p-3">
                 <div className="min-h-0">
                   {/* Member news is marked wherever it sits among industry news
                       — a commercial rule, not a style choice. The shared badge,
                       so the wording can't drift. Its ink pill melts into the
                       scrim on hover, but the white label stays 21:1 either way.
-                      Clamped to two lines here (not three) to leave room for it
-                      without the tile's fixed height clipping the date. */}
+                      Clamped to two lines here (not three) so the badge always
+                      fits inside the tile's fixed height. */}
                   {s.is_member_news && <div className="mb-1.5"><MemberBadge variant="inline" /></div>}
                   <CardTitle className={`gh-tile-text text-[0.8125rem] line-clamp-2 ${img ? "group-hover:text-white group-focus-within:text-white" : "group-hover:underline"}`}>
                     {s.title}
                   </CardTitle>
                 </div>
-                {/* No gh-tile-text here — the shadow is for the headline only. */}
-                <Meta
-                  date={s.published_at}
-                  className={img ? "group-hover:text-white group-focus-within:text-white" : ""}
-                />
               </div>
             </Link>
           </li>
