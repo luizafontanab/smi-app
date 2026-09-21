@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decideMachine, saveFeaturedMemberPlacement, saveMachine, saveMachinePlacement } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
+import { FEATURED_SLOTS } from "@/lib/pricing";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
@@ -99,7 +100,10 @@ describe("saveMachinePlacement", () => {
 
 describe("saveFeaturedMemberPlacement", () => {
   it("refuses once the cap for the term is already full", async () => {
-    const from = db({ placements: () => queryBuilder(dbOk(null, 4)) }); // FEATURED_SLOTS.cap is 4
+    // The constant, not a literal: this test is about the cap being full, not
+    // about the number 4. It went to 8 on 20 Sep and a hardcoded count would
+    // have stopped tripping the guard while still passing for the wrong reason.
+    const from = db({ placements: () => queryBuilder(dbOk(null, FEATURED_SLOTS.cap)) });
 
     await expect(saveFeaturedMemberPlacement(form({ member_id: "m1", starts_on: "2026-09-01", ends_on: "2026-09-30" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/featured-member\?error=/);

@@ -8,6 +8,7 @@ import type { StoryCard as StoryCardType } from "@/lib/queries";
 import type { MachineCardData, VideoCardData } from "@/components/cards";
 import { NewsletterSignup } from "@/components/NewsletterSignup";
 import { MemberBadge } from "@/components/StoryCard";
+import { FeaturedMembersCarousel } from "./FeaturedMembersCarousel";
 import { MoreNewsScroller } from "./MoreNewsScroller";
 import { Band, BtnBrand, BtnDark, CardTitle, Chip, Eyebrow, Meta, MoreLink, Panel } from "./ui";
 
@@ -270,13 +271,24 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
   return (
     <Panel className={`flex h-full flex-col p-4 ${className}`}>
       <Chip>Featured members</Chip>
-      {/* The rows share the panel's spare height rather than stacking at the
-          top of it: this box spans two grid rows, and the cap is four
-          placements, so on a month with one or two sold a top-aligned list
-          leaves the panel looking half-drawn. */}
-      <ul className="mt-3 flex flex-1 flex-col divide-y divide-line">
+      {/* A vertical carousel, not a list — the placement is sold as a
+          "homepage carousel" and had never been one (HUMAN-TODO §14.6).
+          FeaturedMembersCarousel is the <ul>; the slides stay server-rendered.
+
+          Fixed heights, NOT flex-1 and not a percentage. The viewport is three
+          slides tall (h-[27rem] = 3 × h-36) and each slide is h-36, so "three at a
+          time" is a fact rather than a consequence of the row. A percentage
+          slide height is circular here and it does not degrade quietly: the
+          slides size off the viewport, the viewport sizes off its content, and
+          the whole band settled at 1151px with a chasm of white beside the
+          videos. A definite height also caps what this sidebar contributes to
+          the grid row, so eight placements cannot stretch the page.
+
+          Every slide is identical, down to the padding — this is paid
+          inventory and the eighth advertiser gets the same box as the first. */}
+      <FeaturedMembersCarousel count={members.length} className="gh-vcarousel mt-3 h-[27rem] shrink-0 divide-y divide-line overflow-y-auto">
         {members.map((m) => (
-          <li key={m.slug} className="flex flex-1 flex-col py-3 first:pt-0 last:pb-0">
+          <li key={m.slug} className="flex h-36 flex-col py-3">
             {/* The logo is the point of this placement, so it takes most of
                 the row: a flex-1 box that absorbs the panel's spare height,
                 with the name and industry as a caption under it. object-left
@@ -298,10 +310,10 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
             </Link>
           </li>
         ))}
-      </ul>
-      {/* mt-auto: on a quiet month this box holds one or two rows but still
-          spans both grid rows, so the link sits at the foot of the panel
-          rather than leaving the slack under it. */}
+      </FeaturedMembersCarousel>
+      {/* mt-auto: the carousel is a fixed height now, so the panel's slack
+          collects here and the link sits at the foot of the box rather than
+          floating just under the dots. */}
       <div className="mt-auto pt-4">
         <MoreLink href="/member">See all members</MoreLink>
       </div>
@@ -405,16 +417,25 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
                    softened the picture the hover exists to reveal. */
                 <div className="absolute inset-0 bg-gradient-to-t from-[rgb(6_9_15/0.94)] via-[rgb(6_9_15/0.58)] to-[rgb(6_9_15/0.12)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none" />
               )}
+              {/*
+               * The headline takes the whole tile.
+               *
+               * It used to clamp at two lines in a tile whose height comes
+               * from the grid row beside it — roughly 170px — so a long
+               * headline was cut off with most of the card left blank. The
+               * clamp is now six lines, which is more than fits at the 112px
+               * floor and about what fits at full height, so the limit that
+               * actually applies is the box: flex-1 + overflow-hidden ends the
+               * text at the tile's edge instead of at an arbitrary count.
+               */}
               <div className="relative flex h-full flex-col p-3">
-                <div className="min-h-0">
+                <div className="min-h-0 flex-1 overflow-hidden">
                   {/* Member news is marked wherever it sits among industry news
                       — a commercial rule, not a style choice. The shared badge,
                       so the wording can't drift. Its ink pill melts into the
-                      scrim on hover, but the white label stays 21:1 either way.
-                      Clamped to two lines here (not three) so the badge always
-                      fits inside the tile's fixed height. */}
+                      scrim on hover, but the white label stays 21:1 either way. */}
                   {s.is_member_news && <div className="mb-1.5"><MemberBadge variant="inline" /></div>}
-                  <CardTitle className={`gh-tile-text text-[0.9375rem] line-clamp-2 ${img ? "group-hover:text-white group-focus-within:text-white" : "group-hover:underline"}`}>
+                  <CardTitle className={`gh-tile-text text-[0.9375rem] line-clamp-6 ${img ? "group-hover:text-white group-focus-within:text-white" : "group-hover:underline"}`}>
                     {s.title}
                   </CardTitle>
                 </div>

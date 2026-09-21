@@ -38,6 +38,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Role } from "@/lib/auth";
+import { FEATURED_SLOTS } from "@/lib/pricing";
 import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
@@ -346,6 +347,42 @@ async function seedDemoRows(): Promise<void> {
       .from("newsletter_items")
       .insert(slice.map((s, i) => ({ issue_id: issue.id, story_id: s.id, position: i })));
     if (error) throw error;
+  }
+
+  /*
+   * Top the Featured Member carousel up to its cap. The seed sells three, and
+   * the homepage box shows three at a time — so at three it never rotates and
+   * the carousel looks like the static list it used to be. Filling the cap is
+   * the only way to see the thing actually work locally.
+   *
+   * Converges rather than inserts blindly: placements has no natural unique
+   * key, so a re-run counts what is already live and adds only the shortfall.
+   */
+  const { count: liveFeatured } = await db
+    .from("placements")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", "featured_member")
+    .lte("starts_on", day(0))
+    .gte("ends_on", day(0));
+
+  const shortfall = FEATURED_SLOTS.cap - (liveFeatured ?? 0);
+  if (shortfall > 0) {
+    const { data: placed } = await db.from("placements").select("member_id").eq("kind", "featured_member");
+    const taken = new Set((placed ?? []).map((p) => p.member_id).filter(Boolean));
+    const { data: candidates } = await db
+      .from("members")
+      .select("id")
+      .eq("status", "active")
+      .not("logo_path", "is", null)
+      .order("name");
+    const fill = (candidates ?? []).filter((m) => !taken.has(m.id)).slice(0, shortfall);
+    if (fill.length > 0) {
+      const { error } = await db.from("placements").insert(
+        fill.map((m) => ({ kind: "featured_member", member_id: m.id, starts_on: day(-5), ends_on: day(25) })),
+      );
+      if (error) throw error;
+    }
+    console.log(`— demo rows: +${fill.length} featured-member placements (now ${(liveFeatured ?? 0) + fill.length} of ${FEATURED_SLOTS.cap})`);
   }
 
   console.log(`— demo rows: ${events.length} upcoming events, ${issues.length} sent newsletter issues (SAMPLE content, local only)`);

@@ -7,6 +7,36 @@ import { cleanup } from "@testing-library/react";
 // explicitly instead. Inert for the existing node-environment .ts suites.
 afterEach(cleanup);
 
+/*
+ * Two browser APIs jsdom doesn't implement, stubbed rather than guarded at
+ * every call site — a `typeof ResizeObserver === "undefined"` check in a
+ * component is dead code in every real browser and hides the dependency.
+ *
+ * Both are inert: the observer never fires (jsdom lays nothing out, so no
+ * element ever resizes) and matchMedia reports "not reduced motion", which is
+ * the default a component should behave correctly under. A test that cares
+ * about either overrides it locally.
+ */
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+if (typeof window !== "undefined" && !window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 // The integration suites (stripe-webhook, resend-webhook, unsubscribe, …) are
 // describe.skipIf(!SUPABASE_SECRET_KEY). Locally the key comes from .env.local
 // via vitest.config.ts; in CI a missing key must be a hard failure, or the

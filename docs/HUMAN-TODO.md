@@ -547,15 +547,26 @@ header and footer. Code-complete; these two need a person.
       still offers "Desktop 1280×170px" only) and it was never on the member's
       own advert form, so no advertiser has been told the size exists — which
       makes this cheap to reverse in either direction, today.
-- [ ] **14.6 — "Featured Member" is sold as a carousel; it is a list.**
-      `src/lib/visibility-products.ts` offers it as "Homepage carousel + higher
-      directory ranking" and `DEFAULT_AD_FORMATS` key B says "your logo and
-      profile in the homepage carousel". Neither design has ever had a
-      featured-member carousel: forge shows a band under the hero, and grid now
-      shows the static "Featured members" box (fix-list 61). Either the copy
-      changes or the component does — a copy question, so it is yours. Both
-      strings are shown on the advertising hub's Information, Buy and Manage
-      pages, i.e. to the member at the point of sale.
+- [x] **14.6 — "Featured Member" is sold as a carousel. It is one now.**
+      **Closed 20 Sep on the grid design** (fix-list 68): the component
+      changed rather than the copy. The homepage box is a real vertical
+      carousel — three placements on screen, advancing one at a time, pausing
+      on hover and on keyboard focus, with dots that are also the manual
+      control. So `src/lib/visibility-products.ts` ("Homepage carousel +
+      higher directory ranking"), `DEFAULT_AD_FORMATS` key B and the console's
+      Featured Member page are now telling the truth at the point of sale.
+      **The cap went 4 → 8 at the same time** (`FEATURED_SLOTS` in
+      `src/lib/pricing.ts`), since a rotation showing three at a time has room
+      for more advertisers than a static list of three did. That doubles the
+      sellable inventory on this placement at £400/slot — **a commercial
+      decision, so tell me if 8 is wrong** and it is a one-constant change
+      back. It is enforced in the booking action only, no DB constraint, and
+      it drives the console dashboard's slot pips and the Featured Member
+      page's copy automatically.
+      Two things still open. **Forge is unchanged** — it shows a band under
+      the hero, so the promise is still only kept on grid, which is not yet
+      the live design. **The higher-directory-ranking half of that product is
+      a separate claim** and I have not checked whether it is honoured.
 
 ---
 

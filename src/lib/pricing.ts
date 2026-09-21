@@ -3,7 +3,12 @@
 // (then they belong in settings), this module is the single place they live.
 export const MEMBERSHIP_MONTHLY_PENNIES = 4000;
 
-export const FEATURED_SLOTS = { cap: 4, pennies: 40000 };
+// cap raised 4 → 8 on 20 Sep, when the homepage box became a real rotating
+// carousel: three are on screen at a time and the rest take their turn, so
+// the eighth advertiser gets the same exposure as the first. Enforced only
+// here and in console/actions.ts (no DB constraint), and read by the console
+// dashboard's slot pips and the Featured Member page's copy.
+export const FEATURED_SLOTS = { cap: 8, pennies: 40000 };
 
 // Per-format fallback when a booking carries no bundle price.
 export const ADVERT_FORMAT_PENNIES: Record<string, number> = {

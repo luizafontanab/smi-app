@@ -217,6 +217,23 @@ h1, h2, h3 {
 .carousel > * { scroll-snap-align: start; }
 
 /*
+ * The Featured members box's vertical carousel. Same idea as .carousel turned
+ * 90°, but PROXIMITY rather than mandatory snapping: the last slide is a half
+ * viewport tall like the rest, so mandatory would fight the wrap back to the
+ * top and leave the box resting between two logos.
+ *
+ * scrollbar-width: none because this one advances itself — a gutter down the
+ * side of a 220px sidebar costs more than it tells anyone. The scroller is
+ * still a real one: wheel, drag and keyboard all work.
+ */
+.gh-vcarousel {
+  scroll-snap-type: y proximity;
+  scrollbar-width: none;
+}
+.gh-vcarousel::-webkit-scrollbar { display: none; }
+.gh-vcarousel > * { scroll-snap-align: start; }
+
+/*
  * The white type on a revealed tile, given its own shadow rather than more
  * scrim. Two stacked shadows on purpose, the same trick .hero-title uses: a
  * tight near-opaque one draws the letterform's edge against whatever pixel sits
