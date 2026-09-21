@@ -117,18 +117,21 @@ describe("GhFeaturedMembers", () => {
 });
 
 describe("GhStatsBand", () => {
-  it("shows the join CTA to signed-out visitors, with the real counts", async () => {
-    render(await GhStatsBand({ storyTotal: 1968, memberCount: 82 }));
+  it("shows the join CTA to signed-out visitors, with the real counts", () => {
+    render(GhStatsBand({ storyTotal: 1968, memberCount: 82 }));
     expect(screen.getByText("1,968")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Become a Member/i })).toHaveAttribute("href", "/join");
   });
 
-  it("keeps the numbers but drops the CTA for a signed-in member", async () => {
+  // Deliberately unlike JoinCta, which hides itself for members: this band
+  // closes the page and its CTA is unconditional, so a signed-in member sees
+  // it too. The band no longer reads the session at all.
+  it("keeps the CTA for a signed-in member", () => {
     currentUser.mockResolvedValue({ email: "member1@smi.local" });
-    render(await GhStatsBand({ storyTotal: 1968, memberCount: 82 }));
+    render(GhStatsBand({ storyTotal: 1968, memberCount: 82 }));
     expect(screen.getByText("1,968")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Become a Member/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Become a Member/i })).toHaveAttribute("href", "/join");
   });
 });
 

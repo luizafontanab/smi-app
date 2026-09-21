@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { advertHref, type LiveAdvert } from "@/lib/adverts";
-import { currentUser } from "@/lib/auth";
 import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
 import { youtubeId } from "@/lib/hero";
@@ -415,7 +414,7 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
                       Clamped to two lines here (not three) so the badge always
                       fits inside the tile's fixed height. */}
                   {s.is_member_news && <div className="mb-1.5"><MemberBadge variant="inline" /></div>}
-                  <CardTitle className={`gh-tile-text text-[0.8125rem] line-clamp-2 ${img ? "group-hover:text-white group-focus-within:text-white" : "group-hover:underline"}`}>
+                  <CardTitle className={`gh-tile-text text-[0.9375rem] line-clamp-2 ${img ? "group-hover:text-white group-focus-within:text-white" : "group-hover:underline"}`}>
                     {s.title}
                   </CardTitle>
                 </div>
@@ -484,10 +483,7 @@ export function GhNewsletterPanel() {
 const SOCIAL_REACH = 347_000;
 
 /** Comp v1's near-black stats band, closing the page above the footer. */
-export async function GhStatsBand({ storyTotal, memberCount }: { storyTotal: number; memberCount: number }) {
-  // Same rule as JoinCta: signed-in visitors have already joined, so they get
-  // the numbers without the pitch.
-  const signedIn = Boolean(await currentUser());
+export function GhStatsBand({ storyTotal, memberCount }: { storyTotal: number; memberCount: number }) {
   const stats = [
     { label: "Relevant, up-to-date news", value: storyTotal, caption: "Published articles" },
     { label: "Grow your connections", value: memberCount, caption: "Member companies" },
@@ -515,13 +511,14 @@ export async function GhStatsBand({ storyTotal, memberCount }: { storyTotal: num
           </div>
         ))}
       </dl>
-      {!signedIn && (
-        <div className="mt-8">
-          {/* Same wording as the header's join button on purpose — one CTA
-              phrased one way across the page, not two names for /join. */}
-          <BtnBrand href="/join">Become a Member</BtnBrand>
-        </div>
-      )}
+      {/* Shown to everyone, signed in or not — unlike JoinCta, which hides
+          for members. This band closes the page and the client wants its CTA
+          unconditional, so a signed-in member sees it too. */}
+      <div className="mt-8">
+        {/* Same wording as the header's join button on purpose — one CTA
+            phrased one way across the page, not two names for /join. */}
+        <BtnBrand href="/join">Become a Member</BtnBrand>
+      </div>
     </Band>
   );
 }
