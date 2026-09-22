@@ -305,6 +305,19 @@ are inert in production until these steps run.
       now includes it, same About-page mechanism) **and review its copy** — the
       seven starter Q&As are my drafting, written to be plausible, not
       authoritative; edit at `/console/content-pages/faq`.
+      **Amended 21 Sep (fix-list 69):** that same `--pages-only` run now also
+      carries **eleven more FAQ answers**, the **three terms pages**
+      (`terms`, `membership-terms`, `advertising-terms`) and a **corrected
+      Policies page** whose two links to `bestfoundation.org.uk` — an
+      unrelated charity, live on production today — are fixed. The link fix
+      alone is reason to run it.
+      **Read the terms before you push them.** They carry six
+      `[SMI TO CONFIRM]` markers (VAT, registered company details, refunds,
+      artwork deadline, advertising cancellation, governing law) which will
+      render **verbatim on the live page** — that is deliberate, so they can't
+      ship unnoticed, but it means these three pages are not fit to publish
+      until Jas has answered `docs/ask-jas.md` §9. The FAQ and the Policies
+      link fix have no such markers and are safe to push on their own.
 - [ ] **10.3 — Tick "Collapsible sections" on the production Policies page**
       (`/console/content-pages/policies`) — the checkbox is new; prod rows
       default to off, so the page renders exactly as before until ticked.
@@ -381,6 +394,32 @@ of specific content). That is expected — run `pnpm visual`, look, then
 
 ## 12 · Industries refactor (10 Sep) — production follow-through
 
+> **DONE on production, 22 Sep.** 12.1 and 12.2 both ran (backup taken first).
+> `db push --linked` applied **four** migrations, not just the industries one —
+> `20260917000001`, `20260917000002` and `20260918000001` went with it, so
+> `prospect_marks` and `email_templates` now exist on prod too. Final state matches
+> the predictions below exactly: industries 10, categories 44, services 69,
+> members 123 with **114** carrying an `industry_id`, member_services **483**,
+> member_membership_types **90**, 10 content rows inheriting a member industry.
+> Verified by re-running the console's own query against prod — the
+> `industry:industries(name)` embed that had been failing returns 206 with count
+> 123, and `/console/members/[id]`'s `industry_id` select returns 200.
+>
+> Two things learned in the process, worth knowing before anyone reruns this:
+>
+> - **The `--dry-run` under-reports, and the numbers below are the live ones.** The
+>   dry run skips step 2's `services` upsert, so it builds its slug map from the 68
+>   rows the migration created and predicts `services (68)` / **455**
+>   member_services. The live pass upserts all 69 extract terms first and produces
+>   **483**. A dry run showing 455 is correct behaviour, not a shortfall.
+> - **`automation-robotics` now exists in BOTH `industries` and `services`**, under
+>   slightly different names ("Automation & Robotics" vs "Automation / Robotics").
+>   The migration excludes it from `services` on purpose (step 4 filters
+>   `slug not in (select slug from industries)`); the backfill's step 2 upserts the
+>   extract's 69 member-kind terms with no such filter and puts it back. Harmless to
+>   the console, but it means the /find-a-member Services vocabulary carries a term
+>   that is also an industry facet — see ask-jas §11.
+
 Industries became their own table and content gained a direct `industry_id`
 (migration `20260909000002`). The migration carries the schema **and the 10
 industry rows**, so `db:push:prod` alone fixes the wrong industry list that
@@ -390,7 +429,7 @@ SQL can't reach.
 
 Do these in order.
 
-- [ ] **12.1 — Apply migration `20260909000002_industries.sql` to production**
+- [x] **12.1 — Apply migration `20260909000002_industries.sql` to production**
       (`pnpm db:push:prod`). **Take a dashboard backup first.** I have not
       verified that the Supabase CLI wraps a migration file in a transaction, so
       treat a mid-file failure as possibly leaving a partial state. The file is
@@ -399,7 +438,7 @@ Do these in order.
       **before** step 8 deletes them. Those 69 rows exist only there and in the
       extract — if the order is ever disturbed, they are gone.
       Expect after: `industries` 10, `categories` 44, `services` 69.
-- [ ] **12.2 — Read the dry run, then run the taxonomy backfill.** The migration
+- [x] **12.2 — Read the dry run, then run the taxonomy backfill.** The migration
       leaves every member's `industry_id` null on prod (their old category was a
       service term, which matches no industry slug). This fills it, plus the two
       empty link tables:
