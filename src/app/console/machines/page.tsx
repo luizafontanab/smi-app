@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { decideMachine } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +19,9 @@ export default async function MachinesPage() {
   await requireConsole();
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
-  const [{ data: machines }, { data: placements }] = await Promise.all([
-    db.from("featured_machines").select("id, name, status, source, image_path, rejected_reason, member:members(name)").order("created_at", { ascending: false }),
-    db.from("placements").select("featured_machine_id, starts_on, ends_on").eq("kind", "featured_machine").gte("ends_on", today),
+  const [machines, placements] = await Promise.all([
+    must(db.from("featured_machines").select("id, name, status, source, image_path, rejected_reason, member:members(name)").order("created_at", { ascending: false }), "console/machines list"),
+    must(db.from("placements").select("featured_machine_id, starts_on, ends_on").eq("kind", "featured_machine").gte("ends_on", today), "console/machines placements"),
   ]);
   const placed = new Map((placements ?? []).map((p) => [p.featured_machine_id, p]));
   const queue = (machines ?? []).filter((m) => m.status === "awaiting_approval");

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { mustList } from "@/lib/db/must";
 import { markAllInboxRead, markInboxRead } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,10 @@ export default async function MessagesPage(props: PageProps<"/console/messages">
   let q = serviceDb().from("inbox_messages").select("*", { count: "exact" }).order("created_at", { ascending: false });
   if (filter !== "all") q = q.eq("read", filter === "read");
   if (kind) q = q.eq("kind", kind);
-  const { data: messages, count } = await q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const { data: messages, count } = await mustList(
+    q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
+    "console/messages list",
+  );
 
   const qs = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams({ filter, ...(kind ? { kind } : {}) });
@@ -48,7 +52,7 @@ export default async function MessagesPage(props: PageProps<"/console/messages">
   // clearing it will actually touch.
   let unreadQ = serviceDb().from("inbox_messages").select("*", { count: "exact", head: true }).eq("read", false);
   if (kind) unreadQ = unreadQ.eq("kind", kind);
-  const { count: unread } = await unreadQ;
+  const { count: unread } = await mustList(unreadQ, "console/messages unread count");
 
   const total = count ?? 0;
   const hasNext = page * PAGE_SIZE < total;

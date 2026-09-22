@@ -1,5 +1,6 @@
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
 import { markProspect } from "../actions";
 
@@ -29,10 +30,10 @@ export default async function ConsoleLeadsPage(props: PageProps<"/console/leads"
   const near = typeof sp.near === "string" ? sp.near : "";
   const radiusMiles = Number(sp.radius) || undefined;
 
-  const [types, prospects, { data: marks }] = await Promise.all([
-    db.from("membership_types").select("slug, name").order("sort_order"),
+  const [types, prospects, marks] = await Promise.all([
+    must(db.from("membership_types").select("slug, name").order("sort_order"), "console/leads membership types"),
     getLeadGenSource().search({ companyType: companyType || undefined, near: near || undefined, radiusMiles }),
-    db.from("prospect_marks").select("prospect_ref, action").is("member_id", null),
+    must(db.from("prospect_marks").select("prospect_ref, action").is("member_id", null), "console/leads prospect marks"),
   ]);
 
   // Many marks per prospect: one operator can flag the same company to call and
@@ -64,7 +65,7 @@ export default async function ConsoleLeadsPage(props: PageProps<"/console/leads"
             Company type
             <select id="leads-type" name="company_type" defaultValue={companyType} className="mt-1 rounded border px-3 py-1.5">
               <option value="">Any</option>
-              {(types.data ?? []).map((t) => (
+              {(types ?? []).map((t) => (
                 <option key={t.slug} value={t.slug}>{t.name}</option>
               ))}
             </select>

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { Card, SectionTitle } from "@/components/console/ui";
 import { deleteResource, saveResource } from "../actions";
 
@@ -10,7 +11,10 @@ export const metadata = { title: "Member Resources" };
 export default async function ConsoleResourcesPage(props: PageProps<"/console/resources">) {
   await requireConsole();
   const sp = await props.searchParams;
-  const { data: resources } = await serviceDb().from("resources").select("id, title, path, kind, created_at").order("created_at", { ascending: false }).limit(500);
+  const resources = await must(
+    serviceDb().from("resources").select("id, title, path, kind, created_at").order("created_at", { ascending: false }).limit(500),
+    "console/resources list",
+  );
 
   return (
     <div className="mx-auto max-w-3xl">

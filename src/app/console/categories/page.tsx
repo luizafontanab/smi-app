@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "News categories" };
@@ -13,9 +14,9 @@ export default async function CategoriesPage(props: PageProps<"/console/categori
   // `categories` is the news-topic vocabulary and nothing else since migration
   // 20260909000002 — industries moved to their own table and their own page,
   // so this no longer branches on a `kind` tab.
-  const [{ data: cats }, { data: tags }] = await Promise.all([
-    db.from("categories").select("id, name, slug").order("name"),
-    db.from("story_categories").select("category_id"),
+  const [cats, tags] = await Promise.all([
+    must(db.from("categories").select("id, name, slug").order("name"), "console/categories list"),
+    must(db.from("story_categories").select("category_id"), "console/categories story counts"),
   ]);
 
   const counts = new Map<number, number>();

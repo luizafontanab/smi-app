@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { SubmitButton } from "@/components/SubmitButton";
 import {
   DEV_ASSIGNEES,
@@ -27,7 +29,11 @@ export default async function DevTaskEditor(props: PageProps<"/console/dev/[id]"
   // us here and this page's own return_to hidden field agree byte-for-byte.
   const returnTo = `/console/dev${devQs(parseDevFilters(sp))}`;
 
-  const { data: task } = isNew ? { data: null } : await serviceDb().from("dev_tasks").select("*").eq("id", id).single();
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!isNew && !UUID_RE.test(id)) notFound();
+  const task = isNew
+    ? null
+    : await must(serviceDb().from("dev_tasks").select("*").eq("id", id).maybeSingle(), "console/dev task editor");
   if (!isNew && !task) notFound();
 
   return (

@@ -1,5 +1,6 @@
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { Card, SectionTitle } from "@/components/console/ui";
 import { savePromoCode, setPromoCodeActive } from "../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -10,9 +11,12 @@ export const metadata = { title: "Promo codes" };
 export default async function PromoCodesPage(props: PageProps<"/console/promo-codes">) {
   await requireConsole();
   const sp = await props.searchParams;
-  const { data: codes } = await serviceDb().from("promo_codes")
-    .select("id, code, months, active, max_uses, used_count, expires_at")
-    .order("created_at", { ascending: false });
+  const codes = await must(
+    serviceDb().from("promo_codes")
+      .select("id, code, months, active, max_uses, used_count, expires_at")
+      .order("created_at", { ascending: false }),
+    "console/promo-codes list",
+  );
 
   return (
     <div className="mx-auto max-w-3xl">

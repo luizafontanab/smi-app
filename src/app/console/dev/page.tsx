@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { Badge } from "@/components/console/ui";
 import {
   DEV_ASSIGNEES,
@@ -38,7 +39,10 @@ export default async function DevBoardPage(props: PageProps<"/console/dev">) {
   const filters = parseDevFilters(sp);
   const db = serviceDb();
 
-  const { data } = await db.from("dev_tasks").select(SELECT).order("status").order("sort_order").limit(500);
+  const data = await must(
+    db.from("dev_tasks").select(SELECT).order("status").order("sort_order").limit(500),
+    "console/dev board",
+  );
   const tasks = filterDevTasks((data ?? []) as DevTask[], filters);
   const returnTo = devQs(filters);
 

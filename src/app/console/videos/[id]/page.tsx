@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
@@ -22,12 +24,15 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
     ? `/console/videos?view=calendar${/^\d{4}-\d{2}$/.test(String(sp.month ?? "")) ? `&month=${sp.month}` : ""}`
     : "/console/videos";
 
-  const [{ data: video }, { data: members }, { data: inds }] = await Promise.all([
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!isNew && !UUID_RE.test(id)) notFound();
+
+  const [video, members, inds] = await Promise.all([
     isNew
-      ? Promise.resolve({ data: null })
-      : db.from("videos").select("*, member:members(name, logo_path, slug, industry_id)").eq("id", id).single(),
-    db.from("members").select("id, name").eq("status", "active").order("name"),
-    db.from("industries").select("id, name").order("sort_order"),
+      ? Promise.resolve(null)
+      : must(db.from("videos").select("*, member:members(name, logo_path, slug, industry_id)").eq("id", id).maybeSingle(), "console/videos editor"),
+    must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/videos members"),
+    must(db.from("industries").select("id, name").order("sort_order"), "console/videos industries"),
   ]);
   if (!isNew && !video) notFound();
   const thumbnail = mediaUrl(video?.thumbnail_path);

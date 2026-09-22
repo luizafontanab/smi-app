@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { saveAdvertArtwork } from "../../../actions";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +29,12 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
   const db = serviceDb();
   const isNew = id === "new";
 
-  const [advert, { data: members }] = await Promise.all([
-    isNew ? null : db.from("adverts").select("*").eq("id", id).single().then((r) => r.data),
-    db.from("members").select("id, name").eq("status", "active").order("name"),
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!isNew && !UUID_RE.test(id)) notFound();
+
+  const [advert, members] = await Promise.all([
+    isNew ? null : must(db.from("adverts").select("*").eq("id", id).maybeSingle(), "console/adverts artwork editor"),
+    must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/adverts artwork members"),
   ]);
   if (!isNew && !advert) notFound();
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { FEATURED_SLOTS } from "@/lib/pricing";
 import { saveFeaturedMemberPlacement } from "../../actions";
 
@@ -12,9 +13,9 @@ export default async function FeaturedMemberPage(props: PageProps<"/console/adve
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: members }, { data: booked }] = await Promise.all([
-    db.from("members").select("id, name").eq("status", "active").order("name"),
-    db.from("placements").select("id, starts_on, ends_on, member:members(name)").eq("kind", "featured_member").order("starts_on", { ascending: false }),
+  const [members, booked] = await Promise.all([
+    must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/featured-member members"),
+    must(db.from("placements").select("id, starts_on, ends_on, member:members(name)").eq("kind", "featured_member").order("starts_on", { ascending: false }), "console/featured-member placements"),
   ]);
   const liveCount = (booked ?? []).filter((p) => p.starts_on <= today && p.ends_on >= today).length;
 

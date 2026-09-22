@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must, mustList } from "@/lib/db/must";
 import { deleteCategory, saveCategory } from "../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
@@ -14,14 +15,22 @@ export default async function CategoryEditor(props: PageProps<"/console/categori
   const isNew = id === "new";
   const db = serviceDb();
 
-  const { data: category } = isNew
-    ? { data: null }
-    : await db.from("categories").select("id, name, slug").eq("id", Number(id)).maybeSingle();
+  // categories.id is a serial — a non-numeric path segment would reach Postgres
+  // as an invalid integer (22P02), which must() turns into a throw. Keep it a 404.
+  const categoryId = Number(id);
+  if (!isNew && !Number.isInteger(categoryId)) notFound();
+
+  const category = isNew
+    ? null
+    : await must(db.from("categories").select("id, name, slug").eq("id", categoryId).maybeSingle(), "console/categories editor");
   if (!isNew && !category) notFound();
 
   const usageCount = isNew
     ? 0
-    : (await db.from("story_categories").select("story_id", { count: "exact", head: true }).eq("category_id", category!.id)).count ?? 0;
+    : (await mustList(
+        db.from("story_categories").select("story_id", { count: "exact", head: true }).eq("category_id", category!.id),
+        "console/categories usage",
+      )).count ?? 0;
 
   return (
     <div className="mx-auto max-w-lg">

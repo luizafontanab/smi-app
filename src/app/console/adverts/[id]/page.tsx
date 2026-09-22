@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { bookingPhase } from "@/lib/adverts";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { decideArtworkSwap, decideAdvertBooking, endBooking, proposeArtworkSwap, renewBooking } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -20,19 +22,24 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data: booking } = await db
-    .from("advert_bookings")
-    .select("*, advert:adverts(id, name, format, desktop_path, mobile_path, member:members(name)), product:advert_products(short_name)")
-    .eq("id", id)
-    .single();
+  // A malformed id would hit Postgres as an invalid uuid (22P02); keep that a
+  // 404 rather than letting must() throw it into the error boundary.
+  if (!UUID_RE.test(id)) notFound();
+  const booking = await must(
+    db.from("advert_bookings")
+      .select("*, advert:adverts(id, name, format, desktop_path, mobile_path, member:members(name)), product:advert_products(short_name)")
+      .eq("id", id)
+      .maybeSingle(),
+    "console/adverts booking",
+  );
   if (!booking) notFound();
 
   const phase = bookingPhase(booking, today);
   const desktop = mediaUrl(booking.advert?.desktop_path);
 
-  const { data: pendingSwap } = booking.advert
-    ? await db.from("advert_artwork_proposals").select("id, desktop_path, mobile_path, submitted_at, source").eq("advert_id", booking.advert.id).eq("status", "pending").maybeSingle()
-    : { data: null };
+  const pendingSwap = booking.advert
+    ? await must(db.from("advert_artwork_proposals").select("id, desktop_path, mobile_path, submitted_at, source").eq("advert_id", booking.advert.id).eq("status", "pending").maybeSingle(), "console/adverts pending swap")
+    : null;
   const swapDesktop = mediaUrl(pendingSwap?.desktop_path ?? null);
 
   return (

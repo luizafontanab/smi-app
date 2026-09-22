@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { consoleUploadImage, decideMachine, returnToDraft, saveMachine, saveMachinePlacement } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -15,9 +17,12 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
   const db = serviceDb();
   const isNew = id === "new";
 
-  const [{ data: machine }, { data: members }] = await Promise.all([
-    isNew ? Promise.resolve({ data: null }) : db.from("featured_machines").select("*").eq("id", id).single(),
-    db.from("members").select("id, name").eq("status", "active").order("name"),
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!isNew && !UUID_RE.test(id)) notFound();
+
+  const [machine, members] = await Promise.all([
+    isNew ? Promise.resolve(null) : must(db.from("featured_machines").select("*").eq("id", id).maybeSingle(), "console/machines editor"),
+    must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/machines members"),
   ]);
   if (!isNew && !machine) notFound();
   const image = mediaUrl(machine?.image_path);

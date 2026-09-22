@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { Badge } from "@/components/console/ui";
 import { EMAIL_DEFAULTS, type EmailFamily } from "@/lib/email/defaults";
 import { EDITABLE_KINDS } from "@/lib/email/templates";
@@ -36,7 +37,7 @@ const FAMILIES: { key: EmailFamily; title: string; blurb: string }[] = [
 export default async function EmailTemplatesList(props: PageProps<"/console/email-templates">) {
   await requireConsole();
   const sp = await props.searchParams;
-  const { data: rows } = await serviceDb().from("email_templates").select("kind, updated_at");
+  const rows = await must(serviceDb().from("email_templates").select("kind, updated_at"), "console/email-templates list");
   const edited = new Map((rows ?? []).map((r) => [r.kind, r.updated_at]));
 
   return (

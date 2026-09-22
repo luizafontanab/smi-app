@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { EMAIL_DEFAULTS } from "@/lib/email/defaults";
 import {
@@ -25,11 +26,16 @@ export default async function EmailTemplateEditor(props: PageProps<"/console/ema
   if (!EDITABLE_KINDS.includes(kind)) notFound();
 
   const def = EMAIL_DEFAULTS[kind as keyof typeof EMAIL_DEFAULTS];
-  const { data: row } = await serviceDb()
-    .from("email_templates")
-    .select("subject, label, body_html, body_text, cta_label, updated_at")
-    .eq("kind", kind)
-    .maybeSingle();
+  // `kind` is already checked against EDITABLE_KINDS above, and the column is
+  // text — no id guard needed here.
+  const row = await must(
+    serviceDb()
+      .from("email_templates")
+      .select("subject, label, body_html, body_text, cta_label, updated_at")
+      .eq("kind", kind)
+      .maybeSingle(),
+    "console/email-templates editor",
+  );
 
   // Preview what is actually stored right now, so it reflects the last save
   // rather than whatever is typed in the boxes.

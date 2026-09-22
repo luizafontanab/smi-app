@@ -3,6 +3,7 @@ import Link from "next/link";
 import { adPreview, bookingPhase } from "@/lib/adverts";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must, mustList } from "@/lib/db/must";
 import { AdPreviewToggle } from "@/components/console/AdPreviewToggle";
 import { saveBooking, saveSlotCap } from "../actions";
 
@@ -25,13 +26,14 @@ export default async function AdvertsPage() {
   const today = new Date(now).toISOString().slice(0, 10);
   const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
 
-  const [{ data: adverts }, { data: bookings }, { data: slots }, { data: placements }, { data: products }, { count: openInterest }, previewOn] = await Promise.all([
-    db.from("adverts").select("id, name, format, desktop_path, member:members(name)").order("created_at", { ascending: false }).limit(500),
-    db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").order("ends_on").limit(500),
-    db.from("advert_slots").select("*").order("key"),
-    db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on").limit(500),
-    db.from("advert_products").select("id, short_name, format").is("archived_at", null).order("short_name"),
-    db.from("visibility_requests").select("id", { count: "exact", head: true }).eq("status", "requested"),
+  const [adverts, bookings, slots, placements, products, { count: openInterest }, previewOn] = await Promise.all([
+    must(db.from("adverts").select("id, name, format, desktop_path, member:members(name)").order("created_at", { ascending: false }).limit(500), "console/adverts list"),
+    must(db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").order("ends_on").limit(500), "console/adverts bookings"),
+    must(db.from("advert_slots").select("*").order("key"), "console/adverts slots"),
+    must(db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on").limit(500), "console/adverts placements"),
+    must(db.from("advert_products").select("id, short_name, format").is("archived_at", null).order("short_name"), "console/adverts products"),
+    // head:true — only the count comes back, so this one goes through mustList.
+    mustList(db.from("visibility_requests").select("id", { count: "exact", head: true }).eq("status", "requested"), "console/adverts open interest"),
     adPreview(),
   ]);
 

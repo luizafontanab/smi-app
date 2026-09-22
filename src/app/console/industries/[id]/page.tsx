@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must, mustList } from "@/lib/db/must";
 import { deleteIndustry, saveIndustry } from "../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
@@ -14,9 +15,14 @@ export default async function IndustryEditor(props: PageProps<"/console/industri
   const isNew = id === "new";
   const db = serviceDb();
 
-  const { data: industry } = isNew
-    ? { data: null }
-    : await db.from("industries").select("id, name, slug, sort_order").eq("id", Number(id)).maybeSingle();
+  // industries.id is a serial — a non-numeric path segment would reach Postgres
+  // as an invalid integer (22P02), which must() turns into a throw. Keep it a 404.
+  const industryId = Number(id);
+  if (!isNew && !Number.isInteger(industryId)) notFound();
+
+  const industry = isNew
+    ? null
+    : await must(db.from("industries").select("id, name, slug, sort_order").eq("id", industryId).maybeSingle(), "console/industries editor");
   if (!isNew && !industry) notFound();
 
   // Four tables reference an industry and all four FKs default to RESTRICT, so
@@ -26,7 +32,10 @@ export default async function IndustryEditor(props: PageProps<"/console/industri
     ? [0, 0, 0, 0]
     : await Promise.all(
         (["members", "stories", "videos", "events"] as const).map(async (t) =>
-          (await db.from(t).select("id", { count: "exact", head: true }).eq("industry_id", industry!.id)).count ?? 0,
+          (await mustList(
+            db.from(t).select("id", { count: "exact", head: true }).eq("industry_id", industry!.id),
+            `console/industries usage: ${t}`,
+          )).count ?? 0,
         ),
       );
   const usage = [

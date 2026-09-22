@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Content Pages" };
@@ -10,10 +11,10 @@ const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "n
 export default async function ContentPagesList(props: PageProps<"/console/content-pages">) {
   await requireConsole();
   const sp = await props.searchParams;
-  const { data: pages } = await serviceDb()
-    .from("static_pages")
-    .select("slug, title, updated_at")
-    .order("title");
+  const pages = await must(
+    serviceDb().from("static_pages").select("slug, title, updated_at").order("title"),
+    "console/content-pages list",
+  );
 
   return (
     <div className="mx-auto max-w-4xl">

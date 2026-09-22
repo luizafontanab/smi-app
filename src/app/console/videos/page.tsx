@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { requireConsole } from "@/lib/auth";
 import { monthGrid, parseMonth } from "@/lib/calendar";
 import { CalendarView, type CalendarVideo } from "./CalendarView";
@@ -27,19 +28,22 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
   // Same reasoning as Story Engine: the board's "most recently touched 120" is
   // the wrong window for a calendar — query by date range instead.
   const { start, end } = monthGrid(month);
-  const { data: videos } = view === "calendar"
-    ? await db
-        .from("videos")
-        .select(SELECT)
-        .or(
-          `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
-          `and(status.eq.published,published_at.gte.${start.toISOString()},published_at.lt.${end.toISOString()})`,
-        )
-    : await db
-        .from("videos")
-        .select(SELECT)
-        .order("updated_at", { ascending: false })
-        .limit(120);
+  const videos = await must(
+    view === "calendar"
+      ? db
+          .from("videos")
+          .select(SELECT)
+          .or(
+            `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
+            `and(status.eq.published,published_at.gte.${start.toISOString()},published_at.lt.${end.toISOString()})`,
+          )
+      : db
+          .from("videos")
+          .select(SELECT)
+          .order("updated_at", { ascending: false })
+          .limit(120),
+    "console/videos list",
+  );
 
   // The board is a client component, so thumbnail URLs are resolved here —
   // mediaUrl() reads server-only env.

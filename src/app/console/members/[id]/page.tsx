@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { memberActivityTimeline } from "@/lib/activity";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { Badge, Card, SectionTitle } from "@/components/console/ui";
 import { CompanyPageForm } from "@/components/member/CompanyPageForm";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -61,17 +63,24 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
     );
   }
 
-  const [{ data: member }, { data: inds }, { data: revisions }, { data: types }, { data: memberTypes }, { data: svcs }, { data: memberSvcs }] = await Promise.all([
-    db.from("members").select(
+  // A malformed id would otherwise reach Postgres as an invalid uuid (22P02),
+  // which must() now turns into a thrown error — a typo'd URL deserves the 404
+  // it has always given, so screen it out first. Same guard as blocks/layouts.ts.
+  if (!UUID_RE.test(id)) notFound();
+
+  const [member, inds, revisions, types, memberTypes, svcs, memberSvcs] = await Promise.all([
+    // maybeSingle, not single: a member id that does not exist is an ordinary
+    // 404 below, not a query failure worth throwing over.
+    must(db.from("members").select(
       "id, slug, name, status, industry_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
-    ).eq("id", id).single(),
-    db.from("industries").select("id, name").order("sort_order"),
-    db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1),
-    db.from("membership_types").select("id, name").order("sort_order"),
-    db.from("member_membership_types").select("membership_type_id").eq("member_id", id),
+    ).eq("id", id).maybeSingle(), "console/members detail: member"),
+    must(db.from("industries").select("id, name").order("sort_order"), "console/members detail: industries"),
+    must(db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1), "console/members detail: revisions"),
+    must(db.from("membership_types").select("id, name").order("sort_order"), "console/members detail: membership types"),
+    must(db.from("member_membership_types").select("membership_type_id").eq("member_id", id), "console/members detail: member membership types"),
     // `services` has no sort_order column (20260909000001) — order by name.
-    db.from("services").select("id, name").order("name"),
-    db.from("member_services").select("service_id").eq("member_id", id),
+    must(db.from("services").select("id, name").order("name"), "console/members detail: services"),
+    must(db.from("member_services").select("service_id").eq("member_id", id), "console/members detail: member services"),
   ]);
   if (!member) notFound();
   const memberTypeIds = new Set((memberTypes ?? []).map((t) => t.membership_type_id));

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { requireConsole } from "@/lib/auth";
 import { monthGrid, parseMonth } from "@/lib/calendar";
 import { decideEvent } from "../actions";
@@ -31,18 +32,21 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
   // An event's date exists before it's approved, so — unlike Story/Video's
   // calendar — don't restrict to published; show drafts/pending on their date too.
   const { start, end } = monthGrid(month);
-  const { data: events } = view === "calendar"
-    ? await db
-        .from("events")
-        .select(SELECT)
-        .in("status", ["draft", "awaiting_approval", "published"])
-        .gte("starts_on", start.toISOString().slice(0, 10))
-        .lt("starts_on", end.toISOString().slice(0, 10))
-    : await db
-        .from("events")
-        .select(SELECT)
-        .order("updated_at", { ascending: false })
-        .limit(120);
+  const events = await must(
+    view === "calendar"
+      ? db
+          .from("events")
+          .select(SELECT)
+          .in("status", ["draft", "awaiting_approval", "published"])
+          .gte("starts_on", start.toISOString().slice(0, 10))
+          .lt("starts_on", end.toISOString().slice(0, 10))
+      : db
+          .from("events")
+          .select(SELECT)
+          .order("updated_at", { ascending: false })
+          .limit(120),
+    "console/events list",
+  );
 
   const byStatus = (s: string) => (events ?? []).filter((x) => x.status === s);
 

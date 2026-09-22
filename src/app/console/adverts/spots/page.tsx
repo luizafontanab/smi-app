@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { AD_FORMAT_KEYS, DEFAULT_AD_FORMATS, type AdFormat } from "@/lib/advert-formats";
 import { deleteAdvertProduct, saveAdvertFormats, saveMediaPack } from "../../actions";
 
@@ -10,10 +11,10 @@ export const dynamic = "force-dynamic";
 export default async function AdvertSpotsPage() {
   await requireConsole();
   const db = serviceDb();
-  const [{ data: spots }, { data: pack }, { data: formatSetting }] = await Promise.all([
-    db.from("advert_products").select("*").order("created_at"),
-    db.from("settings").select("value").eq("key", "media_pack").maybeSingle(),
-    db.from("settings").select("value").eq("key", "advert_formats").maybeSingle(),
+  const [spots, pack, formatSetting] = await Promise.all([
+    must(db.from("advert_products").select("*").order("created_at"), "console/adverts spots list"),
+    must(db.from("settings").select("value").eq("key", "media_pack").maybeSingle(), "console/adverts spots media pack"),
+    must(db.from("settings").select("value").eq("key", "advert_formats").maybeSingle(), "console/adverts spots formats"),
   ]);
   const packPath = (pack?.value as { path?: string } | null)?.path ?? null;
   const formats = (formatSetting?.value as AdFormat[] | null) ?? DEFAULT_AD_FORMATS;

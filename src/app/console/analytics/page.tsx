@@ -1,6 +1,7 @@
 import { requireConsole } from "@/lib/auth";
 import { classifyReferrer } from "@/lib/analytics";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { Card, SectionTitle, Stat } from "@/components/console/ui";
 import { ChannelBreakdown } from "@/components/ChannelBreakdown";
 import { TrendChart } from "@/components/Sparkline";
@@ -29,38 +30,38 @@ export default async function AnalyticsPage() {
   const sinceDay = since.slice(0, 10);
 
   const [traffic, storyViews, referrerRows, channelRows, searchRows] = await Promise.all([
-    db.from("rollups_daily").select("day, count").in("kind", TRAFFIC_KINDS).gte("day", sinceDay),
-    db.from("rollups_daily").select("story_id, count").eq("kind", "story_view").gte("day", sinceDay).not("story_id", "is", null),
-    db.from("analytics_events").select("referrer").in("kind", TRAFFIC_KINDS).gte("occurred_at", since).limit(RAW_EVENT_SAMPLE),
-    db.from("analytics_events").select("kind, platform").in("kind", CHANNEL_KINDS).gte("occurred_at", since).limit(RAW_EVENT_SAMPLE),
-    db.from("search_queries").select("query, results_count, occurred_at").gte("occurred_at", since).limit(RAW_EVENT_SAMPLE),
+    must(db.from("rollups_daily").select("day, count").in("kind", TRAFFIC_KINDS).gte("day", sinceDay), "console/analytics traffic"),
+    must(db.from("rollups_daily").select("story_id, count").eq("kind", "story_view").gte("day", sinceDay).not("story_id", "is", null), "console/analytics story views"),
+    must(db.from("analytics_events").select("referrer").in("kind", TRAFFIC_KINDS).gte("occurred_at", since).limit(RAW_EVENT_SAMPLE), "console/analytics referrers"),
+    must(db.from("analytics_events").select("kind, platform").in("kind", CHANNEL_KINDS).gte("occurred_at", since).limit(RAW_EVENT_SAMPLE), "console/analytics channels"),
+    must(db.from("search_queries").select("query, results_count, occurred_at").gte("occurred_at", since).limit(RAW_EVENT_SAMPLE), "console/analytics searches"),
   ]);
 
   // Traffic trend: one row per day already (page_view/story_view/member_page_view
   // rows in rollups_daily carry no story/member dimension of their own for the
   // site-wide total, but summing defensively here costs nothing).
   const byDay = new Map<string, number>();
-  for (const r of traffic.data ?? []) byDay.set(r.day, (byDay.get(r.day) ?? 0) + r.count);
+  for (const r of traffic ?? []) byDay.set(r.day, (byDay.get(r.day) ?? 0) + r.count);
   const days = [...byDay.keys()].sort();
   const trendValues = days.map((d) => byDay.get(d)!);
   const totalTraffic = trendValues.reduce((a, b) => a + b, 0);
 
   // Most-read stories: sum across days per story, then look up titles.
   const byStory = new Map<string, number>();
-  for (const r of storyViews.data ?? []) {
+  for (const r of storyViews ?? []) {
     if (!r.story_id) continue;
     byStory.set(r.story_id, (byStory.get(r.story_id) ?? 0) + r.count);
   }
   const topStoryIds = [...byStory.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id]) => id);
-  const { data: topStories } = topStoryIds.length
-    ? await db.from("stories").select("id, title, slug").in("id", topStoryIds)
-    : { data: [] as { id: string; title: string; slug: string }[] };
+  const topStories = topStoryIds.length
+    ? await must(db.from("stories").select("id, title, slug").in("id", topStoryIds), "console/analytics top stories")
+    : ([] as { id: string; title: string; slug: string }[]);
   const storyById = new Map((topStories ?? []).map((s) => [s.id, s] as const));
 
   // Referrer mix, incl. AI classification — needs the raw referrer string, which
   // rollups_daily doesn't carry.
   const referrerCounts = new Map<string, number>();
-  for (const r of referrerRows.data ?? []) {
+  for (const r of referrerRows ?? []) {
     const bucket = classifyReferrer(r.referrer);
     referrerCounts.set(bucket, (referrerCounts.get(bucket) ?? 0) + 1);
   }
@@ -68,13 +69,13 @@ export default async function AnalyticsPage() {
 
   // Clicks by channel, site-wide.
   const channelCounts = new Map<string, number>();
-  for (const r of channelRows.data ?? []) {
+  for (const r of channelRows ?? []) {
     const label = r.kind === "social_click" ? (r.platform ? `Social: ${r.platform}` : "Social") : (CHANNEL_LABELS[r.kind] ?? r.kind);
     channelCounts.set(label, (channelCounts.get(label) ?? 0) + 1);
   }
 
   // Search report (A5.2 / A27).
-  const queries = searchRows.data ?? [];
+  const queries = searchRows ?? [];
   const queryCounts = new Map<string, number>();
   for (const q of queries) {
     const key = q.query.trim().toLowerCase();

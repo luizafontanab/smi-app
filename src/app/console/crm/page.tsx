@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { newsletterChoiceOf } from "@/lib/contacts";
 import { serviceDb } from "@/lib/db/server";
+import { must, mustList } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { memberActivityTimeline } from "@/lib/activity";
 import { ilikeTerm } from "@/lib/queries";
 import { Pagination } from "@/components/Pagination";
@@ -27,12 +29,15 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   if (term) contactsQuery = contactsQuery.or(`name.ilike.%${term}%,email.ilike.%${term}%,company.ilike.%${term}%`);
   contactsQuery = contactsQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
-  const [{ data: members }, { data: contacts, count }, { data: editing }] = await Promise.all([
-    db.from("members").select("id, name").order("name"),
-    contactsQuery,
-    contactId
-      ? db.from("contacts").select("id, email, name, company, member_id, subscribed, unsubscribed_at").eq("id", contactId).maybeSingle()
-      : Promise.resolve({ data: null }),
+  const [members, { data: contacts, count }, editing] = await Promise.all([
+    must(db.from("members").select("id, name").order("name"), "console/crm members"),
+    mustList(contactsQuery, "console/crm contacts"),
+    // ?contact= is raw user input against a uuid column — a junk value would
+    // reach Postgres as 22P02 and, now that must() throws, take the whole page
+    // down. Treat an unparseable id as "no contact selected", as before.
+    contactId && UUID_RE.test(contactId)
+      ? must(db.from("contacts").select("id, email, name, company, member_id, subscribed, unsubscribed_at").eq("id", contactId).maybeSingle(), "console/crm contact")
+      : Promise.resolve(null),
   ]);
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 

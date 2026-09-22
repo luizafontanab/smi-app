@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Industries" };
@@ -13,9 +14,9 @@ export default async function IndustriesPage(props: PageProps<"/console/industri
   // One industry per member (members.industry_id), and content carries its own
   // — so the usage count that matters here is the member count, the one the
   // delete FK will block on.
-  const [{ data: inds }, { data: members }] = await Promise.all([
-    db.from("industries").select("id, name, slug").order("sort_order"),
-    db.from("members").select("industry_id").not("industry_id", "is", null),
+  const [inds, members] = await Promise.all([
+    must(db.from("industries").select("id, name, slug").order("sort_order"), "console/industries list"),
+    must(db.from("members").select("industry_id").not("industry_id", "is", null), "console/industries member counts"),
   ]);
 
   const counts = new Map<number, number>();

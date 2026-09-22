@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { mustList } from "@/lib/db/must";
 import { deleteMedia, renameMedia } from "../actions";
 import { CopyUrlButton } from "./CopyUrlButton";
 
@@ -18,11 +19,14 @@ export default async function MediaLibraryPage(props: PageProps<"/console/media"
   const sp = await props.searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const { data: media, count } = await serviceDb()
-    .from("media")
-    .select("*", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const { data: media, count } = await mustList(
+    serviceDb()
+      .from("media")
+      .select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
+    "console/media library",
+  );
 
   const total = count ?? 0;
   const hasNext = page * PAGE_SIZE < total;

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { requireConsole } from "@/lib/auth";
 import { saveSocialCaps, saveSocialChannels } from "../actions";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
@@ -26,22 +27,25 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
   // The board's "most recently touched 120" is the wrong window for a calendar —
   // a story scheduled months out can fall outside it. Query by date range instead.
   const { start, end } = monthGrid(month);
-  const [{ data: stories }, { data: capsSetting }, { data: channelsSetting }] = await Promise.all([
-    view === "calendar"
-      ? db
-          .from("stories")
-          .select(SELECT)
-          .or(
-            `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
-            `and(status.eq.published,published_at.gte.${start.toISOString()},published_at.lt.${end.toISOString()})`,
-          )
-      : db
-          .from("stories")
-          .select(SELECT)
-          .order("updated_at", { ascending: false })
-          .limit(120),
-    db.from("settings").select("value").eq("key", "social_caps").maybeSingle(),
-    db.from("settings").select("value").eq("key", "social_channels").maybeSingle(),
+  const [stories, capsSetting, channelsSetting] = await Promise.all([
+    must(
+      view === "calendar"
+        ? db
+            .from("stories")
+            .select(SELECT)
+            .or(
+              `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
+              `and(status.eq.published,published_at.gte.${start.toISOString()},published_at.lt.${end.toISOString()})`,
+            )
+        : db
+            .from("stories")
+            .select(SELECT)
+            .order("updated_at", { ascending: false })
+            .limit(120),
+      "console/stories list",
+    ),
+    must(db.from("settings").select("value").eq("key", "social_caps").maybeSingle(), "console/stories social caps"),
+    must(db.from("settings").select("value").eq("key", "social_channels").maybeSingle(), "console/stories social channels"),
   ]);
   const caps: SocialCaps = { ...DEFAULT_SOCIAL_CAPS, ...(capsSetting?.value as Partial<SocialCaps> | null) };
   const channels = readSocialChannels(channelsSetting?.value);

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { bookingPhase } from "@/lib/adverts";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { saveBundle, saveBundleBooking } from "../../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
@@ -15,12 +17,17 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data: bundle } = await db.from("bundles").select("id, member_id, name, price_pennies, notes, member:members(name)").eq("id", id).single();
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!UUID_RE.test(id)) notFound();
+  const bundle = await must(
+    db.from("bundles").select("id, member_id, name, price_pennies, notes, member:members(name)").eq("id", id).maybeSingle(),
+    "console/bundles detail",
+  );
   if (!bundle) notFound();
 
-  const [{ data: parts }, { data: memberAdverts }] = await Promise.all([
-    db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").eq("bundle_id", id),
-    db.from("adverts").select("id, name, format").eq("member_id", bundle.member_id).order("name"),
+  const [parts, memberAdverts] = await Promise.all([
+    must(db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").eq("bundle_id", id), "console/bundles parts"),
+    must(db.from("adverts").select("id, name, format").eq("member_id", bundle.member_id).order("name"), "console/bundles member adverts"),
   ]);
   const bookedAdvertIds = new Set((parts ?? []).map((p) => p.advert_id));
   const available = (memberAdverts ?? []).filter((a) => !bookedAdvertIds.has(a.id));

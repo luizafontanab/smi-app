@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { RENDERABLE_BOOKING_STATUSES } from "@/lib/adverts";
 import { serviceDb } from "@/lib/db/server";
+import { must, mustList } from "@/lib/db/must";
 import { Badge, Card, SectionTitle, Stat } from "@/components/console/ui";
 import { FEATURED_SLOTS, MEMBERSHIP_MONTHLY_PENNIES, pounds, revenueByStream } from "@/lib/pricing";
 import { monthGrid, monthKey, parseMonth } from "@/lib/calendar";
@@ -55,51 +56,57 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     calIssues,
     calEvents,
   ] = await Promise.all([
-    db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"),
-    db.from("advert_bookings").select("advert:adverts(format, member_id), product:advert_products(rate_pennies)").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today),
-    db.from("stories").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
-    db.from("events").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
-    db.from("advert_bookings").select("id, advert:adverts(name)").eq("status", "awaiting_approval"),
-    db.from("advert_artwork_proposals").select("id, advert:adverts(name)").eq("status", "pending"),
-    db.from("member_revisions").select("id, member:members(name)").eq("status", "awaiting_approval"),
-    db.from("advert_bookings").select("id, ends_on, advert:adverts(name)").eq("status", "live").gte("ends_on", today).lte("ends_on", weekOut),
-    db.from("members").select("id, name").eq("status", "grace"),
-    db.from("members").select("id, name, draft_submitted_at").eq("status", "draft"),
-    db.from("jobs").select("id, kind, last_error").eq("status", "dead"),
-    db.from("jobs").select("due_at").in("status", ["pending", "running"]).order("due_at").limit(1),
-    db.from("inbox_messages").select("id, kind, name, email, message").eq("read", false).order("created_at", { ascending: false }).limit(5),
-    db.from("newsletter_issues").select("id, number").eq("status", "draft").limit(1),
-    db.from("newsletter_issues").select("id, number, send_error").eq("status", "send_failed"),
-    db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true),
-    db.from("placements").select("*", { count: "exact", head: true }).eq("kind", "featured_member").lte("starts_on", today).gte("ends_on", today),
-    db.from("stories").select("*", { count: "exact", head: true }).eq("status", "draft"),
-    db.from("stories").select("*", { count: "exact", head: true }).eq("status", "scheduled"),
-    db.from("stories").select("*", { count: "exact", head: true }).eq("status", "published"),
+    // Count-only reads go through mustList (the head:true ones keep their
+    // `.count`); row reads go through must and come back as plain arrays. The
+    // one exception is the sessions RPC, left raw on purpose — this page already
+    // degrades it to "unknown" rather than failing.
+    mustList(db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"), "console/overview active members"),
+    must(db.from("advert_bookings").select("advert:adverts(format, member_id), product:advert_products(rate_pennies)").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today), "console/overview live bookings"),
+    must(db.from("stories").select("id, title, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending stories"),
+    must(db.from("events").select("id, title, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending events"),
+    must(db.from("advert_bookings").select("id, advert:adverts(name)").eq("status", "awaiting_approval"), "console/overview pending adverts"),
+    must(db.from("advert_artwork_proposals").select("id, advert:adverts(name)").eq("status", "pending"), "console/overview pending artwork swaps"),
+    must(db.from("member_revisions").select("id, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending revisions"),
+    must(db.from("advert_bookings").select("id, ends_on, advert:adverts(name)").eq("status", "live").gte("ends_on", today).lte("ends_on", weekOut), "console/overview expiring bookings"),
+    must(db.from("members").select("id, name").eq("status", "grace"), "console/overview grace members"),
+    must(db.from("members").select("id, name, draft_submitted_at").eq("status", "draft"), "console/overview draft members"),
+    must(db.from("jobs").select("id, kind, last_error").eq("status", "dead"), "console/overview dead jobs"),
+    must(db.from("jobs").select("due_at").in("status", ["pending", "running"]).order("due_at").limit(1), "console/overview oldest open job"),
+    must(db.from("inbox_messages").select("id, kind, name, email, message").eq("read", false).order("created_at", { ascending: false }).limit(5), "console/overview inbox"),
+    must(db.from("newsletter_issues").select("id, number").eq("status", "draft").limit(1), "console/overview draft issue"),
+    must(db.from("newsletter_issues").select("id, number, send_error").eq("status", "send_failed"), "console/overview failed issues"),
+    mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true), "console/overview subscriber count"),
+    mustList(db.from("placements").select("*", { count: "exact", head: true }).eq("kind", "featured_member").lte("starts_on", today).gte("ends_on", today), "console/overview featured slots sold"),
+    mustList(db.from("stories").select("*", { count: "exact", head: true }).eq("status", "draft"), "console/overview draft stories"),
+    mustList(db.from("stories").select("*", { count: "exact", head: true }).eq("status", "scheduled"), "console/overview scheduled stories"),
+    mustList(db.from("stories").select("*", { count: "exact", head: true }).eq("status", "published"), "console/overview published stories"),
+    // Left raw deliberately: the site-sessions RPC is optional telemetry, and
+    // `sessions.error` is read below to show "—" instead of taking the page down.
     db.rpc("site_sessions_last_year"),
-    db.from("newsletter_issues").select("number, sent_at").eq("status", "sent").order("sent_at", { ascending: false }).limit(1),
-    db.from("videos").select("id, title, member:members(name)").eq("status", "awaiting_approval"),
-    db.from("videos").select("*", { count: "exact", head: true }).eq("status", "draft"),
-    db.from("videos").select("*", { count: "exact", head: true }).eq("status", "scheduled"),
-    db.from("videos").select("*", { count: "exact", head: true }).eq("status", "published"),
-    db.from("stories").select("id, title, status, scheduled_at, published_at").or(
+    must(db.from("newsletter_issues").select("number, sent_at").eq("status", "sent").order("sent_at", { ascending: false }).limit(1), "console/overview last sent issue"),
+    must(db.from("videos").select("id, title, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending videos"),
+    mustList(db.from("videos").select("*", { count: "exact", head: true }).eq("status", "draft"), "console/overview draft videos"),
+    mustList(db.from("videos").select("*", { count: "exact", head: true }).eq("status", "scheduled"), "console/overview scheduled videos"),
+    mustList(db.from("videos").select("*", { count: "exact", head: true }).eq("status", "published"), "console/overview published videos"),
+    must(db.from("stories").select("id, title, status, scheduled_at, published_at").or(
       `and(status.eq.scheduled,scheduled_at.gte.${startIso},scheduled_at.lt.${endIso}),` +
       `and(status.eq.published,published_at.gte.${startIso},published_at.lt.${endIso})`,
-    ),
-    db.from("videos").select("id, title, status, scheduled_at, published_at").or(
+    ), "console/overview calendar stories"),
+    must(db.from("videos").select("id, title, status, scheduled_at, published_at").or(
       `and(status.eq.scheduled,scheduled_at.gte.${startIso},scheduled_at.lt.${endIso}),` +
       `and(status.eq.published,published_at.gte.${startIso},published_at.lt.${endIso})`,
-    ),
-    db.from("newsletter_issues").select("id, number, subject, status, scheduled_at, sent_at").or(
+    ), "console/overview calendar videos"),
+    must(db.from("newsletter_issues").select("id, number, subject, status, scheduled_at, sent_at").or(
       `and(status.eq.scheduled,scheduled_at.gte.${startIso},scheduled_at.lt.${endIso}),` +
       `and(status.eq.sent,sent_at.gte.${startIso},sent_at.lt.${endIso})`,
-    ),
-    db.from("events").select("id, title, status, starts_on, starts_time")
+    ), "console/overview calendar issues"),
+    must(db.from("events").select("id, title, status, starts_on, starts_time")
       .in("status", ["draft", "awaiting_approval", "published"])
       .gte("starts_on", startDate)
-      .lt("starts_on", endDate),
+      .lt("starts_on", endDate), "console/overview calendar events"),
   ]);
 
-  const live = liveBookings.data ?? [];
+  const live = liveBookings ?? [];
   const liveBanners = live.filter((b) => b.advert?.format === "banner").length;
   const liveLogos = live.filter((b) => b.advert?.format === "supplier_logo").length;
   const advertisers = new Set(live.map((b) => b.advert?.member_id).filter(Boolean)).size;
@@ -116,7 +123,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   const sessionCount = Number(sessions.data);
   const siteUsers = sessions.error || sessions.data == null || !Number.isFinite(sessionCount) ? null : sessionCount;
 
-  const issueSent = lastSent.data?.[0];
+  const issueSent = lastSent?.[0];
   const dateLabel = new Date(now).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   const fmtTime = (t: string) => {
@@ -126,28 +133,28 @@ export default async function CommandCentre(props: PageProps<"/console">) {
 
   const monthParam = monthKey(month);
   const overviewItems: OverviewItem[] = [
-    ...(calStories.data ?? []).map((s) => ({
+    ...(calStories ?? []).map((s) => ({
       id: s.id,
       type: "story" as const,
       title: s.title,
       date: new Date((s.status === "published" ? s.published_at : s.scheduled_at)!),
       href: `/console/stories/${s.id}?from=calendar&month=${monthParam}`,
     })),
-    ...(calVideos.data ?? []).map((v) => ({
+    ...(calVideos ?? []).map((v) => ({
       id: v.id,
       type: "video" as const,
       title: v.title,
       date: new Date((v.status === "published" ? v.published_at : v.scheduled_at)!),
       href: `/console/videos/${v.id}?from=calendar&month=${monthParam}`,
     })),
-    ...(calIssues.data ?? []).map((i) => ({
+    ...(calIssues ?? []).map((i) => ({
       id: i.id,
       type: "newsletter" as const,
       title: `#${i.number} — ${i.subject}`,
       date: new Date((i.status === "sent" ? i.sent_at : i.scheduled_at)!),
       href: "/console/newsletter?view=board",
     })),
-    ...(calEvents.data ?? []).map((e) => ({
+    ...(calEvents ?? []).map((e) => ({
       id: e.id,
       type: "event" as const,
       title: e.title,
@@ -159,44 +166,44 @@ export default async function CommandCentre(props: PageProps<"/console">) {
 
   const pipeline: { label: string; value: number | null }[] = [
     { label: "Suggested", value: null },
-    { label: "Awaiting approval", value: pendingStories.data?.length ?? 0 },
+    { label: "Awaiting approval", value: pendingStories?.length ?? 0 },
     { label: "Drafts", value: draftStories.count ?? 0 },
     { label: "Scheduled", value: scheduledStories.count ?? 0 },
     { label: "Published", value: publishedStories.count ?? 0 },
   ];
 
   const videoPipeline: { label: string; value: number }[] = [
-    { label: "Awaiting approval", value: pendingVideos.data?.length ?? 0 },
+    { label: "Awaiting approval", value: pendingVideos?.length ?? 0 },
     { label: "Drafts", value: draftVideos.count ?? 0 },
     { label: "Scheduled", value: scheduledVideos.count ?? 0 },
     { label: "Published", value: publishedVideosCount.count ?? 0 },
   ];
 
   const needs: { label: string; href: string; urgent?: boolean }[] = [];
-  if (pendingStories.data?.length) needs.push({ label: `${pendingStories.data.length} member stories awaiting your approval`, href: "/console/stories" });
-  if (pendingVideos.data?.length) needs.push({ label: `${pendingVideos.data.length} member videos awaiting your approval`, href: "/console/videos" });
-  if (pendingEvents.data?.length) needs.push({ label: `${pendingEvents.data.length} member events awaiting approval`, href: "/console/events" });
-  if (pendingAdverts.data?.length) needs.push({ label: `${pendingAdverts.data.length} member adverts awaiting approval`, href: "/console/adverts" });
-  if (pendingArtworkSwaps.data?.length) needs.push({ label: `${pendingArtworkSwaps.data.length} artwork swap${pendingArtworkSwaps.data.length === 1 ? "" : "s"} awaiting approval`, href: "/console/adverts" });
-  if (pendingRevisions.data?.length) needs.push({ label: `${pendingRevisions.data.length} member page edits awaiting approval`, href: "#approvals" });
-  if (expiring.data?.length) needs.push({ label: `${expiring.data.length} adverts expire within 7 days`, href: "/console/adverts" });
-  if (graceMembers.data?.length) needs.push({ label: `${graceMembers.data.length} memberships lapsing (grace period)`, href: "/console/members" });
-  const readyToReview = (draftMembers.data ?? []).filter((m) => m.draft_submitted_at);
-  const midFunnel = (draftMembers.data ?? []).length - readyToReview.length;
+  if (pendingStories?.length) needs.push({ label: `${pendingStories.length} member stories awaiting your approval`, href: "/console/stories" });
+  if (pendingVideos?.length) needs.push({ label: `${pendingVideos.length} member videos awaiting your approval`, href: "/console/videos" });
+  if (pendingEvents?.length) needs.push({ label: `${pendingEvents.length} member events awaiting approval`, href: "/console/events" });
+  if (pendingAdverts?.length) needs.push({ label: `${pendingAdverts.length} member adverts awaiting approval`, href: "/console/adverts" });
+  if (pendingArtworkSwaps?.length) needs.push({ label: `${pendingArtworkSwaps.length} artwork swap${pendingArtworkSwaps.length === 1 ? "" : "s"} awaiting approval`, href: "/console/adverts" });
+  if (pendingRevisions?.length) needs.push({ label: `${pendingRevisions.length} member page edits awaiting approval`, href: "#approvals" });
+  if (expiring?.length) needs.push({ label: `${expiring.length} adverts expire within 7 days`, href: "/console/adverts" });
+  if (graceMembers?.length) needs.push({ label: `${graceMembers.length} memberships lapsing (grace period)`, href: "/console/members" });
+  const readyToReview = (draftMembers ?? []).filter((m) => m.draft_submitted_at);
+  const midFunnel = (draftMembers ?? []).length - readyToReview.length;
   if (readyToReview.length) needs.push({ label: `${readyToReview.length} new member page${readyToReview.length === 1 ? "" : "s"} ready to review & activate`, href: "/console/members" });
   if (midFunnel) needs.push({ label: `${midFunnel} signup${midFunnel === 1 ? "" : "s"} part-way through joining (watch the inbox)`, href: "/console/members" });
-  if (draftIssue.data?.length) needs.push({ label: `Newsletter issue ${draftIssue.data[0].number} is drafted but unsent`, href: "/console/newsletter" });
+  if (draftIssue?.length) needs.push({ label: `Newsletter issue ${draftIssue[0].number} is drafted but unsent`, href: "/console/newsletter" });
   // A send that failed halfway to the whole list is the most urgent thing on
   // this page — it used to be invisible, because the issue was marked sent
   // regardless of what the sender did (GAPS C3).
-  for (const issue of failedIssues.data ?? []) {
+  for (const issue of failedIssues ?? []) {
     needs.push({ label: `⚠ Newsletter issue ${issue.number} failed to send${issue.send_error ? ` — ${issue.send_error}` : ""}`, href: "/console/newsletter", urgent: true });
   }
-  if (deadJobs.data?.length) needs.push({ label: `⚠ ${deadJobs.data.length} background jobs failed and need attention`, href: "#jobs", urgent: true });
+  if (deadJobs?.length) needs.push({ label: `⚠ ${deadJobs.length} background jobs failed and need attention`, href: "#jobs", urgent: true });
   // A job that's never picked up never fails, so it never dead-letters into the
   // check above — this is the only signal that catches cron not running at all
   // (e.g. CRON_SECRET unset), which the deadJobs check can't see.
-  const oldestDueAt = oldestOpenJob.data?.[0]?.due_at;
+  const oldestDueAt = oldestOpenJob?.[0]?.due_at;
   const STALE_JOB_MS = 15 * 60 * 1000;
   if (oldestDueAt && now - Date.parse(oldestDueAt) > STALE_JOB_MS) {
     const staleMinutes = Math.round((now - Date.parse(oldestDueAt)) / 60_000);
@@ -289,13 +296,13 @@ export default async function CommandCentre(props: PageProps<"/console">) {
           </Card>
         </Link>
 
-        {inbox.data?.length ? (
+        {inbox?.length ? (
           <Card className="mt-6">
             <div className="flex items-center justify-between">
               <SectionTitle>Inbox</SectionTitle>
               <Link href="/console/messages" className="text-xs text-graphite underline">View all →</Link>
             </div>
-            {inbox.data.map((m) => (
+            {inbox.map((m) => (
               <div key={m.id} className="relative mt-2 rounded border p-3 text-sm transition hover:bg-shade/50">
                 <div className="flex items-center justify-between">
                   <p><b>{m.name}</b> <span className="text-graphite">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand-text">{m.kind}</span></p>
@@ -312,10 +319,10 @@ export default async function CommandCentre(props: PageProps<"/console">) {
           </Card>
         ) : null}
 
-        {deadJobs.data?.length ? (
+        {deadJobs?.length ? (
           <section id="jobs" className="mt-6 rounded-xl border-2 border-danger/30 bg-white p-5 shadow-sm">
             <h2 className="font-bold text-danger">Failed background jobs</h2>
-            {deadJobs.data.map((j) => (
+            {deadJobs.map((j) => (
               <p key={j.id} className="mt-1 text-sm text-graphite"><b>{j.kind}</b>: {j.last_error}</p>
             ))}
           </section>
@@ -335,10 +342,10 @@ export default async function CommandCentre(props: PageProps<"/console">) {
           </ul>
         </Card>
 
-        {pendingRevisions.data?.length ? (
+        {pendingRevisions?.length ? (
           <Card id="approvals" className="mt-6">
             <SectionTitle>Quick approvals</SectionTitle>
-            {pendingRevisions.data?.map((r) => (
+            {pendingRevisions?.map((r) => (
               <div key={r.id} className="mt-2 flex items-center justify-between gap-3 rounded border p-3 text-sm">
                 <span>Page edit from <b>{r.member?.name}</b></span>
                 <span className="flex gap-2">

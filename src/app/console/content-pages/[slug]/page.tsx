@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { consoleUploadImage, deleteContentPage, saveContentPage } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -14,9 +15,10 @@ export default async function ContentPageEditor(props: PageProps<"/console/conte
   await requireConsole();
   const isNew = slug === "new";
 
-  const { data: page } = isNew
-    ? { data: null }
-    : await serviceDb().from("static_pages").select("id, slug, title, body, collapsible").eq("slug", slug).maybeSingle();
+  // `slug` is a text key, so there is no malformed-id class to guard against.
+  const page = isNew
+    ? null
+    : await must(serviceDb().from("static_pages").select("id, slug, title, body, collapsible").eq("slug", slug).maybeSingle(), "console/content-pages editor");
   if (!isNew && !page) notFound();
 
   return (

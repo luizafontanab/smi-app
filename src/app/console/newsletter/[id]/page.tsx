@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { renderIssueHtml } from "@/lib/adapters/newsletter";
 import { attachNewsletterAd, detachNewsletterAd, updateIssue } from "../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -20,17 +22,22 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
   await requireConsole();
   const db = serviceDb();
 
-  const { data: issue } = await db.from("newsletter_issues").select("id, number, subject, intro, status, sent_count, opens_count, clicks_count").eq("id", id).single();
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!UUID_RE.test(id)) notFound();
+  const issue = await must(
+    db.from("newsletter_issues").select("id, number, subject, intro, status, sent_count, opens_count, clicks_count").eq("id", id).maybeSingle(),
+    "console/newsletter issue",
+  );
   if (!issue) notFound();
   // A failed send can still be fixed and retried, so it stays editable too.
   const editable = issue.status === "draft" || issue.status === "scheduled" || issue.status === "send_failed";
 
-  const [{ data: items }, { data: ads }, { data: eligible }, { data: allStories }, { data: allVideos }, preview] = await Promise.all([
-    db.from("newsletter_items").select("position, story_id, video_id, story:stories(title), video:videos(title)").eq("issue_id", id).order("position"),
-    db.from("newsletter_ads").select("advert_id, advert:adverts(id, name, format, member:members(name))").eq("issue_id", id).order("position"),
-    db.from("adverts").select("id, name, format, member:members(name)").in("format", NEWSLETTER_FORMATS).order("created_at", { ascending: false }),
-    db.from("stories").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20),
-    db.from("videos").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20),
+  const [items, ads, eligible, allStories, allVideos, preview] = await Promise.all([
+    must(db.from("newsletter_items").select("position, story_id, video_id, story:stories(title), video:videos(title)").eq("issue_id", id).order("position"), "console/newsletter items"),
+    must(db.from("newsletter_ads").select("advert_id, advert:adverts(id, name, format, member:members(name))").eq("issue_id", id).order("position"), "console/newsletter ads"),
+    must(db.from("adverts").select("id, name, format, member:members(name)").in("format", NEWSLETTER_FORMATS).order("created_at", { ascending: false }), "console/newsletter eligible adverts"),
+    must(db.from("stories").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter all stories"),
+    must(db.from("videos").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter all videos"),
     // B5.3: reuse the same render the send job uses, so "Preview" is a proof
     // of the actual email, not a second approximation of it. Only worth the
     // query while the issue can still change.

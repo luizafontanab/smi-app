@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { saveAdvertProduct } from "../../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
@@ -26,9 +28,11 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
   const db = serviceDb();
   const isNew = id === "new";
 
-  const { data: spot } = isNew
-    ? { data: null }
-    : await db.from("advert_products").select("*").eq("id", id).single();
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!isNew && !UUID_RE.test(id)) notFound();
+  const spot = isNew
+    ? null
+    : await must(db.from("advert_products").select("*").eq("id", id).maybeSingle(), "console/adverts spot editor");
   if (!isNew && !spot) notFound();
   const sample = mediaUrl(spot?.sample_path);
 

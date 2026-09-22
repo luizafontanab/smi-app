@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { consoleUploadEventImage, decideEvent, returnToDraft, saveEvent } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
@@ -21,12 +23,15 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
     ? `/console/events?view=calendar${/^\d{4}-\d{2}$/.test(String(sp.month ?? "")) ? `&month=${sp.month}` : ""}`
     : "/console/events";
 
-  const [{ data: event }, { data: members }, { data: inds }] = await Promise.all([
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!isNew && !UUID_RE.test(id)) notFound();
+
+  const [event, members, inds] = await Promise.all([
     isNew
-      ? Promise.resolve({ data: null })
-      : db.from("events").select("*, member:members(name, slug, industry_id)").eq("id", id).single(),
-    db.from("members").select("id, name").eq("status", "active").order("name"),
-    db.from("industries").select("id, name").order("sort_order"),
+      ? Promise.resolve(null)
+      : must(db.from("events").select("*, member:members(name, slug, industry_id)").eq("id", id).maybeSingle(), "console/events editor"),
+    must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/events members"),
+    must(db.from("industries").select("id, name").order("sort_order"), "console/events industries"),
   ]);
   if (!isNew && !event) notFound();
   const cover = mediaUrl(event?.cover_path);

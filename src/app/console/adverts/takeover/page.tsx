@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { TakeoverColorPicker } from "@/components/console/TakeoverColorPicker";
 import { saveTakeoverPlacement } from "../../actions";
 
@@ -13,9 +14,9 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: members }, { data: takeovers }] = await Promise.all([
-    db.from("members").select("id, name").eq("status", "active").order("name"),
-    db.from("placements").select("id, config, starts_on, ends_on, member:members(name)").eq("kind", "takeover").order("starts_on", { ascending: false }),
+  const [members, takeovers] = await Promise.all([
+    must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/takeover members"),
+    must(db.from("placements").select("id, config, starts_on, ends_on, member:members(name)").eq("kind", "takeover").order("starts_on", { ascending: false }), "console/takeover placements"),
   ]);
   const live = (takeovers ?? []).find((t) => t.starts_on <= today && t.ends_on >= today);
   const liveBanner = live ? mediaUrl((live.config as { banner_path?: string }).banner_path ?? null) : null;

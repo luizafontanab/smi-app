@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { declineInterest, startAdvertFromInterest } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +19,12 @@ const PRODUCT_LABELS: Record<string, string> = {
 export default async function AdvertInterestPage() {
   await requireConsole();
   const db = serviceDb();
-  const { data: requests } = await db
-    .from("visibility_requests")
-    .select("id, product, message, status, created_at, member:members(id, name, contact_email)")
-    .order("created_at", { ascending: false });
+  const requests = await must(
+    db.from("visibility_requests")
+      .select("id, product, message, status, created_at, member:members(id, name, contact_email)")
+      .order("created_at", { ascending: false }),
+    "console/adverts interest list",
+  );
 
   const open = (requests ?? []).filter((r) => r.status === "requested");
   const handled = (requests ?? []).filter((r) => r.status !== "requested");

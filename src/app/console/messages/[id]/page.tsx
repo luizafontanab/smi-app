@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { SubmitButton } from "@/components/SubmitButton";
 import { markInboxRead, replyToInboxMessage } from "../../actions";
 
@@ -16,7 +18,11 @@ export default async function MessagePage(props: PageProps<"/console/messages/[i
   const { id } = await props.params;
   const sp = await props.searchParams;
   const db = serviceDb();
-  const { data: m } = await db.from("inbox_messages").select("*").eq("id", id).maybeSingle();
+  // Screen a malformed id out before it reaches Postgres as an invalid uuid
+  // (22P02) — must() would turn that into a thrown error, and a typo'd URL
+  // should keep giving the 404 it always has.
+  if (!UUID_RE.test(id)) notFound();
+  const m = await must(db.from("inbox_messages").select("*").eq("id", id).maybeSingle(), "console/messages detail");
   if (!m) notFound();
 
   // Opening a message is reading it — same convention as any inbox. The

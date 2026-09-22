@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { mustList } from "@/lib/db/must";
 import { MEMBER_STATUSES } from "@/lib/membership";
 import { ilikeTerm } from "@/lib/queries";
 import { Pagination } from "@/components/Pagination";
@@ -33,7 +34,10 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
   if (status !== "all") membersQuery = membersQuery.eq("status", status);
   const term = ilikeTerm(q);
   if (term) membersQuery = membersQuery.or(`name.ilike.%${term}%,description.ilike.%${term}%,contact_email.ilike.%${term}%`);
-  const { data: filtered, count } = await membersQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const { data: filtered, count } = await mustList(
+    membersQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
+    "console/members list",
+  );
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
   const statusHref = (s: string) => `/console/members?status=${s}${q ? `&q=${encodeURIComponent(q)}` : ""}`;

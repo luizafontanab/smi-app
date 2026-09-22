@@ -2,16 +2,19 @@ import Image from "next/image";
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdvertArtworkPage() {
   await requireConsole();
   const db = serviceDb();
-  const { data: adverts } = await db
-    .from("adverts")
-    .select("id, name, format, desktop_path, member:members(name), bookings:advert_bookings(id, status)")
-    .order("created_at");
+  const adverts = await must(
+    db.from("adverts")
+      .select("id, name, format, desktop_path, member:members(name), bookings:advert_bookings(id, status)")
+      .order("created_at"),
+    "console/adverts artwork list",
+  );
 
   return (
     <div className="mx-auto max-w-4xl">

@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory } from "../../actions";
 import { CoverField } from "@/components/CoverField";
 import { parseFocus, focusStyle } from "@/lib/focus";
@@ -25,18 +27,21 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
     ? `/console/stories?view=calendar${/^\d{4}-\d{2}$/.test(String(sp.month ?? "")) ? `&month=${sp.month}` : ""}`
     : "/console/stories";
 
-  const [{ data: story }, { data: cats }, { data: members }, { data: inds }] = await Promise.all([
+  // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
+  if (!isNew && !UUID_RE.test(id)) notFound();
+
+  const [story, cats, members, inds] = await Promise.all([
     isNew
-      ? Promise.resolve({ data: null })
-      : db.from("stories").select("*, member:members(name, logo_path, slug, status, industry_id)").eq("id", id).single(),
-    db.from("categories").select("id, name").order("name"),
-    db.from("members").select("id, name").eq("status", "active").order("name"),
-    db.from("industries").select("id, name").order("sort_order"),
+      ? Promise.resolve(null)
+      : must(db.from("stories").select("*, member:members(name, logo_path, slug, status, industry_id)").eq("id", id).maybeSingle(), "console/stories editor"),
+    must(db.from("categories").select("id, name").order("name"), "console/stories categories"),
+    must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/stories members"),
+    must(db.from("industries").select("id, name").order("sort_order"), "console/stories industries"),
   ]);
   if (!isNew && !story) notFound();
-  const { data: selectedCats } = isNew
-    ? { data: [] }
-    : await db.from("story_categories").select("category_id").eq("story_id", id);
+  const selectedCats = isNew
+    ? []
+    : await must(db.from("story_categories").select("category_id").eq("story_id", id), "console/stories selected categories");
   const selected = new Set((selectedCats ?? []).map((c) => c.category_id));
   const cover = mediaUrl(story?.cover_path);
   const focus = parseFocus(story?.cover_focus);

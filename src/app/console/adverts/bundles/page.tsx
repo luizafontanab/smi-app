@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
 import { saveBundle } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -9,9 +10,9 @@ export default async function BundlesPage() {
   await requireConsole();
   const db = serviceDb();
 
-  const [{ data: members }, { data: bundles }] = await Promise.all([
-    db.from("members").select("id, name").eq("status", "active").order("name"),
-    db.from("bundles").select("id, name, price_pennies, member:members(name), parts:advert_bookings(count)").order("created_at", { ascending: false }),
+  const [members, bundles] = await Promise.all([
+    must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/bundles members"),
+    must(db.from("bundles").select("id, name, price_pennies, member:members(name), parts:advert_bookings(count)").order("created_at", { ascending: false }), "console/bundles list"),
   ]);
 
   return (

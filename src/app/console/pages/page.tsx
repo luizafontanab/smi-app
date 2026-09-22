@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must } from "@/lib/db/must";
+import { UUID_RE } from "@/lib/validate";
 import { getLayout } from "@/lib/blocks/layouts";
 import type { PageType } from "@/lib/blocks/schema";
 import { resetLayout, saveLayout } from "../actions";
@@ -20,28 +22,33 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
   await requireConsole();
   const sp = await props.searchParams;
   const type = (TABS.some((t) => t.type === sp.type) ? sp.type : "story") as PageType;
-  const entity = typeof sp.entity === "string" && sp.entity ? sp.entity : undefined;
+  const entityParam = typeof sp.entity === "string" && sp.entity ? sp.entity : undefined;
+  // ?entity= is raw user input used as a uuid in every query below. getLayout()
+  // already drops a non-uuid value (lib/blocks/layouts.ts) — do the same here so
+  // a junk param stays "no entity selected" instead of reaching Postgres as
+  // 22P02 and, now that must() throws, taking the page down.
+  const entity = entityParam && UUID_RE.test(entityParam) ? entityParam : undefined;
   const db = serviceDb();
 
-  const [layout, { data: overrideRow }, entityLabel] = await Promise.all([
+  const [layout, overrideRow, entityLabel] = await Promise.all([
     getLayout(type, entity),
     entity
-      ? db.from("page_layouts").select("id").eq("page_type", type).eq("entity_id", entity).maybeSingle()
-      : Promise.resolve({ data: null }),
+      ? must(db.from("page_layouts").select("id").eq("page_type", type).eq("entity_id", entity).maybeSingle(), "console/pages override row")
+      : Promise.resolve(null),
     (async () => {
       if (!entity) return null;
       if (type === "story") {
-        const { data } = await db.from("stories").select("title").eq("id", entity).single();
-        return data?.title ?? null;
+        const row = await must(db.from("stories").select("title").eq("id", entity).maybeSingle(), "console/pages story label");
+        return row?.title ?? null;
       }
       if (type === "member_profile") {
-        const { data } = await db.from("members").select("name").eq("id", entity).single();
-        return data?.name ?? null;
+        const row = await must(db.from("members").select("name").eq("id", entity).maybeSingle(), "console/pages member label");
+        return row?.name ?? null;
       }
       if (type === "static_page") {
         // keyed on the surrogate uuid, not the slug — see 20260824000002
-        const { data } = await db.from("static_pages").select("title").eq("id", entity).maybeSingle();
-        return data?.title ?? null;
+        const row = await must(db.from("static_pages").select("title").eq("id", entity).maybeSingle(), "console/pages static page label");
+        return row?.title ?? null;
       }
       return null;
     })(),

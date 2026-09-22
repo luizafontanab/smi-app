@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { must, mustList } from "@/lib/db/must";
 import { monthGrid, parseMonth } from "@/lib/calendar";
 import { createIssue, scheduleIssue, sendIssue, unscheduleIssue } from "../actions";
 import { CalendarView, type CalendarIssue } from "./CalendarView";
@@ -31,16 +32,20 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
   const db = serviceDb();
 
   const { start, end } = monthGrid(month);
-  const [{ data: issues }, { data: stories }, { data: videos }, { count: subscribers }] = await Promise.all([
-    view === "calendar"
-      ? db.from("newsletter_issues").select(ISSUE_SELECT).or(
-          `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
-          `and(status.eq.sent,sent_at.gte.${start.toISOString()},sent_at.lt.${end.toISOString()})`,
-        )
-      : db.from("newsletter_issues").select(ISSUE_SELECT).order("number", { ascending: false }),
-    db.from("stories").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20),
-    db.from("videos").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20),
-    db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null),
+  const [issues, stories, videos, { count: subscribers }] = await Promise.all([
+    must(
+      view === "calendar"
+        ? db.from("newsletter_issues").select(ISSUE_SELECT).or(
+            `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
+            `and(status.eq.sent,sent_at.gte.${start.toISOString()},sent_at.lt.${end.toISOString()})`,
+          )
+        : db.from("newsletter_issues").select(ISSUE_SELECT).order("number", { ascending: false }),
+      "console/newsletter issues",
+    ),
+    must(db.from("stories").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter stories"),
+    must(db.from("videos").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter videos"),
+    // head:true — the count is the only thing this one returns.
+    mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null), "console/newsletter subscriber count"),
   ]);
 
   const byStatus = (s: string) => (issues ?? []).filter((x) => x.status === s);
