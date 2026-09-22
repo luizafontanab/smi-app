@@ -52,6 +52,11 @@ dev.log
 # ...except the documented template, which holds no secrets
 !.env.example
 
+# database dumps — data.sql contains auth.users (member emails + password
+# hashes). Never committed. Not a substitute for a Supabase dashboard backup:
+# a pg_dump carries no storage bytes and no project config.
+/backups/
+
 # vercel
 .vercel
 
