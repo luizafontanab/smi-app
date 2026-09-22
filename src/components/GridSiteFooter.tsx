@@ -21,8 +21,16 @@ import { NewsletterSignup } from "@/components/NewsletterSignup";
  * signup from all of them.
  */
 
+/*
+ * Terms are linked from here because terms nobody can reach bind nobody —
+ * there is no other route into /pages/terms, and a member agreeing to
+ * membership has to be able to find what they agreed to. Membership and
+ * advertising terms hang off the Terms page rather than adding two more rows
+ * to a four-item footer.
+ */
 const SITE_LINKS = [
   { href: "/pages/about", label: "About" },
+  { href: "/pages/terms", label: "Terms" },
   { href: "/pages/policies", label: "Policies" },
   { href: "/pages/faq", label: "FAQ" },
   { href: "/contact", label: "Contact" },

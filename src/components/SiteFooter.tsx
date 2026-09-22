@@ -30,6 +30,8 @@ export function SiteFooter() {
           <p className="mb-2 font-semibold">Site</p>
           <ul className="space-y-1 text-white/80">
             <li><Link href="/pages/about" className="hover:text-brand">About</Link></li>
+            {/* Terms nobody can reach bind nobody — see the note in GridSiteFooter. */}
+            <li><Link href="/pages/terms" className="hover:text-brand">Terms</Link></li>
             <li><Link href="/pages/policies" className="hover:text-brand">Policies</Link></li>
             <li><Link href="/pages/faq" className="hover:text-brand">FAQ</Link></li>
             <li><Link href="/contact" className="hover:text-brand">Contact</Link></li>
