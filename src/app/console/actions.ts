@@ -16,6 +16,7 @@ import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
 import { safeInternalPath } from "@/lib/validate";
 import { canMoveStory } from "@/lib/story-board";
+import { canMoveEvent } from "@/lib/event-board";
 import { canMoveVideo } from "@/lib/video-board";
 import { FEATURED_SLOTS } from "@/lib/pricing";
 import { raiseInvoice } from "@/lib/invoicing";
@@ -399,11 +400,8 @@ export async function returnToDraft(formData: FormData) {
     redirect(`/console/videos/${id}`);
   }
   if (kind === "event") {
-    const { data: row } = await db.from("events").select("id, status").eq("id", id).single();
-    if (!row || row.status !== "published") return;
-    await db.from("events").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", id);
-    revalidatePath("/console");
-    revalidatePath("/console/events");
+    const result = await moveEvent({ id, to: "draft" });
+    if (!result.ok) return;
     redirect(`/console/events/${id}`);
   }
 
@@ -516,6 +514,45 @@ export async function decideEvent(formData: FormData) {
   await db.from("approvals").insert({ kind: "event", subject_id: id, decision: decision === "approve" ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
   revalidatePath("/console");
   revalidatePath("/console/events");
+}
+
+/**
+ * Board/dropdown status moves for events (A1.10-style, mirroring moveStory).
+ * Console-created events start at "draft" with no other code path to
+ * "published" — this is that path, reusing the exact writes decideEvent's
+ * approve branch and returnToDraft's event branch already perform.
+ */
+export async function moveEvent(input: { id: string; to: string }): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const { data: event } = await db.from("events").select("id, status, member_id").eq("id", input.id).single();
+  if (!event) return { ok: false, error: "Event not found." };
+  if (!canMoveEvent(event.status, input.to)) {
+    return { ok: false, error: `Can't move a ${event.status} event straight to ${input.to}.` };
+  }
+  if (input.to === "published") {
+    await db.from("events").update({ status: "published", updated_at: new Date().toISOString() }).eq("id", input.id);
+    if (event.member_id) await enqueue("notify_member", { member_id: event.member_id, kind: "event_published", event_id: input.id });
+    if (event.status === "awaiting_approval") {
+      // mirror decideEvent's approve branch so the audit trail is identical
+      // whether an operator clicked Approve or moved the card/dropdown.
+      await db.from("approvals").insert({ kind: "event", subject_id: input.id, decision: "approved", reason: null, decided_by: user.userId });
+    }
+  } else {
+    await db.from("events").update({ status: input.to, updated_at: new Date().toISOString() }).eq("id", input.id);
+  }
+  revalidatePath("/console");
+  revalidatePath("/console/events");
+  return { ok: true };
+}
+
+/** Keyboard/no-JS fallback for the events board — same shape as setStoryStatus. */
+export async function setEventStatus(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const to = String(formData.get("status") ?? "");
+  if (!id || !to) return;
+  await moveEvent({ id, to });
+  redirect("/console/events");
 }
 
 export async function decideRevision(formData: FormData) {

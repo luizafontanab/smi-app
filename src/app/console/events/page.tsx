@@ -1,19 +1,15 @@
-import Image from "next/image";
 import Link from "next/link";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { requireConsole } from "@/lib/auth";
 import { monthGrid, parseMonth } from "@/lib/calendar";
-import { decideEvent } from "../actions";
 import { CalendarView, type CalendarEvent } from "./CalendarView";
+import { EventBoard, type BoardEvent } from "./EventBoard";
 
 export const dynamic = "force-dynamic";
 
-const COLUMNS = [
-  { key: "awaiting_approval", label: "Awaiting approval" },
-  { key: "draft", label: "Drafts" },
-  { key: "published", label: "Published" },
-] as const;
+// Columns and their labels now live with the board's transition matrix in
+// lib/event-board.ts, so the two cannot drift.
 
 const TABS = [
   { view: "board", label: "Board" },
@@ -48,7 +44,17 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
     "console/events list",
   );
 
-  const byStatus = (s: string) => (events ?? []).filter((x) => x.status === s);
+  // The board is a client component, so cover URLs are resolved here —
+  // mediaUrl() reads server-only env.
+  const boardEvents: BoardEvent[] = (events ?? []).map((e) => ({
+    id: e.id,
+    title: e.title,
+    status: e.status,
+    source: e.source,
+    starts_on: e.starts_on,
+    coverUrl: mediaUrl(e.cover_path),
+    member: e.member,
+  }));
 
   return (
     <div>
@@ -73,44 +79,7 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
       {view === "calendar" ? (
         <CalendarView month={month} events={(events ?? []) as CalendarEvent[]} />
       ) : (
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {COLUMNS.map((col) => {
-            const items = byStatus(col.key).slice(0, col.key === "published" ? 10 : 30);
-            return (
-              <div key={col.key} className="rounded-xl bg-white p-3 shadow-sm">
-                <h2 className="px-1 text-sm font-bold uppercase tracking-wide text-graphite">
-                  {col.label} <span className="text-graphite">({byStatus(col.key).length})</span>
-                </h2>
-                <div className="mt-2 space-y-2">
-                  {items.map((e) => (
-                    <div key={e.id} className="flex gap-2 rounded border p-2.5 text-sm">
-                      {e.cover_path && (
-                        <Image src={mediaUrl(e.cover_path)!} alt="" width={56} height={32} className="h-8 w-14 shrink-0 rounded object-cover" unoptimized />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <Link href={`/console/events/${e.id}`} className="font-medium leading-snug hover:text-graphite">{e.title}</Link>
-                        <p className="mt-1 text-xs text-graphite">
-                          {e.member?.name && <>{e.member.name} · </>}{e.source} · {new Date(e.starts_on).toLocaleDateString("en-GB", { timeZone: "UTC" })}
-                        </p>
-                        {e.status === "awaiting_approval" && (
-                          <div className="mt-2 flex gap-2">
-                            <form action={decideEvent}>
-                              <input type="hidden" name="id" value={e.id} />
-                              <input type="hidden" name="decision" value="approve" />
-                              <button className="rounded bg-success px-2.5 py-1 text-xs text-white">Approve</button>
-                            </form>
-                            <Link href={`/console/events/${e.id}`} className="rounded border px-2.5 py-1 text-xs">Review</Link>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {items.length === 0 && <p className="px-1 text-xs text-graphite">Empty</p>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <EventBoard events={boardEvents} />
       )}
     </div>
   );

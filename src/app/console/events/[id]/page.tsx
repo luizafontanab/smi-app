@@ -4,9 +4,10 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
-import { consoleUploadEventImage, decideEvent, returnToDraft, saveEvent } from "../../actions";
+import { consoleUploadEventImage, decideEvent, returnToDraft, saveEvent, setEventStatus } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
+import { isBoardStatus, LEGAL_EVENT_MOVES } from "@/lib/event-board";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
@@ -119,6 +120,22 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
 
       {!isNew && event && (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          {event.status === "draft" && isBoardStatus(event.status) && (
+            <div className="rounded-xl bg-white p-5 shadow-sm">
+              <h2 className="font-bold text-ink">Status</h2>
+              <p className="mt-1 text-xs text-graphite">Admin-authored drafts publish directly — no approval needed.</p>
+              <form action={setEventStatus} className="mt-3 flex items-center gap-2">
+                <input type="hidden" name="id" value={id} />
+                <select name="status" defaultValue={event.status} className="rounded border px-2 py-1.5 text-sm">
+                  <option value={event.status}>Draft</option>
+                  {LEGAL_EVENT_MOVES[event.status].map((to) => (
+                    <option key={to} value={to}>Published</option>
+                  ))}
+                </select>
+                <button className="rounded bg-ink px-3 py-1.5 text-sm text-white">Update</button>
+              </form>
+            </div>
+          )}
           {event.status === "awaiting_approval" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Approval</h2>

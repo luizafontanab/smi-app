@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  consoleUploadEventImage, decideEvent, decideRevision, resetLayout, saveEvent, saveLayout,
+  consoleUploadEventImage, decideEvent, decideRevision, moveEvent, resetLayout, saveEvent, saveLayout, setEventStatus,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -95,6 +95,68 @@ describe("decideEvent", () => {
     expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published" }));
     expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "event_published" }));
     expect(enqueue).not.toHaveBeenCalledWith("social_push", expect.anything(), expect.anything());
+  });
+});
+
+describe("moveEvent", () => {
+  it("reports a not-found event rather than throwing", async () => {
+    db({ events: () => queryBuilder(dbOk(null)) });
+    expect(await moveEvent({ id: "missing", to: "published" })).toEqual({ ok: false, error: "Event not found." });
+  });
+
+  it("refuses an illegal transition without touching the row", async () => {
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "published", member_id: null }));
+    db({ events: () => eventsBuilder });
+
+    const result = await moveEvent({ id: "e1", to: "awaiting_approval" });
+
+    expect(result.ok).toBe(false);
+    expect(eventsBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("publishing a console-authored draft directly, with no approval row", async () => {
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "draft", member_id: "m1" }));
+    const from = db({ events: () => eventsBuilder });
+
+    const result = await moveEvent({ id: "e1", to: "published" });
+
+    expect(result).toEqual({ ok: true });
+    expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published" }));
+    expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "event_published" }));
+    expect(from).not.toHaveBeenCalledWith("approvals");
+  });
+
+  it("publishing from awaiting_approval also records the approval, mirroring decideEvent", async () => {
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "awaiting_approval", member_id: "m1" }));
+    const approvalsBuilder = queryBuilder(dbOk(null));
+    db({ events: () => eventsBuilder, approvals: () => approvalsBuilder });
+
+    const result = await moveEvent({ id: "e1", to: "published" });
+
+    expect(result).toEqual({ ok: true });
+    expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ decision: "approved" }));
+  });
+
+  it("taking a published event back to draft just updates the status", async () => {
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "published", member_id: null }));
+    db({ events: () => eventsBuilder });
+
+    const result = await moveEvent({ id: "e1", to: "draft" });
+
+    expect(result).toEqual({ ok: true });
+    expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "draft" }));
+  });
+});
+
+describe("setEventStatus", () => {
+  it("does nothing without both an id and a status", async () => {
+    await expect(setEventStatus(form({ id: "e1" }))).resolves.toBeUndefined();
+  });
+
+  it("moves the card and redirects back to the board", async () => {
+    db({ events: () => queryBuilder(dbOk({ id: "e1", status: "draft", member_id: null })) });
+
+    await expect(setEventStatus(form({ id: "e1", status: "published" }))).rejects.toThrow("NEXT_REDIRECT:/console/events");
   });
 });
 
