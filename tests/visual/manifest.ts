@@ -164,6 +164,9 @@ const CONSOLE: Route[] = [
   admin("/console/adverts/interest"),
   admin("/console/adverts/spots"),
   admin("/console/adverts/takeover"),
+  // Site Config → Advertising page: the media pack and the public A–F format
+  // cards, moved off /console/adverts/spots. Both of those baselines change.
+  admin("/console/advertising"),
   admin("/console/categories"),
   admin("/console/industries"),
   admin("/console/content-pages"),
@@ -175,7 +178,7 @@ const CONSOLE: Route[] = [
   admin("/console/machines"),
   admin("/console/media"),
   admin("/console/members"),
-  admin("/console/messages"),
+  admin("/console/notifications"),
   admin("/console/newsletter"),
   admin("/console/pages"),
   admin("/console/promo-codes"),
@@ -212,9 +215,9 @@ const CONSOLE_PINNED: Route[] = [
     id: "console_advert_id",
     pin: "first booking on /console/adverts",
   }),
-  admin("/console/messages/44894901-5d1a-4c72-9200-40ae867e4216", {
+  admin("/console/notifications/44894901-5d1a-4c72-9200-40ae867e4216", {
     id: "console_message_id",
-    pin: "first thread on /console/messages",
+    pin: "first thread on /console/notifications (the route was /console/messages until fix-list 71; the id is unchanged)",
   }),
   {
     id: "console_newsletter_id",

@@ -31,7 +31,7 @@ export default async function AdvertInterestPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Bookings</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Interest</h1>
       <p className="mt-1 text-sm text-graphite">
         Members who asked about advertising from their dashboard. There is no online payment — you confirm availability and invoice.

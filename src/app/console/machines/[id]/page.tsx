@@ -8,11 +8,13 @@ import { UUID_RE } from "@/lib/validate";
 import { consoleUploadImage, decideMachine, returnToDraft, saveMachine, saveMachinePlacement } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function MachineEditor(props: PageProps<"/console/machines/[id]">) {
   const { id } = await props.params;
+  const sp = await props.searchParams;
   await requireConsole();
   const db = serviceDb();
   const isNew = id === "new";
@@ -34,6 +36,8 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
       {machine?.status === "rejected" && (
         <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">Rejected: {machine.rejected_reason}</p>
       )}
+      {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <form action={saveMachine} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         <UnsavedChangesGuard />
@@ -64,7 +68,7 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
           {image && <Image src={image} alt="" width={240} height={140} className="mt-1 rounded object-cover" unoptimized />}
           <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
         </div>
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+        <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
 
       {!isNew && machine && (

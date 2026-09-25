@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { record, requestContext } from "@/lib/analytics";
 import { youtubeId } from "@/lib/hero";
 import { breadcrumbLd, stripTags, videoLd } from "@/lib/jsonld";
+import { isMemberLinkable } from "@/lib/member-visibility";
 import { videoBySlug } from "@/lib/queries";
 import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
@@ -38,6 +39,11 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
 
   const yt = youtubeId(video.url);
   const published = fmt(video.published_at);
+  // One shared rule for the byline (lib/member-visibility.ts). videoBySlug is a
+  // publicDb read whose projection carries neither `status` nor `archived_at`,
+  // so RLS has already nulled the embed for a member who should not be credited
+  // — this resolves to the null check, with the policy as the enforcement point.
+  const byline = isMemberLinkable(video.member) ? video.member : null;
 
   return (
     <div className="mx-auto max-w-4xl px-4">
@@ -73,12 +79,12 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
 
       <h1 className="mt-6 text-2xl font-bold text-ink">{video.title}</h1>
       <p className="mt-1 text-sm text-graphite">
-        {video.member && (
+        {byline && (
           <>
-            Posted by <Link href={`/member/${video.member.slug}`} className="text-graphite underline">{video.member.name}</Link>
+            Posted by <Link href={`/member/${byline.slug}`} className="text-graphite underline">{byline.name}</Link>
           </>
         )}
-        {video.member && published && " · "}
+        {byline && published && " · "}
         {published}
       </p>
 

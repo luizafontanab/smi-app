@@ -31,6 +31,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const db = publicDb();
   const [stories, members, videos, events, newsletters, pages, industries] = await Promise.all([
     db.from("stories").select("slug, updated_at").eq("status", "published").limit(5000),
+    // publicDb, so `public_read_active_members` already drops archived members
+    // (20260923000002) — an archived member's URL leaves the sitemap with no
+    // filter here. The status filter stays because the policy also serves
+    // `grace`, which the directory does not list.
     db.from("members").select("slug").eq("status", "active"),
     db.from("videos").select("slug").eq("status", "published"),
     // no date filter: past events keep their pages, so they keep their entries

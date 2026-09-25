@@ -27,7 +27,7 @@ export function accountLinks(user: CurrentUser, unread = 0) {
   return isAdmin(user)
     ? [
         { href: "/console", label: "Admin console" },
-        { href: "/console/messages", label: "Notifications" },
+        { href: "/console/notifications", label: "Notifications" },
       ]
     : [
         { href: "/dashboard", label: "Member area" },

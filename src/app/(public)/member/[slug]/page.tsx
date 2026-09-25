@@ -2,6 +2,7 @@ import Image from "next/image";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
+import { currentUser, isAdmin } from "@/lib/auth";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
@@ -16,15 +17,27 @@ import { RichText } from "@/components/RichText";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Archived members are visible to admins only (fix list 72). Both entry points
+ * have to ask — `generateMetadata` and the page body are separate invocations,
+ * and a metadata call that skipped the check would leak an archived member's
+ * name and description into the <title> and the OG tags of a page that 404s.
+ * currentUser() is request-cached, so this is one session read per request.
+ */
+const viewerIsAdmin = async () => isAdmin(await currentUser());
+
 export async function generateMetadata(props: PageProps<"/member/[slug]">) {
   const { slug } = await props.params;
-  const m = await memberBySlug(slug);
+  const m = await memberBySlug(slug, { includeArchived: await viewerIsAdmin() });
   const title = m?.name ?? "Member";
   const description = m?.description ? excerptFromHtml(m.description, 200) ?? undefined : undefined;
   const image = mediaUrl(m?.hero_path) ?? mediaUrl(m?.logo_path);
   return {
     title,
     description,
+    // An archived page is only ever served to a signed-in admin, so a crawler
+    // gets the 404 regardless — but say it out loud rather than rely on that.
+    robots: m?.archived_at ? { index: false, follow: false } : undefined,
     alternates: { canonical: `/member/${slug}` },
     openGraph: {
       type: "profile",
@@ -39,7 +52,8 @@ export async function generateMetadata(props: PageProps<"/member/[slug]">) {
 
 export default async function MemberPage(props: PageProps<"/member/[slug]">) {
   const { slug } = await props.params;
-  const [member, ctx] = await Promise.all([memberBySlug(slug), requestContext()]);
+  const admin = await viewerIsAdmin();
+  const [member, ctx] = await Promise.all([memberBySlug(slug, { includeArchived: admin }), requestContext()]);
   // renamed in the console? honour the recorded 301 before 404ing. serviceDb
   // because `redirects` has RLS on with no public policy; the extra query only
   // ever runs on a miss, never on the hot path.
@@ -82,6 +96,15 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           ]),
         ]}
       />
+      {/* Only ever reachable by an admin — a public read cannot return an
+          archived row at all — but an admin looking at a page that nobody else
+          can see needs telling, or the archive silently looks like a no-op. */}
+      {member.archived_at && (
+        <p className="mt-6 rounded border border-line bg-shade px-4 py-2 text-sm text-graphite">
+          <strong className="font-semibold text-ink">Archived.</strong> This page is hidden from the public site, from search and
+          from the directory. You can see it because you are signed in as an admin.
+        </p>
+      )}
       {hero && (
         <div className="relative mt-6 h-64 overflow-hidden rounded-t-xl">
           <Image src={hero} alt="" fill sizes="100vw" className="object-cover" unoptimized />

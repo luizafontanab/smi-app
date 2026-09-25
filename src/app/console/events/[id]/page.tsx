@@ -9,6 +9,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
 import { isBoardStatus, LEGAL_EVENT_MOVES } from "@/lib/event-board";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,8 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
       {event?.status === "rejected" && (
         <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">Rejected: {event.rejected_reason}</p>
       )}
+      {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <form action={saveEvent} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         <UnsavedChangesGuard />
@@ -115,7 +118,7 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
           </select>
           <p className="mt-1 text-xs text-graphite">Drives /industry/* listings and the industry filter.</p>
         </div>
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+        <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
 
       {!isNew && event && (

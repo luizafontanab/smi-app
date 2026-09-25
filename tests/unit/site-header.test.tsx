@@ -37,7 +37,7 @@ describe("logged in", () => {
     render(<SiteHeader user={user({ role: "admin", displayName: "Jas" })} />);
     expect(screen.getByRole("button", { name: "Account: Jas" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Admin console" })).toHaveAttribute("href", "/console");
-    expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/console/messages");
+    expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/console/notifications");
     expect(screen.queryByRole("link", { name: "Help" })).not.toBeInTheDocument();
   });
 

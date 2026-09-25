@@ -14,18 +14,23 @@ import type { CurrentUser } from "@/lib/auth";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireMember, uploadImage, removeMedia, notifyAdminFunnel, geocodeAddress } = vi.hoisted(() => ({
+const { requireMember, uploadImage, removeMedia, notifyAdminFunnel, notifyConsole, geocodeAddress } = vi.hoisted(() => ({
   requireMember: vi.fn(async (): Promise<CurrentUser & { memberId: string }> => ({
     userId: "u1", email: "member@acme.example", role: "member", memberId: "mem1", displayName: "Acme",
   })),
   uploadImage: vi.fn<(file: File | null, prefix: string) => Promise<string | null>>(async () => null),
   removeMedia: vi.fn<(path: string | null | undefined) => Promise<void>>(async () => {}),
   notifyAdminFunnel: vi.fn(async () => {}),
+  // Every member submission now raises a console notification (fix-list 71).
+  // Mocked rather than exercised here: what it writes is notify-admin's own
+  // test's business — what matters to these tests is that the submission still
+  // completes and still redirects.
+  notifyConsole: vi.fn(async () => {}),
   geocodeAddress: vi.fn<(address: string) => Promise<{ lat: number; lng: number } | null>>(async () => null),
 }));
 vi.mock("@/lib/auth", () => ({ requireMember }));
 vi.mock("@/lib/media", () => ({ uploadImage, removeMedia }));
-vi.mock("@/lib/notify-admin", () => ({ notifyAdminFunnel }));
+vi.mock("@/lib/notify-admin", () => ({ notifyAdminFunnel, notifyConsole }));
 vi.mock("@/lib/adapters/geocode", () => ({ geocodeAddress }));
 
 const { getLeadGenSource } = vi.hoisted(() => ({ getLeadGenSource: vi.fn() }));
@@ -53,6 +58,7 @@ afterEach(() => {
   uploadImage.mockReset().mockResolvedValue(null);
   removeMedia.mockReset().mockResolvedValue(undefined);
   notifyAdminFunnel.mockReset().mockResolvedValue(undefined);
+  notifyConsole.mockReset().mockResolvedValue(undefined);
   geocodeAddress.mockReset().mockResolvedValue(null);
 });
 
@@ -113,6 +119,12 @@ describe("submitStory", () => {
       cover_path: "stories/mem1/cover.jpg",
     }));
     expect(categoriesLinkBuilder.insert).toHaveBeenCalledWith({ story_id: "s1", category_id: 3 });
+    // Until fix-list 71 nothing here told the console at all: the only signal
+    // was the aggregate "Needs you today" counter, which links to a list page
+    // and never to the item. The payload carries the id so it can.
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "story_submitted", memberId: "mem1", payload: { story_id: "s1" },
+    }));
     expect(revalidatePath).toHaveBeenCalledWith("/dashboard");
   });
 

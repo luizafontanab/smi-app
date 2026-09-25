@@ -646,6 +646,82 @@ story and video still publishes on the site but its social push only logs.
 
 ---
 
+## 16 · Fix-list pass (23 Sep) — production follow-through
+
+Two migrations landed locally in this pass and neither is on production yet.
+Production was only brought up to date on 22 Sep (§12.1), so it is currently one
+push behind again rather than five.
+
+- [ ] **16.1 — Push the two new migrations to production.** `pnpm db:push:prod`.
+      They are `20260923000001_inbox_categories.sql` (the message/notification
+      split, the `inbox_replies` table, `inbox_messages.replied_at`) and
+      `20260923000002_member_archive.sql` (`members.archived_at` and a replacement
+      RLS policy). Both are additive and idempotent — no column is dropped and no
+      row is deleted. **Take a backup first**, as on 22 Sep.
+- [ ] **16.2 — Know that `20260923000002` REPLACES an RLS policy.** It drops and
+      recreates `public_read_active_members` so it also requires
+      `archived_at is null`. That policy is the only thing standing between anon
+      and the whole `members` table (`20260808000006_grants.sql` grants anon full
+      DML), so if the push half-applies, check the policy exists before assuming
+      the site is fine. Verify after pushing:
+      `select polname from pg_policy where polrelid = 'members'::regclass;`
+- [ ] **16.3 — The inbox backfill is text-matched and runs once.** It reclassifies
+      existing `inbox_messages` rows into `message` / `notification` by matching
+      the eight machine-written message bodies. It ran clean locally (132 rows
+      reclassified, real messages untouched), but production has different rows.
+      **After pushing, check nothing real was misfiled** — anything unmatched
+      stays a `message`, which is the safe direction, so the failure mode is a
+      stray notice in the inbox, not a lost enquiry:
+      `select category, kind, count(*) from inbox_messages group by 1,2;`
+- [ ] **16.4 — Accept or reject the moved visual baselines.** This pass moved
+      several: the four content editors gained a Save banner and a pending button,
+      and the adverts nav row changed on **every** console route. `pnpm visual` was
+      deliberately not run and no baseline was touched — accepting one is
+      asserting you looked at the picture. Per route:
+      `pnpm visual:accept <route-id>`.
+
+---
+
+## 17 · WordPress migration to the new project (24 Sep) — production follow-through
+
+The full export was imported into the new Supabase project
+(`bvyxeujhecxulzwvpxfr`): 123 members, 1,992 stories, 387 videos, 53 events,
+2,643 media objects. Verify any of it with `pnpm verify:prod`, which compares the
+live database against `handover-extract/seed/` and names every difference.
+
+- [ ] **17.1 — Delete the five seed fixture logins from production. Do this
+      first.** `scripts/seed-real.ts` created `jas@`, `media@` and
+      `member1-3@smi.local`, all with the password `local-dev-password`
+      **hardcoded in the repo** — and `jas@smi.local` carries `role=admin`.
+      Anyone who can read this repository can sign into the console as an
+      administrator. `seedDemoRows` already refused `--remote`; `mkUser` was
+      missed. **The code hole is fixed** (the whole fixture block is now gated on
+      `!REMOTE`), so this cannot recur — but the accounts it already created are
+      still live and only a person can remove them. Delete them in
+      Authentication → Users, and the `media-co` draft member row with them.
+      `pnpm verify:prod` fails while any `@smi.local` account remains.
+- [ ] **17.2 — Storage buckets exist only in the seed script, not in a
+      migration.** `media` (public) and `invoices` (private) are created by
+      `seed-real.ts` at lines 672-674. A schema-only deploy — `db:push:prod` with
+      no seed — leaves a project with no buckets and every image 404ing. There
+      are also no storage RLS policies anywhere in the repo. Worth deciding
+      whether bucket setup should become a migration rather than staying
+      tribal knowledge in a seed script.
+- [x] **17.3 — Supabase must be on a paid plan before the media import.** The
+      referenced media alone is 1019.4 MiB against a 1 GiB free-tier cap — no
+      headroom at all. Measured total with inline story images re-hosted: 1.19
+      GiB. — done 24 Sep, project created on a paid plan.
+- [ ] **17.4 — The CLI is authenticated as the old account.** `supabase link`
+      against the new project fails with a privileges error because the stored
+      login belongs to the previous account, which can only see `momai-website`
+      and the old `smi-app` (`kgjnwyojgajcvsberods`). Browser access to that
+      account is lost, so **do not run `supabase logout`** — the stored token may
+      be the only remaining way in, and it should be backed up out of the macOS
+      Keychain. Use `SUPABASE_ACCESS_TOKEN=…` per command for the new account
+      instead; it takes precedence over the stored login.
+
+---
+
 ## Not in this list
 
 Other approval-gated externals — MaxMind/GeoLite2, the

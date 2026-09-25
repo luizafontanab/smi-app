@@ -21,7 +21,7 @@ export default async function FeaturedMemberPage(props: PageProps<"/console/adve
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Bookings</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Featured Member</h1>
       <p className="mt-1 text-sm text-graphite">
         Homepage carousel slot, by the month. Up to {FEATURED_SLOTS.cap} can run at once — {liveCount} live today.

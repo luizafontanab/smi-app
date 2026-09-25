@@ -51,9 +51,12 @@ describe("consoleUploadImage", () => {
 });
 
 describe("saveStory", () => {
-  it("does nothing for a blank title", async () => {
+  // Was "does nothing for a blank title" — it now says so instead of returning
+  // silently (fix-list 73): a bare return left the editor looking unchanged,
+  // which is the same invisibility the rest of that item fixes.
+  it("redirects with a readable error for a blank title", async () => {
     const from = db({});
-    await saveStory(form({ title: " " }));
+    await expect(saveStory(form({ title: " " }))).rejects.toThrow(/NEXT_REDIRECT.*error=/);
     expect(from).not.toHaveBeenCalled();
   });
 

@@ -16,6 +16,32 @@ import { sanitizeRichText } from "@/lib/sanitize";
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 
+/**
+ * Tell the console a member has put something in front of Jas (fix-list 71).
+ *
+ * Until now nothing here did. A member could submit a story, a video, an event,
+ * equipment, an advert run or an artwork swap and the only trace in the console
+ * was the aggregate "Needs you today" counter on the overview — which links to a
+ * list page and never to the item. These notifications carry the row's id, so
+ * the notifications feed links straight to the thing that needs deciding.
+ *
+ * Every submission route calls this, resubmits included: a sent-back item that
+ * comes back edited is back in the queue and needs the same nudge as a new one.
+ *
+ * Cannot throw: `notifyConsole` swallows its own failures. That is the point —
+ * the submission is already saved by the time this runs, so losing the receipt
+ * must never cost the member their work.
+ */
+async function notifySubmitted(
+  kind: import("@/lib/console-notification-links").InboxNotificationKind,
+  memberId: string,
+  payload: import("@/lib/console-notification-links").InboxPayload,
+  message: string,
+): Promise<void> {
+  const { notifyConsole } = await import("@/lib/notify-admin");
+  await notifyConsole({ kind, memberId, payload, message });
+}
+
 type EditableTable = "stories" | "videos" | "events" | "featured_machines";
 const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
 
@@ -98,6 +124,7 @@ export async function submitStory(formData: FormData) {
   }).select("id").single();
   const cat = Number(formData.get("category") || 0);
   if (cat && data) await db.from("story_categories").insert({ story_id: data.id, category_id: cat });
+  await notifySubmitted("story_submitted", user.memberId, { story_id: data?.id }, `Submitted a story for approval: “${title}”.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=story");
 }
@@ -152,6 +179,7 @@ export async function editStory(formData: FormData) {
     await db.from("story_categories").delete().eq("story_id", id);
     await db.from("story_categories").insert({ story_id: id, category_id: cat });
   }
+  await notifySubmitted("story_submitted", user.memberId, { story_id: id }, `Resubmitted their story “${title}” after changes.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=story");
 }
@@ -170,7 +198,8 @@ export async function submitVideo(formData: FormData) {
   const url = String(formData.get("url") ?? "").trim();
   if (!title || !url) return;
   const thumbnail = await uploadImage(formData.get("thumbnail") as File | null, "videos");
-  await serviceDb().from("videos").insert({
+  // The id is selected back purely so the console notification can link to it.
+  const { data } = await serviceDb().from("videos").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
     title,
     url,
@@ -181,7 +210,8 @@ export async function submitVideo(formData: FormData) {
     member_id: user.memberId,
     submitted_by: user.userId,
     thumbnail_path: thumbnail,
-  });
+  }).select("id").single();
+  await notifySubmitted("video_submitted", user.memberId, { video_id: data?.id }, `Submitted a video for approval: “${title}”.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=video");
 }
@@ -217,6 +247,7 @@ export async function editVideo(formData: FormData) {
     updated_at: new Date().toISOString(),
     ...(thumbnail ? { thumbnail_path: thumbnail } : {}),
   }).eq("id", id);
+  await notifySubmitted("video_submitted", user.memberId, { video_id: id }, `Resubmitted their video “${title}” after changes.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=video");
 }
@@ -240,7 +271,7 @@ export async function submitEvent(formData: FormData) {
   // New row, so any non-empty location is "changed" — one lookup per save,
   // failure just means no map pin (same guardrails as submitProfileEdit).
   const coords = location.trim() ? await geocodeAddress(location) : null;
-  await serviceDb().from("events").insert({
+  const { data } = await serviceDb().from("events").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
     title,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
@@ -258,7 +289,8 @@ export async function submitEvent(formData: FormData) {
     source: "member",
     submitted_by: user.userId,
     cover_path: cover,
-  });
+  }).select("id").single();
+  await notifySubmitted("event_submitted", user.memberId, { event_id: data?.id }, `Submitted an event for approval: “${title}”.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=event");
 }
@@ -315,6 +347,7 @@ export async function editEvent(formData: FormData) {
     updated_at: new Date().toISOString(),
     ...(cover ? { cover_path: cover } : {}),
   }).eq("id", id);
+  await notifySubmitted("event_submitted", user.memberId, { event_id: id }, `Resubmitted their event “${title}” after changes.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=event");
 }
@@ -395,8 +428,12 @@ export async function submitProfileEdit(formData: FormData) {
     if (firstSubmit) {
       const { notifyAdminFunnel } = await import("@/lib/notify-admin");
       await notifyAdminFunnel({
+        category: "notification",
+        kind: "page_submitted",
         name: String(values.name ?? ""),
         email: user.email,
+        memberId: user.memberId,
+        payload: { member_id: user.memberId },
         message: "Submitted their draft company page for review — ready for your verification and approval.",
       });
     }
@@ -418,7 +455,7 @@ export async function submitMachine(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const image = await uploadImage(formData.get("image") as File | null, `machines/${user.memberId}`);
-  await serviceDb().from("featured_machines").insert({
+  const { data } = await serviceDb().from("featured_machines").insert({
     name,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     external_url: String(formData.get("external_url") ?? "") || null,
@@ -427,7 +464,8 @@ export async function submitMachine(formData: FormData) {
     status: "awaiting_approval",
     source: "member",
     submitted_by: user.userId,
-  });
+  }).select("id").single();
+  await notifySubmitted("machine_submitted", user.memberId, { machine_id: data?.id }, `Submitted equipment for approval: “${name}”.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=machine");
 }
@@ -460,6 +498,7 @@ export async function editMachine(formData: FormData) {
     rejected_reason: null,
     ...(image ? { image_path: image } : {}),
   }).eq("id", id);
+  await notifySubmitted("machine_submitted", user.memberId, { machine_id: id }, `Resubmitted their equipment “${name}” after changes.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=machine");
 }
@@ -492,10 +531,15 @@ export async function sendMemberMessage(formData: FormData) {
   const { data: member } = await serviceDb().from("members").select("name").eq("id", user.memberId).single();
   const { notifyAdminFunnel } = await import("@/lib/notify-admin");
   await notifyAdminFunnel({
+    // A real message: a member wrote it and is waiting to hear back. This and
+    // requestContentChange below are the only two member-side rows that are.
+    category: "message",
+    kind: "membership",
     name: member?.name ?? user.displayName ?? user.email,
     email: user.email,
+    memberId: user.memberId,
     message,
-    kind: "admin_member_message",
+    emailKind: "admin_member_message",
   });
   redirect("/dashboard/help?sent=1");
 }
@@ -529,10 +573,13 @@ export async function requestContentChange(formData: FormData) {
   const { data: member } = await serviceDb().from("members").select("name").eq("id", user.memberId).single();
   const { notifyAdminFunnel } = await import("@/lib/notify-admin");
   await notifyAdminFunnel({
+    category: "message",
+    kind: "membership",
     name: member?.name ?? user.displayName ?? user.email,
     email: user.email,
+    memberId: user.memberId,
     message: `Change requested on published ${kind || "content"} “${title}”:\n\n${note}`,
-    kind: "admin_change_request",
+    emailKind: "admin_change_request",
   });
   redirect(`${back}${back.includes("?") ? "&" : "?"}requested=1`);
 }
@@ -644,7 +691,7 @@ export async function submitAdvert(formData: FormData) {
     redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(advertError?.message ?? "Could not save the advert.")}`);
   }
 
-  const { error: bookingError } = await db.from("advert_bookings").insert({
+  const { data: booking, error: bookingError } = await db.from("advert_bookings").insert({
     advert_id: advert.id,
     starts_on,
     ends_on,
@@ -653,7 +700,7 @@ export async function submitAdvert(formData: FormData) {
     submitted_by: user.userId,
     submitted_at: new Date().toISOString(),
     notes: String(formData.get("notes") ?? "").trim() || null,
-  });
+  }).select("id").single();
   if (bookingError) {
     // The advert row is worthless without a booking on it (and would show up
     // nowhere the member or console can reach to retry) — clean it and its
@@ -666,6 +713,7 @@ export async function submitAdvert(formData: FormData) {
         : bookingError.message,
     )}`);
   }
+  await notifySubmitted("advert_submitted", user.memberId, { booking_id: booking?.id }, `Booked an advert run for approval: “${name}”, ${starts_on} to ${ends_on}.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=advert");
 }
@@ -717,6 +765,7 @@ export async function resubmitAdvert(formData: FormData) {
     updated_at: now,
   }).eq("id", id);
 
+  await notifySubmitted("advert_submitted", user.memberId, { booking_id: id }, `Resubmitted an advert run after changes${name ? `: “${name}”` : ""}.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=advert");
 }
@@ -729,7 +778,7 @@ export async function renewAdvertBooking(formData: FormData) {
   const prev = await assertOwnsBooking(db, id, user.memberId);
   if (!prev) return;
 
-  await db.from("advert_bookings").insert({
+  const { data: renewal } = await db.from("advert_bookings").insert({
     advert_id: prev.advert_id,
     product_id: prev.product_id,
     starts_on: String(formData.get("starts_on")),
@@ -739,7 +788,10 @@ export async function renewAdvertBooking(formData: FormData) {
     renewed_from: id,
     submitted_by: user.userId,
     submitted_at: new Date().toISOString(),
-  });
+  }).select("id").single();
+  // Links to the NEW booking, not the run it was renewed from — the new one is
+  // the row awaiting a decision.
+  await notifySubmitted("advert_submitted", user.memberId, { booking_id: renewal?.id }, `Asked to renew an advert run: ${String(formData.get("starts_on"))} to ${String(formData.get("ends_on"))}.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=advert");
 }
@@ -784,6 +836,9 @@ export async function proposeOwnArtworkSwap(formData: FormData) {
         : error.message,
     )}`);
   }
+  // No per-proposal console route exists, so this lands on the artwork queue —
+  // see the artwork_submitted branch in console-notification-links.
+  await notifySubmitted("artwork_submitted", user.memberId, { advert_id: advertId }, "Proposed new artwork for an advert already booked.");
   revalidatePath("/dashboard/advert");
   redirect(`/dashboard/advert/${String(formData.get("booking_id"))}?submitted=swap`);
 }

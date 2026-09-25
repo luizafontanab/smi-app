@@ -10,6 +10,13 @@ import { SOCIAL_CHANNELS, socialLinks } from "@/lib/social";
  * the member's own row, never trusted from a client-supplied URL, so a
  * tampered `kind`/`platform` can only pick among that member's own already-
  * public contact info.
+ *
+ * KNOWN GAP (not fixed here): `status` is still not checked, so a lapsed
+ * member — whose /member page 404s and who is absent from the directory — can
+ * still be redirected to, and still accrues click events, from any old link or
+ * cached page. Archiving is filtered below; the status question is a product
+ * decision (does a lapsed member keep their outbound clicks?) rather than a
+ * bug to quietly settle inside a click tracker.
  */
 
 const KIND_TO_EVENT: Record<string, EventKind> = {
@@ -27,13 +34,18 @@ export async function GET(req: Request, ctx: RouteContext<"/go/[memberId]">) {
   const eventKind = KIND_TO_EVENT[kind];
   if (!eventKind) redirect("/");
 
+  // serviceDb, so RLS does not apply here — `public_read_active_members` hides
+  // an archived member from every anon read, but this route would happily keep
+  // forwarding their contact clicks. Filtered explicitly instead (fix list 72).
   const db = serviceDb();
   const { data: member } = await db
     .from("members")
-    .select("id, slug, website, phone, contact_email, social")
+    .select("id, slug, website, phone, contact_email, social, archived_at")
     .eq("id", memberId)
     .maybeSingle();
-  if (!member) redirect("/");
+  // Home, not the member page: an archived member's page 404s for the public,
+  // and no event is recorded for a link that should no longer exist.
+  if (!member || member.archived_at) redirect("/");
 
   const fallback = `/member/${member.slug}`;
   let target: string | null = null;

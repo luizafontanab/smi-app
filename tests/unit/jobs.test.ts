@@ -26,7 +26,12 @@ vi.mock("@/lib/adapters/newsletter", () => ({
   newsletterIsLive,
 }));
 
-vi.mock("@/lib/notify-admin", () => ({ ADMIN_EMAIL: "jas@sheetmetalindustries.com" }));
+// Three sweeps raise a console notification (fix-list 71). Asserted through
+// the spy rather than through the inbox_messages builder: notifyConsole owns
+// the row's shape and has its own tests — what belongs here is that each sweep
+// raises the right KIND, about the right thing.
+const { notifyConsole } = vi.hoisted(() => ({ notifyConsole: vi.fn(async () => {}) }));
+vi.mock("@/lib/notify-admin", () => ({ ADMIN_EMAIL: "jas@sheetmetalindustries.com", notifyConsole }));
 
 afterEach(() => {
   resetDbServerMocks();
@@ -435,34 +440,37 @@ describe("runJob kinds", () => {
 
   it("comp_expiry — moves an expired promo comp to grace and notes it for Jas", async () => {
     const j = job("comp_expiry");
-    const membersBuilder = queryBuilder(dbOk([{ id: "m1", name: "Acme", contact_email: "acme@example.com", comped_until: "2026-01-01" }]));
-    const inboxBuilder = queryBuilder(dbOk(null));
+    const membersBuilder = queryBuilder(dbOk([{ id: "m1", name: "Acme", comped_until: "2026-01-01" }]));
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
-      members: () => membersBuilder, inbox_messages: () => inboxBuilder,
+      members: () => membersBuilder,
     });
 
     await runJobById(j.id);
 
     expect(membersBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "grace", grace_until: "2026-01-31" }));
-    expect(inboxBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "membership" }));
+    // A notification, not an enquiry, and it links to the member (fix-list 71).
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "comp_expired", memberId: "m1", payload: { member_id: "m1" },
+    }));
   });
 
   it("membership_lapse — moves a grace member past grace_until to lapsed and notes it for Jas", async () => {
     const j = job("membership_lapse");
     const membersBuilder = queryBuilder(() => {
       const updates = callsOf(membersBuilder.update);
-      return updates.length ? dbOk([{ id: "m1" }]) : dbOk([{ id: "m1", name: "Acme", contact_email: "acme@example.com" }]);
+      return updates.length ? dbOk([{ id: "m1" }]) : dbOk([{ id: "m1", name: "Acme" }]);
     });
-    const inboxBuilder = queryBuilder(dbOk(null));
     const jobsTail = queryBuilder(dbOk(null));
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
-      members: () => membersBuilder, inbox_messages: () => inboxBuilder,
+      members: () => membersBuilder,
     });
 
     await runJobById(j.id);
 
     expect(membersBuilder.update).toHaveBeenCalledWith({ status: "lapsed" });
-    expect(inboxBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "membership" }));
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "membership_lapsed", memberId: "m1",
+    }));
     const kinds = callsOf(jobsTail.insert).map(([row]) => (row as { kind: string }).kind);
     expect(kinds).toContain("notify_member");
   });
@@ -585,15 +593,19 @@ describe("runJob kinds", () => {
       return dbOk([{ id: "b1" }]); // the conditional claim update succeeds
     });
     const jobsTail = queryBuilder(dbOk(null));
-    const inboxBuilder = queryBuilder(dbOk(null));
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
-      advert_bookings: () => bookingsBuilder, inbox_messages: () => inboxBuilder,
+      advert_bookings: () => bookingsBuilder,
     });
 
     await runJobById(j.id);
 
     expect(bookingsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ ending_soon_notified_for: "2026-02-01" }));
-    expect(inboxBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "advertising" }));
+    // This row used to be written as an `advertising` enquiry with `email: ""`,
+    // so the console offered a reply form that would have addressed nobody
+    // (fix-list 71). It is a notification, and it links to the booking.
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "advert_ending", memberId: "m1", payload: { booking_id: "b1" },
+    }));
   });
 
   it("newsletter_send — marks the issue sent on a successful broadcast", async () => {

@@ -1065,33 +1065,94 @@ export type Database = {
       }
       inbox_messages: {
         Row: {
+          category: string
           created_at: string
           email: string
           id: string
           kind: string
+          member_id: string | null
           message: string
           name: string
+          payload: Json
           read: boolean
+          replied_at: string | null
         }
         Insert: {
+          category?: string
           created_at?: string
           email: string
           id?: string
           kind: string
+          member_id?: string | null
           message: string
           name: string
+          payload?: Json
           read?: boolean
+          replied_at?: string | null
         }
         Update: {
+          category?: string
           created_at?: string
           email?: string
           id?: string
           kind?: string
+          member_id?: string | null
           message?: string
           name?: string
+          payload?: Json
           read?: boolean
+          replied_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inbox_messages_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_replies: {
+        Row: {
+          body: string
+          created_at: string
+          delivery_error: string | null
+          id: string
+          message_id: string
+          sent_at: string | null
+          sent_by: string | null
+          subject: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          delivery_error?: string | null
+          id?: string
+          message_id: string
+          sent_at?: string | null
+          sent_by?: string | null
+          subject: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          delivery_error?: string | null
+          id?: string
+          message_id?: string
+          sent_at?: string | null
+          sent_by?: string | null
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_replies_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       industries: {
         Row: {
@@ -1339,7 +1400,9 @@ export type Database = {
       members: {
         Row: {
           address: string | null
+          archived_at: string | null
           billing_mode: string
+          brand_hex: string | null
           cancel_requested_at: string | null
           comped_until: string | null
           contact_email: string | null
@@ -1370,7 +1433,9 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          archived_at?: string | null
           billing_mode?: string
+          brand_hex?: string | null
           cancel_requested_at?: string | null
           comped_until?: string | null
           contact_email?: string | null
@@ -1401,7 +1466,9 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          archived_at?: string | null
           billing_mode?: string
+          brand_hex?: string | null
           cancel_requested_at?: string | null
           comped_until?: string | null
           contact_email?: string | null
@@ -2135,6 +2202,36 @@ export type Database = {
           },
           {
             foreignKeyName: "story_categories_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      story_members: {
+        Row: {
+          member_id: string
+          story_id: string
+        }
+        Insert: {
+          member_id: string
+          story_id: string
+        }
+        Update: {
+          member_id?: string
+          story_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_members_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_members_story_id_fkey"
             columns: ["story_id"]
             isOneToOne: false
             referencedRelation: "stories"

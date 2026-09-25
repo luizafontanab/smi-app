@@ -25,7 +25,9 @@
     "db:types": "supabase gen types typescript --local > src/lib/db/types.ts",
     "db:push:prod": "supabase db push --linked",
     "seed:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/seed-real.ts --remote",
-    "taxonomies:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/seed-real.ts --remote --taxonomies-only"
+    "taxonomies:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/seed-real.ts --remote --taxonomies-only",
+    "verify:import": "tsx scripts/verify-import.ts",
+    "verify:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/verify-import.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

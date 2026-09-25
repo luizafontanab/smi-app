@@ -18,7 +18,7 @@ export default async function AdvertArtworkPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Bookings</Link>
       <div className="mt-1 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">Artwork</h1>
         <Link href="/console/adverts/artwork/new" className="rounded bg-ink px-4 py-2 text-sm text-white">New artwork</Link>

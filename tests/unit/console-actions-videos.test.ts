@@ -46,9 +46,11 @@ describe("consoleUploadVideoImage", () => {
 });
 
 describe("saveVideo", () => {
-  it("does nothing without both a title and a url", async () => {
+  // See the note in console-actions-stories.test.ts — fix-list 73 turned these
+  // silent returns into a redirect that tells you what is missing.
+  it("redirects with a readable error without both a title and a url", async () => {
     const from = db({});
-    await saveVideo(form({ title: "t", url: "" }));
+    await expect(saveVideo(form({ title: "t", url: "" }))).rejects.toThrow(/NEXT_REDIRECT.*error=/);
     expect(from).not.toHaveBeenCalled();
   });
 

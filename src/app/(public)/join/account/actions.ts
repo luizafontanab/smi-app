@@ -39,11 +39,17 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
   });
   if ("error" in result) return { message: result.error };
 
+  // A notification, not a message: nobody is waiting on a reply to it. It links
+  // through to the new member's console record — see console-notification-links.
   await notifyAdminFunnel({
+    category: "notification",
+    kind: "signup_started",
     name: company,
     email,
     message: `Started the join flow: account created, draft company page in place. Next step: payment.`,
-    kind: "admin_new_signup",
+    memberId: result.memberId,
+    payload: { member_id: result.memberId },
+    emailKind: "admin_new_signup",
   });
 
   // The member's own welcome. provisionMember sets email_confirm, so Supabase

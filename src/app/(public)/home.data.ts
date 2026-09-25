@@ -4,8 +4,15 @@ import { record, requestContext } from "@/lib/analytics";
 import { buildHero, withIntros } from "@/lib/hero";
 import { activePlacements, featuredMemberPlacements, headlineStory, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
 
-/** Every advert format either design places on the home page. */
-const HOME_AD_FORMATS = ["banner", "banner_narrow", "supplier_logo", "skyscraper", "mpu", "in_feed"] as const;
+/**
+ * Every advert format either design places on the home page.
+ *
+ * `banner_narrow` is NOT one of them: the grid design's second banner is the
+ * full-width home_2 slot, at the client's direction (18 Sep), so the 830×170
+ * pool was being fetched on every homepage render for a page that never read it
+ * (docs/HUMAN-TODO.md §14.5, fix-list 64).
+ */
+const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_feed"] as const;
 
 /**
  * Everything the home page needs, fetched once and shared by both designs.

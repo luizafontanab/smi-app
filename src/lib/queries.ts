@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { publicDb, serviceDb } from "./db/server";
 import { displayLocation } from "./location";
+import { isMemberLinkable, PUBLIC_MEMBER_STATUSES } from "./member-visibility";
 import { parseDateParam } from "./news-prefs";
 import { seededShuffle } from "./shuffle";
 
@@ -17,7 +18,12 @@ export type StoryCard = {
   member: { slug: string; name: string; logo_path: string | null; status: string } | null;
 };
 
-const STORY_CARD = "id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member:members(slug, name, logo_path, status)";
+// `members!stories_member_id_fkey`, not plain `members`: story_members
+// (migration 20260924000001) gives PostgREST a second stories↔members path, so
+// an unqualified embed is ambiguous and fails the whole query with PGRST201.
+// Every embed of members *from stories* must name the FK. Embeds from videos,
+// events, placements and adverts still have one path and are unaffected.
+const STORY_CARD = "id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member:members!stories_member_id_fkey(slug, name, logo_path, status)";
 
 /**
  * Industry slug → industries.id, for the listing filters below.
@@ -284,15 +290,32 @@ export async function storyIndustrySlug(storyId: string | null | undefined): Pro
   return (Array.isArray(ind) ? ind[0]?.slug : ind?.slug) ?? null;
 }
 
+/**
+ * serviceDb, so RLS does NOT filter the member embeds here the way it does on
+ * every publicDb read — `status` and `archived_at` are selected and applied in
+ * code instead (isMemberLinkable), and a member who fails that test is returned
+ * as a null embed rather than dropped: every consumer already guards on
+ * `p.member` / `machine.member`, so a featured-member placement whose member is
+ * archived renders as nothing while the machine beside it keeps its card and
+ * only loses the seller credit.
+ *
+ * A left join, deliberately — placements.member_id is nullable and a takeover
+ * or machine placement with no member must survive — so this cannot be a
+ * PostgREST `!inner` filter.
+ */
 export async function activePlacements() {
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
     .from("placements")
-    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, industry:industries(name)), machine:featured_machines(id, name, description, image_path, external_url, status, member:members(slug, name))")
+    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, status, archived_at, industry:industries(name)), machine:featured_machines(id, name, description, image_path, external_url, status, member:members(slug, name, status, archived_at))")
     .lte("starts_on", today)
     .gte("ends_on", today);
-  return data ?? [];
+  return (data ?? []).map((p) => ({
+    ...p,
+    member: isMemberLinkable(p.member) ? p.member : null,
+    machine: p.machine ? { ...p.machine, member: isMemberLinkable(p.machine.member) ? p.machine.member : null } : null,
+  }));
 }
 
 /**
@@ -322,14 +345,18 @@ export async function activeTakeover(): Promise<ActiveTakeover | null> {
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
     .from("placements")
-    .select("config, member:members(slug)")
+    .select("config, member:members(slug, status, archived_at)")
     .eq("kind", "takeover")
     .lte("starts_on", today)
     .gte("ends_on", today)
     .maybeSingle();
   const config = data?.config as { hex?: string; banner_path?: string } | undefined;
   if (!config?.hex || !config.banner_path) return null;
-  return { hex: config.hex, bannerPath: config.banner_path, memberSlug: data?.member?.slug ?? null };
+  // serviceDb again, so the member embed is unfiltered — the banner itself is
+  // paid inventory and stays up for its term either way, but it stops linking
+  // to a page the visitor cannot open.
+  const member = data?.member ?? null;
+  return { hex: config.hex, bannerPath: config.banner_path, memberSlug: isMemberLinkable(member) ? member.slug : null };
 }
 
 const VIDEO_CARD = "id, slug, title, url, thumbnail_path, source, member:members(slug, name)";
@@ -611,14 +638,29 @@ export async function memberPins(opts: MemberFilterOpts & { q?: string } = {}) {
   return { members: data ?? [], total: count ?? 0 };
 }
 
-export async function memberBySlug(slug: string) {
-  const db = publicDb();
+/**
+ * The member profile page's row, or null.
+ *
+ * `includeArchived` is the "visible to admin only" half of archiving (fix list
+ * 72). It has to switch client as well as filter: `public_read_active_members`
+ * now carries `archived_at is null`, so an archived member is simply not in
+ * publicDb()'s result set and no application-level filter could put it back.
+ * serviceDb() bypasses RLS, so only pass true once you have established the
+ * caller is an admin — `src/app/(public)/member/[slug]/page.tsx` is the only
+ * caller today and it reads `isAdmin(await currentUser())`.
+ *
+ * The status filter stays on in both modes: archiving is orthogonal to the
+ * billing lifecycle, so an archived member's page is admin-visible but a lapsed
+ * one's still 404s for everybody, exactly as it did before.
+ */
+export async function memberBySlug(slug: string, opts: { includeArchived?: boolean } = {}) {
+  const db = opts.includeArchived ? serviceDb() : publicDb();
   const { data: member } = await db
     .from("members")
     .select(
-      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, industry:industries(name), member_membership_types(membership_type:membership_types(slug, name)), member_services(service:services(slug, name))",
+      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, archived_at, industry:industries(name), member_membership_types(membership_type:membership_types(slug, name)), member_services(service:services(slug, name))",
     )
-    .in("status", ["active", "grace"])
+    .in("status", PUBLIC_MEMBER_STATUSES)
     .eq("slug", slug)
     .single();
   if (!member) return null;

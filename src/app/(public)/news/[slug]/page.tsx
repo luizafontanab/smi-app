@@ -8,6 +8,7 @@ import { adSlotKeys, bodyAdSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
 import { breadcrumbLd, newsArticleLd } from "@/lib/jsonld";
+import { isMemberLinkable } from "@/lib/member-visibility";
 import { storyBySlug, publishedStories, storyIndustrySlug } from "@/lib/queries";
 import { splitAtAdBreaks } from "@/lib/sanitize";
 import { AdSlot } from "@/components/AdSlot";
@@ -142,9 +143,12 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
               />
               <ShareButtons />
               {/* Member backlink + footer branding — the fixed "minor tweak" (req 02/07).
-                  Gated on member status: a lapsed member's page 404s (memberBySlug filters
-                  to active/grace), so linking there for anyone else would be a dead link. */}
-              {story.member && ["active", "grace"].includes(story.member.status) && (
+                  Gated by the one shared rule (lib/member-visibility.ts): a lapsed member's
+                  page 404s and an archived member's is admin-only, so linking there for
+                  anyone else would be a dead link. STORY_CARD is a publicDb read, so RLS
+                  has already nulled the embed for an archived member — the status check
+                  here is what catches lapsed. */}
+              {isMemberLinkable(story.member) && (
                 <MemberBacklink name={story.member.name} slug={story.member.slug} logoUrl={mediaUrl(story.member.logo_path)} />
               )}
             </article>

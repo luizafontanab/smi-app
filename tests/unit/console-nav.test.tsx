@@ -45,6 +45,29 @@ describe("ConsoleNav", () => {
     expect(screen.getByRole("link", { name: "Adverts" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("does not let /console/adverts claim /console/advertising", () => {
+    // Real pair since fix-list 74: the media pack and the public format copy
+    // moved out of Adverts to Site Config → /console/advertising. A prefix
+    // match without the trailing slash would light up the wrong section and
+    // show the wrong sub-menu on every visit to it.
+    const items: NavSection[] = [
+      { key: "adverts", href: "/console/adverts", label: "Adverts", children: [
+        { href: "/console/adverts", label: "Bookings" },
+        { href: "/console/adverts/spots", label: "Inventory" },
+      ] },
+      { key: "config", href: "/console/machines", label: "Site Config", children: [
+        { href: "/console/advertising", label: "Advertising Page" },
+      ] },
+    ];
+
+    vi.mocked(usePathname).mockReturnValue("/console/advertising");
+    render(<ConsoleNav items={items} />);
+    expect(screen.getByRole("link", { name: "Site Config" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Adverts" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Advertising Page" })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("link", { name: "Inventory" })).not.toBeInTheDocument();
+  });
+
   it("shows no sub-menu items when the path matches no section", () => {
     vi.mocked(usePathname).mockReturnValue("/console/other");
     render(<ConsoleNav items={ITEMS} />);

@@ -5,6 +5,7 @@ import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
 import { EVENT_TYPE_LABELS, isEventType } from "@/lib/event-types";
 import { breadcrumbLd, eventLd, stripTags } from "@/lib/jsonld";
+import { isMemberLinkable } from "@/lib/member-visibility";
 import { eventBySlug } from "@/lib/queries";
 import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
@@ -98,7 +99,10 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
             Event website →
           </a>
         )}
-        {event.member && (
+        {/* Shared rule (lib/member-visibility.ts). EVENT_FIELDS is a publicDb
+            read that selects neither `status` nor `archived_at`, so RLS has
+            already nulled the embed for a member who should not be credited. */}
+        {isMemberLinkable(event.member) && (
           <Link href={`/member/${event.member.slug}`} className="rounded border px-5 py-2.5 text-sm">
             Hosted by {event.member.name}
           </Link>

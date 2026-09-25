@@ -128,12 +128,17 @@ describe.skipIf(!KEY)("join funnel", () => {
     expect(member?.comped_until).toBe(expected.toISOString().slice(0, 10));
   });
 
-  it("notifyAdminFunnel lands a membership row in the console inbox", async () => {
+  // The category is what the console filters on (fix-list 71) — a funnel step
+  // is a notification, not an enquiry waiting on a reply.
+  it("notifyAdminFunnel lands a categorised row in the console inbox", async () => {
     const { notifyAdminFunnel } = await import("@/lib/notify-admin");
-    await notifyAdminFunnel({ name: `Funnel Test ${ts}`, email, message: "step reached" });
+    await notifyAdminFunnel({
+      category: "notification", kind: "signup_started",
+      name: `Funnel Test ${ts}`, email, message: "step reached",
+    });
     const { data: row } = await db.from("inbox_messages")
-      .select("kind, message, read").eq("name", `Funnel Test ${ts}`).single();
-    expect(row).toMatchObject({ kind: "membership", message: "step reached", read: false });
+      .select("kind, category, message, read").eq("name", `Funnel Test ${ts}`).single();
+    expect(row).toMatchObject({ kind: "signup_started", category: "notification", message: "step reached", read: false });
   });
 
   afterEach(() => {
@@ -190,8 +195,9 @@ describe.skipIf(!KEY)("join funnel", () => {
     const { data: after } = await db.from("members").select("status, grace_until").eq("id", member!.id).single();
     expect(after?.status).toBe("grace");
     expect(after?.grace_until).toBe("2026-03-02"); // 2026-01-31 + 30 days
-    const { data: note } = await db.from("inbox_messages").select("kind, message").eq("name", name).single();
-    expect(note?.kind).toBe("membership");
+    const { data: note } = await db.from("inbox_messages").select("kind, category, message").eq("name", name).single();
+    expect(note?.kind).toBe("comp_expired");
+    expect(note?.category).toBe("notification"); // fix-list 71 — not an enquiry
     expect(note?.message).toMatch(/comp expired/i);
   });
 });

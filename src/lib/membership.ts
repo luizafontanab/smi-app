@@ -1,4 +1,5 @@
 import { serviceDb } from "./db/server";
+import { notifyConsole } from "./notify-admin";
 import type { CheckoutResult } from "./adapters/payments";
 
 export const slugify = (s: string) =>
@@ -158,7 +159,9 @@ export async function applyPaymentResult(memberId: string, result: CheckoutResul
  */
 export async function applyPaymentFailure(memberId: string): Promise<void> {
   const db = serviceDb();
-  const { data: member } = await db.from("members").select("name, contact_email").eq("id", memberId).single();
+  // contact_email was selected only to stamp it onto the inbox row; a
+  // notification has no correspondent, so it is no longer read here.
+  const { data: member } = await db.from("members").select("name").eq("id", memberId).single();
   if (!member) return;
 
   const graceUntil = new Date(`${new Date().toISOString().slice(0, 10)}T12:00:00Z`);
@@ -166,10 +169,15 @@ export async function applyPaymentFailure(memberId: string): Promise<void> {
   const until = graceUntil.toISOString().slice(0, 10);
 
   await db.from("members").update({ status: "grace", grace_until: until }).eq("id", memberId);
-  await db.from("inbox_messages").insert({
-    kind: "membership",
+  // A notification, not an enquiry (fix-list 71). It used to be written as a
+  // `kind: 'membership'` row carrying the member's contact address, which made
+  // it indistinguishable from a member asking a question — and offered a reply
+  // form for a message nobody had sent.
+  await notifyConsole({
+    kind: "payment_failed",
+    memberId,
     name: member.name,
-    email: member.contact_email ?? "",
+    payload: { member_id: memberId },
     message: `Card payment failed — moved to grace until ${until}.`,
   });
 }
@@ -212,19 +220,20 @@ export async function requestCancellation(memberId: string): Promise<CancelReque
 
 /**
  * Stripe's `customer.subscription.deleted` — the period actually ended.
- * Mirrors `applyPaymentFailure`'s shape: local state update, notification,
- * and an `inbox_messages` row so it surfaces in console the same way.
+ * Mirrors `applyPaymentFailure`'s shape: local state update, a member
+ * notification, and a console notification so it surfaces there the same way.
  */
 export async function applySubscriptionEnded(memberId: string): Promise<void> {
   const db = serviceDb();
-  const { data: member } = await db.from("members").select("name, contact_email").eq("id", memberId).single();
+  const { data: member } = await db.from("members").select("name").eq("id", memberId).single();
   if (!member) return;
 
   await db.from("members").update({ status: "lapsed", cancel_requested_at: null }).eq("id", memberId);
-  await db.from("inbox_messages").insert({
-    kind: "membership",
+  await notifyConsole({
+    kind: "subscription_ended",
+    memberId,
     name: member.name,
-    email: member.contact_email ?? "",
+    payload: { member_id: memberId },
     message: "Subscription cancelled and membership ended.",
   });
   await notifyQuietly(memberId, { kind: "membership_cancelled" });

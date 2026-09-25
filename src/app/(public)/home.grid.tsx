@@ -1,7 +1,7 @@
 import { dealSlots } from "@/lib/adverts";
 import { AdSlot } from "@/components/AdSlot";
 import {
-  GhEventCard, GhFeaturedMembers, GhMachineCard, GhMemberRow, GhMoreNews,
+  GhEventCard, GhFeaturedMembers, GhLogoBand, GhMachineCard, GhMemberRow, GhMoreNews,
   GhNewsletterCard, GhNewsletterPanel, GhPublicationPanel, GhStatsBand,
   GhStoryCard, GhVideoCard,
 } from "@/components/grid-home/cards";
@@ -181,6 +181,27 @@ export function GridHome({
       )}
 
       {/*
+       * ── Supplier logo row ──────────────────────────────────────────────
+       *
+       * A separate visibility product from the featured-member box above it:
+       * that sells a card in the sidebar, this sells a logo in a row. Sits
+       * directly under member news so the two read as a pair without being
+       * confused for one another.
+       *
+       * Costs no query — loadHome() already fetches `supplier_logo` as one of
+       * HOME_AD_FORMATS, and forge has been rendering the same pool through
+       * SupplierLogos all along; grid simply had nowhere for it to land.
+       * GhLogoBand carries its own Band and returns null when the pool is
+       * empty and placeholders are off, so an unsold row shows nothing rather
+       * than an empty grey stripe.
+       *
+       * Passed whole, not through dealSlots: this is a format wall, not a
+       * positional slot, and the rotation's order is used exactly as given —
+       * never sorted, filtered or weighted (lib/adverts.ts:5-11).
+       */}
+      <GhLogoBand adverts={adverts.supplier_logo} showPlaceholders={showPlaceholders} />
+
+      {/*
        * ── Upcoming events, then the newsletter archive ───────────────────
        *
        * Both rows exist to put content between home_2 and home_3 rather than
@@ -210,7 +231,13 @@ export function GridHome({
         </Band>
       )}
 
-      <Band inner="pb-8">
+      {/*
+       * Grey, and the supplier row above it plain: the band separates this
+       * advert from the editorial run rather than colouring the logo row.
+       * py-8 rather than pb-8 — a tinted band needs its top padding too, or the
+       * artwork sits flush against the colour change.
+       */}
+      <Band tone="grey" inner="py-8">
         <AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" />
       </Band>
 

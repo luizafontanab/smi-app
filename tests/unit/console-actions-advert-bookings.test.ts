@@ -43,7 +43,10 @@ describe("saveBooking", () => {
       invoices: () => invoicesBuilder,
     });
 
-    await saveBooking(form({ advert_id: "ad1", product_id: "p1", starts_on: "2026-09-01", ends_on: "2026-09-30" }));
+    // Succeeds by redirecting with ?saved=1 now — a booking that worked used to
+    // be pixel-identical to one that was rejected (fix-list 73's convention).
+    await expect(saveBooking(form({ advert_id: "ad1", product_id: "p1", starts_on: "2026-09-01", ends_on: "2026-09-30" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\?saved=1/);
 
     expect(invoicesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ member_id: "m1", amount_pennies: 5000 }));
   });
@@ -56,7 +59,8 @@ describe("saveBooking", () => {
       invoices: () => invoicesBuilder,
     });
 
-    await saveBooking(form({ advert_id: "ad1", product_id: "p1", starts_on: "2026-09-01", ends_on: "2026-09-30" }));
+    await expect(saveBooking(form({ advert_id: "ad1", product_id: "p1", starts_on: "2026-09-01", ends_on: "2026-09-30" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\?saved=1/);
 
     expect(invoicesBuilder.insert).not.toHaveBeenCalled();
   });

@@ -54,6 +54,18 @@ export type TemplateDefault = {
 export const SHELL_KIND = "_shell";
 export const NEWSLETTER_SHELL_KIND = "_newsletter_shell";
 
+/**
+ * The wrapper around a typed reply to an inbox enquiry.
+ *
+ * Named `admin_reply` because an admin writes it, but it is **not** an
+ * `AdminEmailKind`: those go *to* Jas and are plain text. This one goes *from*
+ * him to whoever wrote in, so it is `family: "member"` and renders inside the
+ * member shell like every other outgoing email. Family is also a checked column
+ * (`email_templates.family in ('member','admin','shell','newsletter')`), so a
+ * fifth family here would need a migration — see the note on the token list.
+ */
+export const REPLY_KIND = "admin_reply";
+
 /** The copy an unrecognised kind falls back to. `jobs.ts` can enqueue one, so this is reachable. */
 export const GENERIC_KIND = "_generic";
 
@@ -198,10 +210,42 @@ const ADMIN_DEFAULTS: Record<AdminEmailKind, TemplateDefault> = {
   ),
 };
 
+/* ---------- the reply Jas types into the console ---------- */
+
+/**
+ * Three values, all of them typed by a person, none of them markup.
+ *
+ * Note what is *absent*: no `raw: true`. `{{body}}` is a free-text `<textarea>`,
+ * and the one thing standing between a typo with an angle bracket — or a
+ * quoted line of a member's own email — and markup in someone else's inbox is
+ * that this token is escaped like any other value. Marking it raw here would
+ * silently turn every reply into an HTML injection point, which is why the flag
+ * is called out rather than merely omitted.
+ */
+const REPLY_TOKENS: readonly TokenSpec[] = [
+  {
+    token: "name",
+    description: "Who you're replying to, as it came in on their message. Reads “there” when the message has no name on it.",
+    sample: "Dave Whitworth",
+  },
+  {
+    token: "subject",
+    description: "The subject line you typed on the reply form. It is what lands in their inbox, so this template normally leaves it alone.",
+    sample: "Re: Advertising enquiry",
+  },
+  {
+    token: "body",
+    description:
+      "What you typed in the reply box. Your line breaks are kept. Anything that looks like HTML is sent as the characters you typed rather than as markup, so pasting a quoted email is safe.",
+    sample: "Thanks for getting in touch about a sitewide banner.\n\nWe have space from the start of October — shall I pencil you in and send the artwork spec over?",
+  },
+];
+
 type EmailDefaultKey =
   | NotificationKind
   | AdminEmailKind
   | typeof GENERIC_KIND
+  | typeof REPLY_KIND
   | typeof SHELL_KIND
   | typeof NEWSLETTER_SHELL_KIND;
 
@@ -470,6 +514,32 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
       },
     ],
   }),
+
+  /* ---------- the reply to an inbox enquiry ---------- */
+
+  /**
+   * Written out longhand rather than through `make()` for two reasons: the
+   * sign-off wants a `<br>` in the HTML half and a newline in the text half,
+   * which one shared `paragraphs` array cannot express; and there is
+   * deliberately **no `ctaLabel`**. A reply has nothing to press — the answer is
+   * the email — and an absent `ctaLabel` is also what hides the button field in
+   * the console editor, so nobody can add one by accident.
+   *
+   * No `label` either: nothing writes a `notifications` row for a reply (the
+   * person receiving it may not even have a member account), so an "in-app
+   * wording" field here would be a box that changes nothing.
+   */
+  [REPLY_KIND]: {
+    family: "member",
+    // Whatever Jas typed on the reply form, so the thread keeps its subject.
+    subject: "{{subject}}",
+    bodyHtml: [para("Hi {{name}},"), para("{{body}}"), para("Thanks,<br>Sheet Metal Industries")].join(""),
+    bodyText: "Hi {{name}},\n\n{{body}}\n\nThanks,\nSheet Metal Industries",
+    tokens: REPLY_TOKENS,
+    // An edit that drops {{body}} would send Jas's answer nowhere while telling
+    // him it had gone.
+    required: ["body"],
+  },
 
   /* ---------- the catch-all ---------- */
 

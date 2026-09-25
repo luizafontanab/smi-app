@@ -15,7 +15,7 @@ const FAMILIES: { key: EmailFamily; title: string; blurb: string }[] = [
   {
     key: "member",
     title: "Member emails",
-    blurb: "Sent to a member when something of theirs changes — approved, sent back, scheduled, ended, paid for.",
+    blurb: "Sent to a member when something of theirs changes — approved, sent back, scheduled, ended, paid for — and the replies you send from your inbox.",
   },
   {
     key: "admin",

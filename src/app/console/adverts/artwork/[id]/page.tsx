@@ -4,23 +4,10 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
+import { ADVERT_FORMATS, advertFormatOptions } from "@/components/console/advert-formats";
 import { saveAdvertArtwork } from "../../../actions";
 
 export const dynamic = "force-dynamic";
-
-// Mirrors the adverts.format check constraint; sizes match AdCreative.tsx.
-const FORMATS = [
-  { value: "banner", label: "Banner (1280×170 desktop / 370×280 mobile)" },
-  // Grid homepage only, and deliberately absent from the member's own advert
-  // form — see the note in dashboard/advert/AdvertForm.tsx.
-  { value: "banner_narrow", label: "Banner — narrow (830×170 desktop / 370×280 mobile)" },
-  { value: "skyscraper", label: "Skyscraper (300×600, desktop only)" },
-  { value: "mpu", label: "MPU (300×250)" },
-  { value: "in_feed", label: "In-feed (native card)" },
-  { value: "supplier_logo", label: "Supplier logo" },
-  { value: "newsletter_banner", label: "Newsletter banner" },
-  { value: "association_logo", label: "Association logo" },
-];
 
 export default async function AdvertArtworkEditor(props: PageProps<"/console/adverts/artwork/[id]">) {
   const { id } = await props.params;
@@ -70,8 +57,8 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
           </div>
           <div>
             <label htmlFor="format" className="text-sm font-medium">Format</label>
-            <select id="format" name="format" defaultValue={advert?.format ?? FORMATS[0].value} required className="mt-1 w-full rounded border px-3 py-2">
-              {FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            <select id="format" name="format" defaultValue={advert?.format ?? ADVERT_FORMATS[0].value} required className="mt-1 w-full rounded border px-3 py-2">
+              {advertFormatOptions(advert?.format).map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
         </div>

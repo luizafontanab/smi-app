@@ -246,7 +246,20 @@ async function main() {
     // every ~5th real story becomes member news attributed to a seeded member
     const asMemberNews = i % 5 === 4;
     const storyMemberId = asMemberNews ? faker.helpers.arrayElement(activeMembers).id : null;
+    // In the real import 90 stories name between 2 and 13 members, which is why
+    // story_members exists (20260924000001). Give every third member-news story
+    // an extra member so the local database exercises that shape too, instead of
+    // looking like member_id alone is enough.
+    const extraMembers =
+      storyMemberId && i % 15 === 14
+        ? pickSome(
+            activeMembers.filter((m) => m.id !== storyMemberId).map((m) => m.id),
+            1,
+            2,
+          )
+        : [];
     storyRows.push({
+      story_member_ids: storyMemberId ? [storyMemberId, ...extraMembers] : [],
       slug: slugify(p.slug),
       title: decode(stripTags(p.title.rendered)),
       excerpt: decode(stripTags(p.excerpt?.rendered ?? "")).slice(0, 300),
@@ -262,12 +275,20 @@ async function main() {
     });
   }
   for (const row of storyRows) {
-    const { wp_cats, ...insert } = row as { wp_cats: number[] } & Record<string, unknown>;
+    const { wp_cats, story_member_ids, ...insert } = row as {
+      wp_cats: number[];
+      story_member_ids: string[];
+    } & Record<string, unknown>;
     const { data: story, error } = await db.from("stories").insert(insert).select("id").single();
     if (error) throw error;
     const mapped = wp_cats.map((c: number) => wpCatMap.get(c)).filter(Boolean);
     const catIds = mapped.length ? mapped : [faker.helpers.arrayElement(storyCatIds)];
     await db.from("story_categories").insert(catIds.map((category_id: number) => ({ story_id: story!.id, category_id })));
+    if (story_member_ids.length) {
+      await db
+        .from("story_members")
+        .insert(story_member_ids.map((member_id) => ({ story_id: story!.id, member_id })));
+    }
   }
   // a couple of pipeline states for the console demo
   const pending = [
@@ -536,6 +557,97 @@ async function main() {
     { prospect_ref: "https://www.linkedin.com/company/pennine-press-brake-services", action: "call", member_id: null },
     { prospect_ref: "https://www.linkedin.com/company/calder-laser-cutting", action: "email", member_id: null },
     { prospect_ref: "https://www.linkedin.com/company/beresford-tooling", action: "sequence", member_id: null },
+  ]);
+
+  /*
+   * Console inbox (fix-list 71). Neither seed wrote a single `inbox_messages`
+   * row, so `/console/notifications` and the Command Centre's Messages card
+   * both rendered empty locally and the feature could not be judged at all.
+   *
+   * Both categories, deliberately, because the whole point of the change is
+   * that they are different things and the page has to show the difference:
+   *   · messages    — a person wrote it, it needs a reply, the reply form shows.
+   *   · notifications — something happened, it links to the thing, no reply.
+   *
+   * The notification payloads carry real ids read back from this same run, so
+   * every "Open it →" on the seeded feed lands on a row that exists. A row with
+   * an id that does not resolve would demo the exact failure this is fixing.
+   */
+  console.log("— console inbox (messages + notifications)");
+  const { data: seedPendingStory } = await db.from("stories").select("id").eq("status", "awaiting_approval").limit(1).single();
+  const { data: seedPendingEvent } = await db.from("events").select("id").eq("status", "awaiting_approval").limit(1).single();
+  const { data: seedBooking } = await db.from("advert_bookings").select("id").limit(1).single();
+  const hoursAgo = (h: number) => new Date(today.getTime() - h * 3600_000).toISOString();
+  // PostgREST bulk inserts need uniform keys across rows (same reason
+  // `pageRow` exists below), so every row is built through this rather than
+  // written out with whichever fields it happens to need.
+  const inboxRow = (r: {
+    category: string; kind: string; name: string; message: string;
+    hours: number; read?: boolean; email?: string; memberId?: string | null;
+    payload?: Record<string, string>; repliedHours?: number | null;
+  }) => ({
+    category: r.category,
+    kind: r.kind,
+    name: r.name,
+    email: r.email ?? "",
+    message: r.message,
+    read: r.read ?? false,
+    created_at: hoursAgo(r.hours),
+    replied_at: r.repliedHours ? hoursAgo(r.repliedHours) : null,
+    member_id: r.memberId ?? null,
+    payload: r.payload ?? {},
+  });
+  await db.from("inbox_messages").insert([
+    inboxRow({
+      category: "message", kind: "contact", hours: 2,
+      name: "Gareth Pryce", email: "gareth@pryce-fabrication.co.uk",
+      message: "We're looking for a supplier who can laser-cut 6mm stainless in batches of 200.\n\nCan you point me at any members in South Wales?",
+    }),
+    inboxRow({
+      category: "message", kind: "advertising", hours: 9,
+      name: "Hannah Okoro", email: "h.okoro@vantagetooling.com",
+      message: "What does a homepage banner cost for a three-month run, and do you have any slots in the new year?",
+    }),
+    // Read and answered, so the list's "Replied" badge and the reply thread on
+    // the detail page both have something to render.
+    inboxRow({
+      category: "message", kind: "membership", hours: 40, read: true, repliedHours: 38,
+      name: activeMembers[0].name, email: "member1@smi.local", memberId: memberLogins[0],
+      message: "Could you change the phone number on our company page? The one listed is the old switchboard.",
+    }),
+    inboxRow({
+      category: "notification", kind: "story_submitted", hours: 1,
+      name: activeMembers[0].name, memberId: memberLogins[0],
+      payload: seedPendingStory ? { story_id: seedPendingStory.id } : {},
+      message: "Submitted a story for approval: “New 6kW fibre laser installed at our Rotherham facility”.",
+    }),
+    inboxRow({
+      category: "notification", kind: "event_submitted", hours: 5,
+      name: activeMembers[1].name, memberId: memberLogins[1],
+      payload: seedPendingEvent ? { event_id: seedPendingEvent.id } : {},
+      message: "Submitted an event for approval: “Open house: bending cell demo”.",
+    }),
+    inboxRow({
+      category: "notification", kind: "signup_started", hours: 20,
+      name: activeMembers[2].name, memberId: memberLogins[2],
+      payload: { member_id: memberLogins[2] },
+      message: "Started the join flow: account created, draft company page in place. Next step: payment.",
+    }),
+    // The row that made the conflation concrete: it used to be written as an
+    // `advertising` enquiry with an empty email, so the console offered a reply
+    // form addressed to nobody. Seeded so that stays visibly fixed.
+    inboxRow({
+      category: "notification", kind: "advert_ending", hours: 54, read: true,
+      name: `${activeMembers[2].name} banner`,
+      payload: seedBooking ? { booking_id: seedBooking.id } : {},
+      message: `Advert run "${activeMembers[2].name} banner" ends on ${iso(new Date(today.getTime() + 5 * 864e5))} — worth asking about a renewal.`,
+    }),
+    inboxRow({
+      category: "notification", kind: "payment_taken", hours: 72, read: true,
+      name: activeMembers[1].name, memberId: memberLogins[1],
+      payload: { member_id: memberLogins[1] },
+      message: "Paid £40/month by card (simulated). Next step: build their page.",
+    }),
   ]);
 
   // One edited email template, not twenty-nine. `email_templates` is an

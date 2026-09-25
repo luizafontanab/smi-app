@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 
 // Two-tier nav: row 1 is these sections, row 2 (always rendered) shows
 // whichever section's children match the current route. Leaf sections (no
-// children) behave like a plain link and leave row 2 empty. Messages left
-// the nav for the header bell — see the notification link below.
+// children) behave like a plain link and leave row 2 empty. The notifications
+// feed left the nav for the header bell — see the link below.
 const CONSOLE_SECTIONS: NavSection[] = [
   { key: "home", href: "/console", label: "Command Centre" },
   { key: "analytics", href: "/console/analytics", label: "Analytics" },
@@ -36,7 +36,14 @@ const CONSOLE_SECTIONS: NavSection[] = [
     children: [
       { href: "/console/adverts", label: "Bookings" },
       { href: "/console/adverts/artwork", label: "Artwork" },
-      { href: "/console/adverts/spots", label: "Ad Spots" },
+      // "Ad Spots" read as the physical slots it is not. It is the rate card,
+      // and it now holds the slot capacities too — both answer "what do we sell
+      // and how much of it", so: Inventory. The path is unchanged on purpose:
+      // saveAdvertProduct redirects to it from actions.ts.
+      { href: "/console/adverts/spots", label: "Inventory" },
+      { href: "/console/adverts/bundles", label: "Bundles" },
+      { href: "/console/adverts/takeover", label: "Takeover" },
+      { href: "/console/adverts/featured-member", label: "Featured Member" },
       { href: "/console/adverts/interest", label: "Interest" },
     ],
   },
@@ -58,6 +65,9 @@ const CONSOLE_SECTIONS: NavSection[] = [
     children: [
       { href: "/console/machines", label: "Featured Machine" },
       { href: "/console/content-pages", label: "Content Pages" },
+      // The media pack and the public A–F format cards. Website content, not
+      // inventory — which is why they are here and not under Adverts.
+      { href: "/console/advertising", label: "Advertising Page" },
       { href: "/console/pages", label: "Page Layouts" },
       { href: "/console/categories", label: "News Categories" },
       { href: "/console/industries", label: "Industries" },
@@ -79,6 +89,13 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
 
   // The layout is already force-dynamic, so the unread count stays fresh on
   // every navigation without any client polling.
+  //
+  // Counts BOTH categories, deliberately (fix-list 71). The bell opens
+  // /console/notifications on its All tab, so the badge and the list it opens
+  // have to agree — a bell counting only messages would hide the notification
+  // stream entirely, and a badge that disagrees with its own page is worse than
+  // no badge. The messages-only signal is the Inbox card on the Command Centre,
+  // which is now scoped to category 'message'.
   const { count } = await serviceDb()
     .from("inbox_messages")
     .select("*", { count: "exact", head: true })
@@ -95,9 +112,9 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           <Link href="/" className="font-bold">SMI <span className="text-brand">Console</span></Link>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Link
-              href="/console/messages"
-              aria-label={unread > 0 ? `Messages, ${unread} unread` : "Messages"}
-              title="Messages"
+              href="/console/notifications"
+              aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+              title="Notifications"
               className="tap relative rounded p-2 hover:bg-chrome-hover"
             >
               <IconBell width={20} height={20} strokeWidth={2} />

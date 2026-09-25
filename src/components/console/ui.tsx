@@ -22,7 +22,8 @@ export function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
-export function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+// `sub` is a node, not a string: some tiles hang a link off the caption.
+export function Stat({ label, value, sub }: { label: string; value: string; sub?: ReactNode }) {
   return (
     <div className="rounded-xl border border-black/5 bg-white p-4 shadow-sm">
       <p className="text-xs uppercase tracking-wide text-graphite">{label}</p>

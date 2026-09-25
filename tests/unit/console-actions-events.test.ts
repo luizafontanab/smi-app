@@ -48,9 +48,11 @@ describe("consoleUploadEventImage", () => {
 });
 
 describe("saveEvent", () => {
-  it("requires a title and a start date", async () => {
+  // See the note in console-actions-stories.test.ts — fix-list 73 turned these
+  // silent returns into a redirect that tells you what is missing.
+  it("requires a title and a start date, and says so", async () => {
     const from = db({});
-    await saveEvent(form({ title: "t", starts_on: "" }));
+    await expect(saveEvent(form({ title: "t", starts_on: "" }))).rejects.toThrow(/NEXT_REDIRECT.*error=/);
     expect(from).not.toHaveBeenCalled();
   });
 

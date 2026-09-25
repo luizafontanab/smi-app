@@ -15,7 +15,8 @@ const TABS = [
   { view: "calendar", label: "Calendar" },
 ] as const;
 
-const SELECT = "id, title, status, source, scheduled_at, published_at, pinned_until, member:members(name)";
+// FK named: story_members makes a bare `members` embed ambiguous on stories.
+const SELECT = "id, title, status, source, scheduled_at, published_at, pinned_until, member:members!stories_member_id_fkey(name)";
 
 export default async function StoriesPage(props: PageProps<"/console/stories">) {
   await requireConsole();

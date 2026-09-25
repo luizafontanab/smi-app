@@ -44,7 +44,12 @@ export default async function EmailTemplateEditor(props: PageProps<"/console/ema
   const current = resolveTemplate(kind, overrides);
 
   const isShell = def.family === "shell" || def.family === "newsletter";
-  const isMember = def.family === "member";
+  // Not every member-family template has an in-app feed entry to word: the
+  // reply template (`admin_reply`) is family 'member' but has no `label`,
+  // because nothing writes a `notifications` row for a reply — the recipient may
+  // not even have an account. Gating on the family alone rendered an empty
+  // "In-app wording" box that changed nothing anywhere when you typed in it.
+  const isMember = def.family === "member" && def.label !== undefined;
 
   // The heading shows the rendered subject, not the raw one: "SMI — {{total}}
   // item{{total_s}} waiting for you" is not a thing anyone calls an email. The

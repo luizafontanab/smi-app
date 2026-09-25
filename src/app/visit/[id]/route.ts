@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { serviceDb } from "@/lib/db/server";
 import { record, requestContext } from "@/lib/analytics";
 import { resolveAdvertTarget } from "@/lib/adverts";
+import { isMemberLinkable } from "@/lib/member-visibility";
 
 /**
  * Advert click-through: record the click, then send the reader on.
@@ -18,13 +19,20 @@ export async function GET(req: Request, ctx: RouteContext<"/visit/[id]">) {
   const db = serviceDb();
   const { data: ad } = await db
     .from("adverts")
-    .select("id, link_url, member:members(id, slug)")
+    .select("id, link_url, member:members(id, slug, status, archived_at)")
     .eq("id", id)
     .maybeSingle();
   if (!ad) redirect("/");
   const reqCtx = await requestContext();
   record([{ kind: "ad_click", advert_id: ad.id, member_id: ad.member?.id ?? null, path: resolveClickPath(req), ...reqCtx }]);
-  redirect(resolveAdvertTarget(ad.link_url, ad.member?.slug ?? null));
+  // An advert with no link_url falls back to its advertiser's member page. That
+  // page 404s for an archived or lapsed member, so the fallback has to be
+  // withdrawn with it — a paid click landing on "not found" is worse than one
+  // landing on the homepage. The click itself is still recorded either way:
+  // the advertiser paid for the impression and the click happened.
+  // This is serviceDb(), so RLS does not do it for us (fix-list 72).
+  const target = isMemberLinkable(ad.member) ? ad.member.slug : null;
+  redirect(resolveAdvertTarget(ad.link_url, target));
 }
 
 /**

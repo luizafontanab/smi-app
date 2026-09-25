@@ -23,8 +23,12 @@ export async function payMembership(_prev: { message: string }, formData: FormDa
 
   await applyPaymentResult(member.id, payment);
   await notifyAdminFunnel({
+    category: "notification",
+    kind: "payment_taken",
     name: member.name,
     email: user.email,
+    memberId: member.id,
+    payload: { member_id: member.id },
     message: payment.kind === "comped"
       ? `Redeemed promo code ${promoCode?.toUpperCase()} — comped ${payment.months} month${payment.months === 1 ? "" : "s"}. Next step: build their page.`
       : `Paid £40/month by card${paymentsAreLive() ? "" : " (simulated)"}. Next step: build their page.`,

@@ -5,6 +5,7 @@ import { record, requestContext } from "@/lib/analytics";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
+import { isMemberLinkable } from "@/lib/member-visibility";
 import { activePlacements, publishedStories } from "@/lib/queries";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { RichText } from "@/components/RichText";
@@ -35,6 +36,11 @@ export default async function FeaturedMachinePage() {
     <>
       <h1 className="mt-6 text-2xl font-bold text-ink">Featured Machine</h1>
       {machines.length === 0 && <p className="mt-6 text-graphite">No featured machine this month.</p>}
+      {/* seller: the shared rule (lib/member-visibility.ts), applied a second
+          time on purpose. activePlacements already nulls a member who fails it
+          — this is serviceDb, so nothing in the database does — and that is the
+          filter the page actually depends on; keeping the call here means a
+          future projection change cannot quietly turn the credit back on. */}
       {machines.map(({ machine }) => machine && (
         <article key={machine.id} className="mt-6 overflow-hidden rounded-xl bg-white shadow-sm">
           {machine.image_path && (
@@ -45,7 +51,7 @@ export default async function FeaturedMachinePage() {
           <div className="p-6">
             <p className="text-xs uppercase tracking-widest text-brand-text">Machine of the month</p>
             <h2 className="mt-1 text-2xl font-bold text-ink">{machine.name}</h2>
-            {machine.member && (
+            {isMemberLinkable(machine.member) && (
               <p className="mt-1 text-sm text-graphite">
                 Offered by <Link href={`/member/${machine.member.slug}`} className="text-graphite underline">{machine.member.name}</Link>
               </p>
@@ -57,7 +63,7 @@ export default async function FeaturedMachinePage() {
                   Full details on the seller&apos;s site →
                 </a>
               )}
-              {machine.member && (
+              {isMemberLinkable(machine.member) && (
                 <Link href={`/member/${machine.member.slug}`} className="rounded border px-5 py-2.5">Seller&apos;s SMI page</Link>
               )}
             </div>

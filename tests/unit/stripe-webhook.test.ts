@@ -105,8 +105,11 @@ describe.skipIf(!KEY)("/api/stripe/webhook", () => {
     const { data } = await db.from("members").select("status, grace_until").eq("id", memberId).single();
     expect(data?.status).toBe("grace");
     expect(data?.grace_until).not.toBeNull();
-    const { data: inbox } = await db.from("inbox_messages").select("kind").eq("email", `Stripe Failed ${ts}@test.local`).single();
-    expect(inbox?.kind).toBe("membership");
+    // Found by member_id, not email: a notification has no correspondent and
+    // writes an empty email (fix-list 71) — which is also what the console
+    // checks before deciding whether a reply form makes sense.
+    const { data: inbox } = await db.from("inbox_messages").select("kind, category, email").eq("member_id", memberId).single();
+    expect(inbox).toMatchObject({ kind: "payment_failed", category: "notification", email: "" });
   });
 
   it("checkout.session.completed remembers the subscription and customer ids (GAPS B1.5)", async () => {
@@ -135,8 +138,8 @@ describe.skipIf(!KEY)("/api/stripe/webhook", () => {
     const { data } = await db.from("members").select("status, cancel_requested_at").eq("id", memberId).single();
     expect(data?.status).toBe("lapsed");
     expect(data?.cancel_requested_at).toBeNull();
-    const { data: inbox } = await db.from("inbox_messages").select("kind").eq("email", `Stripe Ended ${ts}@test.local`).single();
-    expect(inbox?.kind).toBe("membership");
+    const { data: inbox } = await db.from("inbox_messages").select("kind, category").eq("member_id", memberId).single();
+    expect(inbox).toMatchObject({ kind: "subscription_ended", category: "notification" });
   });
 
   it("ignores an event with no member reference rather than throwing", async () => {

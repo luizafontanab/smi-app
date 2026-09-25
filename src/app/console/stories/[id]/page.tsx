@@ -12,6 +12,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { StoryBody } from "@/components/StoryBody";
 import { MemberBacklink } from "@/components/MemberBacklink";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const [story, cats, members, inds] = await Promise.all([
     isNew
       ? Promise.resolve(null)
-      : must(db.from("stories").select("*, member:members(name, logo_path, slug, status, industry_id)").eq("id", id).maybeSingle(), "console/stories editor"),
+      : must(db.from("stories").select("*, member:members!stories_member_id_fkey(name, logo_path, slug, status, industry_id)").eq("id", id).maybeSingle(), "console/stories editor"),
     must(db.from("categories").select("id, name").order("name"), "console/stories categories"),
     must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/stories members"),
     must(db.from("industries").select("id, name").order("sort_order"), "console/stories industries"),
@@ -65,7 +66,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
       {story?.status === "rejected" && (
         <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">Rejected: {story.rejected_reason}</p>
       )}
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <form action={saveStory} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         <UnsavedChangesGuard />
@@ -119,7 +121,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           </div>
         </fieldset>
         <CoverField cover={cover} focus={focus} hint="Landscape works best: at least 1200×675px (16:9), JPG/PNG/WebP, max 8MB. Leaving this empty keeps the current image. The crop fixes lost heads — it applies on the story page, the news cards and the homepage." />
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+        <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
 
       {!isNew && story && (

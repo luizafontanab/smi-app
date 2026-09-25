@@ -23,7 +23,7 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Bookings</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Homepage takeover</h1>
       <p className="mt-1 text-sm text-graphite">
         One advertiser&apos;s colours and top banner across the whole public site for a paid period — reverts on its own once the dates end.

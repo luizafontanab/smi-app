@@ -4,22 +4,11 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
+import { ADVERT_FORMATS, advertFormatOptions } from "@/components/console/advert-formats";
 import { saveAdvertProduct } from "../../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 
 export const dynamic = "force-dynamic";
-
-// Mirrors the adverts.format check constraint; sizes match AdCreative.tsx's shapes.
-const FORMATS = [
-  { value: "banner", label: "Banner (1280×170 desktop / 370×280 mobile)" },
-  { value: "banner_narrow", label: "Banner — narrow (830×170 desktop / 370×280 mobile)" },
-  { value: "skyscraper", label: "Skyscraper (300×600, desktop only)" },
-  { value: "mpu", label: "MPU (300×250)" },
-  { value: "in_feed", label: "In-feed (native card)" },
-  { value: "supplier_logo", label: "Supplier logo" },
-  { value: "newsletter_banner", label: "Newsletter banner" },
-  { value: "association_logo", label: "Association logo" },
-];
 
 export default async function AdvertSpotEditor(props: PageProps<"/console/adverts/spots/[id]">) {
   const { id } = await props.params;
@@ -38,8 +27,8 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/console/adverts/spots" className="text-sm text-graphite hover:text-ink">← Ad Spots</Link>
-      <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New ad spot" : "Edit ad spot"}</h1>
+      <Link href="/console/adverts/spots" className="text-sm text-graphite hover:text-ink">← Inventory</Link>
+      <h1 className="mt-1 text-xl font-bold text-ink">{isNew ? "New rate-card product" : "Edit rate-card product"}</h1>
       {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <form action={saveAdvertProduct} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
@@ -56,14 +45,16 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="format" className="text-sm font-medium">Size</label>
-            <select id="format" name="format" defaultValue={spot?.format ?? FORMATS[0].value} required className="mt-1 w-full rounded border px-3 py-2">
-              {FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            <select id="format" name="format" defaultValue={spot?.format ?? ADVERT_FORMATS[0].value} required className="mt-1 w-full rounded border px-3 py-2">
+              {advertFormatOptions(spot?.format).map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor="cap" className="text-sm font-medium">Allowable spots</label>
+            {/* Field name stays `cap` — the label was "Allowable spots", which
+                read as an advert_slots position rather than a rate-card limit. */}
+            <label htmlFor="cap" className="text-sm font-medium">Concurrent advertisers</label>
             <input id="cap" name="cap" type="number" min={1} defaultValue={spot?.cap ?? 1} required className="mt-1 w-full rounded border px-3 py-2" />
-            <p className="mt-1 text-xs text-graphite">How many advertisers can hold this spot at once.</p>
+            <p className="mt-1 text-xs text-graphite">How many advertisers can hold this product at once.</p>
           </div>
         </div>
         <div>

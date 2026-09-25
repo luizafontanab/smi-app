@@ -4,16 +4,12 @@ import { notFound } from "next/navigation";
 import { bookingPhase } from "@/lib/adverts";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
-import { must } from "@/lib/db/must";
+import { must, mustList } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
+import { PHASE_LABELS } from "@/components/console/advert-formats";
 import { decideArtworkSwap, decideAdvertBooking, endBooking, proposeArtworkSwap, renewBooking } from "../../actions";
 
 export const dynamic = "force-dynamic";
-
-const PHASE_LABELS: Record<string, string> = {
-  draft: "Draft", awaiting: "Awaiting approval", changes_needed: "Changes needed",
-  upcoming: "Scheduled", live: "Live", ended: "Ended",
-};
 
 export default async function BookingPage(props: PageProps<"/console/adverts/[id]">) {
   const { id } = await props.params;
@@ -37,9 +33,24 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
   const phase = bookingPhase(booking, today);
   const desktop = mediaUrl(booking.advert?.desktop_path);
 
-  const pendingSwap = booking.advert
-    ? await must(db.from("advert_artwork_proposals").select("id, desktop_path, mobile_path, submitted_at, source").eq("advert_id", booking.advert.id).eq("status", "pending").maybeSingle(), "console/adverts pending swap")
-    : null;
+  // ad_impression rows are written by /api/seen once the artwork has actually
+  // been on screen. Counted over this run's own term, so a re-booked piece of
+  // artwork doesn't lend this run the previous one's numbers. Same shape the
+  // member's dashboard uses (src/app/dashboard/stats/page.tsx).
+  const dayAfterEnd = new Date(Date.parse(`${booking.ends_on}T00:00:00Z`) + 864e5).toISOString().slice(0, 10);
+  const [pendingSwap, { count: impressions }] = await Promise.all([
+    booking.advert
+      ? must(db.from("advert_artwork_proposals").select("id, desktop_path, mobile_path, submitted_at, source").eq("advert_id", booking.advert.id).eq("status", "pending").maybeSingle(), "console/adverts pending swap")
+      : Promise.resolve(null),
+    booking.advert
+      ? mustList(
+          db.from("analytics_events").select("id", { count: "exact", head: true })
+            .eq("kind", "ad_impression").eq("advert_id", booking.advert.id)
+            .gte("occurred_at", booking.starts_on).lt("occurred_at", dayAfterEnd),
+          "console/adverts booking impressions",
+        )
+      : Promise.resolve({ count: null }),
+  ]);
   const swapDesktop = mediaUrl(pendingSwap?.desktop_path ?? null);
 
   return (
@@ -57,6 +68,10 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
           <span className="rounded bg-ink/5 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-ink">{PHASE_LABELS[phase]}</span>
           <span className="text-sm text-graphite">{booking.starts_on} → {booking.ends_on}</span>
         </div>
+        <p className="mt-2 text-sm text-graphite">
+          <span className="font-semibold text-ink tabular-nums">{(impressions ?? 0).toLocaleString("en-GB")}</span> impressions over this run
+          {phase === "live" || phase === "upcoming" ? " so far" : ""} — counted only where the reader accepted analytics cookies, so read it as a floor.
+        </p>
         {booking.review_reason && (
           <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">Sent back: {booking.review_reason}</p>
         )}

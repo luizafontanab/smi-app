@@ -56,7 +56,13 @@ test("axe: / (grid variant) has no serious or critical violations", async ({ pag
 // monospace textareas, a token reference list, a sandboxed preview iframe and
 // three separate submit buttons on one screen is the densest control cluster
 // in the console.
-const CONSOLE_PAGES = ["/console", "/console/stories", "/console/dev", "/console/newsletter", "/console/industries", "/console/leads", "/console/email-templates/welcome"];
+// /console/advertising earns a slot for the same reason: seven file inputs, six
+// aria-label-only text fields and six textareas, none of which has a visible
+// <label> element — exactly where unlabelled-control drift hides.
+// /console/notifications earns a slot: it is a new route, and its rows carry
+// two link shapes plus per-row forms, which is where unlabelled-control drift
+// shows up first.
+const CONSOLE_PAGES = ["/console", "/console/stories", "/console/dev", "/console/newsletter", "/console/industries", "/console/leads", "/console/email-templates/welcome", "/console/advertising", "/console/notifications"];
 // /dashboard/submissions earns a slot: it gained status tabs, a <details>
 // disclosure and an inline form per published row, which is exactly the shape
 // unlabelled-control drift takes.

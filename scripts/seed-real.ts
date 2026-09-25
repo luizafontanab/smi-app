@@ -22,9 +22,10 @@
  * Run: pnpm exec tsx scripts/seed-real.ts [--stories-limit N] [--skip-media]
  *        [--no-adverts]    seed everything except the sample adverts
  *        [--adverts-only]  add sample adverts to an already-seeded DB, nothing else
- *        [--demo-rows]     add the synthetic upcoming events and sent newsletter
- *                          issues to an already-seeded DB, nothing else —
- *                          idempotent, needs no extract, local targets only
+ *        [--demo-rows]     add the synthetic upcoming events, sent newsletter
+ *                          issues and console inbox rows to an already-seeded
+ *                          DB, nothing else — idempotent, needs no extract,
+ *                          local targets only
  *        [--no-demo-rows]  leave them out of a full run
  *        [--pages-only]    upsert static pages into an already-seeded DB, nothing else
  *        [--taxonomies-only] repair industries/services/membership-type links on an
@@ -42,6 +43,7 @@ import { FEATURED_SLOTS } from "@/lib/pricing";
 import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
+import { listAllObjects } from "./lib/storage-list";
 import { INDUSTRY_ROWS, industrySlug } from "./lib/industries";
 import { industryForServices } from "./lib/industry-map";
 import { selectMembers } from "./lib/select-members";
@@ -65,6 +67,12 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:5
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 if (!SECRET_KEY) throw new Error("SUPABASE_SECRET_KEY not set (load .env.local)");
 assertSeedTarget(SUPABASE_URL);
+// Say where this is writing, on every run rather than only --taxonomies-only.
+// NEXT_PUBLIC_SUPABASE_URL defaults to localhost above, so a missing or misnamed
+// variable in .env.production.local seeds the LOCAL database while a `seed:prod`
+// run appears to succeed — and --remote means assertSeedTarget passes it either
+// way. One line makes that visible instead of silent.
+console.log(`— target: ${SUPABASE_URL}${process.argv.includes("--remote") ? " (--remote)" : ""}`);
 const db = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
 
 const arg = (name: string) => {
@@ -89,6 +97,9 @@ const ADVERTS_ONLY = process.argv.includes("--adverts-only");
 // --media-only: (re)upload referenced media without touching any table — for
 // backfilling after a failed/skipped upload pass on an already-seeded DB
 const MEDIA_ONLY = process.argv.includes("--media-only");
+// --force-media: re-upload every referenced file even if the path already exists
+// in the bucket. Needed only when a file's contents changed but its path didn't.
+const FORCE_MEDIA = process.argv.includes("--force-media");
 // --pages-only: upsert static pages into an already-seeded DB, nothing else —
 // safe on a populated target because static_pages upserts on slug
 const PAGES_ONLY = process.argv.includes("--pages-only");
@@ -97,6 +108,10 @@ const PAGES_ONLY = process.argv.includes("--pages-only");
 // before the taxonomy split and so has no services/member_services rows and no
 // real industry assignment. Every write is an upsert, so it is re-runnable.
 const TAXONOMIES_ONLY = process.argv.includes("--taxonomies-only");
+// --events-only: repair fields on events that already exist, matched by slug.
+// Needed because the full seed plain-inserts and expects a fresh database, so a
+// field added to the shaper after an import can't otherwise reach a live target.
+const EVENTS_ONLY = process.argv.includes("--events-only");
 // --demo-rows: add the synthetic upcoming events and sent newsletter issues to
 // an already-seeded DB, nothing else. Also part of a normal local run;
 // --no-demo-rows opts out, and --remote refuses them outright (see
@@ -385,7 +400,134 @@ async function seedDemoRows(): Promise<void> {
     console.log(`— demo rows: +${fill.length} featured-member placements (now ${(liveFeatured ?? 0) + fill.length} of ${FEATURED_SLOTS.cap})`);
   }
 
-  console.log(`— demo rows: ${events.length} upcoming events, ${issues.length} sent newsletter issues (SAMPLE content, local only)`);
+  /*
+   * Console inbox (fix-list 71). `/console/notifications` and the Command
+   * Centre's Messages card are both empty on a real-content seed, because
+   * nothing in the WordPress extract is an enquiry and no member has submitted
+   * anything here — so the split between messages and notifications, which is
+   * the whole point of the page, cannot be seen at all.
+   *
+   * Four rows, two of each category. The notifications carry real ids read back
+   * from this same database, so their "Open it →" lands on a row that exists.
+   *
+   * Re-runnable: inbox_messages has no natural key to upsert on, so these are
+   * tagged in `payload` and the tag is cleared before they are rewritten. The
+   * tag is also the handle for removing them by hand.
+   */
+  const DEMO_INBOX_TAG = "smi-demo";
+  await db.from("inbox_messages").delete().eq("payload->>demo", DEMO_INBOX_TAG);
+
+  const { data: demoMembers } = await db
+    .from("members").select("id, name").eq("status", "active").order("name").limit(2);
+  const { data: demoStory } = await db.from("stories").select("id").order("created_at", { ascending: false }).limit(1);
+  const { data: demoEvent } = await db.from("events").select("id").not("slug", "like", `${DEMO_SLUG_PREFIX}%`).limit(1);
+
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+  // Uniform keys across rows: PostgREST rejects a bulk insert whose rows
+  // disagree about which columns they carry.
+  const inboxRow = (r: {
+    category: string; kind: string; name: string; message: string; hours: number;
+    read?: boolean; email?: string; memberId?: string | null; payload?: Record<string, string>;
+  }) => ({
+    category: r.category,
+    kind: r.kind,
+    name: r.name,
+    email: r.email ?? "",
+    message: r.message,
+    read: r.read ?? false,
+    created_at: hoursAgo(r.hours),
+    replied_at: null,
+    member_id: r.memberId ?? null,
+    payload: { ...(r.payload ?? {}), demo: DEMO_INBOX_TAG },
+  });
+
+  const inboxRows = [
+    inboxRow({
+      category: "message", kind: "contact", hours: 3,
+      name: "SAMPLE — Gareth Pryce", email: "sample-enquiry@example.invalid",
+      message: "Sample enquiry seeded for local development.\n\nWe're after a supplier who can laser-cut 6mm stainless in batches of 200 — can you point me at anyone in South Wales?",
+    }),
+    inboxRow({
+      category: "message", kind: "advertising", hours: 26,
+      name: "SAMPLE — Hannah Okoro", email: "sample-advertising@example.invalid",
+      message: "Sample enquiry seeded for local development. What does a homepage banner cost for a three-month run?",
+    }),
+    ...(demoMembers?.[0] ? [inboxRow({
+      category: "notification", kind: "story_submitted", hours: 1,
+      name: demoMembers[0].name, memberId: demoMembers[0].id,
+      payload: demoStory?.[0] ? { story_id: demoStory[0].id } : {},
+      message: "Submitted a story for approval. (Sample notification seeded for local development.)",
+    })] : []),
+    ...(demoMembers?.[1] ? [inboxRow({
+      category: "notification", kind: "event_submitted", hours: 7,
+      name: demoMembers[1].name, memberId: demoMembers[1].id,
+      payload: demoEvent?.[0] ? { event_id: demoEvent[0].id } : {},
+      message: "Submitted an event for approval. (Sample notification seeded for local development.)",
+    })] : []),
+  ];
+  const { error: inboxErr } = await db.from("inbox_messages").insert(inboxRows);
+  if (inboxErr) throw inboxErr;
+
+  console.log(`— demo rows: ${events.length} upcoming events, ${issues.length} sent newsletter issues, ${inboxRows.length} console inbox rows (SAMPLE content, local only)`);
+}
+
+/**
+ * Both directions of a slug reconciliation are always reported, but capped:
+ * against a local subset these run to ~80 slugs each and would bury the numbers
+ * that matter. Shared by the member and event backfills.
+ */
+const sample = (slugs: string[]) =>
+  slugs.slice(0, 10).join(", ") + (slugs.length > 10 ? `, …and ${slugs.length - 10} more` : "");
+
+/**
+ * Repair fields on events that are already imported, matched by slug.
+ *
+ * The full seed uses plain inserts and expects a fresh database, so anything the
+ * shaper learns to emit *after* an import has no route to a live target. That
+ * happened twice on this migration: coordinates (present in the export all
+ * along, dropped in shaping) and `type` (the legacy `event-type` terms, never
+ * mapped). Both are now emitted, and this is how they land without a re-import.
+ *
+ * Only ever writes columns derived from the export, and only where the export
+ * has a value — a null in the seed never clears something a person set in the
+ * console. Idempotent: re-running changes nothing.
+ */
+async function backfillEvents(rows: Record<string, unknown>[]) {
+  const say = (s: string) => console.log(`${DRY_RUN ? "[dry-run] " : ""}${s}`);
+  type EventSeed = { slug: string; type: string | null; lat: number | null; lng: number | null };
+  const eventRows = rows as unknown as EventSeed[];
+  const { data: live, error } = await db.from("events").select("id, slug, type, lat, lng");
+  if (error) throw error;
+
+  const bySlug = new Map((live ?? []).map((e) => [e.slug, e]));
+  const matched = eventRows.filter((e) => bySlug.has(e.slug));
+  const missingFromTarget = eventRows.filter((e) => !bySlug.has(e.slug)).map((e) => e.slug);
+  const unknownInTarget = (live ?? []).filter((e) => !eventRows.some((r) => r.slug === e.slug)).map((e) => e.slug);
+
+  say(`— events: ${matched.length} of ${eventRows.length} extract rows matched by slug`);
+  if (missingFromTarget.length) say(`  ⚠ in the extract but NOT in the target (${missingFromTarget.length}): ${sample(missingFromTarget)}`);
+  if (unknownInTarget.length) say(`  ⚠ in the target but NOT in the extract (${unknownInTarget.length}, left untouched): ${sample(unknownInTarget)}`);
+
+  let typed = 0, located = 0, unchanged = 0;
+  for (const row of matched) {
+    const current = bySlug.get(row.slug)!;
+    const patch: Record<string, unknown> = {};
+    if (row.type != null && current.type !== row.type) patch.type = row.type;
+    if (row.lat != null && row.lng != null && (current.lat == null || current.lng == null)) {
+      patch.lat = row.lat;
+      patch.lng = row.lng;
+    }
+    if (!Object.keys(patch).length) {
+      unchanged++;
+      continue;
+    }
+    if ("type" in patch) typed++;
+    if ("lat" in patch) located++;
+    if (DRY_RUN) continue;
+    const { error: upErr } = await db.from("events").update(patch).eq("id", current.id);
+    if (upErr) throw upErr;
+  }
+  say(`— events updated: ${typed} type, ${located} coordinates (${unchanged} already correct)`);
 }
 
 async function backfillTaxonomies(
@@ -428,10 +570,6 @@ async function backfillTaxonomies(
   const matched = memberRows.filter((m) => idBySlug.has(m.slug));
   const missingFromTarget = memberRows.filter((m) => !idBySlug.has(m.slug)).map((m) => m.slug);
   const unknownInTarget = (liveMembers ?? []).filter((m) => !extractBySlug.has(m.slug)).map((m) => m.slug);
-  // Both directions are reported, but capped: against a local subset these run
-  // to ~80 slugs each and would bury the numbers that matter.
-  const sample = (slugs: string[]) =>
-    slugs.slice(0, 10).join(", ") + (slugs.length > 10 ? `, …and ${slugs.length - 10} more` : "");
   say(`— members: ${matched.length} of ${memberRows.length} extract rows matched by slug`);
   if (missingFromTarget.length) say(`  ⚠ in the extract but NOT in the target (${missingFromTarget.length}): ${sample(missingFromTarget)}`);
   if (unknownInTarget.length) say(`  ⚠ in the target but NOT in the extract (${unknownInTarget.length}, left untouched): ${sample(unknownInTarget)}`);
@@ -552,7 +690,24 @@ async function uploadMedia(
   for (const s of storyRows) if (s.cover_path) wanted.add(s.cover_path);
   for (const v of videoRows) if (v.thumbnail_path) wanted.add(v.thumbnail_path as string);
   for (const e of eventRows) if (e.cover_path) wanted.add(e.cover_path as string);
-  const uploads = manifest.filter((m) => wanted.has(m.storage_path));
+  const all = manifest.filter((m) => wanted.has(m.storage_path));
+  // Skip what is already there. A transient failure used to mean re-pushing the
+  // whole ~1 GiB to fix a single file, because every upload is an unconditional
+  // upsert. On a fresh seed the bucket was just emptied, so nothing is skipped
+  // and this costs one cheap listing; on a --media-only repair it uploads only
+  // the gaps. --force-media restores the old behaviour when a file's *contents*
+  // have changed but its path has not.
+  let uploads = all;
+  if (!FORCE_MEDIA) {
+    const present = await listAllObjects(db, "media");
+    uploads = all.filter((m) => !present.has(m.storage_path));
+    const skipped = all.length - uploads.length;
+    if (skipped) console.log(`— media: ${skipped} already present, skipping (--force-media to re-upload)`);
+  }
+  if (!uploads.length) {
+    console.log("— media: nothing to upload");
+    return;
+  }
   console.log(`— media: uploading ${uploads.length} files`);
   let done = 0, failed = 0;
   for (const batch of chunk(uploads, 8)) {
@@ -600,7 +755,7 @@ async function main() {
 
   type Cat = { kind: string; slug: string; name: string };
   type MemberRow = Record<string, unknown> & { wp_member_id: number; slug: string; category_slugs: string[] };
-  type StoryRow = Record<string, unknown> & { wp_member_id: number | null; slug: string; category_slugs: string[]; cover_path: string | null };
+  type StoryRow = Record<string, unknown> & { wp_member_id: number | null; member_wp_ids: number[]; slug: string; category_slugs: string[]; cover_path: string | null };
   type Manifest = { source: string; storage_path: string; used_by: string }[];
 
   const [catRows, memberRowsAll, storyRowsAll, videoRowsAll, eventRowsAll, pageRows, manifest, rawMembers] =
@@ -705,6 +860,12 @@ async function main() {
     return;
   }
 
+  if (EVENTS_ONLY) {
+    // eventRowsAll, not the local subset: this repairs a populated target.
+    await backfillEvents(eventRowsAll);
+    return;
+  }
+
   console.log("— media: clearing stale files from previous seeds");
   await emptyBucket();
 
@@ -798,29 +959,42 @@ async function main() {
 
   if (!NO_ADVERTS) await seedAdverts(memberRows, memberId);
 
-  console.log("— auth users (1 admin, media co member, 3 member logins on real members)");
-  const mkUser = async (email: string, role: Role, member_id: string | null, display_name: string) => {
-    const { data, error } = await db.auth.admin.createUser({ email, password: "local-dev-password", email_confirm: true });
-    if (error) throw error;
-    await db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name });
-  };
-  await mkUser("jas@smi.local", "admin", null, "Jas");
+  // These fixtures all share one password, hardcoded immediately below, and one
+  // of them is an admin. They must never exist on a live database — anyone who
+  // can read this repo could otherwise sign into the console. seedDemoRows
+  // already refuses --remote (see its first line) for the same reason; this
+  // block was missed, and a production seed duly created five known-password
+  // accounts including `jas@smi.local` with role=admin.
+  //
+  // Real member logins are provisioned by provisionMember() + sendAccountInvite()
+  // with a per-account password the member then resets — never from a seed.
+  if (REMOTE) {
+    console.log("— auth users: skipped (fixture logins are local-only)");
+  } else {
+    console.log("— auth users (1 admin, media co member, 3 member logins on real members)");
+    const mkUser = async (email: string, role: Role, member_id: string | null, display_name: string) => {
+      const { data, error } = await db.auth.admin.createUser({ email, password: "local-dev-password", email_confirm: true });
+      if (error) throw error;
+      await db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name });
+    };
+    await mkUser("jas@smi.local", "admin", null, "Jas");
 
-  // Media Co isn't an SMI trade member — a member row with status "draft"
-  // (the default) gives it a member_id for the dashboard's draft-only story
-  // flow without it ever surfacing in the public directory/search/sitemap,
-  // which only ever query status "active"/"grace".
-  const { data: mediaMember, error: mediaMemberErr } = await db
-    .from("members")
-    .insert({ slug: "media-co", name: "Media Co", contact_email: "media@smi.local" })
-    .select("id")
-    .single();
-  if (mediaMemberErr) throw mediaMemberErr;
-  await mkUser("media@smi.local", "member", mediaMember.id, "Media Co");
-  const activeSeed = memberRows.filter((m) => m.status === "active");
-  for (let i = 0; i < Math.min(3, activeSeed.length); i++) {
-    const m = activeSeed[i];
-    await mkUser(`member${i + 1}@smi.local`, "member", memberId(m.wp_member_id), String(m.name));
+    // Media Co isn't an SMI trade member — a member row with status "draft"
+    // (the default) gives it a member_id for the dashboard's draft-only story
+    // flow without it ever surfacing in the public directory/search/sitemap,
+    // which only ever query status "active"/"grace".
+    const { data: mediaMember, error: mediaMemberErr } = await db
+      .from("members")
+      .insert({ slug: "media-co", name: "Media Co", contact_email: "media@smi.local" })
+      .select("id")
+      .single();
+    if (mediaMemberErr) throw mediaMemberErr;
+    await mkUser("media@smi.local", "member", mediaMember.id, "Media Co");
+    const activeSeed = memberRows.filter((m) => m.status === "active");
+    for (let i = 0; i < Math.min(3, activeSeed.length); i++) {
+      const m = activeSeed[i];
+      await mkUser(`member${i + 1}@smi.local`, "member", memberId(m.wp_member_id), String(m.name));
+    }
   }
 
   if (SKIP_MEDIA) {
@@ -830,8 +1004,13 @@ async function main() {
   }
 
   console.log(`— stories (${storyRows.length})`);
+  let storyMemberLinks = 0;
   for (const rows of chunk(storyRows, 100)) {
-    const insert = rows.map(({ wp_member_id, category_slugs, ...r }) => ({
+    // `member_wp_ids` is a side-channel key like `category_slugs` — it must be
+    // destructured out, not spread, or PostgREST rejects the row on a column
+    // that doesn't exist. It feeds story_members (20260924000001); member_id
+    // keeps the primary member so existing single-member reads still work.
+    const insert = rows.map(({ wp_member_id, category_slugs, member_wp_ids, ...r }) => ({
       ...r,
       member_id: memberId(wp_member_id),
       industry_id: industryOfWp(wp_member_id),
@@ -849,7 +1028,24 @@ async function main() {
       const { error: jErr } = await db.from("story_categories").insert(junctions);
       if (jErr) throw jErr;
     }
+    // The story↔member graph. A story can name up to 13 members, so this is
+    // where most of the relationship lives — member_id holds only the first.
+    const memberLinks = data!.flatMap((st) => {
+      const src = rows.find((r) => r.slug === st.slug)!;
+      return (src.member_wp_ids ?? [])
+        .map((wp) => memberId(wp))
+        .filter((id): id is string => !!id)
+        .map((member_id) => ({ story_id: st.id, member_id }));
+    });
+    if (memberLinks.length) {
+      const { error: mErr } = await db
+        .from("story_members")
+        .upsert(memberLinks, { onConflict: "story_id,member_id", ignoreDuplicates: true });
+      if (mErr) throw mErr;
+      storyMemberLinks += memberLinks.length;
+    }
   }
+  console.log(`— story_members: ${storyMemberLinks} links`);
 
   console.log(`— videos (${videoRows.length}) + events (${eventRows.length})`);
   // videos.slug is unique and not null, and the export carries no slug — the old
@@ -875,9 +1071,13 @@ async function main() {
     const { error } = await db.from("videos").insert(insert);
     if (error) throw error;
   }
-  // Attach authored coordinates so the /event map has pins — the export has
-  // none and the app only geocodes on save (see lib/event-coords.ts).
+  // The export DOES carry coordinates — 50 of the 53 events have real lat/lng
+  // in their ACF Google Map, they were just dropped during shaping (the values
+  // are PHP doubles, so a string-shaped parse found nothing). Extract data wins;
+  // AUTHORED_EVENT_COORDS now only fills the handful it can't supply, which is
+  // what it was written for.
   const eventInsert = eventRows.map((e) => {
+    if (e.lat != null && e.lng != null) return e;
     const coords = AUTHORED_EVENT_COORDS[String(e.slug)];
     return coords ? { ...e, lat: coords.lat, lng: coords.lng } : e;
   });

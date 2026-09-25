@@ -23,6 +23,7 @@ import {
   EMAIL_DEFAULTS,
   GENERIC_KIND,
   NEWSLETTER_SHELL_KIND,
+  REPLY_KIND,
   SHELL_KIND,
   type TemplateDefault,
   ctaMarkup,
@@ -301,6 +302,74 @@ export function renderNotification(payload: NotificationPayload, overrides?: Ema
   return assemble(kind, varsFor(kind, payload), ctaFor(kind, payload, base), base, overrides);
 }
 
+/* ---------- a reply to an inbox enquiry ---------- */
+
+export type ReplyVars = {
+  /** Who it is going to. Blank is fine — the greeting falls back to "there". */
+  name?: string | null;
+  /** The subject line as typed on the reply form; it is what lands in their inbox. */
+  subject: string;
+  /** What was typed in the reply box, verbatim. Free text, never markup. */
+  body: string;
+};
+
+/**
+ * A sentinel for "this is a line break the sender typed", carried through the
+ * render and swapped for real markup at the end.
+ *
+ * It exists because the two requirements pull against each other. The body is
+ * free text, so it has to be escaped — `assemble` does that by *not* listing
+ * `body` as a raw token, which is the only place the guarantee can live and
+ * cannot be lost by a later caller. But escaping turns any `<br>` we insert
+ * beforehand into the literal characters `&lt;br&gt;`, so the breaks have to be
+ * put in *after* the escaping, by which point the sender's text and the
+ * template's authored markup are one string and can no longer be told apart.
+ *
+ * A NUL can be told apart: `escapeHtml` leaves it alone, it survives
+ * interpolation untouched, and no template author or `<textarea>` produces one
+ * — and the one stripped below makes that a guarantee rather than a hope. So
+ * every NUL in the finished email is one this function put there, and nothing
+ * else in the message can be mistaken for a break.
+ */
+const LINE_BREAK = "\u0000";
+
+const clean = (value: string | null | undefined) => String(value ?? "").replace(/\0/g, "");
+
+/**
+ * Jas's typed reply to an inbox enquiry, inside the same branded shell as every
+ * other email the site sends — GAPS B3.4, which this one email was the last
+ * holdout from.
+ *
+ * Deliberately **no CTA**: a reply has nothing to press, and the answer is the
+ * email itself. `assemble` renders no button when the template has no
+ * `ctaLabel`, and this template has none.
+ */
+export function renderReply(vars: ReplyVars, overrides?: EmailTemplateMap): RenderedEmail {
+  const base = siteUrl();
+  const typed = clean(vars.body).replace(/\r\n?/g, "\n");
+
+  const mail = assemble(
+    REPLY_KIND,
+    {
+      name: clean(vars.name).trim() || "there",
+      subject: clean(vars.subject).trim(),
+      body: typed.split("\n").join(LINE_BREAK),
+    },
+    // Nothing to press, so the href is never used. It matches what
+    // `ctaDestinationFor` reports, so that if somebody does author a button
+    // label into this template it goes somewhere real rather than to "".
+    { href: `${base}/dashboard`, specific: true },
+    base,
+    overrides,
+  );
+
+  return {
+    subject: mail.subject,
+    text: collapseBlankLines(mail.text.split(LINE_BREAK).join("\n")),
+    html: mail.html.split(LINE_BREAK).join("<br>"),
+  };
+}
+
 /* ---------- what the console needs ---------- */
 
 /** Every template an admin can edit, in the order the list page shows them. */
@@ -383,6 +452,14 @@ export function renderPreview(kind: string, overrides?: EmailTemplateMap): Rende
     // real notification through it — which is also the only way to see whether
     // an edit has broken every member email at once.
     return renderNotification({ kind: "page_live" }, overrides);
+  }
+
+  if (key === REPLY_KIND) {
+    // Through the real function rather than straight to `assemble`, so the
+    // preview shows what an actual reply looks like — the sample body's line
+    // breaks included, which the generic path would flatten into one paragraph.
+    const sample = sampleVarsFor(key);
+    return renderReply({ name: sample.name, subject: sample.subject, body: sample.body }, overrides);
   }
 
   if (family === "newsletter") {

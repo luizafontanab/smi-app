@@ -77,9 +77,18 @@ describe("createAccount", () => {
       .rejects.toThrow("NEXT_REDIRECT:/dashboard/pay");
 
     expect(provisionMember).toHaveBeenCalledWith({ email: "founder@acme.example", password: "correcthorse", company: "Acme Ltd" });
-    // The funnel takes a template kind now, not a subject string: the wording
-    // lives in /console/email-templates where it can be edited.
-    expect(notifyAdminFunnel).toHaveBeenCalledWith(expect.objectContaining({ kind: "admin_new_signup", name: "Acme Ltd" }));
+    // Two separate axes (fix-list 71): `kind`/`category` say what the console
+    // inbox row IS, and `emailKind` names the editable template the email to
+    // Jas is rendered from. A signup is a notification — nothing to reply to —
+    // and it carries the member id so the row can link to their record.
+    expect(notifyAdminFunnel).toHaveBeenCalledWith(expect.objectContaining({
+      category: "notification",
+      kind: "signup_started",
+      emailKind: "admin_new_signup",
+      name: "Acme Ltd",
+      memberId: "m1",
+      payload: { member_id: "m1" },
+    }));
     expect(enqueue).toHaveBeenCalledWith("notify_member", { member_id: "m1", kind: "welcome" });
     expect(signIn).toHaveBeenCalledWith({ email: "founder@acme.example", password: "correcthorse" });
   });

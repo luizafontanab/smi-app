@@ -2,36 +2,51 @@
 
 ## Branding & content
 
-1. **Advertise submenu** — should this live under *Content* or under *Members*?
-2. **Logo colour vs. brand guide** — the site's logo colour and the "Pantone® Orange 021" specified in the branding guide don't match. Which one takes precedence?
-3. **Phone number format** — should the field accept extensions, or only a standard phone number?
-4. **Ad placement** — which pages should *not* carry adverts?
-5. **News sorting** - should we stick with "topics" or use "categories"?
 6. **Taking published content back down** — the console can now return a published story, video, event or piece of equipment to draft (fix-list 47). It does this silently: the member is not emailed and gets no in-app notification, because there is no wording for it and inventing one felt like your call. Should a member be told when their published content is taken down, and if so what should it say — does it differ between "we're editing this, it'll be back" and "this is coming down for good"?
 
-7. **Member directory — the landing view is now a word map.** `/member` used to open on a grid of logo-led tiles. It now opens on a "Cloud" view: every matching member's **name** scattered across the page, featured members large and orange, everyone else small and black, with the member's logo appearing on hover (first tap on a phone). The tile list is still there on the **List** toggle, and the geographic **Map** is unchanged, so nothing has been removed — but the first thing a visitor sees is names, not logos. This is a deliberate change we were asked for, and it cuts against two things you told us on 19 Aug: that the directory should be "logo-led" and "put the client's logo first" (`USE-CASES.md` V7), which is what GAPS A6.5 was closed on. **Is the word map the right default, or should `/member` open on the logo-led List with Cloud as the opt-in view?** It is a one-line change either way.
+
 
 8. **Your own emails — plain text, or branded like the members'?** You can now edit the wording of every email the site sends, including your own: the daily "N items waiting for you" digest and the four alerts (new enquiry, new signup, member message, change request) — fix-list 63. All five have always arrived as **plain text**, while member emails go out as branded HTML with the SMI header and footer. Templating them made it trivial to switch yours over too, and we deliberately didn't: that's your inbox, and plain text is arguably the better format for something you skim on a phone and act on. **Do you want your five kept as plain text, or rendered like the member emails?** If you want them branded, note they'd need their own wrapper rather than reusing the member one — its footer says "you're receiving this because you have a member account", which isn't true of you. Either way it's small; we just didn't want to change how your morning looks without asking.
 
-9. **Terms of use, membership terms and advertising terms — six blanks to fill.** The site had no terms at all until 21 Sep (fix-list 69). Three pages now exist at `/pages/terms`, `/pages/membership-terms` and `/pages/advertising-terms`, linked from the footer. Every operative clause was written against what the platform actually does and checked in the code — the content licence, equal advert rotation, how impressions are counted, and what happens to a company page when membership ends. Six things could not be written without you, and each is marked **[SMI TO CONFIRM]** in the live page text so they are impossible to miss:
-   - **Is £40/month inclusive of VAT, or plus VAT?** The figure also appears in the FAQ and at the point of sale, so it has to read the same in all three.
-   - **Registered company name, company number and registered office address.** Needed in the terms and, when it is written, as the data controller in a privacy policy.
-   - **Refunds on a mid-period cancellation** — is a pro-rata refund ever offered, and on what grounds? Today the platform offers none; cancelling simply runs to the end of the paid period.
-   - **The artwork deadline** for advertising. The terms currently say "before your run starts" because nothing in the platform enforces a deadline; it needs a number you are willing to hold advertisers to.
-   - **The advertising cancellation window**, and whether any part of a cancelled run is refundable.
-   - **Governing law** — drafted as England and Wales; please confirm.
 
-   Two more things worth knowing. **This is not legal advice and I am not a solicitor.** The liability, indemnity and data-protection clauses are deliberately thin and a solicitor should settle them — give them these pages, because the SMI-specific behaviour is the part a precedent cannot supply. And **the Policies page still needs work that these terms do not cover**: it calls itself the Privacy Policy while containing only a cookie policy, and it claims the site uses Google Analytics, which it does not. Fixing that properly means writing a real privacy policy, which needs your answers on data retention and ICO registration first.
 
-10. **Data retention, and are you registered with the ICO?** Blocking a proper privacy policy. How long should we keep analytics rows, contact records, and the data of members who have cancelled? "As long as necessary" is not an answer a privacy policy can use — it needs real periods. And if SMI is registered with the Information Commissioner's Office, the policy should state the registration number.
+12. **Who does a reply to an enquiry come from?** The console can now reply to a
+    contact or advertising enquiry properly — the reply is stored against the message,
+    shows as a thread, survives a failed send, and goes out branded like every other
+    email instead of as bare plain text (fix-list 71b). It sends from `EMAIL_FROM` with
+    `EMAIL_REPLY_TO` as the return path, which is the only thing the platform knows.
+    **Should a reply instead come from a named person's address** so it reads as being
+    from you rather than from the website? That is an account and DNS decision
+    (HUMAN-TODO §1.5), not a code one, which is why we have not guessed.
 
-11. **"Automation / Robotics" is now both a Service and an Industry — should it stay in both?** The industries refactor went live on production on 22 Sep (HUMAN-TODO §12.1/12.2). Of the 69 terms in the Services list below, one — **Automation / Robotics** (item 3) — is also one of the 10 industries, as **Automation & Robotics**. Same slug, two vocabularies, two slightly different spellings. So a visitor on `/find-a-member` can now filter by it as a *service* **and** as an *industry*, and 28 of the 123 members carry it as a service tag. Nothing is broken and the console is unaffected — this is a question about the vocabulary, not a bug. **Should it be removed from the Services list (since it is an industry now), kept in both, or renamed so the two read as deliberately different things?** Worth noting the migration's own author took the first view: it deliberately refuses to copy any Services term whose slug matches an industry, and the backfill script then puts it back with no such filter, so the two halves of the same change disagree. Whichever way you answer, the two spellings should at least be made to match. Related to the note below about there being no screen for editing this vocabulary — today changing it means a migration or a seed run.
+13. **Archiving a member — three consequences you should sign off.** The console can now
+    archive a member (fix-list 72): their page becomes admin-only, their byline and the
+    link back to them stop appearing on content, and the content itself survives
+    untouched. Reversible. Three things fall out of it that are judgement calls:
+    - **Does an archived member still count as a member?** There are 123 on production.
+      Archived ones are excluded from the public directory and the map, but they are
+      still `active` for billing unless you also lapse them, so they still count in the
+      console's member total and in the revenue figure. Should archiving imply anything
+      about billing, or are the two deliberately independent (which is how it is built)?
+    - **A paid placement now stops rendering if its member is archived or lapsed.**
+      Previously a Featured Member card kept showing for a lapsed member and linked to a
+      page that 404s — a dead link on the homepage. It now renders nothing rather than
+      linking nowhere. But if someone has paid for a month and lapses in week three,
+      **should their placement run out its paid term or stop with the membership?** We
+      chose "stop", because the card is the member. Say the word and it is a one-line
+      change.
+    - **Should a lapsed member's contact links keep working?** Separate from archiving
+      and pre-existing: `/go/<member>` forwards clicks to a member's phone, website and
+      email from any old link or cached page, with no status check at all — so a lapsed
+      member, whose page already 404s, still receives forwarded enquiries. We fixed the
+      archived case and deliberately left lapsed alone, because "does a lapsed member
+      keep getting leads" is a commercial question rather than a bug.
 
-*Note (13 Sep): a member can now see their own published content in the member area and ask for a change to it (fix-list 51), so they will notice when something disappears. That makes the question above more pressing than it was.*
-
-*Note (13-14 Sep): the Services list below is now picked from by **both** members (`/dashboard/profile`) and Jas (`/console/members/[id]`) — fix-list 43 and 52. So a wrong or duplicated term now gets **used**, not just displayed, which makes settling this list more urgent than the others.*
-
-*Note (14 Sep): assigning services to a member is done (GO-LIVE §3.2, ticked). What still does not exist is a screen for editing the **vocabulary itself** — adding, renaming or removing a service — the way `/console/industries` and `/console/categories` allow for theirs. Until that is built, changing this list means a migration or a seed run, so it is worth getting right once rather than iterating.*
+14. **Should an archived member still be tagged in social posts?** When a story or video
+    is published, the auto-post tags the member's own X/LinkedIn handles. Archiving hides
+    them everywhere on the site, but it does not stop that off-site tag — and we left it
+    that way, because a handle mention on someone else's platform is not obviously the
+    same thing as a link on ours. If "hidden" should mean hidden there too, it is one line.
 
 ## Data validation
 
@@ -129,10 +144,32 @@ Pulled directly from the live "Services" dropdown on `sheetmetalindustries.com/f
 export and the original database dump — the only member taxonomies there are
 `best-service` (the 69-term Services list above) and `best-level` (the 4-option
 legacy Sector field). There is no `industry` taxonomy and no ACF field, so
-whatever drives the live industry bar lives outside the database. Until Jas
+~~whatever drives the live industry bar lives outside the database~~. Until Jas
 confirms, dev seeds derive each member's industry from their Services tags
 (`scripts/lib/industry-map.ts`, ~93% resolve). Validating this is item 1.1 in
 [`GO-LIVE.md`](GO-LIVE.md).*
+
+*Correction (24 Sep): there is no live industry bar. Searched the deployed
+`Sprout` theme, the git checkout and all 42 ACF field groups for any of the ten
+slugs — zero hits in any PHP, Twig, JS or JSON. The only member taxonomies
+registered anywhere are `best-service` and `best-level`
+(`classes/Best/Setup.php:219-248`); `/find-a-member` filters on exactly those
+two, `/news` filters on `post_tag`, and `sheetmetalindustries.com/tag/laser-cutting/`
+returns 404. Of the ten slugs only `automation-robotics` exists as a real term.*
+
+***So the 10 Industries are a new-product invention, not a legacy artefact.***
+*There is nothing to migrate, nothing to observe on the live site, and no legacy
+rule to recover — which means the assignment is a product decision, not a data
+question, and `industry-map.ts` is the only thing that will ever produce one.
+Two questions for Jas follow from that:*
+
+1. *Is the derived industry right for each member? A review sheet (member,
+   derived industry, the Services tags it came from) is the fastest way to
+   confirm or correct 123 rows.*
+2. *Stories need an industry too, and inheriting from a linked member covers only
+   ~24% of the 1,992 even after the member-link fix. The plan is to map the ~35
+   news Topics onto the 10 Industries — a second inferred mapping on top of the
+   first, so it needs Jas's eyes before launch rather than after.*
 
 *Note (10 Sep): these 10 are now their own `industries` table, inserted by
 migration `20260909000002` and editable at `/console/industries` — they used to
@@ -181,5 +218,27 @@ Pulled directly from the "Topics" dropdown on `sheetmetalindustries.com/news/`:
 33. Tube Bending and Pipe Fabrication
 34. Welding / Joining / Fastening
 35. Work Holding
+
+### Member logins — 2,517 accounts whose company no longer exists
+
+*Note (24 Sep): blocking the account migration. The old site has **2,639 user
+accounts**, 2,634 of them with the `member-owner` role, and every one carries a
+`member_id` pointing at a member company. But **only 117 of those still resolve
+to a real member post** — the other **2,517 point at companies that have been
+hard-deleted from WordPress**. There are no trash rows and no tombstones, so the
+dump cannot say whether that was deliberate housekeeping or something lost in a
+past migration.*
+
+*What this means practically: the genuine login surface is **117 accounts**, not
+2,634 — small enough to migrate and eyeball before any invitation is sent. All
+2,639 email addresses are distinct, so nothing needs de-duplicating. WordPress
+passwords are bcrypt and cannot move to Supabase Auth in any case, so every
+migrated member gets a password-reset invitation rather than a carried-over
+password.*
+
+**Question for Jas: were those 2,517 companies removed on purpose?** *Those
+people can still log in to the old site today and own nothing. Until this is
+answered they get no account on the new platform — inviting 2,517 people who are
+not members would be far worse than inviting none.*
 
 

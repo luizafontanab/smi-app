@@ -46,7 +46,12 @@ export async function saveStory(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const db = serviceDb();
   const title = String(formData.get("title") ?? "").trim();
-  if (!title) return;
+  // A bare `return` here re-rendered the editor as if nothing had been clicked
+  // (fix list 73). The field is `required` in the form, so this is the
+  // direct-POST path — it still deserves a reason rather than silence.
+  if (!title) {
+    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent("Give the story a title before saving.")}`);
+  }
 
   let cover_path: string | null = null;
   try {
@@ -93,7 +98,7 @@ export async function saveStory(formData: FormData) {
     await db.from("story_categories").insert(catIds.map((category_id) => ({ story_id: storyId, category_id })));
   }
   revalidatePath("/console/stories");
-  redirect(`/console/stories/${storyId}`);
+  redirect(`/console/stories/${storyId}?saved=1`);
 }
 
 export async function scheduleStory(formData: FormData) {
@@ -218,7 +223,10 @@ export async function saveVideo(formData: FormData) {
   const db = serviceDb();
   const title = String(formData.get("title") ?? "").trim();
   const url = String(formData.get("url") ?? "").trim();
-  if (!title || !url) return;
+  // same reasoning as saveStory: say why rather than silently re-rendering.
+  if (!title || !url) {
+    redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent("A title and a video link are both required.")}`);
+  }
 
   let thumbnail_path: string | null = null;
   try {
@@ -251,7 +259,7 @@ export async function saveVideo(formData: FormData) {
     videoId = data!.id;
   }
   revalidatePath("/console/videos");
-  redirect(`/console/videos/${videoId}`);
+  redirect(`/console/videos/${videoId}?saved=1`);
 }
 
 export async function scheduleVideo(formData: FormData) {
@@ -428,7 +436,10 @@ export async function saveEvent(formData: FormData) {
   const db = serviceDb();
   const title = String(formData.get("title") ?? "").trim();
   const starts_on = String(formData.get("starts_on") ?? "");
-  if (!title || !starts_on) return;
+  // same reasoning as saveStory: say why rather than silently re-rendering.
+  if (!title || !starts_on) {
+    redirect(`/console/events/${id || "new"}?error=${encodeURIComponent("A title and a start date are both required.")}`);
+  }
 
   let cover_path: string | null = null;
   try {
@@ -492,7 +503,7 @@ export async function saveEvent(formData: FormData) {
     eventId = data!.id;
   }
   revalidatePath("/console/events");
-  redirect(`/console/events/${eventId}`);
+  redirect(`/console/events/${eventId}?saved=1`);
 }
 
 export async function decideEvent(formData: FormData) {
@@ -663,7 +674,11 @@ export async function saveMachine(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const memberId = String(formData.get("member_id") ?? "");
-  if (!name || !memberId) return; // seller attribution is required on the public page
+  // seller attribution is required on the public page — same reasoning as
+  // saveStory: say why rather than silently re-rendering.
+  if (!name || !memberId) {
+    redirect(`/console/machines/${id || "new"}?error=${encodeURIComponent("A machine name and a seller are both required.")}`);
+  }
   const db = serviceDb();
   const image = await uploadImage(formData.get("image") as File | null, "machines");
   const values = {
@@ -686,7 +701,7 @@ export async function saveMachine(formData: FormData) {
     machineId = data!.id;
   }
   revalidatePath("/console/machines");
-  redirect(`/console/machines/${machineId}`);
+  redirect(`/console/machines/${machineId}?saved=1`);
 }
 
 export async function decideMachine(formData: FormData) {
@@ -809,6 +824,11 @@ export async function saveBooking(formData: FormData) {
     if (product?.rate_pennies) await raiseInvoice(created.advert.member_id, product.rate_pennies, "ADV");
   }
   revalidatePath("/console/adverts");
+  // A booking that worked used to look exactly like one that was rejected —
+  // the page re-rendered unchanged either way. The failure path above has
+  // redirected with ?error= for a while; this is its other half (fix-list 73's
+  // convention, applied to the adverts index). Must stay last: redirect throws.
+  redirect("/console/adverts?saved=1");
 }
 
 /**
@@ -1231,7 +1251,9 @@ export async function saveSlotCap(formData: FormData) {
   const key = String(formData.get("key"));
   const cap = Math.max(0, Number(formData.get("cap") ?? 0));
   await serviceDb().from("advert_slots").update({ cap }).eq("key", key);
-  revalidatePath("/console/adverts");
+  // The capacity grid moved off the bookings index onto the inventory page
+  // (fix-list 74) — a position and a booking are different things.
+  revalidatePath("/console/adverts/spots");
 }
 
 /** Turn a member's expression of interest into a draft run for Jas to fill in. */
@@ -1267,11 +1289,13 @@ export async function saveMediaPack(formData: FormData) {
   try {
     path = await uploadDocument(formData.get("pack") as File | null, "media-pack");
   } catch (e) {
-    redirect(`/console/adverts/spots?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
+    redirect(`/console/advertising?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
   }
   if (!path) return;
   await serviceDb().from("settings").upsert({ key: "media_pack", value: { path, updated_at: new Date().toISOString() } });
-  revalidatePath("/console/adverts/spots");
+  // The media pack is website content, not inventory, so it now lives under
+  // Site Config (fix-list 74). The public /advertising revalidate stays.
+  revalidatePath("/console/advertising");
   revalidatePath("/advertising");
 }
 
@@ -1300,10 +1324,11 @@ export async function saveAdvertFormats(formData: FormData) {
       }),
     );
   } catch (e) {
-    redirect(`/console/adverts/spots?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
+    redirect(`/console/advertising?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
   }
   await db.from("settings").upsert({ key: "advert_formats", value });
-  revalidatePath("/console/adverts/spots");
+  // As above — the A–F cards are the public advertising page's own copy.
+  revalidatePath("/console/advertising");
   revalidatePath("/advertising");
 }
 
@@ -1800,22 +1825,172 @@ export async function setMemberStatus(formData: FormData) {
   revalidatePath("/console");
 }
 
+/* ---------- members: archive and delete (fix list 72) ---------- */
+
+/**
+ * Every cached surface an archive, unarchive or delete changes. Archiving is
+ * enforced in the database (`public_read_active_members`, 20260923000002), so
+ * the public directory and the member's own page both go stale the moment the
+ * flag flips — revalidating only the console would leave the site showing a
+ * member Jas has just hidden.
+ *
+ * Not exported: this file is "use server", where every export must be an async
+ * server action.
+ */
+function revalidateMemberSurfaces(id: string, slug: string | null) {
+  revalidatePath("/console/members");
+  revalidatePath(`/console/members/${id}`);
+  revalidatePath("/console");
+  revalidatePath("/member"); // the public directory — "find a member"
+  if (slug) revalidatePath(`/member/${slug}`);
+}
+
+/**
+ * Hide a member from the public site without losing anything they are tagged
+ * on. Reversible by design — see unarchiveMember — and orthogonal to `status`,
+ * which keeps describing where they sit in the billing lifecycle.
+ */
+export async function archiveMember(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const db = serviceDb();
+  const { data: member } = await db.from("members").select("slug").eq("id", id).maybeSingle();
+  if (!member) return;
+
+  const { error } = await db.from("members").update({ archived_at: new Date().toISOString() }).eq("id", id);
+  if (error) return memberFail(id, error.message);
+  revalidateMemberSurfaces(id, member.slug);
+  redirect(`/console/members/${id}?saved=1`);
+}
+
+/** The way back out. Archiving must never be a one-way door. */
+export async function unarchiveMember(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const db = serviceDb();
+  const { data: member } = await db.from("members").select("slug").eq("id", id).maybeSingle();
+  if (!member) return;
+
+  const { error } = await db.from("members").update({ archived_at: null }).eq("id", id);
+  if (error) return memberFail(id, error.message);
+  revalidateMemberSurfaces(id, member.slug);
+  redirect(`/console/members/${id}?saved=1`);
+}
+
+/**
+ * Permanently remove a member — and REFUSE to when that would take a commercial
+ * record with it.
+ *
+ * WHY THE COUNT CHECK IS THE WHOLE POINT. Nothing in the schema stops this
+ * delete: every FK onto `members` is ON DELETE CASCADE or SET NULL, none is
+ * RESTRICT. So `delete from members` succeeds silently while taking `invoices`,
+ * `placements`, `adverts`, `bundles`, `visibility_requests`, `notifications`,
+ * `engagement_audit`, `member_services`, `member_membership_types` and
+ * `prospect_marks` with it. The first four are the financial record and live
+ * booked advertising; losing those is not recoverable from this app.
+ *
+ * Hence: count them first and refuse by name. Deliberately a refusal and not a
+ * silent fallback to archiving (the shape deleteAdvertProduct uses for its own
+ * far cheaper rows) — someone who pressed Delete and got an archive would walk
+ * away believing the record was gone.
+ *
+ * A permitted delete is for the spam signup and the typo'd account, and it has
+ * to clean up what the cascade cannot reach: storage objects have no FK, and
+ * `profiles.member_id` is ON DELETE SET NULL, so the login would otherwise
+ * outlive the member as a member-role account attached to nothing.
+ */
+export async function deleteMember(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  // Same gate as deleteIndustry/deleteResource: the confirmation is part of the
+  // request, so a direct POST cannot skip the dialog.
+  if (formData.get("confirm") !== "1") {
+    return memberFail(id, "Deleting a member is permanent — confirm in the dialog to go ahead.");
+  }
+
+  const db = serviceDb();
+  const { data: member } = await db
+    .from("members")
+    .select("slug, name, logo_path, hero_path")
+    .eq("id", id)
+    .maybeSingle();
+  if (!member) redirect(`/console/members?error=${encodeURIComponent("That member no longer exists.")}`);
+
+  // head:true — these are counts, never rows; four separate calls rather than a
+  // loop over table names so each stays typed against its own table.
+  const [invoices, placements, adverts, bundles] = await Promise.all([
+    db.from("invoices").select("*", { count: "exact", head: true }).eq("member_id", id),
+    db.from("placements").select("*", { count: "exact", head: true }).eq("member_id", id),
+    db.from("adverts").select("*", { count: "exact", head: true }).eq("member_id", id),
+    db.from("bundles").select("*", { count: "exact", head: true }).eq("member_id", id),
+  ]);
+  const blocking = [
+    { label: "invoice", n: invoices.count ?? 0 },
+    { label: "featured placement", n: placements.count ?? 0 },
+    { label: "advert", n: adverts.count ?? 0 },
+    { label: "bundle", n: bundles.count ?? 0 },
+  ].filter((r) => r.n > 0);
+  if (blocking.length) {
+    const found = blocking.map((r) => `${r.n} ${r.label}${r.n === 1 ? "" : "s"}`).join(", ");
+    return memberFail(
+      id,
+      `This member has ${found} on record — deleting would destroy that history too. Archive them instead: the page comes off the public site and everything stays.`,
+    );
+  }
+
+  // Read the logins BEFORE the delete: profiles.member_id is ON DELETE SET
+  // NULL, so afterwards there is nothing left linking the two.
+  const { data: profiles } = await db.from("profiles").select("user_id").eq("member_id", id);
+
+  const { error } = await db.from("members").delete().eq("id", id);
+  if (error) {
+    return memberFail(
+      id,
+      error.code === "23503"
+        ? "Something else still references this member — archive them instead."
+        : error.message,
+    );
+  }
+
+  // Storage objects are outside the database, so the cascade never touched them.
+  await removeMedia(member.logo_path);
+  await removeMedia(member.hero_path);
+
+  for (const profile of profiles ?? []) {
+    const { error: authError } = await db.auth.admin.deleteUser(profile.user_id);
+    // Best-effort: the member row is already gone, and failing the action here
+    // would tell Jas the delete did not happen when most of it did.
+    if (authError) console.error(`[console] could not delete auth user ${profile.user_id}:`, authError.message);
+  }
+
+  revalidateMemberSurfaces(id, member.slug);
+  redirect(`/console/members?deleted=${encodeURIComponent(member.name)}`);
+}
+
 /* ---------- inbox ---------- */
 
 /**
- * Clear the whole unread queue (fix list). Scoped to the kind currently being
- * filtered on, so "mark all read" while looking at Advertising does not also
- * silently clear the Contact messages the operator has not seen — the button
- * only ever clears what is on screen.
+ * Clear the whole unread queue (fix list). Scoped to what is on screen — the
+ * kind currently filtered on, and since fix-list 71 the category too.
+ *
+ * The category scope is the important half: without it, "mark all read" while
+ * looking at Messages would also silently clear every notification, which is
+ * the one thing a split feed must never do. The button only ever clears what
+ * the operator can see.
  */
 export async function markAllInboxRead(formData: FormData) {
   await requireConsole();
   const kind = String(formData.get("kind") ?? "");
+  const category = String(formData.get("category") ?? "");
   let q = serviceDb().from("inbox_messages").update({ read: true }).eq("read", false);
+  if (category) q = q.eq("category", category);
   if (kind) q = q.eq("kind", kind);
   await q;
   revalidatePath("/console");
-  revalidatePath("/console/messages");
+  revalidatePath("/console/notifications");
 }
 
 export async function markInboxRead(formData: FormData) {
@@ -1824,35 +1999,85 @@ export async function markInboxRead(formData: FormData) {
   const read = formData.get("read") !== "0";
   await serviceDb().from("inbox_messages").update({ read }).eq("id", String(formData.get("id")));
   revalidatePath("/console");
-  revalidatePath("/console/messages");
-  // Optional bounce — the message detail page marks itself read on render, so
-  // its "mark unread" must land back on the list or it would undo itself.
+  revalidatePath("/console/notifications");
+  // Optional bounce. Two callers use it: the detail page marks itself read on
+  // render, so its "mark unread" must land back on the list or it would undo
+  // itself; and a notification row's "Open it" marks read and then jumps to the
+  // thing the notification is about, in one action.
   const next = safeInternalPath(formData.get("next"));
   if (next) redirect(next);
 }
 
-/** Admin reply to an inbox enquiry, sent via the same adapter as every other outgoing mail. */
+/**
+ * Admin reply to an inbox enquiry (fix-list 71b, GAPS B3.4).
+ *
+ * Three things changed from the fire-and-forget version:
+ *
+ *  1. The reply row is written BEFORE the send, then stamped with `sent_at` or
+ *     `delivery_error`. A provider rejection used to redirect with an error and
+ *     destroy whatever had just been typed — the thread now keeps it, and the
+ *     detail page shows why it did not go.
+ *  2. The wording goes through `renderReply`, so it carries the member shell and
+ *     whatever Jas has edited the `admin_reply` template to say. The raw form
+ *     fields are no longer what gets sent.
+ *  3. Rows with nobody on the other end are refused outright rather than
+ *     emailing the empty string. The page hides the form on those, but the
+ *     action is reachable by direct POST and must not rely on that.
+ */
 export async function replyToInboxMessage(formData: FormData) {
-  await requireConsole();
+  const user = await requireConsole();
   const id = String(formData.get("id"));
   const subject = String(formData.get("subject") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
-  if (!subject || !body) redirect(`/console/messages/${id}?error=${encodeURIComponent("Subject and message are required.")}`);
+  const back = `/console/notifications/${id}`;
+  if (!subject || !body) redirect(`${back}?error=${encodeURIComponent("Subject and message are required.")}`);
 
   const db = serviceDb();
-  const { data: m } = await db.from("inbox_messages").select("email").eq("id", id).single();
-  if (!m) redirect(`/console/messages/${id}?error=${encodeURIComponent("Message not found.")}`);
-
-  try {
-    const { getEmailSender } = await import("@/lib/adapters/email");
-    await getEmailSender().send({ to: m.email, subject, text: body });
-  } catch (e) {
-    console.error("[console] inbox reply failed:", e);
-    redirect(`/console/messages/${id}?error=${encodeURIComponent("Could not send — the mail provider rejected it. Try again.")}`);
+  // `name` rides along for the reply's greeting; `category`/`email` decide
+  // whether a reply is a coherent thing to send at all.
+  const { data: m } = await db.from("inbox_messages").select("name, email, category").eq("id", id).single();
+  if (!m) redirect(`${back}?error=${encodeURIComponent("Message not found.")}`);
+  if (m.category !== "message") {
+    redirect(`${back}?error=${encodeURIComponent("This is a notification, not a message — there is nobody to reply to.")}`);
+  }
+  if (!m.email) {
+    redirect(`${back}?error=${encodeURIComponent("No email address came with this message, so there is nobody to reply to.")}`);
   }
 
-  revalidatePath(`/console/messages/${id}`);
-  redirect(`/console/messages/${id}?replied=1`);
+  const { data: reply } = await db.from("inbox_replies")
+    .insert({ message_id: id, subject, body, sent_by: user.userId })
+    .select("id")
+    .single();
+
+  let failure: string | null = null;
+  try {
+    const [{ getEmailSender }, { renderReply }, { loadEmailTemplates }] = await Promise.all([
+      import("@/lib/adapters/email"),
+      import("@/lib/email/templates"),
+      import("@/lib/email/store"),
+    ]);
+    const mail = renderReply({ name: m.name, subject, body }, await loadEmailTemplates());
+    await getEmailSender().send({ to: m.email, ...mail });
+  } catch (e) {
+    console.error("[console] inbox reply failed:", e);
+    failure = e instanceof Error ? e.message.slice(0, 300) : "The mail provider rejected it.";
+  }
+
+  const now = new Date().toISOString();
+  if (failure) {
+    if (reply) await db.from("inbox_replies").update({ delivery_error: failure }).eq("id", reply.id);
+  } else {
+    if (reply) await db.from("inbox_replies").update({ sent_at: now }).eq("id", reply.id);
+    await db.from("inbox_messages").update({ replied_at: now }).eq("id", id);
+  }
+
+  revalidatePath("/console");
+  revalidatePath("/console/notifications");
+  revalidatePath(back);
+  if (failure) {
+    redirect(`${back}?error=${encodeURIComponent("Could not send — the mail provider rejected it. Your wording is saved below; try again.")}`);
+  }
+  redirect(`${back}?replied=1`);
 }
 
 /* ---------- media library ---------- */

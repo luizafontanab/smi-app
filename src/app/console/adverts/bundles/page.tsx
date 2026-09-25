@@ -17,7 +17,7 @@ export default async function BundlesPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Bookings</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Bundles</h1>
       <p className="mt-1 text-sm text-graphite">
         Several ad formats sold together to one member under a single price. Add the artwork first via{" "}

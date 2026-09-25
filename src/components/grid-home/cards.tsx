@@ -449,28 +449,37 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
 }
 
 /**
- * Comp v1's grey logo band. A parallel of components/AdSlot.tsx's
- * SupplierLogos, restyled for this page — the shared one keeps its white
- * ground for forge. Order is the rotation's, used as given: never sorted,
+ * The supplier logo row. A parallel of components/AdSlot.tsx's SupplierLogos,
+ * restyled for this page. Order is the rotation's, used as given: never sorted,
  * filtered or weighted (lib/adverts.ts:5-11).
+ *
+ * Plain (white) ground on purpose: it sits under Featured member news, and the
+ * grey band belongs to the advert directly below it, so the two read as
+ * separate things rather than one long grey run.
  */
 export function GhLogoBand({ adverts, showPlaceholders = false }: { adverts: LiveAdvert[]; showPlaceholders?: boolean }) {
   if (adverts.length === 0 && !showPlaceholders) return null;
   return (
-    <Band tone="grey" inner="py-8 text-center">
-      <h2 className="font-heading text-xl font-extrabold">Brands who advertise with us</h2>
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
+    <Band inner="py-8 text-center">
+      <h2 className="font-heading text-xl font-extrabold">Suppliers</h2>
+      {/*
+       * h-16 rather than h-10: this is a paid placement, and at 40px tall a
+       * supplier's wordmark was barely legible next to the editorial around it.
+       * The intrinsic width/height stay a 2:1 hint — `w-auto` means the real
+       * aspect ratio comes from the file, so a tall logo is not stretched.
+       */}
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-x-12 gap-y-8">
         {adverts.length > 0
           ? adverts.map((ad) => (
               <Link key={ad.advertId} href={advertHref(ad)}>
-                <Image src={mediaUrl(ad.mobilePath)!} alt={ad.name} width={120} height={60} className="h-10 w-auto" unoptimized />
+                <Image src={mediaUrl(ad.mobilePath)!} alt={ad.name} width={200} height={100} className="h-16 w-auto" unoptimized />
               </Link>
             ))
           : Array.from({ length: 5 }, (_, i) => (
               <div
                 key={i}
                 aria-hidden="true"
-                className="flex h-10 w-28 items-center justify-center rounded-[var(--gh-radius)] border-2 border-dashed border-graphite/40 bg-graphite/5 text-[11px] font-bold uppercase tracking-widest text-graphite"
+                className="flex h-16 w-40 items-center justify-center rounded-[var(--gh-radius)] border-2 border-dashed border-graphite/40 bg-graphite/5 text-[11px] font-bold uppercase tracking-widest text-graphite"
               >
                 Logo
               </div>

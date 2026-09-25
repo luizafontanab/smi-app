@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  deleteCategory, deleteContentPage, deleteIndustry, deleteMedia, markInboxRead, renameMedia, saveCategory,
+  deleteCategory, deleteContentPage, deleteIndustry, deleteMedia, markAllInboxRead, markInboxRead, renameMedia,
+  replyToInboxMessage, saveCategory,
   markProspect, saveContentPage, saveIndustry, saveSocialChannels,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
@@ -21,10 +22,16 @@ vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/media", () => ({ removeMedia, uploadImage: vi.fn(async () => null), uploadDocument: vi.fn(async () => null) }));
 vi.mock("@/lib/redirects", () => ({ recordRename }));
 
+// The reply goes out through the same adapter as every other outgoing mail;
+// what it renders on the way is src/lib/email's business and is tested there.
+const { send } = vi.hoisted(() => ({ send: vi.fn(async () => {}) }));
+vi.mock("@/lib/adapters/email", () => ({ getEmailSender: vi.fn(() => ({ send })) }));
+
 afterEach(() => {
   resetDbServerMocks();
   removeMedia.mockReset().mockResolvedValue(undefined);
   recordRename.mockReset().mockResolvedValue(undefined);
+  send.mockReset().mockResolvedValue(undefined);
 });
 
 function form(fields: Record<string, string>) {
@@ -49,6 +56,109 @@ describe("markInboxRead", () => {
 
     await markInboxRead(form({ id: "msg1", read: "0" }));
     expect(builder.update).toHaveBeenCalledWith({ read: false });
+  });
+});
+
+/**
+ * Clearing the unread queue is scoped to what is on screen (fix-list 71).
+ * Without the category scope, "mark all read" on the Messages tab would also
+ * silently clear every notification — the one thing a split feed must never do.
+ */
+describe("markAllInboxRead", () => {
+  it("scopes to the category and kind being filtered on", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ inbox_messages: () => builder });
+
+    await markAllInboxRead(form({ category: "message", kind: "contact" }));
+
+    expect(builder.update).toHaveBeenCalledWith({ read: true });
+    expect(builder.eq).toHaveBeenCalledWith("category", "message");
+    expect(builder.eq).toHaveBeenCalledWith("kind", "contact");
+  });
+
+  it("clears everything unread when nothing is filtered", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ inbox_messages: () => builder });
+
+    await markAllInboxRead(form({}));
+
+    expect(builder.eq).toHaveBeenCalledWith("read", false);
+    expect(builder.eq).not.toHaveBeenCalledWith("category", expect.anything());
+  });
+});
+
+describe("replyToInboxMessage", () => {
+  const message = (overrides: Record<string, unknown> = {}) =>
+    ({ name: "Gareth Pryce", email: "gareth@example.com", category: "message", ...overrides });
+
+  /** inbox_messages is read then updated; inbox_replies is inserted then stamped. */
+  function inboxDb(row: Record<string, unknown> | null, replyId: string | null = "r1") {
+    const messages = queryBuilder(row ? dbOk(row) : dbOk(null));
+    const replies = queryBuilder(replyId ? dbOk({ id: replyId }) : dbOk(null));
+    db({ inbox_messages: () => messages, inbox_replies: () => replies });
+    return { messages, replies };
+  }
+
+  it("stores the reply before sending, then stamps it sent and marks the thread replied", async () => {
+    const { messages, replies } = inboxDb(message());
+
+    await expect(replyToInboxMessage(form({ id: "msg1", subject: "Re: your enquiry", body: "Hello there" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/notifications/msg1?replied=1");
+
+    expect(replies.insert).toHaveBeenCalledWith({
+      message_id: "msg1", subject: "Re: your enquiry", body: "Hello there", sent_by: "admin1",
+    });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: "gareth@example.com" }));
+    expect(replies.update).toHaveBeenCalledWith(expect.objectContaining({ sent_at: expect.any(String) }));
+    expect(messages.update).toHaveBeenCalledWith(expect.objectContaining({ replied_at: expect.any(String) }));
+  });
+
+  // The old version sent and kept nothing, so a provider rejection redirected
+  // with an error and destroyed whatever had just been typed.
+  it("keeps the typed reply and records why it failed when the provider rejects it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { messages, replies } = inboxDb(message());
+    send.mockRejectedValueOnce(new Error("mailbox unavailable"));
+
+    await expect(replyToInboxMessage(form({ id: "msg1", subject: "Re: your enquiry", body: "Hello there" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/notifications\/msg1\?error=/);
+
+    expect(replies.insert).toHaveBeenCalled();
+    expect(replies.update).toHaveBeenCalledWith({ delivery_error: "mailbox unavailable" });
+    // Nothing was delivered, so the thread must not read as answered.
+    expect(messages.update).not.toHaveBeenCalledWith(expect.objectContaining({ replied_at: expect.any(String) }));
+  });
+
+  // Reachable by direct POST even though the page hides the form on these.
+  it("refuses a notification, which nobody sent", async () => {
+    const { replies } = inboxDb(message({ category: "notification", email: "" }));
+
+    await expect(replyToInboxMessage(form({ id: "msg1", subject: "Hi", body: "Hello" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/notifications\/msg1\?error=/);
+
+    expect(replies.insert).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  // The advert-expiry notice jobs.ts used to write with email: "" — replying to
+  // it addressed an email to nobody.
+  it("refuses a message with no address on it", async () => {
+    const { replies } = inboxDb(message({ email: "" }));
+
+    await expect(replyToInboxMessage(form({ id: "msg1", subject: "Hi", body: "Hello" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/notifications\/msg1\?error=/);
+
+    expect(replies.insert).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("requires both a subject and a body before it touches the database", async () => {
+    const from = db({});
+
+    await expect(replyToInboxMessage(form({ id: "msg1", subject: "", body: "Hello" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/notifications\/msg1\?error=/);
+
+    expect(from).not.toHaveBeenCalled();
   });
 });
 

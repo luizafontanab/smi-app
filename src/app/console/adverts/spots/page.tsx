@@ -3,51 +3,65 @@ import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
-import { AD_FORMAT_KEYS, DEFAULT_AD_FORMATS, type AdFormat } from "@/lib/advert-formats";
-import { deleteAdvertProduct, saveAdvertFormats, saveMediaPack } from "../../actions";
+import { RETIRED_SLOT_KEYS } from "@/components/console/advert-formats";
+import { deleteAdvertProduct, saveSlotCap } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdvertSpotsPage() {
+/**
+ * Everything we have to sell, in two halves that are easy to confuse:
+ *
+ *  - a POSITION (`advert_slots`) is a physical place on the site — `home_1`,
+ *    `news_1` — and its cap says how many adverts that place holds;
+ *  - a PRODUCT (`advert_products`) is a line on the rate card — a name, a size,
+ *    a price — and its cap says how many advertisers may hold it at once.
+ *
+ * They lived on two different pages under two names that both read as "slot".
+ * The headings below are the whole point of this page: say which is which.
+ *
+ * Not here: the media pack and the public A–F format copy, which are website
+ * content and live under Site Config → Advertising page.
+ */
+export default async function AdvertInventoryPage() {
   await requireConsole();
   const db = serviceDb();
-  const [spots, pack, formatSetting] = await Promise.all([
-    must(db.from("advert_products").select("*").order("created_at"), "console/adverts spots list"),
-    must(db.from("settings").select("value").eq("key", "media_pack").maybeSingle(), "console/adverts spots media pack"),
-    must(db.from("settings").select("value").eq("key", "advert_formats").maybeSingle(), "console/adverts spots formats"),
+  const [products, slots] = await Promise.all([
+    must(db.from("advert_products").select("*").order("created_at"), "console/adverts inventory products"),
+    must(db.from("advert_slots").select("*").order("key"), "console/adverts inventory slots"),
   ]);
-  const packPath = (pack?.value as { path?: string } | null)?.path ?? null;
-  const formats = (formatSetting?.value as AdFormat[] | null) ?? DEFAULT_AD_FORMATS;
-  const formatByKey = new Map(formats.map((f) => [f.key, f]));
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Adverts &amp; Inventory</Link>
+      <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Bookings</Link>
       <div className="mt-1 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Ad Spots</h1>
-        <Link href="/console/adverts/spots/new" className="rounded bg-ink px-4 py-2 text-sm text-white">New spot</Link>
+        <h1 className="text-2xl font-bold text-ink">Inventory</h1>
+        <Link href="/console/adverts/spots/new" className="rounded bg-ink px-4 py-2 text-sm text-white">New product</Link>
       </div>
       <p className="mt-1 text-sm text-graphite">
-        The rate-card catalog of sellable ad products — not a booking. Book an advertiser into a format from{" "}
+        What we sell and how much of it. Nothing here is a booking — put an advertiser into a run from{" "}
         <Link href="/console/adverts" className="underline">Bookings</Link>.
       </p>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <div className="overflow-x-auto">
+        <h2 className="font-bold text-ink">Rate card</h2>
+        <p className="mt-1 text-xs text-graphite">
+          The sellable products — a name, a size and a price. This is what a booking is sold as.
+        </p>
+        <div className="mt-3 overflow-x-auto">
         <table className="w-full text-sm min-w-[560px]">
           <thead>
             <tr className="text-left text-xs uppercase text-graphite">
               <th scope="col" className="py-1">Sample</th>
               <th scope="col">Short name</th>
               <th scope="col">Format</th>
-              <th scope="col">Allowable spots</th>
+              <th scope="col">Concurrent advertisers</th>
               <th scope="col">Description</th>
               <th scope="col" />
               <th scope="col" />
             </tr>
           </thead>
           <tbody>
-            {(spots ?? []).map((s) => {
+            {(products ?? []).map((s) => {
               const sample = mediaUrl(s.sample_path);
               return (
                 <tr key={s.id} className="border-t">
@@ -72,76 +86,36 @@ export default async function AdvertSpotsPage() {
                 </tr>
               );
             })}
+            {!(products ?? []).length && (
+              <tr><td colSpan={7} className="py-4 text-center text-graphite">No products on the rate card yet.</td></tr>
+            )}
           </tbody>
         </table>
         </div>
       </section>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Media pack</h2>
+        <h2 className="font-bold text-ink">Positions on the site</h2>
         <p className="mt-1 text-xs text-graphite">
-          The PDF offered on the public advertising page. Upload a new one whenever the rates or specs change.
+          How many adverts each physical position holds. Guidance for selling — it never affects rotation, which stays
+          random-uniform. A position is where an advert appears; a rate-card product above is what someone buys.
         </p>
-        {packPath && (
-          <p className="mt-2 text-sm">
-            <a href={mediaUrl(packPath)!} target="_blank" rel="noopener" className="text-graphite underline">current pack</a>
-          </p>
-        )}
-        <form action={saveMediaPack} className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-          <input type="file" name="pack" accept="application/pdf" required className="text-sm" />
-          <button className="rounded bg-ink px-4 py-2 text-white">Upload</button>
-        </form>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {(slots ?? []).filter((s) => !RETIRED_SLOT_KEYS.has(s.key)).map((s) => (
+            <form key={s.key} action={saveSlotCap} className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm">
+              <input type="hidden" name="key" value={s.key} />
+              <span className="grow truncate" title={s.label}>{s.label}</span>
+              <input name="cap" type="number" min={0} defaultValue={s.cap} aria-label={`Capacity for ${s.label}`} className="w-16 rounded border px-2 py-1 text-right" />
+              <button className="text-xs text-graphite hover:underline">save</button>
+            </form>
+          ))}
+        </div>
       </section>
 
-      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Format copy</h2>
-        <p className="mt-1 text-xs text-graphite">
-          The six format cards shown on the public advertising page. Specs are free text — leave blank rather than guess.
-        </p>
-        <form action={saveAdvertFormats} className="mt-3 space-y-4">
-          {AD_FORMAT_KEYS.map((key) => {
-            const f = formatByKey.get(key);
-            const example = mediaUrl(f?.example_path ?? null);
-            return (
-              <div key={key} className="rounded-lg border p-3">
-                <p className="text-xs font-bold uppercase text-brand">Format {key}</p>
-                <input
-                  name={`name_${key}`}
-                  defaultValue={f?.name ?? ""}
-                  placeholder="Name"
-                  aria-label={`Format ${key} name`}
-                  required
-                  className="mt-2 w-full rounded border px-3 py-1.5 text-sm font-medium"
-                />
-                <textarea
-                  name={`detail_${key}`}
-                  defaultValue={f?.detail ?? ""}
-                  placeholder="Description and specs"
-                  aria-label={`Format ${key} description and specs`}
-                  required
-                  rows={2}
-                  className="mt-2 w-full rounded border px-3 py-1.5 text-sm"
-                />
-                {example && (
-                  <Image
-                    src={example}
-                    alt={`Current example ${f?.name ?? `format ${key}`} advert`}
-                    width={320}
-                    height={160}
-                    className="mt-2 max-h-24 w-auto rounded border object-contain"
-                    unoptimized
-                  />
-                )}
-                <label className="mt-2 block text-xs text-graphite">
-                  Example image shown on the public card{example ? " — leave empty to keep the current one" : ""}
-                  <input type="file" name={`example_${key}`} accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="mt-1 block text-sm" />
-                </label>
-              </div>
-            );
-          })}
-          <button className="rounded bg-ink px-4 py-2 text-sm text-white">Save format copy</button>
-        </form>
-      </section>
+      <p className="mt-6 text-xs text-graphite">
+        Looking for the media pack or the public format cards? They moved to{" "}
+        <Link href="/console/advertising" className="underline">Site Config → Advertising page</Link>.
+      </p>
     </div>
   );
 }

@@ -38,9 +38,11 @@ function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
 }
 
 describe("saveMachine", () => {
-  it("requires a name and a seller (member) attribution", async () => {
+  // See the note in console-actions-stories.test.ts — fix-list 73 turned these
+  // silent returns into a redirect that tells you what is missing.
+  it("requires a name and a seller (member) attribution, and says so", async () => {
     const from = db({});
-    await saveMachine(form({ name: "Laser cutter", member_id: "" }));
+    await expect(saveMachine(form({ name: "Laser cutter", member_id: "" }))).rejects.toThrow(/NEXT_REDIRECT.*error=/);
     expect(from).not.toHaveBeenCalled();
   });
 

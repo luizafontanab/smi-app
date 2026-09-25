@@ -5,6 +5,7 @@ import { must, mustList } from "@/lib/db/must";
 import { Badge, Card, SectionTitle, Stat } from "@/components/console/ui";
 import { FEATURED_SLOTS, MEMBERSHIP_MONTHLY_PENNIES, pounds, revenueByStream } from "@/lib/pricing";
 import { monthGrid, monthKey, parseMonth } from "@/lib/calendar";
+import { inboxKindLabel } from "@/lib/console-notification-links";
 import { OverviewCalendar, type OverviewItem } from "./OverviewCalendar";
 import { decideRevision, markInboxRead } from "./actions";
 
@@ -62,7 +63,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     // degrades it to "unknown" rather than failing.
     mustList(db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"), "console/overview active members"),
     must(db.from("advert_bookings").select("advert:adverts(format, member_id), product:advert_products(rate_pennies)").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today), "console/overview live bookings"),
-    must(db.from("stories").select("id, title, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending stories"),
+    must(db.from("stories").select("id, title, member:members!stories_member_id_fkey(name)").eq("status", "awaiting_approval"), "console/overview pending stories"),
     must(db.from("events").select("id, title, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending events"),
     must(db.from("advert_bookings").select("id, advert:adverts(name)").eq("status", "awaiting_approval"), "console/overview pending adverts"),
     must(db.from("advert_artwork_proposals").select("id, advert:adverts(name)").eq("status", "pending"), "console/overview pending artwork swaps"),
@@ -72,7 +73,12 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     must(db.from("members").select("id, name, draft_submitted_at").eq("status", "draft"), "console/overview draft members"),
     must(db.from("jobs").select("id, kind, last_error").eq("status", "dead"), "console/overview dead jobs"),
     must(db.from("jobs").select("due_at").in("status", ["pending", "running"]).order("due_at").limit(1), "console/overview oldest open job"),
-    must(db.from("inbox_messages").select("id, kind, name, email, message").eq("read", false).order("created_at", { ascending: false }).limit(5), "console/overview inbox"),
+    // Messages only (fix-list 71, her explicit instruction). This card is the
+    // "someone is waiting on you" signal, and it stopped being that when eight
+    // machine-written event notices started landing in the same table — five
+    // "promo comp expired" rows would push every real enquiry off it.
+    // Notifications have their own feed; the header bell counts both.
+    must(db.from("inbox_messages").select("id, kind, name, email, message, replied_at").eq("category", "message").eq("read", false).order("created_at", { ascending: false }).limit(5), "console/overview inbox"),
     must(db.from("newsletter_issues").select("id, number").eq("status", "draft").limit(1), "console/overview draft issue"),
     must(db.from("newsletter_issues").select("id, number, send_error").eq("status", "send_failed"), "console/overview failed issues"),
     mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true), "console/overview subscriber count"),
@@ -296,28 +302,40 @@ export default async function CommandCentre(props: PageProps<"/console">) {
           </Card>
         </Link>
 
-        {inbox?.length ? (
-          <Card className="mt-6">
-            <div className="flex items-center justify-between">
-              <SectionTitle>Inbox</SectionTitle>
-              <Link href="/console/messages" className="text-xs text-graphite underline">View all →</Link>
-            </div>
-            {inbox.map((m) => (
+        {/* Rendered unconditionally now. It used to be gated on
+            `inbox?.length`, so an empty inbox meant the card vanished and
+            nothing on this page said where messages go — which is exactly the
+            state the card is most reassuring in. */}
+        <Card className="mt-6">
+          <div className="flex items-center justify-between">
+            <SectionTitle>Messages</SectionTitle>
+            <Link href="/console/notifications?category=message" className="text-xs text-graphite underline">View all →</Link>
+          </div>
+          {inbox?.length ? (
+            inbox.map((m) => (
               <div key={m.id} className="relative mt-2 rounded border p-3 text-sm transition hover:bg-shade/50">
                 <div className="flex items-center justify-between">
-                  <p><b>{m.name}</b> <span className="text-graphite">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand-text">{m.kind}</span></p>
+                  <p><b>{m.name}</b> <span className="text-graphite">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand-text">{inboxKindLabel(m.kind)}</span></p>
                   {/* z-10 keeps the button clickable above the row's stretched link */}
                   <form action={markInboxRead} className="z-10"><input type="hidden" name="id" value={m.id} /><button className="relative text-xs text-graphite hover:text-ink">mark read</button></form>
                 </div>
                 {/* The whole row opens the message — full text and reply live there. */}
-                <Link href={`/console/messages/${m.id}`} className="mt-1 block text-graphite after:absolute after:inset-0">
+                <Link href={`/console/notifications/${m.id}`} className="mt-1 block text-graphite after:absolute after:inset-0">
                   <span className="line-clamp-2">{m.message}</span>
                   <span className="sr-only"> — open message from {m.name}</span>
                 </Link>
               </div>
-            ))}
-          </Card>
-        ) : null}
+            ))
+          ) : (
+            <p className="mt-2 text-sm text-graphite">Nobody is waiting on a reply. 📭</p>
+          )}
+          {/* Without this line the notifications half would be reachable only
+              from the header bell, which is not obvious from here. */}
+          <p className="mt-3 border-t border-black/5 pt-3 text-xs text-graphite">
+            Signups, payments and member submissions are notifications, not messages —{" "}
+            <Link href="/console/notifications?category=notification" className="underline hover:text-ink">see the notifications feed →</Link>
+          </p>
+        </Card>
 
         {deadJobs?.length ? (
           <section id="jobs" className="mt-6 rounded-xl border-2 border-danger/30 bg-white p-5 shadow-sm">

@@ -10,8 +10,10 @@ import { CompanyPageForm } from "@/components/member/CompanyPageForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import {
-  consoleUploadImage, createMember, decideRevision, recordMemberPayment, saveMember, setMemberStatus,
+  archiveMember, consoleUploadImage, createMember, decideRevision, deleteMember, recordMemberPayment,
+  saveMember, setMemberStatus, unarchiveMember,
 } from "../../actions";
+import { DeleteMemberDialog } from "./DeleteMemberDialog";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +74,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
     // maybeSingle, not single: a member id that does not exist is an ordinary
     // 404 below, not a query failure worth throwing over.
     must(db.from("members").select(
-      "id, slug, name, status, industry_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
+      "id, slug, name, status, archived_at, industry_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
     ).eq("id", id).maybeSingle(), "console/members detail: member"),
     must(db.from("industries").select("id, name").order("sort_order"), "console/members detail: industries"),
     must(db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1), "console/members detail: revisions"),
@@ -94,7 +96,13 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   const logo = mediaUrl(member.logo_path);
   const hero = mediaUrl(member.hero_path);
   const isDraft = member.status === "draft";
-  const isPublic = member.status === "active" || member.status === "grace";
+  const isArchived = member.archived_at != null;
+  // Two different things, and the link below needs both: `hasPage` is what
+  // memberBySlug will serve at all, `isPublic` is whether anyone but an admin
+  // can see it. Archiving is enforced in RLS (20260923000002), so an archived
+  // member's page renders for an admin and 404s for everyone else.
+  const hasPage = member.status === "active" || member.status === "grace";
+  const isPublic = hasPage && !isArchived;
   const pendingRevision = revisions?.[0];
 
   return (
@@ -102,8 +110,13 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
       <Link href="/console/members" className="text-sm text-graphite hover:text-ink">← Members</Link>
       <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
-          {member.name} <Badge tone={STATUS_TONE[member.status]}>{member.status}</Badge>
-          {member.status !== "active" && (
+          {member.name}
+          {/* An archived member is not publicly visible whatever their status,
+              so the status badge drops its "live" green rather than saying two
+              contradictory things side by side. */}
+          <Badge tone={isArchived ? "neutral" : STATUS_TONE[member.status]}>{member.status}</Badge>
+          {isArchived && <Badge tone="red">archived</Badge>}
+          {!isArchived && member.status !== "active" && (
             isDraft && !member.paid_at && !member.comped_until ? (
               <span className="text-xs font-normal text-graphite">awaiting payment</span>
             ) : isDraft && !member.draft_submitted_at ? (
@@ -118,7 +131,11 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
           )}
         </h1>
         <span className="flex gap-4 text-sm">
-          {isPublic && <a href={`/member/${member.slug}`} className="text-graphite underline">View public page</a>}
+          {hasPage && (
+            <a href={`/member/${member.slug}`} className="text-graphite underline">
+              {isPublic ? "View public page" : "Preview page (admin only)"}
+            </a>
+          )}
           <Link href={`/console/pages?type=member_profile&entity=${id}`} className="text-graphite underline">Page layout</Link>
         </span>
       </div>
@@ -266,6 +283,53 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
           ))}
           {timeline.length === 0 && <p className="text-sm text-graphite">No activity yet.</p>}
         </ul>
+      </Card>
+
+      <Card className="mt-4 border-danger/30">
+        <SectionTitle>Danger zone</SectionTitle>
+        <div className="mt-3 border-t pt-3">
+          <p className="text-sm font-medium text-ink">
+            {isArchived ? "Archived" : "Archive"}
+            {isArchived && member.archived_at && (
+              <span className="ml-2 text-xs font-normal text-graphite">since {member.archived_at.slice(0, 10)}</span>
+            )}
+          </p>
+          <p className="mt-1 text-sm text-graphite">
+            {isArchived ? (
+              <>
+                This member is hidden from the directory, the map, search and the sitemap. Their page is visible to you
+                only. Stories, videos and events they are tagged on still exist, but the credit and the link to them are
+                not rendered. Nothing has been deleted.
+              </>
+            ) : (
+              <>
+                Hides the member from the directory, the map, search and the sitemap, and stops their name linking out of
+                anyone else&apos;s content. Everything is kept, and you can bring them back at any time.
+              </>
+            )}
+          </p>
+          <form action={isArchived ? unarchiveMember : archiveMember} className="mt-3">
+            <input type="hidden" name="id" value={id} />
+            <SubmitButton
+              pendingLabel={isArchived ? "Restoring…" : "Archiving…"}
+              className="rounded border border-ink px-4 py-2 text-sm text-ink disabled:opacity-50"
+            >
+              {isArchived ? "Restore to the public site" : "Archive this member"}
+            </SubmitButton>
+          </form>
+        </div>
+
+        <div className="mt-4 border-t pt-3">
+          <p className="text-sm font-medium text-ink">Delete</p>
+          <p className="mt-1 text-sm text-graphite">
+            Permanent, and for mistakes only — a spam signup, or a duplicate. Refused outright if the member has any
+            invoice, featured placement, advert or bundle on record, because deleting them would take that history too.
+            Archive is the answer in every other case.
+          </p>
+          <div className="mt-3">
+            <DeleteMemberDialog action={deleteMember} id={id} name={member.name} archived={isArchived} />
+          </div>
+        </div>
       </Card>
     </div>
   );

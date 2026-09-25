@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMember, recordMemberPayment, saveMember, setMemberStatus } from "@/app/console/actions";
+import {
+  archiveMember, createMember, deleteMember, recordMemberPayment, saveMember, setMemberStatus, unarchiveMember,
+} from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -8,11 +10,12 @@ import type { ProvisionResult } from "@/lib/membership";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireConsole, uploadImage, enqueue, provisionMember, applyPaymentResult, send, recordRename } = vi.hoisted(() => ({
+const { requireConsole, uploadImage, removeMedia, enqueue, provisionMember, applyPaymentResult, send, recordRename } = vi.hoisted(() => ({
   requireConsole: vi.fn(async (): Promise<CurrentUser> => ({
     userId: "admin1", email: "jas@smi.local", role: "admin", memberId: null, displayName: "Jas",
   })),
   uploadImage: vi.fn<(file: File | null, prefix: string) => Promise<string | null>>(async () => null),
+  removeMedia: vi.fn<(path: string | null | undefined) => Promise<void>>(async () => {}),
   enqueue: vi.fn(async () => {}),
   provisionMember: vi.fn(async (): Promise<ProvisionResult> => ({ memberId: "m1" })),
   applyPaymentResult: vi.fn(async () => {}),
@@ -20,7 +23,7 @@ const { requireConsole, uploadImage, enqueue, provisionMember, applyPaymentResul
   recordRename: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
-vi.mock("@/lib/media", () => ({ uploadImage, removeMedia: vi.fn(async () => {}) }));
+vi.mock("@/lib/media", () => ({ uploadImage, removeMedia }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
 // Partial mock: memberValuesFromForm also pulls activationBlocked/BILLING_MODES/
 // MEMBER_STATUSES/slugify from this same module, so only provisionMember and
@@ -36,6 +39,7 @@ vi.mock("@/lib/redirects", () => ({ recordRename }));
 afterEach(() => {
   resetDbServerMocks();
   uploadImage.mockReset().mockResolvedValue(null);
+  removeMedia.mockReset().mockResolvedValue(undefined);
   enqueue.mockReset().mockResolvedValue(undefined);
   provisionMember.mockReset().mockResolvedValue({ memberId: "m1" });
   applyPaymentResult.mockReset().mockResolvedValue(undefined);
@@ -273,5 +277,137 @@ describe("setMemberStatus", () => {
 
     expect(membersBuilder.update).toHaveBeenCalledWith({ status: "grace" });
     expect(from).not.toHaveBeenCalledWith("approvals");
+  });
+});
+
+/* ---------- fix list 72: archive, unarchive, delete ---------- */
+
+describe("archiveMember", () => {
+  it("does nothing without an id", async () => {
+    const from = db({});
+    await archiveMember(form({}));
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the member doesn't exist", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
+    db({ members: () => membersBuilder });
+
+    await archiveMember(form({ id: "m1" }));
+
+    expect(membersBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("stamps archived_at and redirects back to the member", async () => {
+    const membersBuilder = queryBuilder(dbOk({ slug: "acme" }));
+    db({ members: () => membersBuilder });
+
+    await expect(archiveMember(form({ id: "m1" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/members/m1?saved=1");
+
+    expect(membersBuilder.update).toHaveBeenCalledWith({
+      archived_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
+  });
+});
+
+describe("unarchiveMember", () => {
+  it("clears archived_at — archiving is never a one-way door", async () => {
+    const membersBuilder = queryBuilder(dbOk({ slug: "acme" }));
+    db({ members: () => membersBuilder });
+
+    await expect(unarchiveMember(form({ id: "m1" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/members/m1?saved=1");
+
+    expect(membersBuilder.update).toHaveBeenCalledWith({ archived_at: null });
+  });
+});
+
+describe("deleteMember", () => {
+  const MEMBER = { slug: "acme", name: "Acme Ltd", logo_path: "members/m1/logo.png", hero_path: "members/m1/hero.png" };
+
+  /**
+   * Every FK onto `members` cascades, so `deleteMember` counts the four
+   * commercial tables before touching anything. `counts` is how many rows each
+   * of them reports; the default is the clean case.
+   */
+  function deleteDb(opts: {
+    counts?: Partial<Record<"invoices" | "placements" | "adverts" | "bundles", number>>;
+    profiles?: { user_id: string }[];
+  } = {}) {
+    const members = queryBuilder(dbOk(MEMBER));
+    const profiles = queryBuilder(dbOk(opts.profiles ?? [{ user_id: "u1" }]));
+    const deleteUser = vi.fn(async () => ({ data: null, error: null }));
+    const counted = (table: "invoices" | "placements" | "adverts" | "bundles") =>
+      queryBuilder(dbOk(null, opts.counts?.[table] ?? 0));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({
+        members: () => members,
+        profiles: () => profiles,
+        invoices: () => counted("invoices"),
+        placements: () => counted("placements"),
+        adverts: () => counted("adverts"),
+        bundles: () => counted("bundles"),
+      }),
+      auth: { admin: { deleteUser } },
+    })));
+    return { members, deleteUser };
+  }
+
+  it("does nothing without the confirmation", async () => {
+    const from = db({});
+
+    await expect(deleteMember(form({ id: "m1" })))
+      .rejects.toThrow(/confirm%20in%20the%20dialog/);
+
+    expect(from).not.toHaveBeenCalled();
+    expect(removeMedia).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["invoices", /1%20invoice\b/],
+    ["placements", /1%20featured%20placement/],
+    ["adverts", /1%20advert\b/],
+    ["bundles", /1%20bundle\b/],
+  ] as const)("refuses when the member has a %s row, naming it and pointing at Archive", async (table, expected) => {
+    const { members, deleteUser } = deleteDb({ counts: { [table]: 1 } });
+
+    await expect(deleteMember(form({ id: "m1", confirm: "1" }))).rejects.toThrow(expected);
+    await expect(deleteMember(form({ id: "m1", confirm: "1" }))).rejects.toThrow(/Archive%20them%20instead/);
+
+    expect(members.delete).not.toHaveBeenCalled();
+    expect(removeMedia).not.toHaveBeenCalled();
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("names every kind it found, not just the first", async () => {
+    deleteDb({ counts: { invoices: 2, adverts: 1 } });
+
+    await expect(deleteMember(form({ id: "m1", confirm: "1" })))
+      .rejects.toThrow(/2%20invoices%2C%201%20advert%20on%20record/);
+  });
+
+  it("deletes a clean member, its images and its login", async () => {
+    const { members, deleteUser } = deleteDb();
+
+    await expect(deleteMember(form({ id: "m1", confirm: "1" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/members?deleted=Acme%20Ltd");
+
+    expect(members.delete).toHaveBeenCalled();
+    // storage objects have no FK, so the cascade never reached them
+    expect(removeMedia).toHaveBeenCalledWith("members/m1/logo.png");
+    expect(removeMedia).toHaveBeenCalledWith("members/m1/hero.png");
+    // profiles.member_id is ON DELETE SET NULL — the login would otherwise
+    // outlive the member as a member-role account attached to nothing
+    expect(deleteUser).toHaveBeenCalledWith("u1");
+  });
+
+  it("redirects to the list when the member is already gone", async () => {
+    db({ members: () => queryBuilder(dbOk(null)) });
+
+    await expect(deleteMember(form({ id: "m1", confirm: "1" })))
+      .rejects.toThrow(/no%20longer%20exists/);
+
+    expect(removeMedia).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { serviceDb } from "./db/server";
 import type { Json } from "./db/types";
+import { notifyConsole } from "./notify-admin";
 import { siteUrl } from "./site-url";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "./social-caps";
 
@@ -279,7 +280,8 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       }
       const { data: story } = await db
         .from("stories")
-        .select("id, title, slug, excerpt, cover_path, member:members(name, social)")
+        // FK named: story_members makes a bare `members` embed ambiguous here.
+        .select("id, title, slug, excerpt, cover_path, member:members!stories_member_id_fkey(name, social)")
         .eq("id", String(payload.story_id))
         .single();
       if (!story) return;
@@ -429,7 +431,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       const today = new Date().toISOString().slice(0, 10);
       const { data: expired } = await db
         .from("members")
-        .select("id, name, contact_email, comped_until")
+        .select("id, name, comped_until")
         .eq("status", "active")
         .is("paid_at", null)
         .lt("comped_until", today);
@@ -437,10 +439,11 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         const graceUntil = new Date(`${m.comped_until}T12:00:00Z`);
         graceUntil.setUTCDate(graceUntil.getUTCDate() + 30);
         await db.from("members").update({ status: "grace", grace_until: graceUntil.toISOString().slice(0, 10) }).eq("id", m.id);
-        await db.from("inbox_messages").insert({
-          kind: "membership",
+        await notifyConsole({
+          kind: "comp_expired",
+          memberId: m.id,
           name: m.name,
-          email: m.contact_email ?? "",
+          payload: { member_id: m.id },
           message: `Promo comp expired on ${m.comped_until} — moved to grace until ${graceUntil.toISOString().slice(0, 10)}.`,
         });
       }
@@ -453,7 +456,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       const today = new Date().toISOString().slice(0, 10);
       const { data: lapsed } = await db
         .from("members")
-        .select("id, name, contact_email")
+        .select("id, name")
         .eq("status", "grace")
         .lt("grace_until", today);
       for (const m of lapsed ?? []) {
@@ -464,10 +467,11 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
           .select("id");
         if (!updated?.length) continue;
         await enqueue("notify_member", { member_id: m.id, kind: "membership_lapsed" });
-        await db.from("inbox_messages").insert({
-          kind: "membership",
+        await notifyConsole({
+          kind: "membership_lapsed",
+          memberId: m.id,
           name: m.name,
-          email: m.contact_email ?? "",
+          payload: { member_id: m.id },
           message: "Grace period ended with no resolution — membership moved to lapsed.",
         });
       }
@@ -481,7 +485,11 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       const { data: members } = await db
         .from("members")
         .select("id, notification_prefs(stats_frequency)")
-        .in("status", ["active", "grace"]);
+        .in("status", ["active", "grace"])
+        // The job runner uses serviceDb, so RLS does not hide an archived
+        // member here — an archived member has no public page to report views
+        // on and must stop receiving automated email (fix list 72).
+        .is("archived_at", null);
       // Per-member exact counts, but concurrent: sequential awaits made this
       // linear in member count (2 round-trips each) on the nightly cron. A
       // grouped single query isn't available without an RPC, and pulling raw
@@ -507,7 +515,9 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       const { data: members } = await db
         .from("members")
         .select("id, notification_prefs(leads_frequency)")
-        .in("status", ["active", "grace"]);
+        .in("status", ["active", "grace"])
+        // Same as stats_summary above: archived members drop out of the send.
+        .is("archived_at", null);
       // Concurrent for the same reason as stats_summary above.
       const due = (members ?? []).filter((m) => {
         const frequency = m.notification_prefs?.leads_frequency ?? "weekly";
@@ -607,11 +617,18 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         if (b.advert?.member_id) {
           await enqueue("notify_member", { member_id: b.advert.member_id, kind: "advert_ending_soon", booking_id: b.id, ends_on: b.ends_on });
         }
-        // and Jas, so a renewal conversation can start from the console
-        await db.from("inbox_messages").insert({
-          kind: "advertising",
+        // and Jas, so a renewal conversation can start from the console.
+        //
+        // This row is the one that made the message/notification conflation
+        // concrete (fix-list 71): it was written as an `advertising` enquiry
+        // with `email: ''`, so the console offered a reply form on it and that
+        // reply would have been addressed to nobody. It is a notification, and
+        // it now links to the booking instead.
+        await notifyConsole({
+          kind: "advert_ending",
+          memberId: b.advert?.member_id ?? null,
           name: b.advert?.name ?? "Advert",
-          email: "",
+          payload: { booking_id: b.id },
           message: `Advert run "${b.advert?.name}" ends on ${b.ends_on} — worth asking about a renewal.`,
         });
       }

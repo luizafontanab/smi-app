@@ -1,4 +1,5 @@
 import { serviceDb } from "@/lib/db/server";
+import { isMemberLinkable } from "@/lib/member-visibility";
 import type { ItemTarget, SlugMaps } from "@/lib/notification-links";
 
 /**
@@ -58,13 +59,18 @@ export async function notificationSlugs(rows: Payloaded[], memberId: string): Pr
     storyIds.length ? db.from("stories").select("id, slug, status").in("id", storyIds) : none,
     videoIds.length ? db.from("videos").select("id, slug, status").in("id", videoIds) : none,
     eventIds.length ? db.from("events").select("id, slug, status").in("id", eventIds) : none,
-    db.from("members").select("slug").eq("id", memberId).maybeSingle(),
+    // status + archived_at, not just slug: this is serviceDb(), so RLS does not
+    // filter it, and a notification linking a member to their own page must not
+    // point at a 404 once that page is archived or lapsed (fix-list 72). A
+    // missing link is the deliberate behaviour here — see notification-links.ts,
+    // which already prefers no link over a guessed one.
+    db.from("members").select("slug, status, archived_at").eq("id", memberId).maybeSingle(),
   ]);
 
   return {
     stories: byId(stories.data),
     videos: byId(videos.data),
     events: byId(events.data),
-    member: member.data?.slug ?? null,
+    member: isMemberLinkable(member.data) ? member.data.slug : null,
   };
 }

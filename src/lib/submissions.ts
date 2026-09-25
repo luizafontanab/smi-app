@@ -1,4 +1,5 @@
 import { serviceDb } from "@/lib/db/server";
+import { isMemberLinkable } from "@/lib/member-visibility";
 
 /**
  * `profile` is not a content table — it's a pending edit to the member's own
@@ -31,8 +32,6 @@ export type PendingSubmission = {
 };
 
 const PENDING_STATUSES = ["awaiting_approval", "rejected"] as const;
-/** Member statuses with a live public page — must match `memberBySlug` in queries.ts. */
-const PUBLIC_MEMBER_STATUSES: readonly string[] = ["active", "grace"];
 const EDIT_HREF: Record<SubmissionKind, (id: string) => string> = {
   story: (id) => `/dashboard/story/${id}/edit`,
   video: (id) => `/dashboard/video/${id}/edit`,
@@ -88,14 +87,14 @@ export async function memberContent(
     // same list (fix list). member_revisions shares the status vocabulary but
     // has no title or slug of its own — both come from the member.
     capped(db.from("member_revisions").select("id, status, rejected_reason, created_at", { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
-    db.from("members").select("slug, status").eq("id", memberId).maybeSingle(),
+    db.from("members").select("slug, status, archived_at").eq("id", memberId).maybeSingle(),
   ]);
   // Only a publicly visible member has a page for an applied revision to link
-  // to — memberBySlug serves `active` and `grace` alone, so a lapsed member's
-  // slug would point at a 404. Null here becomes "no link" at `publicHref`.
-  const memberSlug = PUBLIC_MEMBER_STATUSES.includes(memberRow.data?.status ?? "")
-    ? memberRow.data?.slug ?? null
-    : null;
+  // to — memberBySlug serves `active` and `grace` and skips archived members,
+  // so anyone else's slug would point at a 404. Null here becomes "no link" at
+  // `publicHref`. The rule lives in lib/member-visibility.ts; this is serviceDb,
+  // so both columns have to be selected for it to have anything to judge.
+  const memberSlug = isMemberLinkable(memberRow.data) ? memberRow.data.slug : null;
 
   type Raw = { id: string; slug?: string | null; title: string; status: string; rejected_reason: string | null; created_at: string };
   const rows = (kind: SubmissionKind, data: Raw[] | null): PendingSubmission[] =>
