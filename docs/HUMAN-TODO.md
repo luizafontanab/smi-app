@@ -700,6 +700,10 @@ live database against `handover-extract/seed/` and names every difference.
       still live and only a person can remove them. Delete them in
       Authentication → Users, and the `media-co` draft member row with them.
       `pnpm verify:prod` fails while any `@smi.local` account remains.
+      **Update (25 Sep):** the project now holds **27 accounts**, up from the 5
+      fixtures — so real people are on this database alongside an admin login
+      whose password is published in this repository. This stopped being
+      housekeeping when the first real account was created.
 - [ ] **17.2 — Storage buckets exist only in the seed script, not in a
       migration.** `media` (public) and `invoices` (private) are created by
       `seed-real.ts` at lines 672-674. A schema-only deploy — `db:push:prod` with
@@ -719,6 +723,48 @@ live database against `handover-extract/seed/` and names every difference.
       be the only remaining way in, and it should be backed up out of the macOS
       Keychain. Use `SUPABASE_ACCESS_TOKEN=…` per command for the new account
       instead; it takes precedence over the stored login.
+- [x] **17.5 — Apply the legacy event types to the imported events.** The
+      `event-type` terms were never mapped, so all 53 events had a null `type`.
+      — done 25 Sep via the new `--events-only` repair mode: 32 types written
+      (13 exhibition, 19 open_house), 21 legitimately have no legacy term.
+      Re-running reports `0 type, 0 coordinates (53 already correct)`.
+- [ ] **17.6 — Redeploy Vercel from `97975e6` or later.** That commit carries
+      the PGRST201 fix — `story_members` had made every `member:members(...)`
+      embed on a stories query ambiguous, which rendered the news page empty
+      with no error anywhere, because `queries.ts` discards `error` on every
+      read. Until the deployment is rebuilt from it, the live site is still
+      serving the broken embed. The same commit adds request logging, so any
+      remaining fault will name itself in the Vercel runtime logs rather than
+      showing as blank content.
+- [ ] **17.7 — Accept the homepage visual baseline.** The supplier logo row
+      below Featured member news changes the grid homepage, so the committed
+      baseline no longer matches. `pnpm visual:accept <route-id>` — never
+      `--all`, and never by an agent: accepting a baseline is asserting you
+      looked at the picture.
+- [ ] **17.9 — Remove the test rows the integration suites wrote to
+      production.** `vitest.config.ts` loads `.env.local` into the test
+      environment, and eight suites under `tests/unit/` insert real rows gated
+      only on `SUPABASE_SECRET_KEY` existing — never on the target being local.
+      With production credentials in that file, routine `pnpm check` runs on
+      25 Sep put **77 rows** into the live database: 53 `members`, 12
+      `contacts`, 11 `inbox_messages`, 1 `newsletter_issue` — plus ~22 auth
+      accounts. Nothing imported was damaged: those suites only ever insert, and
+      `pnpm verify:prod` confirms stories, videos, events, media and every
+      recovered field still match the extract exactly.
+      **The hole is now closed** — `tests/setup.ts` refuses to run against a
+      non-local Supabase URL (`ALLOW_REMOTE_INTEGRATION_TESTS=1` to override
+      deliberately), and `.env.local` has been repointed at the local stack.
+      What remains is the clean-up: `pnpm audit:test-rows:prod` lists them,
+      `-- --delete` removes them. The auth accounts have no cascade from
+      `members` and must go in the dashboard, alongside 17.1.
+- [ ] **17.8 — Decide how `handover-extract/` gets version-controlled.** It is
+      not a git repository and never has been, so the extraction pipeline — the
+      code that decides what the migration actually produces — exists only on
+      one disk with no history. This session added the `link_a_member`
+      unserialization, the event-type mapping, a vitest harness and a golden
+      fixture there, all unversioned. If it gets a repo, `json/` and `seed/`
+      should stay ignored: they hold member contact details and full article
+      bodies, and git history is forever.
 
 ---
 

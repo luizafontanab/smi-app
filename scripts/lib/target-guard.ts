@@ -7,8 +7,20 @@
  *
  * So make the remote case explicit rather than incidental.
  */
+/**
+ * Is this a local Supabase stack rather than a hosted project?
+ *
+ * Exported because the same question is asked in two places for the same
+ * reason: the seeds must not write to a live database by accident, and neither
+ * must the integration test suites (tests/setup.ts). One definition, so the two
+ * cannot drift into disagreeing about what "local" means.
+ */
+export function isLocalSupabaseUrl(url: string): boolean {
+  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])([:/]|$)/.test(url);
+}
+
 export function assertSeedTarget(url: string): void {
-  const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])([:/]|$)/.test(url);
+  const isLocal = isLocalSupabaseUrl(url);
   if (isLocal || process.argv.includes("--remote")) return;
 
   throw new Error(
