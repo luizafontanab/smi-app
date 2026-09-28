@@ -69,6 +69,13 @@ describe("memberValuesFromForm", () => {
     expect(ok(memberValuesFromForm(form(), existing)).values.contact_email).toBeNull();
   });
 
+  // GAPS A8.5: the company video is YouTube only, like every video field.
+  it("keeps a YouTube company video and refuses any other link", () => {
+    expect(ok(memberValuesFromForm(form({ video_url: "https://youtu.be/abc" }), existing)).values.video_url).toBe("https://youtu.be/abc");
+    expect(memberValuesFromForm(form({ video_url: "https://www.youtube.com/@SomeChannel" }), existing))
+      .toEqual({ error: expect.stringMatching(/^Company video: .*YouTube/) });
+  });
+
   it("stores empty text fields as null, not empty strings", () => {
     const { values } = ok(memberValuesFromForm(form({ address: "  ", phone: "" }), existing));
     expect(values).toMatchObject({ address: null, phone: null, website: null, video_url: null });

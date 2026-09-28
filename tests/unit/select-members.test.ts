@@ -21,6 +21,15 @@ describe("selectMembers", () => {
     expect(picked.map((r) => r.slug)).toContain(REQUIRED_MEMBER_SLUGS[0]);
   });
 
+  it("keeps caller-required members (legacy advertisers) that would never make the cut on merit", () => {
+    // Advertisers at the end of the list, no artwork, no industry — the three
+    // whose real adverts were skipped locally before this existed.
+    const advertisers = ["hpc-laser", "greenfield-engineering-ltd", "yorgrip"];
+    const all = [...rows(60, () => ({ logo_path: "l", industry: "Welding" })), ...advertisers.map((slug) => ({ slug, status: "lapsed" }))];
+    const picked = selectMembers(all, industryOf, 10, () => 0, advertisers).map((r) => r.slug);
+    for (const slug of advertisers) expect(picked).toContain(slug);
+  });
+
   it("gives every represented industry at least PER_INDUSTRY members", () => {
     // 10 per industry, so the limit alone would otherwise let one dominate.
     const all = INDUSTRIES.flatMap((industry) =>

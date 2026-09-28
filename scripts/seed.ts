@@ -524,9 +524,11 @@ async function main() {
   // per-row `collapsible` flag explicitly rather than omitting it.
   const pageRow = (p: { slug: string; title: string; body: string; collapsible?: boolean }) =>
     ({ collapsible: false, ...p });
-  await db.from("static_pages").insert([
-    ...AUTHORED_STATIC_PAGES, // real live-site copy (about, faq) — same rows seed-real.ts merges in
-    { slug: "policies", title: "Policies", body: "<h2>Privacy</h2><p>Privacy policy.</p><h2>Cookies</h2><p>Cookie policy.</p>", collapsible: true },
+  // `policies` is authored now, so it comes from AUTHORED_STATIC_PAGES — a
+  // second stub row here duplicated the primary key and, unchecked, silently
+  // dropped every static page from the seed.
+  const { error: pagesError } = await db.from("static_pages").insert([
+    ...AUTHORED_STATIC_PAGES, // real live-site copy (about, faq, policies, terms) — same rows seed-real.ts merges in
     { slug: "advertising", title: "Advertise with SMI", body: "<p>Formats A–F, media pack available on request.</p>" },
     { slug: "mach-publication", title: "MACH Publication", body: "<p>Our MACH show magazine.</p>" },
     // The standalone pages the live site has and we did not. Slugs are flat, so
@@ -541,6 +543,7 @@ async function main() {
     { slug: "plans-in-place-for-future-growth", title: "Plans in place for future growth", body: "<p>Where SMI is heading.</p>" },
     { slug: "newsletter-archive", title: "Newsletter archive", body: "<p>Every issue we have sent.</p>" },
   ].map(pageRow));
+  if (pagesError) throw new Error(`static_pages seed failed: ${pagesError.message}`);
   await db.from("settings").insert([
     { key: "grid", value: { blocks: 12, mix: { news: 6, video: 2, member_news: 2, featured_member: 1, featured_machine: 1 } } },
     { key: "social_caps", value: { per_day: 3, delay_minutes: 30 } },

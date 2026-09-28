@@ -149,10 +149,21 @@ describe("submitStory", () => {
 });
 
 describe("submitVideo", () => {
-  it("does nothing without both a title and a url", async () => {
+  it("redirects with a readable error without both a title and a url", async () => {
     const from = db({});
-    await submitVideo(form({ title: "t", url: "" }));
+    await expect(submitVideo(form({ title: "t", url: "" })))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/video/new?error=A%20title%20and%20a%20YouTube%20link%20are%20both%20required.");
     expect(from).not.toHaveBeenCalled();
+  });
+
+  // USE-CASES gap 23: YouTube only. A Loom link used to save, pass approval
+  // and then render as a card with no player.
+  it("refuses a link that isn't YouTube, before any upload or write", async () => {
+    const from = db({});
+    await expect(submitVideo(form({ title: "t", url: "https://www.loom.com/share/abc" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/video\/new\?error=.*YouTube/);
+    expect(from).not.toHaveBeenCalled();
+    expect(uploadImage).not.toHaveBeenCalled();
   });
 
   it("inserts awaiting approval and redirects", async () => {
@@ -213,6 +224,64 @@ describe("submitProfileEdit", () => {
     expect(revisionsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
       member_id: "mem1", payload: expect.objectContaining({ description: "New copy" }),
     }));
+  });
+
+  // GAPS A8.1: members pick their own membership types (up to 6).
+  const withTypes = (fields: Record<string, string>, ids: number[]) => {
+    const fd = form(fields);
+    for (const id of ids) fd.append("membership_types", String(id));
+    return fd;
+  };
+
+  it("an active member's membership types ride the revision, not the member row", async () => {
+    const revisionsBuilder = queryBuilder(dbOk(null));
+    const from = db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })), member_revisions: () => revisionsBuilder });
+
+    await expect(submitProfileEdit(withTypes({ name: "Acme" }, [2, 5, 2]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
+
+    expect(revisionsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ membership_type_ids: [2, 5] }),
+    }));
+    // approval-gated: nothing touches the live types until Jas approves
+    expect(from).not.toHaveBeenCalledWith("member_membership_types");
+  });
+
+  it("a draft member's membership types apply straight away", async () => {
+    const typesBuilder = queryBuilder(dbOk(null));
+    db({
+      members: () => queryBuilder(dbOk({ slug: "acme", status: "draft", draft_submitted_at: "2026-01-01T00:00:00.000Z", social: null, address: "", lat: null, lng: null })),
+      member_membership_types: () => typesBuilder,
+    });
+
+    await expect(submitProfileEdit(withTypes({ name: "Acme" }, [3]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
+
+    expect(typesBuilder.insert).toHaveBeenCalledWith([{ member_id: "mem1", membership_type_id: 3 }]);
+  });
+
+  it("refuses more than six membership types before writing anything", async () => {
+    const from = db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
+
+    await expect(submitProfileEdit(withTypes({ name: "Acme" }, [1, 2, 3, 4, 5, 6, 7])))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/profile?error=Choose%20up%20to%206%20membership%20types.");
+    expect(from).not.toHaveBeenCalledWith("member_revisions");
+    expect(from).not.toHaveBeenCalledWith("member_membership_types");
+  });
+
+  // GAPS A1.12: a live page's edit notifies the console like every other submission.
+  it("an active member's edit notifies the console, linking to their record", async () => {
+    db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })), member_revisions: () => queryBuilder(dbOk(null)) });
+
+    await expect(submitProfileEdit(form({ name: "Acme" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
+
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({ kind: "page_edit_submitted", memberId: "mem1", payload: { member_id: "mem1" } }));
+  });
+
+  it("a draft's save is page_submitted, not a page edit", async () => {
+    db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "draft", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
+
+    await expect(submitProfileEdit(form({ name: "Acme" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
+
+    expect(notifyConsole).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "page_edit_submitted" }));
   });
 
   it("rejects an invalid contact email before writing anything", async () => {
@@ -333,7 +402,18 @@ describe("withdrawVideo / editVideo", () => {
     const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "mem1" }));
     db({ videos: () => videosBuilder });
 
-    await editVideo(form({ id: "v1", title: "t", url: "" }));
+    await expect(editVideo(form({ id: "v1", title: "t", url: "" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/video\/v1\/edit\?error=/);
+
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("editVideo refuses a link that isn't YouTube", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "mem1" }));
+    db({ videos: () => videosBuilder });
+
+    await expect(editVideo(form({ id: "v1", title: "t", url: "https://vimeo.com/123" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/video\/v1\/edit\?error=.*YouTube/);
 
     expect(videosBuilder.update).not.toHaveBeenCalled();
   });
@@ -342,7 +422,7 @@ describe("withdrawVideo / editVideo", () => {
     const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "mem1" }));
     db({ videos: () => videosBuilder });
 
-    await expect(editVideo(form({ id: "v1", title: "t", url: "https://x" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=video");
+    await expect(editVideo(form({ id: "v1", title: "t", url: "https://youtu.be/abc" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=video");
 
     expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", rejected_reason: null }));
   });
@@ -402,6 +482,15 @@ describe("withdrawMachine / editMachine", () => {
 
     expect(machinesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ name: "Press brake", status: "awaiting_approval", rejected_reason: null }));
   });
+
+  it("editMachine refuses a video link that isn't YouTube (GAPS A9.4)", async () => {
+    const machinesBuilder = queryBuilder(dbOk({ id: "mc1", status: "rejected", member_id: "mem1" }));
+    db({ featured_machines: () => machinesBuilder });
+
+    await expect(editMachine(form({ id: "mc1", name: "Press brake", video_url: "https://www.loom.com/share/x" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/equipment\/mc1\/edit\?error=.*YouTube/);
+    expect(machinesBuilder.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("markNotificationRead / markAllNotificationsRead", () => {
@@ -442,6 +531,24 @@ describe("submitMachine", () => {
     await expect(submitMachine(form({ name: "Laser cutter" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(machinesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ name: "Laser cutter", status: "awaiting_approval" }));
+  });
+
+  // GAPS A9.4: members can attach a video of the machine running.
+  it("stores an optional YouTube video with the listing", async () => {
+    const machinesBuilder = queryBuilder(dbOk(null));
+    db({ featured_machines: () => machinesBuilder });
+
+    await expect(submitMachine(form({ name: "Laser cutter", video_url: "https://www.youtube.com/watch?v=abc123" }))).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(machinesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ video_url: "https://www.youtube.com/watch?v=abc123" }));
+  });
+
+  it("refuses a non-YouTube video link before uploading the photo", async () => {
+    const from = db({});
+    await expect(submitMachine(form({ name: "Laser cutter", video_url: "https://vimeo.com/1" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/equipment\/new\?error=.*YouTube/);
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
   });
 });
 

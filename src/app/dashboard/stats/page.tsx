@@ -2,6 +2,8 @@ import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { StackedTrendChart, type ChartSeries } from "@/components/StackedTrendChart";
 import { TrendChart } from "@/components/Sparkline";
+import { contentReach, sumSeries, VIDEO_VIEWS_SINCE } from "@/lib/content-reach";
+import { allRows } from "@/lib/db/all-rows";
 
 const CHANNEL_LABELS: Record<string, string> = {
   ad_click: "Advert",
@@ -11,6 +13,9 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 const CLICK_KINDS = ["ad_click", "outbound_click", "phone_click", "email_click", "social_click"] as const;
 const CLICK_CATEGORIES = ["Advert", "Website", "Phone", "Email", "Social"] as const;
+
+/** From this day advert impressions include readers who declined cookies (GAPS D1). */
+const IMPRESSIONS_COMPLETE_SINCE = "28 September 2026";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your statistics" };
@@ -45,27 +50,51 @@ export default async function MemberStatsPage() {
   const storyIds = (myStories.data ?? []).map((s) => s.id);
   const advertIds = (myAdverts.data ?? []).map((a) => a.id);
 
-  type ImpressionRow = { occurred_at: string; path: string | null };
   type NewsletterAdRow = { advert_id: string; issue: { id: string; sent_at: string | null; opens_count: number } | null };
 
-  const [storyViewsTrend, clickEvents, [impressionRows, newsletterOpenRows]] = await Promise.all([
-    storyIds.length
-      ? db.from("rollups_daily").select("day, count").eq("kind", "story_view").in("story_id", storyIds).gte("day", yearAgoDay)
-      : Promise.resolve({ data: [] as { day: string; count: number }[] }),
-    db.from("analytics_events").select("occurred_at, kind").eq("member_id", user.memberId).in("kind", CLICK_KINDS).gte("occurred_at", yearAgo),
+  // Content reach (GAPS A9.2): all-time totals, counted exactly (head counts,
+  // so no max_rows truncation) — the cumulative figure Gap 6 says can only grow.
+  const [allTimeImpressions, allTimeStoryViews, allTimeVideoViews, allTimeNewsletterRows, videoViewsTrend] = await Promise.all([
     advertIds.length
-      ? Promise.all([
-          db.from("analytics_events").select("occurred_at, path").eq("kind", "ad_impression").in("advert_id", advertIds).gte("occurred_at", yearAgo),
-          db.from("newsletter_ads").select("advert_id, issue:newsletter_issues!inner(id, sent_at, opens_count, status)").in("advert_id", advertIds).eq("issue.status", "sent").gte("issue.sent_at", yearAgo),
-        ])
-      : (Promise.resolve([{ data: [] }, { data: [] }]) as Promise<[{ data: ImpressionRow[] }, { data: NewsletterAdRow[] }]>),
+      ? db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "ad_impression").in("advert_id", advertIds)
+      : Promise.resolve({ count: 0 }),
+    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "story_view").eq("member_id", user.memberId),
+    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "video_view").eq("member_id", user.memberId),
+    advertIds.length
+      ? db.from("newsletter_ads").select("advert_id, issue:newsletter_issues!inner(id, opens_count, status)").in("advert_id", advertIds).eq("issue.status", "sent")
+      : Promise.resolve({ data: [] as { issue: { id: string; opens_count: number } | null }[] }),
+    db.from("rollups_daily").select("day, count").eq("kind", "video_view").eq("member_id", user.memberId).gte("day", yearAgoDay),
   ]);
+
+  // Counted in the database, not by fetching rows: PostgREST caps a response at
+  // max_rows (1000), so a year of a busy advertiser's raw impression and click
+  // rows used to be silently truncated and the charts under-counted
+  // (20260928000004_member_event_months.sql).
+  const [storyViewsTrend, eventMonths, impressions30Count, clicks30Count, newsletterOpenRows] = await Promise.all([
+    // One rollups row per story per day — ~3,650 a year for ten stories — so paged.
+    storyIds.length
+      ? allRows<{ day: string; count: number }>((from, to) =>
+          db.from("rollups_daily").select("day, count").eq("kind", "story_view").in("story_id", storyIds).gte("day", yearAgoDay)
+            .order("day").order("story_id").range(from, to))
+      : Promise.resolve([] as { day: string; count: number }[]),
+    db.rpc("member_event_months", { p_member: user.memberId, p_since: yearAgo }),
+    advertIds.length
+      ? db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "ad_impression").in("advert_id", advertIds).gte("occurred_at", monthAgo)
+      : Promise.resolve({ count: 0 }),
+    // Deliberately narrower than the 5-channel month-by-month chart below it —
+    // this tile's original definition is advert + website clicks only.
+    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("member_id", user.memberId).in("kind", ["ad_click", "outbound_click"]).gte("occurred_at", monthAgo),
+    advertIds.length
+      ? db.from("newsletter_ads").select("advert_id, issue:newsletter_issues!inner(id, sent_at, opens_count, status)").in("advert_id", advertIds).eq("issue.status", "sent").gte("issue.sent_at", yearAgo)
+      : Promise.resolve({ data: [] as NewsletterAdRow[] }),
+  ]);
+  const monthRows = eventMonths.data ?? [];
 
   const monthKeys = monthKeysFor(now);
   // page performance / story reach: rollups_daily is already pre-aggregated per
   // day, so these are a straight month-bucket reshape — no new instrumentation.
   const trendValues = bucketSingleSeries(pageViewsTrend.data ?? [], monthKeys);
-  const storyReachValues = bucketSingleSeries(storyViewsTrend.data ?? [], monthKeys);
+  const storyReachValues = bucketSingleSeries(storyViewsTrend, monthKeys);
 
   // GAPS C6: record() drops every event without consent — impressions/clicks
   // are a real lower bound, not a full count. Site-wide rate, not per-member:
@@ -77,34 +106,32 @@ export default async function MemberStatsPage() {
   );
   const acceptRatePct = consentTotals.total > 0 ? Math.round((consentTotals.consented / consentTotals.total) * 100) : null;
 
-  // Last 30 days tiles: bare totals, filtered client-side from the same rows
-  // the month-by-month charts already fetched, rather than separate queries.
-  const impressions30 = (impressionRows.data ?? []).filter((r) => r.occurred_at >= monthAgo).length;
-  // Deliberately narrower than the 5-channel month-by-month chart below it —
-  // matches this tile's original definition (advert + website clicks only).
-  const clicksOverview30 = (clickEvents.data ?? []).filter(
-    (r) => r.occurred_at >= monthAgo && (r.kind === "ad_click" || r.kind === "outbound_click"),
-  ).length;
+  // Last 30 days tiles: exact head counts.
+  const impressions30 = impressions30Count.count ?? 0;
+  const clicksOverview30 = clicks30Count.count ?? 0;
 
   // Month-by-month: clicks by channel, all social platforms folded into one
   // "Social" series — per-platform detail stays only on console/analytics.
   const clicksSeries = bucketMultiSeries(
-    clickEvents.data ?? [],
-    (r) => r.occurred_at.slice(0, 7),
+    monthRows.filter((r) => (CLICK_KINDS as readonly string[]).includes(r.kind)),
+    (r) => r.month,
     (r) => (r.kind === "social_click" ? "Social" : (CHANNEL_LABELS[r.kind] ?? r.kind)),
     CLICK_CATEGORIES,
     monthKeys,
+    (r) => Number(r.n),
   );
 
   // Month-by-month: advert impressions by location. Real path data only
   // exists for events recorded after this instrumentation shipped — older
   // months read honestly sparse/zero, not backfilled.
+  // Location buckets (Homepage / Other pages) are assigned by the SQL function.
   const impressionsBase = bucketMultiSeries(
-    impressionRows.data ?? [],
-    (r) => r.occurred_at.slice(0, 7),
-    (r) => (r.path === "/" ? "Homepage" : r.path?.startsWith("/") ? "Other pages" : null),
+    monthRows.filter((r) => r.kind === "ad_impression"),
+    (r) => r.month,
+    (r) => r.bucket,
     ["Homepage", "Other pages"],
     monthKeys,
+    (r) => Number(r.n),
   );
   // Newsletter series is issue-level, not per-advert — newsletter_ads has no
   // metrics of its own, so this attributes each sent issue's real,
@@ -123,6 +150,22 @@ export default async function MemberStatsPage() {
   const impressionsSeries: ChartSeries[] = [
     ...impressionsBase,
     { label: "Newsletter", values: monthKeys.map((m) => newsletterOpensByMonth.get(m) ?? 0) },
+  ];
+
+  // Content reach: adverts count what the Advert impressions chart counts
+  // (page impressions + newsletter opens), so the two charts agree.
+  const allTimeNewsletterOpens = [
+    ...new Map((allTimeNewsletterRows.data ?? []).flatMap((r) => (r.issue ? [[r.issue.id, r.issue.opens_count] as const] : []))).values(),
+  ].reduce((sum, n) => sum + n, 0);
+  const reach = contentReach([
+    { label: "Adverts", total: (allTimeImpressions.count ?? 0) + allTimeNewsletterOpens },
+    { label: "Stories", total: allTimeStoryViews.count ?? 0 },
+    { label: "Videos", total: allTimeVideoViews.count ?? 0 },
+  ]);
+  const reachSeries: ChartSeries[] = [
+    { label: "Adverts", values: sumSeries(impressionsSeries) },
+    { label: "Stories", values: storyReachValues },
+    { label: "Videos", values: bucketSingleSeries(videoViewsTrend.data ?? [], monthKeys) },
   ];
 
   return (
@@ -144,9 +187,18 @@ export default async function MemberStatsPage() {
           <h3 className="font-bold text-ink">Page performance</h3>
           <div className="mt-3"><TrendChart values={trendValues} labels={monthKeys} /></div>
         </section>
+        {/* Was "Story reach" — the 18 Sep direction (Gap 6) combines every kind
+            of content into one figure, broken out by type (GAPS A9.2). */}
         <section className="rounded-xl bg-white p-5 shadow-sm">
-          <h3 className="font-bold text-ink">Story reach</h3>
-          <div className="mt-3"><TrendChart values={storyReachValues} labels={monthKeys} /></div>
+          <h3 className="font-bold text-ink">Content reach</h3>
+          <p className="mt-1 text-2xl font-bold text-ink">{reach.total.toLocaleString("en-GB")}</p>
+          <p className="text-xs text-graphite">
+            All time · {reach.parts.map((p) => `${p.label} ${p.total.toLocaleString("en-GB")}`).join(" · ")}
+          </p>
+          <div className="mt-3"><StackedTrendChart labels={monthKeys} series={reachSeries} /></div>
+          <p className="mt-2 text-xs text-graphite">
+            Video views count from {VIDEO_VIEWS_SINCE}. Social shares will join this once we can measure them.
+          </p>
         </section>
         <section className="rounded-xl bg-white p-5 shadow-sm">
           <h3 className="font-bold text-ink">Advert impressions</h3>
@@ -162,8 +214,11 @@ export default async function MemberStatsPage() {
 
       {acceptRatePct !== null && (
         <p className="mt-6 text-xs text-graphite">
-          These counts only include visits where the reader accepted analytics cookies — about {acceptRatePct}% of
-          site traffic in the last 30 days. Treat every number above as a floor, not a total.
+          {/* Decision D1 (28 Sep): impressions are counted for every reader. */}
+          Advert impressions count every reader who saw your advert since {IMPRESSIONS_COMPLETE_SINCE} — anonymously
+          when they declined cookies. Everything else here (page, story and video views, and clicks) only includes
+          visits where the reader accepted analytics cookies — about {acceptRatePct}% of site traffic in the last 30
+          days — so treat those as a floor, not a total.
         </p>
       )}
     </div>
@@ -192,13 +247,15 @@ function bucketMultiSeries<T>(
   categoryOf: (r: T) => string | null,
   categories: readonly string[],
   monthKeys: string[],
+  // How much each row counts for: 1 for a raw event, `n` for a pre-counted row.
+  weightOf: (r: T) => number = () => 1,
 ): ChartSeries[] {
   const totals = new Map<string, number>(); // `${month}|${category}` -> count
   for (const r of rows) {
     const cat = categoryOf(r);
     if (cat == null) continue;
     const key = `${monthOf(r)}|${cat}`;
-    totals.set(key, (totals.get(key) ?? 0) + 1);
+    totals.set(key, (totals.get(key) ?? 0) + weightOf(r));
   }
   return categories.map((label) => ({ label, values: monthKeys.map((m) => totals.get(`${m}|${label}`) ?? 0) }));
 }

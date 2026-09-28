@@ -56,6 +56,24 @@ describe("createAccount", () => {
     expect(result).toEqual({ message: "Company name is required." });
   });
 
+  // GAPS A8.1: V13 step 1 picks membership types, up to six.
+  it("passes picked membership types through to provisionMember, de-duplicated", async () => {
+    stubSignIn();
+    const fd = form();
+    for (const id of ["2", "4", "2"]) fd.append("membership_types", id);
+    await expect(createAccount({ message: "" }, fd)).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(provisionMember).toHaveBeenCalledWith(expect.objectContaining({ membershipTypeIds: [2, 4] }));
+  });
+
+  it("refuses more than six membership types before the rate limiter or any account", async () => {
+    const fd = form();
+    for (const id of [1, 2, 3, 4, 5, 6, 7]) fd.append("membership_types", String(id));
+    const result = await createAccount({ message: "" }, fd);
+    expect(result).toEqual({ message: "Choose up to 6 membership types." });
+    expect(allowRequest).not.toHaveBeenCalled();
+    expect(provisionMember).not.toHaveBeenCalled();
+  });
+
   it("refuses over the join-flow rate limit without provisioning anything", async () => {
     allowRequest.mockResolvedValue(false);
     const result = await createAccount({ message: "" }, form());

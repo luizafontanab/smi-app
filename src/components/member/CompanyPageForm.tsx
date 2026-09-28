@@ -4,6 +4,7 @@ import { renderableHtml } from "@/lib/sanitize";
 import { SOCIAL_CHANNELS } from "@/lib/social";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { ServicesPicker } from "@/components/member/ServicesPicker";
+import { MAX_MEMBERSHIP_TYPES } from "@/lib/member-services";
 
 const field = "mt-1 w-full rounded border px-3 py-2";
 const label = "text-sm font-medium";
@@ -39,11 +40,14 @@ export type Taxonomy = { id: number; name: string };
  * social inputs posted different field names, only the console could clear a
  * logo, and only the member page could set Services.
  *
- * `mode` gates exactly two things, and nothing cosmetic:
- *   · membership types — read-only for a member, who must not be able to
- *     self-assign a directory tier (GAPS A8.1); the console gets checkboxes.
- *   · the slug confirmation — the console's operator ticks it deliberately; a
- *     member's rename is approval-gated anyway, so Jas is the confirmation.
+ * `mode` gates exactly one thing, and nothing cosmetic: the slug confirmation
+ * — the console's operator ticks it deliberately; a member's rename is
+ * approval-gated anyway, so Jas is the confirmation.
+ *
+ * Membership types used to be a second gate (read-only for members, decided
+ * 13 Sep). The 18 Sep call reversed that — members pick their own, up to six
+ * (USE-CASES gap 21, GAPS A8.1) — and on a live page the pick is approval-gated
+ * like every other field here, so the gate is gone.
  */
 export function CompanyPageForm({
   mode,
@@ -92,22 +96,16 @@ export function CompanyPageForm({
         <legend className={label}>Membership types</legend>
         <p className="text-xs text-graphite">
           Shown on the public directory as a filter — distinct from Industry above, and from the Services list.
-          {!isConsole && " Set by SMI; contact us to change it."}
+          Tick every one that applies, up to {MAX_MEMBERSHIP_TYPES}.
         </p>
-        {isConsole ? (
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
-            {membershipTypes.map((t) => (
-              <label key={t.id} className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" name="membership_types" value={t.id} defaultChecked={selectedMembershipTypeIds.has(t.id)} />
-                {t.name}
-              </label>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-ink">
-            {membershipTypes.filter((t) => selectedMembershipTypeIds.has(t.id)).map((t) => t.name).join(", ") || "Not set"}
-          </p>
-        )}
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+          {membershipTypes.map((t) => (
+            <label key={t.id} className="flex items-center gap-1.5 text-sm">
+              <input type="checkbox" name="membership_types" value={t.id} defaultChecked={selectedMembershipTypeIds.has(t.id)} />
+              {t.name}
+            </label>
+          ))}
+        </div>
       </fieldset>
 
       {/* 69 terms as a flat list was the tallest thing on this form by far, so

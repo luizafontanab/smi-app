@@ -27,6 +27,12 @@ describe("SiteFooter", () => {
     expect(screen.getByText(new RegExp(`©\\s*${year}\\s*Sheet Metal Industries`))).toBeInTheDocument();
   });
 
+  // REQUIREMENTS §3 (18 Sep): a Membership policy alongside the cookie policy.
+  it("links the membership terms beside Policies", () => {
+    render(<SiteFooter />);
+    expect(screen.getByRole("link", { name: "Membership terms" })).toHaveAttribute("href", "/pages/membership-terms");
+  });
+
   it("includes the cookie settings control and the newsletter form", () => {
     render(<SiteFooter />);
     expect(screen.getByRole("button", { name: "Cookie settings" })).toBeInTheDocument();

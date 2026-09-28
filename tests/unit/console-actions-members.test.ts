@@ -91,6 +91,33 @@ describe("saveMember", () => {
       .rejects.toThrow(/Company%20name%20is%20required/);
   });
 
+  // GAPS A8.1: the console now writes membership types through the same capped
+  // helper as the member's own save and revision approval.
+  it("replaces the member's membership types with the ticked ones", async () => {
+    const typesBuilder = queryBuilder(dbOk(null));
+    db({ members: () => queryBuilder(dbOk({ id: "m1", slug: "acme", status: "active", social: null })), member_membership_types: () => typesBuilder });
+    const fd = form({ id: "m1", ...baseFields, slug: "acme" });
+    for (const id of ["1", "3"]) fd.append("membership_types", id);
+
+    await expect(saveMember(fd)).rejects.toThrow("NEXT_REDIRECT:/console/members/m1?saved=1");
+
+    expect(typesBuilder.delete).toHaveBeenCalled();
+    expect(typesBuilder.insert).toHaveBeenCalledWith([
+      { member_id: "m1", membership_type_id: 1 },
+      { member_id: "m1", membership_type_id: 3 },
+    ]);
+  });
+
+  it("refuses more than six membership types with a readable error", async () => {
+    const typesBuilder = queryBuilder(dbOk(null));
+    db({ members: () => queryBuilder(dbOk({ id: "m1", slug: "acme", status: "active", social: null })), member_membership_types: () => typesBuilder });
+    const fd = form({ id: "m1", ...baseFields, slug: "acme" });
+    for (const id of [1, 2, 3, 4, 5, 6, 7]) fd.append("membership_types", String(id));
+
+    await expect(saveMember(fd)).rejects.toThrow(/error=Choose%20up%20to%206%20membership%20types/);
+    expect(typesBuilder.insert).not.toHaveBeenCalled();
+  });
+
   it("refuses to change a live member's web address without the confirmation checkbox", async () => {
     db({ members: () => queryBuilder(dbOk({ id: "m1", slug: "old-slug", status: "active", social: null })) });
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
+import { serviceDb } from "./db/server";
 
 /**
  * Which of the two site designs this request is being rendered in.
@@ -16,20 +17,51 @@ export const VARIANT_COOKIE = "smi-theme";
 
 export type Variant = "forge" | "grid";
 
+/** `settings` key holding the design every visitor gets by default (GAPS A8.2). */
+export const SITE_VARIANT_KEY = "site_variant";
+
+export function isVariant(value: unknown): value is Variant {
+  return value === "forge" || value === "grid";
+}
+
+/**
+ * The site-wide design, set from the console (A28: switch the live site
+ * between the two builds, immediately, no redeploy). Forge when unset — which
+ * is every database before this existed — and forge when the read fails: a
+ * settings hiccup must never take the public site down, and forge is the
+ * design the site had before this setting existed.
+ *
+ * serviceDb because `settings` has RLS with no policies. Request-scoped via
+ * cache(), so a render reads it at most once and a console change applies to
+ * the very next request.
+ */
+export const defaultVariant = cache(async (): Promise<Variant> => {
+  try {
+    const { data } = await serviceDb().from("settings").select("value").eq("key", SITE_VARIANT_KEY).maybeSingle();
+    return isVariant(data?.value) ? data.value : "forge";
+  } catch {
+    return "forge";
+  }
+});
+
 /**
  * Request-scoped. cache() dedupes the read across the root layout, the page and
  * any view within one render — it does NOT cache across requests. Same pattern
  * as currentUser() in lib/auth.ts.
  *
- * Anything unrecognised is forge, which is how browsers still holding the
- * retired "live"/"demo" cookie values migrate without being asked.
+ * A browser's own `smi-theme` cookie wins — that is the admin switcher, which
+ * previews the other design without changing what anyone else sees. With no
+ * cookie, or an unrecognised one (browsers still holding the retired
+ * "live"/"demo" values), the request gets the site-wide default.
  *
  * Reading a cookie does not change a route's render mode here: the root layout
- * already calls cookies(), so every route under it is request-rendered anyway.
+ * calls this on every request to stamp data-theme, so every route under it is
+ * request-rendered anyway.
  */
-export const siteVariant = cache(async (): Promise<Variant> =>
-  (await cookies()).get(VARIANT_COOKIE)?.value === "grid" ? "grid" : "forge",
-);
+export const siteVariant = cache(async (): Promise<Variant> => {
+  const chosen = (await cookies()).get(VARIANT_COOKIE)?.value;
+  return isVariant(chosen) ? chosen : defaultVariant();
+});
 
 /**
  * Pick this request's view module. The registry is the object literal at the

@@ -54,6 +54,25 @@ describe("saveMachine", () => {
 
     expect(machinesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "published", source: "admin" }));
   });
+
+  // GAPS A9.4: an optional YouTube video on the listing.
+  it("stores a YouTube video, and null when the field is left blank", async () => {
+    const machinesBuilder = queryBuilder(dbOk({ id: "mc1" }));
+    db({ featured_machines: () => machinesBuilder });
+
+    await expect(saveMachine(form({ id: "mc1", name: "Laser", member_id: "m1", video_url: "https://youtu.be/abc123" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(machinesBuilder.update).toHaveBeenLastCalledWith(expect.objectContaining({ video_url: "https://youtu.be/abc123" }));
+
+    await expect(saveMachine(form({ id: "mc1", name: "Laser", member_id: "m1", video_url: " " }))).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(machinesBuilder.update).toHaveBeenLastCalledWith(expect.objectContaining({ video_url: null }));
+  });
+
+  it("refuses a video link that isn't YouTube, without writing", async () => {
+    const from = db({});
+    await expect(saveMachine(form({ id: "mc1", name: "Laser", member_id: "m1", video_url: "https://vimeo.com/1" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/machines\/mc1\?error=.*YouTube/);
+    expect(from).not.toHaveBeenCalled();
+  });
 });
 
 describe("decideMachine", () => {

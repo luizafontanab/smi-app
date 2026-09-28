@@ -1,4 +1,5 @@
 import { serviceDb } from "./db/server";
+import { replaceMemberMembershipTypes } from "./member-services";
 import { notifyConsole } from "./notify-admin";
 import type { CheckoutResult } from "./adapters/payments";
 
@@ -53,6 +54,7 @@ export async function provisionMember(opts: {
   phone?: string;
   website?: string;
   address?: string;
+  membershipTypeIds?: number[];
 }): Promise<ProvisionResult> {
   const db = serviceDb();
   const { data: user, error: authErr } = await db.auth.admin.createUser({
@@ -87,6 +89,16 @@ export async function provisionMember(opts: {
   }
   await db.from("profiles").insert({ user_id: user.user.id, role: "member", member_id: member.id, display_name: opts.company });
   await db.from("notification_prefs").insert({ member_id: member.id });
+  // Picked at step 1 (GAPS A8.1). A failure here must not undo a signup that
+  // has already created the account: the types are editable on the company
+  // page the member is about to build, so log it and carry on.
+  if (opts.membershipTypeIds?.length) {
+    try {
+      await replaceMemberMembershipTypes(db, member.id, opts.membershipTypeIds);
+    } catch (e) {
+      console.error("[join] membership types not saved:", e);
+    }
+  }
   return { memberId: member.id };
 }
 

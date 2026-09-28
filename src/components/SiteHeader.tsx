@@ -28,6 +28,7 @@ export function accountLinks(user: CurrentUser, unread = 0) {
     ? [
         { href: "/console", label: "Admin console" },
         { href: "/console/notifications", label: "Notifications" },
+        { href: "/console/releases", label: "What's new" },
       ]
     : [
         { href: "/dashboard", label: "Member area" },

@@ -2,20 +2,12 @@ import Link from "next/link";
 import { bookingPhase } from "@/lib/adverts";
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
+import { MEMBER_ADVERT_PHASE } from "@/lib/advert-phase-labels";
 import { visibilityProductName } from "@/lib/visibility-products";
 import { AdvertisingTabs } from "../AdvertisingTabs";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Manage advertising" };
-
-const ADVERT_PHASE: Record<string, { label: string; className: string }> = {
-  draft: { label: "draft, not sent", className: "text-graphite" },
-  awaiting: { label: "awaiting approval", className: "text-brand-text" },
-  changes_needed: { label: "needs a change", className: "text-danger" },
-  upcoming: { label: "scheduled", className: "text-graphite" },
-  live: { label: "live now", className: "text-success" },
-  ended: { label: "ended — run it again?", className: "text-graphite" },
-};
 
 const REQUEST_STATUS: Record<string, { label: string; className: string }> = {
   requested: { label: "requested — Jas will confirm", className: "text-brand-text" },
@@ -54,7 +46,7 @@ export default async function AdvertisingManagePage() {
             handles artwork-swap (upcoming/live) and "Run it again" (ended). */}
         {(bookings ?? []).map((b) => {
           const phase = bookingPhase(b, today);
-          const p = ADVERT_PHASE[phase];
+          const p = MEMBER_ADVERT_PHASE[phase];
           return (
             <p key={b.id} className="mt-2 border-t pt-2 text-sm">
               <Link href={`/dashboard/advert/${b.id}`} className="hover:underline">{b.advert?.name}</Link> —{" "}

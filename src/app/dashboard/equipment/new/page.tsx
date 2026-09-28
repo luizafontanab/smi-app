@@ -2,12 +2,14 @@ import { requireMember } from "@/lib/auth";
 import { memberUploadImage, submitMachine } from "../../actions";
 import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { YoutubePreview } from "@/components/YoutubePreview";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Add equipment" };
 
-export default async function NewMemberMachine() {
+export default async function NewMemberMachine(props: PageProps<"/dashboard/equipment/new">) {
   await requireMember();
+  const sp = await props.searchParams;
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="mt-1 text-xl font-bold text-ink">Add equipment</h1>
@@ -15,6 +17,7 @@ export default async function NewMemberMachine() {
         List a machine for sale. The editor reviews every listing before it appears; buyers are sent to
         your own site for the full details — SMI never handles the sale.
       </p>
+      {typeof sp.error === "string" && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <form action={submitMachine} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
         <div>
           <label htmlFor="name" className="text-sm font-medium">Machine name<RequiredMark /></label>
@@ -35,6 +38,7 @@ export default async function NewMemberMachine() {
             <p className="mt-1 text-xs text-graphite">Landscape, JPG/PNG, max 8MB.</p>
           </div>
         </div>
+        <YoutubePreview name="video_url" required={false} label="Video of the machine running (YouTube link)" />
         <button className="rounded bg-ink px-5 py-2.5 text-white">Submit for approval</button>
       </form>
     </div>

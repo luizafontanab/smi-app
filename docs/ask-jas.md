@@ -48,6 +48,46 @@
     that way, because a handle mention on someone else's platform is not obviously the
     same thing as a link on ours. If "hidden" should mean hidden there too, it is one line.
 
+15. **Sign off the lead-gen disclaimer wording (you asked to see the exact text).** Both
+    lead panels, yours and the members', now show job titles prominently and carry this
+    draft (GAPS A8.3/A8.4, from the 18 Sep call):
+
+    > **Not vetted sales leads.** These are people whose publicly available professional
+    > details — the job title, company and contact routes they published themselves —
+    > matched the business profile searched for. Nobody listed here has asked to be contacted.
+
+    Is that the wording, or how would you change it? It lives in one place
+    (`src/components/leads/LeadsDisclaimer.tsx`), so a change applies to both panels at
+    once. The panels still show sample data only.
+
+16. **Should the stats email be on by default, or opt-in?** Your 15 July note said
+    "stats quarterly is fine", and today every member gets a quarterly summary unless
+    they switch it off in Settings. The 18 Sep call asked for it to be an *opt-in*
+    setting instead. Switching means members who never visited Settings stop getting it.
+    Which do you want (GAPS A9.7)?
+
+17. **Which homepage design is going live?** The 18 Sep call asked for the old site's
+    nav order — Home / News / Videos / Newsletters / Find a Member beside the logo, with
+    the Industries bar underneath (GAPS A9.9). The two designs lay their headers out
+    differently, and we have assumed the lighter "Grid" design is the one going live,
+    because it matches "vertical layout, lighter background" from the same call. Is that
+    right? You can now flip every visitor between the two yourself, in the console under
+    Page Layouts → Homepage design.
+
+18. **Should a company page have an Email button?** The directory cards used to offer
+    Email beside Website and Call; that went when the cards were simplified. Today no
+    public page offers a member's email at all, so the "Email" line in members' click
+    stats can only ever read zero (GAPS A9.11). Add an Email button to the company page,
+    or leave it off on purpose?
+
+19. **One line for the Policies page about advert impressions.** Since 28 Sep we count
+    an advert as seen even when the reader declined analytics cookies, so advertisers
+    get the full number. For those readers we store nothing about them: no cookie,
+    no IP-derived data, just "this advert was on this page at this time". Nothing
+    they see changes because of it. The Policies page says nothing about this yet
+    (and still describes Google Analytics, which the site doesn't use). Are you
+    happy for the policy to say so, and do you want your usual wording or ours?
+
 ## Data validation
 
 We'd like you to confirm the lists below are correct and complete before we treat them as final.

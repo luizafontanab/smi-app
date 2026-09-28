@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { sessionDb } from "@/lib/db/server";
+import { membershipTypeIdsFromForm, membershipTypesError } from "@/lib/member-services";
 import { provisionMember } from "@/lib/membership";
 import { notifyAdminFunnel } from "@/lib/notify-admin";
 import { allowRequest, HOUR } from "@/lib/rate-limit";
@@ -19,12 +20,15 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
   const phone = String(formData.get("phone") ?? "").trim();
   const website = String(formData.get("website") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
+  const membershipTypeIds = membershipTypeIdsFromForm(formData);
 
   if (!EMAIL_RE.test(email)) return { message: "Please enter a valid email." };
   if (password.length < 8) return { message: "Password needs at least 8 characters." };
   if (!company) return { message: "Company name is required." };
   const parsedPhone = parsePhone(phone);
   if (parsedPhone && typeof parsedPhone === "object") return { message: parsedPhone.error };
+  const tooManyTypes = membershipTypesError(membershipTypeIds);
+  if (tooManyTypes) return { message: tooManyTypes };
   // This creates a real auth user and a draft member row; unthrottled it is a
   // free account-and-record generator for anyone who finds the page.
   if (!(await allowRequest("join", 3, HOUR))) {
@@ -36,6 +40,7 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
     ...(phone ? { phone } : {}),
     ...(website ? { website } : {}),
     ...(address ? { address } : {}),
+    ...(membershipTypeIds.length ? { membershipTypeIds } : {}),
   });
   if ("error" in result) return { message: result.error };
 

@@ -17,7 +17,9 @@ export type EventKind =
   | "outbound_click"
   | "phone_click"
   | "email_click"
-  | "social_click";
+  | "social_click"
+  /** A video page view, attributed to the video's member for Content reach (GAPS A9.2). */
+  | "video_view";
 
 type EventRow = {
   kind: EventKind;

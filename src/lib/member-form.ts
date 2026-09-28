@@ -3,6 +3,7 @@ import { activationBlocked, BILLING_MODES, MEMBER_STATUSES, slugify, type Member
 import { sanitizeRichText } from "@/lib/sanitize";
 import { mergeSocial } from "@/lib/social";
 import { EMAIL_RE, parseCoordinate, parsePhone } from "@/lib/validate";
+import { optionalYoutubeUrl } from "@/lib/youtube";
 
 /**
  * FormData → the payload to write to `members`, for both editors of the same
@@ -79,6 +80,11 @@ export function companyPageValuesFromForm(
   const phone = parsePhone(text(formData, "phone"));
   if (phone && typeof phone === "object") return phone;
 
+  // YouTube only, like every other video field (USE-CASES gap 23, GAPS A8.5):
+  // anything else never played — it just vanished from the page.
+  const video = optionalYoutubeUrl(formData.get("video_url"));
+  if ("error" in video) return { error: `Company video: ${video.error}` };
+
   // prefixed names: bare social keys would collide with `name` and `status`
   const social = mergeSocial(existing.social, (key) => String(formData.get(socialFieldName(key)) ?? ""));
 
@@ -93,7 +99,7 @@ export function companyPageValuesFromForm(
     address: nullable(formData, "address"),
     phone,
     website: nullable(formData, "website"),
-    video_url: nullable(formData, "video_url"),
+    video_url: video.url,
     contact_email,
     lat,
     lng,

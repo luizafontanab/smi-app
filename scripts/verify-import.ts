@@ -18,6 +18,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listAllObjects } from "./lib/storage-list";
+import { isLocalSupabaseUrl } from "./lib/target-guard";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACT_DIR = process.env.EXTRACT_DIR ?? path.resolve(HERE, "../../handover-extract");
@@ -70,6 +71,7 @@ async function main() {
   );
   const videos = seed<{ thumbnail_path: string | null }>("videos.seed.json");
   const events = seed<{ lat: number | null; type: string | null; cover_path: string | null }>("events.seed.json");
+  const adverts = seed<{ desktop_path: string; mobile_path: string }>("adverts.seed.json");
 
   let allOk = true;
   const check = (...args: Parameters<typeof row>) => {
@@ -191,6 +193,28 @@ async function main() {
     events.filter((e) => e.type != null).length,
   );
 
+  // The old site's real adverts (seed-real.ts --legacy-adverts-only). Matched on
+  // artwork path, the importer's own idempotency key. A local subset holds only
+  // some advertisers, so a shortfall there is expected; on production it isn't.
+  console.log("\nAdverts");
+  const importedAdverts = new Set<string>();
+  {
+    const { data, error } = await db.from("adverts").select("desktop_path");
+    if (error) throw new Error(`adverts: ${error.message}`);
+    const paths = new Set((data ?? []).map((a) => a.desktop_path));
+    for (const a of adverts) if (paths.has(a.desktop_path)) importedAdverts.add(a.desktop_path);
+    check("legacy adverts imported", importedAdverts.size, adverts.length);
+    // seedAdverts() stamps its artwork SAMPLE and stores it under panels/. It
+    // names real companies who bought nothing, so on a live site it is not a
+    // placeholder, it is a false claim that they advertise here.
+    const samples = (data ?? []).filter((a) => a.desktop_path.startsWith("panels/")).length;
+    if (isLocalSupabaseUrl(SUPABASE_URL)) {
+      console.log(`  – SAMPLE adverts (panels/)          ${String(samples).padStart(6)}   expected locally`);
+    } else {
+      check("SAMPLE adverts (panels/)", samples, 0);
+    }
+  }
+
   // Everything above ran with the secret key, which bypasses RLS — so it proves
   // the rows exist, not that the site can read them. The public pages use the
   // publishable key as the `anon` role, where RLS and table grants both apply.
@@ -261,7 +285,13 @@ async function main() {
         .in("user_id", fixtures.map((u) => u.id));
       const roleOf = new Map((profs ?? []).map((p) => [p.user_id, p.role]));
       console.log(`  ✗ ${fixtures.length} seed fixture login(s) with a repo-hardcoded password:`);
-      for (const u of fixtures) console.log(`      ${u.email}  role=${roleOf.get(u.id) ?? "?"}`);
+      // Creation date tells "never deleted" apart from "deleted, then re-created
+      // by a later seed or script" — two different fixes.
+      for (const u of fixtures)
+        console.log(
+          `      ${u.email}  role=${roleOf.get(u.id) ?? "?"}  created ${u.created_at?.slice(0, 16) ?? "?"}` +
+            `  last sign-in ${u.last_sign_in_at?.slice(0, 16) ?? "never"}`,
+        );
       console.log(`    These must not exist on a live database — see scripts/seed-real.ts mkUser().`);
     } else {
       console.log("  ✓ no @smi.local fixture logins");
@@ -284,6 +314,8 @@ async function main() {
   for (const s of stories) if (s.cover_path) referenced.add(s.cover_path);
   for (const v of videos) if (v.thumbnail_path) referenced.add(v.thumbnail_path);
   for (const e of events) if (e.cover_path) referenced.add(e.cover_path);
+  // Only adverts actually imported: their artwork is uploaded by the same run.
+  for (const a of adverts) if (importedAdverts.has(a.desktop_path)) for (const p of [a.desktop_path, a.mobile_path]) referenced.add(p);
 
   const present = await listAllObjects(db, "media");
   const missing = [...referenced].filter((p) => !present.has(p));

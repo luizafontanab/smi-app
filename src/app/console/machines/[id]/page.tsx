@@ -9,6 +9,7 @@ import { consoleUploadImage, decideMachine, returnToDraft, saveMachine, saveMach
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { SubmitButton } from "@/components/SubmitButton";
+import { YoutubePreview } from "@/components/YoutubePreview";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,7 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
           {image && <Image src={image} alt="" width={240} height={140} className="mt-1 rounded object-cover" unoptimized />}
           <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
         </div>
+        <YoutubePreview name="video_url" required={false} label="Video (YouTube link)" defaultValue={machine?.video_url ?? ""} />
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
 

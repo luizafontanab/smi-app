@@ -73,8 +73,10 @@ describe("notificationHref", () => {
     expect(notificationHref("page_changes_rejected", p({}), slugs)).toBe("/dashboard/profile");
   });
 
-  it("has no destination for a lead alert, whose page is unbuilt", () => {
-    expect(notificationHref("lead_alert", p({}), slugs)).toBeNull();
+  // lead_alert is about page engagement, not the mock prospects panel, and
+  // must agree with its own email's button (email/templates.ts).
+  it("sends a lead alert to stats, where its email's button goes", () => {
+    expect(notificationHref("lead_alert", p({}), slugs)).toBe("/dashboard/stats");
   });
 
   it("never invents a link for an unknown kind", () => {
@@ -84,7 +86,8 @@ describe("notificationHref", () => {
   // The map is keyed by hand, so a kind added to NOTIFICATION_KINDS without a
   // case here silently loses its link. This is the guard against that going
   // unnoticed: every kind must be a deliberate decision, including "no link".
-  const NO_LINK = new Set(["lead_alert"]);
+  // Empty today: lead_alert was the last exception.
+  const NO_LINK = new Set<string>();
   it("every registered notification kind is either linked or deliberately not", () => {
     const payload = p({ story_id: "s1", video_id: "v1", event_id: "e1", booking_id: "b1" });
     for (const kind of NOTIFICATION_KINDS) {

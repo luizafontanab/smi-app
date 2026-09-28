@@ -41,7 +41,11 @@ const csp = [
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${__impeccableLiveDev}`,
   "style-src 'self' 'unsafe-inline'",
   // tile.openstreetmap.org: the raster tiles behind MemberMap's Leaflet view (A6.4).
-  `img-src 'self' data: blob: https://*.tile.openstreetmap.org${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  // i.ytimg.com: YouTube's still-image host. Video cards, the home hero and
+  // og:image all fall back to its stills when a video has no uploaded
+  // thumbnail — blocked until 28 Sep, so that fallback never rendered (GAPS
+  // A8.5). Images only; frame-src already trusts YouTube's players.
+  `img-src 'self' data: blob: https://*.tile.openstreetmap.org https://i.ytimg.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
   "font-src 'self' data:",
   `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}${__impeccableLiveDev}`,
   "media-src 'self' https:",
@@ -147,6 +151,14 @@ const nextConfig: NextConfig = {
   // Playwright drives the app via 127.0.0.1; without this the dev server 403s
   // client chunks/HMR for that origin (only `localhost` is allowed by default)
   allowedDevOrigins: ["127.0.0.1"],
+  /**
+   * /console/releases reads its markdown with fs at request time (the console
+   * layout makes it dynamic), which the file tracer can't be relied on to
+   * follow — name the file so a Vercel deploy ships it.
+   */
+  outputFileTracingIncludes: {
+    "/console/releases": ["./src/content/release-notes.md"],
+  },
   /**
    * Every upload in this app goes through a server action, and the default
    * body limit is 1MB — so `uploadImage`'s 8MB cap and `uploadDocument`'s 20MB

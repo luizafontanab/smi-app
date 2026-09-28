@@ -21,7 +21,8 @@ describe("consoleNotificationHref", () => {
   });
 
   it("sends every membership-lifecycle notification to that member's record", () => {
-    for (const kind of ["signup_started", "payment_taken", "page_submitted", "payment_failed", "subscription_ended", "comp_expired", "membership_lapsed"]) {
+    // page_edit_submitted: a live page's edit is approved on that record too (GAPS A1.12)
+    for (const kind of ["signup_started", "payment_taken", "page_submitted", "page_edit_submitted", "payment_failed", "subscription_ended", "comp_expired", "membership_lapsed"]) {
       expect(consoleNotificationHref(kind, { member_id: "mem1" }), kind).toBe("/console/members/mem1");
     }
   });

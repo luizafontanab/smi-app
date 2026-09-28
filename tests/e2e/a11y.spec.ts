@@ -62,11 +62,11 @@ test("axe: / (grid variant) has no serious or critical violations", async ({ pag
 // /console/notifications earns a slot: it is a new route, and its rows carry
 // two link shapes plus per-row forms, which is where unlabelled-control drift
 // shows up first.
-const CONSOLE_PAGES = ["/console", "/console/stories", "/console/dev", "/console/newsletter", "/console/industries", "/console/leads", "/console/email-templates/welcome", "/console/advertising", "/console/notifications"];
+const CONSOLE_PAGES = ["/console", "/console/stories", "/console/dev", "/console/newsletter", "/console/industries", "/console/leads", "/console/email-templates/welcome", "/console/advertising", "/console/notifications", "/console/releases"];
 // /dashboard/submissions earns a slot: it gained status tabs, a <details>
 // disclosure and an inline form per published row, which is exactly the shape
 // unlabelled-control drift takes.
-const DASHBOARD_PAGES = ["/dashboard", "/dashboard/story/new", "/dashboard/submissions", "/dashboard/profile", "/dashboard/leads"];
+const DASHBOARD_PAGES = ["/dashboard", "/dashboard/story/new", "/dashboard/submissions", "/dashboard/profile", "/dashboard/leads", "/dashboard/advertising/assets"];
 
 test.describe("axe: console (admin)", () => {
   for (const path of CONSOLE_PAGES) {

@@ -11,9 +11,11 @@ import { memberBySlug, publishedStories } from "@/lib/queries";
 import { resolveRedirect } from "@/lib/redirects";
 import { excerptFromHtml } from "@/lib/sanitize";
 import { socialLinks } from "@/lib/social";
+import { memberVideoList } from "@/lib/member-videos";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
+import { MemberVideos } from "@/components/MemberVideos";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +79,6 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
   record([{ kind: "member_page_view", member_id: member.id, path: `/member/${slug}`, ...ctx }]);
 
   const socials = socialLinks(member.social);
-  const yt = member.video_url?.match(/[?&]v=([\w-]+)/)?.[1];
   const hero = mediaUrl(member.hero_path);
 
   const profileMain = (
@@ -192,16 +193,10 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
   );
 
   // Its own anchor rather than living inside profileMain (fix list): "big,
-  // below the member's news" — only one video_url per member today, so this
-  // is exactly one video, never a carousel (see docs/GAPS.md).
-  const profileVideo = yt ? (
-    <section className="mt-10">
-      <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">Company video</h2>
-      <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-        <iframe className="aspect-video w-full" src={`https://www.youtube-nocookie.com/embed/${yt}`} title="Company video" allowFullScreen />
-      </div>
-    </section>
-  ) : null;
+  // below the member's news". The company video leads, then the member's own
+  // published SMI videos (GAPS A8.5) — one player, the reader picks.
+  const videos = memberVideoList(member.video_url, member.videos);
+  const profileVideo = videos.length ? <MemberVideos videos={videos} /> : null;
 
   return (
     <div className="mx-auto max-w-6xl px-4">

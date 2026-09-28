@@ -4,6 +4,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { renderableHtml } from "@/lib/sanitize";
 import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { YoutubePreview } from "@/components/YoutubePreview";
 import { editMachine, memberUploadImage, withdrawMachine } from "../../../actions";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export default async function EditMemberMachine(props: PageProps<"/dashboard/equ
   const user = await requireMember();
   const db = serviceDb();
   const { data: machine } = await db.from("featured_machines")
-    .select("id, name, description, external_url, image_path, status, member_id")
+    .select("id, name, description, external_url, image_path, video_url, status, member_id")
     .eq("id", id).single();
   if (!machine || machine.member_id !== user.memberId || !EDITABLE_STATUSES.includes(machine.status)) notFound();
 
@@ -53,6 +54,7 @@ export default async function EditMemberMachine(props: PageProps<"/dashboard/equ
             <p className="mt-1 text-xs text-graphite">Landscape, JPG/PNG, max 8MB. Leave empty to keep the current photo.</p>
           </div>
         </div>
+        <YoutubePreview name="video_url" required={false} label="Video of the machine running (YouTube link)" defaultValue={machine.video_url ?? ""} />
         <div className="flex items-center gap-3">
           <button className="rounded bg-ink px-5 py-2.5 text-white">Save & resubmit</button>
           <button type="submit" formAction={withdrawMachine} className="text-sm text-graphite underline hover:text-danger">

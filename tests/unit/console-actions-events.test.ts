@@ -246,6 +246,68 @@ describe("decideRevision", () => {
     expect(servicesBuilder.insert).not.toHaveBeenCalled();
   });
 
+  // GAPS A8.1: members pick their own membership types, and on a live page the
+  // pick rides the revision as `membership_type_ids`, exactly like service_ids.
+  it("approving applies membership_type_ids and keeps them out of the member row", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
+    const typesBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({
+        id: "r1", member_id: "m1", status: "awaiting_approval",
+        payload: { website: "https://example.com", membership_type_ids: [1, 4] },
+      })),
+      members: () => membersBuilder,
+      member_membership_types: () => typesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    const [payload] = (membersBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(payload).not.toHaveProperty("membership_type_ids");
+    expect(typesBuilder.delete).toHaveBeenCalled();
+    expect(typesBuilder.insert).toHaveBeenCalledWith([
+      { member_id: "m1", membership_type_id: 1 },
+      { member_id: "m1", membership_type_id: 4 },
+    ]);
+  });
+
+  // Every revision written before 28 Sep has no such key; approving one must
+  // not wipe the types Jas assigned by hand.
+  it("approving a revision with no membership_type_ids leaves the member's types alone", async () => {
+    const typesBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "x" } })),
+      members: () => queryBuilder(dbOk(null)),
+      member_membership_types: () => typesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    expect(typesBuilder.delete).not.toHaveBeenCalled();
+  });
+
+  // The cap is checked before any write, so an over-cap revision can't half-apply.
+  it("refuses an over-cap membership_type_ids before touching the member row", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
+    const typesBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({
+        id: "r1", member_id: "m1", status: "awaiting_approval",
+        payload: { website: "x", membership_type_ids: [1, 2, 3, 4, 5, 6, 7] },
+      })),
+      members: () => membersBuilder,
+      member_membership_types: () => typesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await expect(decideRevision(form({ id: "r1", decision: "approve" }))).rejects.toThrow(/NEXT_REDIRECT.*error=.*up%20to%206/);
+
+    expect(membersBuilder.update).not.toHaveBeenCalled();
+    expect(typesBuilder.delete).not.toHaveBeenCalled();
+  });
+
   it("rejecting notifies the member with the reason and never touches the member row", async () => {
     const membersBuilder = queryBuilder(dbOk(null));
     const revisionsBuilder = queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: {} }));

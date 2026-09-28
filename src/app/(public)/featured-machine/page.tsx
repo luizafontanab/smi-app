@@ -7,6 +7,7 @@ import { adSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
 import { isMemberLinkable } from "@/lib/member-visibility";
 import { activePlacements, publishedStories } from "@/lib/queries";
+import { youtubeId } from "@/lib/youtube";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { RichText } from "@/components/RichText";
 
@@ -52,10 +53,31 @@ export default async function FeaturedMachinePage() {
             <p className="text-xs uppercase tracking-widest text-brand-text">Machine of the month</p>
             <h2 className="mt-1 text-2xl font-bold text-ink">{machine.name}</h2>
             {isMemberLinkable(machine.member) && (
-              <p className="mt-1 text-sm text-graphite">
-                Offered by <Link href={`/member/${machine.member.slug}`} className="text-graphite underline">{machine.member.name}</Link>
+              <p className="mt-1 flex items-center gap-2 text-sm text-graphite">
+                {/* the seller's brand beside the credit (REQUIREMENTS §3, 18 Sep) */}
+                {machine.member.logo_path && (
+                  <Image src={mediaUrl(machine.member.logo_path)!} alt="" width={96} height={32} className="h-8 w-auto object-contain" unoptimized />
+                )}
+                <span>
+                  Offered by <Link href={`/member/${machine.member.slug}`} className="text-graphite underline">{machine.member.name}</Link>
+                </span>
               </p>
             )}
+            {/* GAPS A9.4: the machine running, without leaving the page. */}
+            {(() => {
+              const yt = machine.video_url ? youtubeId(machine.video_url) : null;
+              return yt ? (
+                <div className="mt-4 aspect-video w-full overflow-hidden rounded-lg bg-ink">
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${yt}`}
+                    title={`${machine.name} — video`}
+                    allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="h-full w-full"
+                  />
+                </div>
+              ) : null;
+            })()}
             <RichText html={machine.description} className="mt-4 text-ink" />
             <div className="mt-6 flex flex-wrap gap-3">
               {machine.external_url && (

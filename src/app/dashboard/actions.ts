@@ -10,8 +10,17 @@ import { isEventType } from "@/lib/event-types";
 import { removeMedia, uploadImage } from "@/lib/media";
 import { companyPageValuesFromForm } from "@/lib/member-form";
 import { resolveCoordinates } from "@/lib/member-geocode";
-import { replaceMemberServices } from "@/lib/member-services";
+import {
+  membershipTypeIdsFromForm,
+  membershipTypesError,
+  replaceMemberMembershipTypes,
+  replaceMemberServices,
+} from "@/lib/member-services";
 import { sanitizeRichText } from "@/lib/sanitize";
+import { HOUR, withinLimit } from "@/lib/rate-limit";
+import { siteUrl } from "@/lib/site-url";
+import { EMAIL_RE } from "@/lib/validate";
+import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -196,7 +205,9 @@ export async function submitVideo(formData: FormData) {
   const user = await requireMember();
   const title = String(formData.get("title") ?? "").trim();
   const url = String(formData.get("url") ?? "").trim();
-  if (!title || !url) return;
+  // Say why rather than silently re-rendering the form (same as submitStory).
+  const problem = !title || !url ? "A title and a YouTube link are both required." : !youtubeId(url) ? YOUTUBE_ONLY_ERROR : null;
+  if (problem) redirect(`/dashboard/video/new?error=${encodeURIComponent(problem)}`);
   const thumbnail = await uploadImage(formData.get("thumbnail") as File | null, "videos");
   // The id is selected back purely so the console notification can link to it.
   const { data } = await serviceDb().from("videos").insert({
@@ -235,7 +246,8 @@ export async function editVideo(formData: FormData) {
   if (!(await assertOwnsRow(db, "videos", id, user.memberId))) return;
   const title = String(formData.get("title") ?? "").trim();
   const url = String(formData.get("url") ?? "").trim();
-  if (!title || !url) return;
+  const problem = !title || !url ? "A title and a YouTube link are both required." : !youtubeId(url) ? YOUTUBE_ONLY_ERROR : null;
+  if (problem) redirect(`/dashboard/video/${id}/edit?error=${encodeURIComponent(problem)}`);
   const thumbnail = await uploadImage(formData.get("thumbnail") as File | null, "videos");
   await db.from("videos").update({
     title,
@@ -415,6 +427,10 @@ export async function submitProfileEdit(formData: FormData) {
   // cannot ride the payload as a column. They travel as `service_ids`, which
   // decideRevision pulls out before it applies the rest — see the note there.
   const serviceIds = formData.getAll("services").map(Number).filter(Boolean);
+  // Membership types travel the same way, as `membership_type_ids` (GAPS A8.1).
+  const membershipTypeIds = membershipTypeIdsFromForm(formData);
+  const tooManyTypes = membershipTypesError(membershipTypeIds);
+  if (tooManyTypes) return back(tooManyTypes);
 
   if (member.status === "draft") {
     const firstSubmit = !member.draft_submitted_at;
@@ -425,6 +441,7 @@ export async function submitProfileEdit(formData: FormData) {
     // A draft page is not public yet and Activate is the one approval it gets,
     // so its services apply straight away rather than through a revision.
     await replaceMemberServices(db, user.memberId, serviceIds);
+    await replaceMemberMembershipTypes(db, user.memberId, membershipTypeIds);
     if (firstSubmit) {
       const { notifyAdminFunnel } = await import("@/lib/notify-admin");
       await notifyAdminFunnel({
@@ -443,8 +460,11 @@ export async function submitProfileEdit(formData: FormData) {
 
   await db.from("member_revisions").insert({
     member_id: user.memberId,
-    payload: { ...values, service_ids: serviceIds } as import("@/lib/db/types").Json,
+    payload: { ...values, service_ids: serviceIds, membership_type_ids: membershipTypeIds } as import("@/lib/db/types").Json,
   });
+  // Like every other member submission, it lands in the console as a
+  // notification linking to where it's approved (GAPS A1.12).
+  await notifySubmitted("page_edit_submitted", user.memberId, { member_id: user.memberId }, "Submitted changes to their live company page for approval.");
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=profile");
 }
@@ -454,11 +474,15 @@ export async function submitMachine(formData: FormData) {
   const user = await requireMember();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
+  // Optional, YouTube only (GAPS A9.4) — refused before the photo uploads.
+  const video = optionalYoutubeUrl(formData.get("video_url"));
+  if ("error" in video) redirect(`/dashboard/equipment/new?error=${encodeURIComponent(video.error)}`);
   const image = await uploadImage(formData.get("image") as File | null, `machines/${user.memberId}`);
   const { data } = await serviceDb().from("featured_machines").insert({
     name,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     external_url: String(formData.get("external_url") ?? "") || null,
+    video_url: video.url,
     image_path: image,
     member_id: user.memberId,
     status: "awaiting_approval",
@@ -489,11 +513,14 @@ export async function editMachine(formData: FormData) {
   if (!(await assertOwnsRow(db, "featured_machines", id, user.memberId))) return;
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
+  const video = optionalYoutubeUrl(formData.get("video_url"));
+  if ("error" in video) redirect(`/dashboard/equipment/${id}/edit?error=${encodeURIComponent(video.error)}`);
   const image = await uploadImage(formData.get("image") as File | null, `machines/${user.memberId}`);
   await db.from("featured_machines").update({
     name,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     external_url: String(formData.get("external_url") ?? "") || null,
+    video_url: video.url,
     status: "awaiting_approval",
     rejected_reason: null,
     ...(image ? { image_path: image } : {}),
@@ -624,6 +651,37 @@ export async function changePassword(formData: FormData) {
   if (error) redirect("/dashboard/settings/security?perror=failed");
 
   redirect("/dashboard/settings/security?psaved=1");
+}
+
+/**
+ * Change the email the member logs in with (GAPS A4.12). Distinct from the
+ * public contact email on their company page, which this never touches.
+ *
+ * Supabase does the security work: nothing changes until a confirmation link
+ * is clicked, and with "secure email change" on (the local config's
+ * `double_confirm_changes`, and the hosted default) links go to both the
+ * current and the new address. ⚠ Whether Supabase then needs BOTH clicked
+ * under the PKCE flow is unverified: locally one link (the old address's)
+ * completed the change, but the local auth server was running stale config,
+ * so that is not conclusive — see GAPS A4.12. The page copy claims neither.
+ * The links land on /account/email/confirm, outside /dashboard, because the
+ * old address's email is often opened on another device with no session.
+ */
+export async function changeLoginEmail(formData: FormData) {
+  const user = await requireMember();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const back = (code: string) => redirect(`/dashboard/settings/security?eerror=${code}`);
+  if (!EMAIL_RE.test(email)) return back("invalid");
+  if (email === user.email.toLowerCase()) return back("same");
+  // Each request sends email to two inboxes; cap it per account.
+  if (!withinLimit(`email-change:${user.userId}`, 3, HOUR)) return back("limit");
+
+  const db = await sessionDb();
+  const { error } = await db.auth.updateUser({ email }, { emailRedirectTo: `${siteUrl()}/account/email/confirm` });
+  // Supabase refuses an address another account already uses; say so without
+  // echoing anything about that other account.
+  if (error) return back(/already|registered|exists/i.test(error.message) ? "taken" : "failed");
+  redirect("/dashboard/settings/security?esent=1");
 }
 
 /** GAPS B1.5 — member-side subscription cancellation, requested from /dashboard/settings/billing. */

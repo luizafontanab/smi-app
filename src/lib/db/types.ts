@@ -1019,6 +1019,7 @@ export type Database = {
           source: string
           status: string
           submitted_by: string | null
+          video_url: string | null
         }
         Insert: {
           created_at?: string
@@ -1032,6 +1033,7 @@ export type Database = {
           source?: string
           status?: string
           submitted_by?: string | null
+          video_url?: string | null
         }
         Update: {
           created_at?: string
@@ -1045,6 +1047,7 @@ export type Database = {
           source?: string
           status?: string
           submitted_by?: string | null
+          video_url?: string | null
         }
         Relationships: [
           {
@@ -2371,7 +2374,25 @@ export type Database = {
         Args: { p_month: string }
         Returns: undefined
       }
+      member_event_months: {
+        Args: { p_member: string; p_since: string }
+        Returns: {
+          bucket: string
+          kind: string
+          month: string
+          n: number
+        }[]
+      }
       run_daily_rollup: { Args: never; Returns: undefined }
+      search_members: {
+        Args: { max_results?: number; query: string }
+        Returns: {
+          description: string
+          logo_path: string
+          name: string
+          slug: string
+        }[]
+      }
       site_sessions_last_year: { Args: never; Returns: number }
     }
     Enums: {

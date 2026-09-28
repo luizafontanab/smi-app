@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { League_Spartan, Source_Sans_3 } from "next/font/google";
-import { cookies } from "next/headers";
 import { DevTaskLauncher } from "@/components/dev-task/DevTaskLauncher";
 import { ThemeLauncher } from "@/components/ThemeLauncher";
 import { siteUrl } from "@/lib/site-url";
+import { siteVariant } from "@/lib/variant";
 import "./globals.css";
 
 // The brand faces, shared by both designs. next/font requires static
@@ -60,9 +60,11 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Stamped for both designs, forge included: a symmetric attribute gives grid a
-  // clean CSS hook and a clean test handle. Anything unrecognised — including the
-  // retired "live"/"demo" still in returning browsers' cookie jars — is forge.
-  const theme = (await cookies()).get("smi-theme")?.value === "grid" ? "grid" : "forge";
+  // clean CSS hook and a clean test handle. Must come from siteVariant(), the
+  // same resolution the public layout and pages use — reading the cookie here
+  // directly would stamp forge on <html> while the page rendered the site-wide
+  // grid default (GAPS A8.2).
+  const theme = await siteVariant();
   return (
     <html
       lang="en"

@@ -7,8 +7,9 @@ import { VideoForm } from "./VideoForm";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Add a video" };
 
-export default async function NewMemberVideo() {
+export default async function NewMemberVideo(props: PageProps<"/dashboard/video/new">) {
   const user = await requireMember();
+  const sp = await props.searchParams;
   const db = serviceDb();
   const [{ data: member }, { data: inds }] = await Promise.all([
     db.from("members").select("name, slug, logo_path, industry_id").eq("id", user.memberId).single(),
@@ -22,6 +23,7 @@ export default async function NewMemberVideo() {
         The editor reviews every video before it goes live. Once approved it&apos;s published with a link back to
         your page and shared on SMI&apos;s social channels.
       </p>
+      {typeof sp.error === "string" && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <VideoForm
         action={submitVideo}
         uploadImage={memberUploadVideoImage}

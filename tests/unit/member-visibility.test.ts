@@ -90,7 +90,8 @@ describe("memberBySlug", () => {
   it("switches to serviceDb for includeArchived, which is the only way past the policy", async () => {
     const { anon, service } = clients(
       { members: () => queryBuilder(dbOk(null)) },
-      { members: () => queryBuilder(dbOk(ARCHIVED)), stories: () => queryBuilder(dbOk([])) },
+      // videos: memberBySlug also reads the member's published videos (GAPS A8.5)
+      { members: () => queryBuilder(dbOk(ARCHIVED)), stories: () => queryBuilder(dbOk([])), videos: () => queryBuilder(dbOk([])) },
     );
 
     const member = await memberBySlug("acme", { includeArchived: true });

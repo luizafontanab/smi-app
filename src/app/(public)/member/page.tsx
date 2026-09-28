@@ -3,7 +3,8 @@ import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
-import { featuredMembers, industries as industryList, memberDirectory, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
+import { narrowOptions } from "@/lib/member-facets";
+import { featuredMembers, industries as industryList, memberDirectory, memberFacets, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
 import { MemberCloud } from "@/components/MemberCloud";
 import { MemberMap } from "@/components/MemberMap";
@@ -48,12 +49,14 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const isList = view === "list";
 
   const filters = { industries: industrySlugs, services, membershipTypes: membershipTypeSlugs, q };
-  const [dir, pins, inds, serviceList, typeList, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
+  const [dir, pins, inds, serviceList, typeList, facets, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
     isMap ? null : memberDirectory({ ...filters, ...(isList ? { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE } : {}) }),
     isMap ? memberPins(filters) : null,
     industryList(),
     allServices(),
     membershipTypes(),
+    // Which options still lead to a member, given the other filters (GAPS A9.1).
+    memberFacets(filters),
     featuredMembers(),
     liveAdverts("banner"),
     showAdPlaceholders(),
@@ -83,8 +86,13 @@ export default async function MembersPage(props: PageProps<"/member">) {
     return s ? `/member?${s}` : "/member";
   };
 
-  const industryOptions = inds;
-  const activeIndustries = industryOptions.filter((i) => industrySlugs.includes(i.slug));
+  // Each list offers only what at least one member matching the *other*
+  // filters has, plus whatever is already selected so it can be unticked
+  // (GAPS A9.1). Null facets (nothing filtered) leaves every list whole.
+  const industryOptions = narrowOptions(inds, facets?.industries ?? null, industrySlugs);
+  const serviceOptions = narrowOptions(serviceList, facets?.services ?? null, services);
+  const typeOptions = narrowOptions(typeList, facets?.membershipTypes ?? null, membershipTypeSlugs);
+  const activeIndustries = inds.filter((i) => industrySlugs.includes(i.slug));
   const withCoords = pinRows.filter((m): m is typeof m & { lat: number; lng: number } => m.lat != null && m.lng != null);
 
   // A member can hold overlapping featured placements — show each member once.
@@ -148,13 +156,13 @@ export default async function MembersPage(props: PageProps<"/member">) {
 
         <MultiSelectCombobox
           label="Services"
-          options={serviceList.map((s) => ({ slug: s.slug, name: s.name, href: qs({ service: toggled(services, s.slug) }) }))}
+          options={serviceOptions.map((s) => ({ slug: s.slug, name: s.name, href: qs({ service: toggled(services, s.slug) }) }))}
           clearHref={qs({ service: undefined })}
           selectedSlugs={services}
         />
         <MultiSelectCombobox
           label="Membership type"
-          options={typeList.map((t) => ({ slug: t.slug, name: t.name, href: qs({ type: toggled(membershipTypeSlugs, t.slug) }) }))}
+          options={typeOptions.map((t) => ({ slug: t.slug, name: t.name, href: qs({ type: toggled(membershipTypeSlugs, t.slug) }) }))}
           clearHref={qs({ type: undefined })}
           selectedSlugs={membershipTypeSlugs}
         />

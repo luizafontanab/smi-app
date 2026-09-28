@@ -54,6 +54,14 @@ describe("saveVideo", () => {
     expect(from).not.toHaveBeenCalled();
   });
 
+  // USE-CASES gap 23: YouTube only, same rule as the member form.
+  it("refuses a link that isn't YouTube and never touches the database", async () => {
+    const from = db({});
+    await expect(saveVideo(form({ id: "v1", title: "t", url: "https://vimeo.com/123" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/videos\/v1\?error=.*YouTube/);
+    expect(from).not.toHaveBeenCalled();
+  });
+
   it("creates a new video as a draft and redirects to it", async () => {
     const videosBuilder = queryBuilder(dbOk({ id: "v1" }));
     db({ videos: () => videosBuilder });
@@ -83,7 +91,7 @@ describe("saveVideo", () => {
     uploadImage.mockRejectedValue(new Error("Images only"));
     const from = db({});
 
-    await expect(saveVideo(form({ id: "v1", title: "t", url: "https://x" })))
+    await expect(saveVideo(form({ id: "v1", title: "t", url: "https://youtu.be/x" })))
       .rejects.toThrow("NEXT_REDIRECT:/console/videos/v1?error=Images%20only");
     expect(from).not.toHaveBeenCalled();
   });

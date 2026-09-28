@@ -127,15 +127,17 @@ export function notificationHref(kind: string, payload: NotificationPayload, slu
     case "membership_cancelled":
       return "/dashboard/settings/billing";
 
+    // lead_alert counts engagement_audit rows (companies engaging with the
+    // member's page), not the mock prospect list at /dashboard/leads, so it
+    // goes where its email's button already goes.
     case "stats_summary":
+    case "lead_alert":
       return "/dashboard/stats";
 
     case "welcome":
     case "account_created":
       return "/dashboard";
 
-    // lead_alert has nowhere to go yet — the member leads panel is unbuilt
-    // (GAPS A8.4). Better no link than one to a page that does not exist.
     default:
       return null;
   }

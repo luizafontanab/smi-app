@@ -14,6 +14,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
   const next = safeInternalPath(sp.next) ?? "";
   const failed = sp.error === "1";
   const resetFailed = sp.error === "reset";
+  const emailChangeFailed = sp.error === "email-change";
 
   async function signIn(formData: FormData) {
     "use server";
@@ -42,6 +43,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <p className="mt-1 text-center text-sm text-graphite">Member &amp; editor login</p>
         {failed && <p className="mt-3 rounded bg-danger/10 p-2 text-center text-sm text-danger">Wrong email or password.</p>}
         {resetFailed && <p className="mt-3 rounded bg-danger/10 p-2 text-center text-sm text-danger">That reset link has expired or was already used. <Link href="/reset" className="underline">Request a new one</Link>.</p>}
+        {emailChangeFailed && <p className="mt-3 rounded bg-danger/10 p-2 text-center text-sm text-danger">That email-change link has expired or was already used. Log in and request the change again from Settings.</p>}
         <input type="hidden" name="next" value={next} />
         <label htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
         <input id="email" name="email" type="email" autoComplete="email" required className="mt-1 w-full rounded border px-3 py-2" />

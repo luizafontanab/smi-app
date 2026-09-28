@@ -1,4 +1,5 @@
 import { requireConsole } from "@/lib/auth";
+import { LeadsDisclaimer } from "@/components/leads/LeadsDisclaimer";
 import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
@@ -56,6 +57,7 @@ export default async function ConsoleLeadsPage(props: PageProps<"/console/leads"
         every address is an <code>example.com</code> one. Nothing here contacts anybody. The live source needs
         an SMI-owned n8n instance and sign-off on the lead-gen cost before it can be switched on.
       </p>
+      <LeadsDisclaimer />
 
       {typeof sp.saved === "string" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Marked.</p>}
 
@@ -114,6 +116,7 @@ export default async function ConsoleLeadsPage(props: PageProps<"/console/leads"
                       ))}
                     </td>
                     <td className="py-3">
+                      {p.jobTitle && <span className="block font-semibold text-ink">{p.jobTitle}</span>}
                       {p.name}
                       {p.email && <a href={`mailto:${p.email}`} className="block text-xs underline">{p.email}</a>}
                       {p.phone && <a href={`tel:${p.phone.replace(/\s/g, "")}`} className="block text-xs underline">{p.phone}</a>}

@@ -4,6 +4,9 @@ import { displayLocation } from "./location";
 import { isMemberLinkable, PUBLIC_MEMBER_STATUSES } from "./member-visibility";
 import { parseDateParam } from "./news-prefs";
 import { seededShuffle } from "./shuffle";
+import { computeFacets, type FacetMember, type Facets } from "./member-facets";
+import { allRows } from "./db/all-rows";
+import { HOME_SECTIONS_KEY, resolveHomeSections, type HomeSections } from "./home-sections";
 
 export type StoryCard = {
   id: string;
@@ -173,7 +176,8 @@ export const industryBySlug = cache(async (slug: string) => {
  */
 export async function membershipTypes() {
   const db = publicDb();
-  const { data } = await db.from("membership_types").select("slug, name").order("sort_order");
+  // id too: the join form posts ids, the same values CompanyPageForm posts.
+  const { data } = await db.from("membership_types").select("id, slug, name").order("sort_order");
   return data ?? [];
 }
 
@@ -308,7 +312,7 @@ export async function activePlacements() {
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
     .from("placements")
-    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, status, archived_at, industry:industries(name)), machine:featured_machines(id, name, description, image_path, external_url, status, member:members(slug, name, status, archived_at))")
+    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, status, archived_at, industry:industries(name)), machine:featured_machines(id, name, description, image_path, external_url, video_url, status, member:members(slug, name, logo_path, status, archived_at))")
     .lte("starts_on", today)
     .gte("ends_on", today);
   return (data ?? []).map((p) => ({
@@ -395,7 +399,7 @@ export async function videoBySlug(slug: string) {
   const db = publicDb();
   const { data } = await db
     .from("videos")
-    .select("id, slug, title, url, description, thumbnail_path, published_at, member:members(slug, name, logo_path)")
+    .select("id, slug, title, url, description, thumbnail_path, published_at, member_id, member:members(slug, name, logo_path)")
     .eq("status", "published")
     .eq("slug", slug)
     .maybeSingle();
@@ -639,6 +643,58 @@ export async function memberPins(opts: MemberFilterOpts & { q?: string } = {}) {
 }
 
 /**
+ * Which directory filter options still lead somewhere (GAPS A9.1) — see
+ * `computeFacets` for the rule. Returns null when nothing is filtered, because
+ * then every option is available and the page needs no extra reads at all.
+ *
+ * Applies memberDirectory's own visibility (publicDb, so archived members are
+ * already gone via RLS; status active) and keyword match, so an option never
+ * disagrees with the result list beside it.
+ */
+export async function memberFacets(opts: MemberFilterOpts & { q?: string }): Promise<Facets | null> {
+  const selection = { industries: opts.industries ?? [], services: opts.services ?? [], membershipTypes: opts.membershipTypes ?? [] };
+  const term = ilikeTerm(opts.q ?? "");
+  const filtering = selection.industries.length || selection.services.length || selection.membershipTypes.length || term;
+  if (!filtering) return null;
+  if (opts.q?.trim() && !term) return computeFacets([], selection);
+
+  const db = publicDb();
+  const [members, serviceLinks, typeLinks] = await Promise.all([
+    allRows<{ id: string; industry: { slug: string } | null }>((from, to) => {
+      let q = db.from("members").select("id, industry:industries(slug)").eq("status", "active").order("id");
+      if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
+      return q.range(from, to);
+    }),
+    allRows<{ member_id: string; service: { slug: string } | null }>((from, to) =>
+      db.from("member_services").select("member_id, service:services(slug)").order("member_id").order("service_id").range(from, to)),
+    allRows<{ member_id: string; type: { slug: string } | null }>((from, to) =>
+      db.from("member_membership_types").select("member_id, type:membership_types(slug)").order("member_id").order("membership_type_id").range(from, to)),
+  ]);
+
+  const byMember = new Map<string, FacetMember & { services: Set<string>; types: Set<string> }>();
+  for (const m of members) byMember.set(m.id, { industry: m.industry?.slug ?? null, services: new Set(), types: new Set() });
+  // Links to members outside the visible set (archived, lapsed, keyword miss)
+  // simply find no entry and drop out.
+  for (const l of serviceLinks) if (l.service) byMember.get(l.member_id)?.services.add(l.service.slug);
+  for (const l of typeLinks) if (l.type) byMember.get(l.member_id)?.types.add(l.type.slug);
+  return computeFacets([...byMember.values()], selection);
+}
+
+/**
+ * The grid homepage's section order and visibility (GAPS A1.7). serviceDb:
+ * `settings` has RLS with no policies. Never throws and never returns a partial
+ * layout — a failed read is the default layout, not an empty homepage.
+ */
+export async function homeSectionsSetting(): Promise<HomeSections> {
+  try {
+    const { data } = await serviceDb().from("settings").select("value").eq("key", HOME_SECTIONS_KEY).maybeSingle();
+    return resolveHomeSections(data?.value);
+  } catch {
+    return resolveHomeSections(null);
+  }
+}
+
+/**
  * The member profile page's row, or null.
  *
  * `includeArchived` is the "visible to admin only" half of archiving (fix list
@@ -664,18 +720,29 @@ export async function memberBySlug(slug: string, opts: { includeArchived?: boole
     .eq("slug", slug)
     .single();
   if (!member) return null;
-  const { data: stories } = await db
-    .from("stories")
-    .select(STORY_CARD)
-    .eq("status", "published")
-    .eq("member_id", member.id)
-    .order("published_at", { ascending: false });
+  const [{ data: stories }, { data: videos }] = await Promise.all([
+    db
+      .from("stories")
+      .select(STORY_CARD)
+      .eq("status", "published")
+      .eq("member_id", member.id)
+      .order("published_at", { ascending: false }),
+    // The member's own published videos, shown after the company video on
+    // their page (GAPS A8.5) — already approval-gated, so no new table.
+    db
+      .from("videos")
+      .select("slug, title, url")
+      .eq("status", "published")
+      .eq("member_id", member.id)
+      .order("published_at", { ascending: false })
+      .limit(12),
+  ]);
   // Flatten both join rows. These are different lists and were previously
   // conflated: membership types were returned under the name `services`.
   const { member_membership_types, member_services, ...rest } = member;
   const membershipTypes = (member_membership_types ?? []).flatMap((r) => (r.membership_type ? [r.membership_type] : []));
   const services = (member_services ?? []).flatMap((r) => (r.service ? [r.service] : []));
-  return { ...rest, membershipTypes, services, stories: (stories ?? []) as unknown as StoryCard[] };
+  return { ...rest, membershipTypes, services, stories: (stories ?? []) as unknown as StoryCard[], videos: videos ?? [] };
 }
 
 /** Site search: members rank first (query-level ordering — not stored bias). */
@@ -688,7 +755,9 @@ export async function searchSite(term: string, opts: { memberOnly?: boolean; lim
   let storyQuery = db.from("stories").select(STORY_CARD, { count: "exact" }).eq("status", "published").textSearch("search_tsv", escaped);
   if (opts.memberOnly) storyQuery = storyQuery.eq("is_member_news", true);
   const [members, stories] = await Promise.all([
-    db.from("members").select("slug, name, description, logo_path").eq("status", "active").textSearch("search_tsv", escaped).limit(10),
+    // Name/description AND services AND industry, ranked (GAPS A9.5) — see
+    // 20260928000001_search_members.sql for why this is a function.
+    db.rpc("search_members", { query: escaped, max_results: 10 }),
     storyQuery.range(offset, offset + limit - 1),
   ]);
   return { members: members.data ?? [], stories: (stories.data ?? []) as unknown as StoryCard[], total: stories.count ?? 0 };

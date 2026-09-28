@@ -16,12 +16,19 @@ describe("YoutubePreview", () => {
     expect(screen.getByTitle("Preview")).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123");
   });
 
-  it("warns instead of embedding for a non-watch URL, but still lets it save", () => {
+  it("embeds a short youtu.be link too", () => {
+    render(<YoutubePreview name="video_url" />);
+    fireEvent.change(screen.getByLabelText(/YouTube URL/), { target: { value: "https://youtu.be/abc123" } });
+    expect(screen.getByTitle("Preview")).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123");
+  });
+
+  it("warns instead of embedding for a non-YouTube link", () => {
     render(<YoutubePreview name="video_url" />);
     const input = screen.getByLabelText(/YouTube URL/);
-    fireEvent.change(input, { target: { value: "https://youtu.be/abc123" } });
+    fireEvent.change(input, { target: { value: "https://www.loom.com/share/abc123" } });
     expect(screen.queryByTitle("Preview")).not.toBeInTheDocument();
-    expect(screen.getByText(/Doesn't look like a YouTube watch URL/)).toBeInTheDocument();
+    expect(screen.getByText(/Doesn't look like a YouTube link/)).toBeInTheDocument();
+    // the field stays editable so the link can be corrected
     expect(input).not.toBeDisabled();
   });
 

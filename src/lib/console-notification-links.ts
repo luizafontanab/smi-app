@@ -42,6 +42,8 @@ export const INBOX_NOTIFICATION_KINDS = [
   "machine_submitted",
   "advert_submitted",
   "artwork_submitted",
+  // A live page's edit (member_revisions) — GAPS A1.12, 20260928000005.
+  "page_edit_submitted",
 ] as const;
 
 export type InboxMessageKind = (typeof INBOX_MESSAGE_KINDS)[number];
@@ -83,6 +85,7 @@ const LABELS: Record<InboxKind, string> = {
   machine_submitted: "Equipment submitted",
   advert_submitted: "Advert submitted",
   artwork_submitted: "Artwork swap",
+  page_edit_submitted: "Page edit",
 };
 
 export function inboxKindLabel(kind: string): string {
@@ -132,6 +135,8 @@ export function consoleNotificationHref(kind: string, payload: InboxPayload = {}
     case "signup_started":
     case "payment_taken":
     case "page_submitted":
+    // The pending edit's Approve/Reject sit on the member's console record.
+    case "page_edit_submitted":
     case "payment_failed":
     case "subscription_ended":
     case "comp_expired":

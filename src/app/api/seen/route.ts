@@ -72,7 +72,21 @@ export async function POST(req: Request) {
   const live = [...new Set((data ?? []).map((b) => b.advert_id))];
   if (live.length === 0) return new Response(null, { status: 204 });
 
-  const ctx = await requestContext();
-  record(live.map((advert_id) => ({ kind: "ad_impression" as const, advert_id, path: byId.get(advert_id) ?? "unknown", ...ctx })));
+  // Decision D1 (28 Sep): impressions are counted whether or not the visitor
+  // accepted analytics cookies — they are what advertisers are invoiced
+  // against, and dropping declined visitors made every number a sample. What
+  // consent still governs is identity: without it requestContext() returns the
+  // DECLINED context (no session hash, referrer, region or company), so the
+  // row is just advert + page + time. Nothing reads impressions to decide what
+  // anyone is shown — rotation is uniform with no weight (lib/adverts.ts) — so
+  // counting cannot change a visitor's experience. Every other event kind
+  // (clicks, page views) stays consent-gated in record().
+  const { consented, ...context } = await requestContext();
+  record(live.map((advert_id) => ({
+    kind: "ad_impression" as const,
+    advert_id,
+    path: byId.get(advert_id) ?? "unknown",
+    ...(consented ? context : { session_hash: null, referrer: null, region: null, company: null }),
+  })));
   return new Response(null, { status: 204 });
 }

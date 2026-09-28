@@ -1,4 +1,5 @@
 import { requireMember } from "@/lib/auth";
+import { LeadsDisclaimer } from "@/components/leads/LeadsDisclaimer";
 import { serviceDb } from "@/lib/db/server";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
 import { markProspectFollowUp, unmarkProspect } from "../actions";
@@ -27,6 +28,7 @@ export default async function DashboardLeadsPage() {
         every address is an <code>example.com</code> one. Marking one is just a note to yourself; nothing is
         sent and nobody is contacted.
       </p>
+      <LeadsDisclaimer />
 
       {prospects.length === 0 ? (
         <p className="mt-4 rounded-xl bg-white p-5 text-sm text-graphite shadow-sm">No prospects to show yet.</p>
@@ -38,6 +40,7 @@ export default async function DashboardLeadsPage() {
               <li key={p.ref} className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-white p-4 shadow-sm">
                 <div className="text-sm">
                   <p className="font-semibold text-ink">{p.company}</p>
+                  {p.jobTitle && <p className="font-semibold text-ink">{p.jobTitle}</p>}
                   <p className="text-graphite">
                     {p.name} · {p.location} · {p.distanceMiles} mi
                   </p>

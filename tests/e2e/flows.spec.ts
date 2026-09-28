@@ -348,9 +348,12 @@ test.describe("admin block layouts (drag-and-drop, per-page override)", () => {
 
     // keyboard drag in the default story layout editor (dnd-kit keyboard sensor)
     await page.goto("/console/pages?type=story");
-    const items = page.locator("ol li");
+    // Scoped to the block editor: the page also carries the homepage-sections
+    // card (GAPS A1.7), whose list and "Move … up" buttons come first.
+    const editor = page.getByRole("list", { name: "Page blocks" });
+    const items = editor.locator("li");
     const before = await items.allInnerTexts();
-    const handle = page.locator('button[aria-label^="Move"]').first();
+    const handle = editor.locator('button[aria-label^="Move"]').first();
     await handle.focus();
     await page.keyboard.press("Space");
     await expect(handle).toHaveAttribute("aria-pressed", "true"); // sensor picked the block up
@@ -369,8 +372,10 @@ test.describe("admin block layouts (drag-and-drop, per-page override)", () => {
     await page.locator('[contenteditable="true"]').click();
     await page.keyboard.type("Layout test body.");
     await page.click("button:has-text('Save')");
-    await page.waitForURL(/\/console\/stories\/[0-9a-f-]+$/);
-    const storyId = page.url().split("/").pop()!;
+    // A save lands on the editor with ?saved=1 since fix-list 73 — take the id
+    // from the path, not the last URL segment.
+    await page.waitForURL(/\/console\/stories\/[0-9a-f-]+(\?saved=1)?$/);
+    const storyId = new URL(page.url()).pathname.split("/").pop()!;
     await page.click("button:has-text('Publish now (urgent)')");
     await page.waitForURL("**/console/stories");
 
@@ -396,18 +401,24 @@ test.describe("admin block layouts (drag-and-drop, per-page override)", () => {
     await expect(page.locator('a[aria-label^="Advert:"]')).toHaveCount(0);
 
     await page.goto("/news");
+    // Not just "not this run's story": any "E2E layout" story may still carry an
+    // override from an earlier run that died before its clean-up, and one of
+    // those made this assertion fail for reasons unrelated to the code.
     const otherHref = await page
       .locator('a[href^="/news/"]:has(h3)')
-      .filter({ hasNotText: overrideTitle })
+      .filter({ hasNotText: "E2E layout" })
       .first()
       .getAttribute("href");
     await page.goto(otherHref!);
     await expect(page.locator("h1")).toBeVisible(); // story page rendered…
     await expect(page.locator('a[aria-label^="Advert:"]').first()).toBeVisible(); // …with its adverts
 
-    // clean up: drop the override so reruns start from the default
+    // clean up: drop the override so reruns start from the default. Wait for
+    // the page to say so — the click used to be the test's last line, so the
+    // browser could close before the server action ran and the override lived on.
     await page.goto(`/console/pages?type=story&entity=${storyId}`);
     await page.click("button:has-text('Remove this page')");
+    await expect(page.getByText("currently using the default")).toBeVisible();
   });
 });
 

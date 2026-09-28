@@ -65,6 +65,15 @@ describe("getLeadGenSource — mock source", () => {
     expect(results.every((p) => p.email?.endsWith(".example.com"))).toBe(true);
   });
 
+  // Jas's 18 Sep guardrail (USE-CASES gap 24): job titles shown prominently,
+  // so every prospect must carry one.
+  it("gives every prospect a job title", async () => {
+    const results = await getLeadGenSource().search({});
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((p) => typeof p.jobTitle === "string" && p.jobTitle.length > 0)).toBe(true);
+  });
+
   it("keys prospects by LinkedIn URL, the way Prosp identifies a lead", async () => {
     const results = await getLeadGenSource().search({ limit: 1 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildHero, withIntros, youtubeId, type HeroVideo } from "@/lib/hero";
+import { optionalYoutubeUrl } from "@/lib/youtube";
 import type { StoryCard } from "@/lib/queries";
 
 /**
@@ -40,9 +41,35 @@ describe("youtubeId", () => {
     expect(youtubeId("https://www.youtube.com/watch?list=x&v=abc123")).toBe("abc123");
   });
 
+  it("understands short, shorts, embed and live links", () => {
+    expect(youtubeId("https://youtu.be/abc123")).toBe("abc123");
+    expect(youtubeId("https://youtu.be/abc123?t=42")).toBe("abc123");
+    expect(youtubeId("https://www.youtube.com/shorts/abc123")).toBe("abc123");
+    expect(youtubeId("https://www.youtube-nocookie.com/embed/abc123")).toBe("abc123");
+    expect(youtubeId("https://www.youtube.com/live/abc123?feature=share")).toBe("abc123");
+    expect(youtubeId("https://m.youtube.com/watch?v=abc123")).toBe("abc123");
+    expect(youtubeId("  https://youtube.com/watch?v=abc123  ")).toBe("abc123");
+  });
+
   it("returns null for anything else", () => {
     expect(youtubeId("https://vimeo.com/12345")).toBeNull();
-    expect(youtubeId("https://youtu.be/abc123")).toBeNull(); // short links aren't seeded
+    expect(youtubeId("https://www.loom.com/share/abc123")).toBeNull();
+    // a v= param on another site is not a YouTube video
+    expect(youtubeId("https://example.com/watch?v=abc123")).toBeNull();
+    expect(youtubeId("https://notyoutube.com/watch?v=abc123")).toBeNull();
+    expect(youtubeId("https://www.youtube.com/")).toBeNull();
+    expect(youtubeId("https://www.youtube.com/watch?v=<script>")).toBeNull();
+    expect(youtubeId("not a url")).toBeNull();
+    expect(youtubeId("")).toBeNull();
+  });
+});
+
+describe("optionalYoutubeUrl", () => {
+  it("treats blank as no video, keeps a YouTube link, and refuses anything else", () => {
+    expect(optionalYoutubeUrl("  ")).toEqual({ url: null });
+    expect(optionalYoutubeUrl(null)).toEqual({ url: null });
+    expect(optionalYoutubeUrl(" https://youtu.be/abc ")).toEqual({ url: "https://youtu.be/abc" });
+    expect(optionalYoutubeUrl("https://vimeo.com/1")).toEqual({ error: expect.stringContaining("YouTube") });
   });
 });
 

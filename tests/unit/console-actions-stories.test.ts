@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   consoleUploadImage, decideStory, moveStory, pinStory, saveSocialCaps, saveStory, scheduleStory, setStoryStatus,
+  saveSiteVariant, clearMyVariantOverride, saveHomeSections,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
 import type { CurrentUser } from "@/lib/auth";
+import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
@@ -285,5 +287,72 @@ describe("saveSocialCaps", () => {
     await saveSocialCaps(form({ per_day: "5", delay_minutes: "45" }));
 
     expect(builder.upsert).toHaveBeenCalledWith({ key: "social_caps", value: { per_day: 5, delay_minutes: 45 } });
+  });
+});
+
+// GAPS A1.7 / A13: the grid homepage's section order and visibility.
+describe("saveHomeSections", () => {
+  const sectionsForm = (fields: Record<string, string>) => form({ order: "videos,member_news,supplier_logos,events,newsletters", show_member_news: "on", show_events: "on", show_newsletters: "on", ...fields });
+
+  it("applies a move and stores the layout under home_sections", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    await expect(saveHomeSections(sectionsForm({ move: "events:up" }))).rejects.toThrow("NEXT_REDIRECT:/console/pages?saved=sections#home-sections");
+
+    expect(builder.upsert).toHaveBeenCalledWith({
+      key: "home_sections",
+      value: { order: ["videos", "member_news", "events", "supplier_logos", "newsletters"], hidden: [] },
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/");
+  });
+
+  it("hides an unticked section, but never one carrying a paid placement", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    // show_videos / show_supplier_logos absent: a crafted POST trying to hide paid sections
+    await expect(saveHomeSections(form({ order: "videos,member_news,supplier_logos,events,newsletters", show_member_news: "on" }))).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(builder.upsert).toHaveBeenCalledWith({
+      key: "home_sections",
+      value: { order: ["videos", "member_news", "supplier_logos", "events", "newsletters"], hidden: ["events", "newsletters"] },
+    });
+  });
+
+  it("ignores a move naming an unknown section", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    await expect(saveHomeSections(sectionsForm({ move: "adverts:up" }))).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(builder.upsert).toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ order: ["videos", "member_news", "supplier_logos", "events", "newsletters"] }) }));
+  });
+});
+
+// GAPS A8.2 / A28: the design every visitor gets, from the console.
+describe("saveSiteVariant / clearMyVariantOverride", () => {
+  afterEach(resetNextHeadersMocks);
+
+  it("stores the chosen design under site_variant and revalidates every route", async () => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    await expect(saveSiteVariant(form({ variant: "grid" }))).rejects.toThrow("NEXT_REDIRECT:/console/pages?saved=variant");
+
+    expect(builder.upsert).toHaveBeenCalledWith({ key: "site_variant", value: "grid" });
+    expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("refuses anything that isn't one of the two designs, without writing", async () => {
+    const from = db({});
+    await expect(saveSiteVariant(form({ variant: "purple" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/pages\?error=/);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("clearing the override deletes only this browser's switcher cookie", async () => {
+    cookieStore.set("smi-theme", "forge");
+    await expect(clearMyVariantOverride()).rejects.toThrow("NEXT_REDIRECT:/console/pages?saved=override");
+    expect(cookieStore.has("smi-theme")).toBe(false);
   });
 });

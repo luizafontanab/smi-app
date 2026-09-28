@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   activePlacements, activeTakeover, eventBySlug, eventsInRange, featuredMemberPlacements, featuredMembers,
   forYouStories, headlineStory, headlineVideo, ilikeTerm, industries,
-  industryBySlug, memberBySlug, memberDirectory, memberPins, membershipTypes, mostViewedStories, newsletterBySlug,
+  industryBySlug, memberBySlug, memberDirectory, memberFacets, memberPins, membershipTypes, mostViewedStories, newsletterBySlug,
   pastEvents, publishedStories, publishedVideos,
   searchSite, sentNewsletters, services, staticPage, storyBySlug, storyCategories, storyIndustrySlug, storyIntros,
   upcomingEventPins, upcomingEvents,
@@ -444,15 +444,32 @@ describe("memberBySlug", () => {
     expect(from).not.toHaveBeenCalledWith("stories");
   });
 
-  it("merges the member's published stories onto the record", async () => {
+  it("merges the member's published stories and videos onto the record", async () => {
     db({
       members: () => queryBuilder(dbOk({ id: "m1", slug: "acme" })),
       stories: () => queryBuilder(dbOk([{ id: "s1" }])),
+      videos: () => queryBuilder(dbOk([{ slug: "v1", title: "Open house", url: "https://youtu.be/x" }])),
     });
 
     expect(await memberBySlug("acme")).toEqual({
       id: "m1", slug: "acme", services: [], membershipTypes: [], stories: [{ id: "s1" }],
+      videos: [{ slug: "v1", title: "Open house", url: "https://youtu.be/x" }],
     });
+  });
+
+  // GAPS A8.5: only this member's published videos reach their page.
+  it("fetches only this member's published videos", async () => {
+    const videosBuilder = queryBuilder(dbOk([]));
+    db({
+      members: () => queryBuilder(dbOk({ id: "m1", slug: "acme" })),
+      stories: () => queryBuilder(dbOk([])),
+      videos: () => videosBuilder,
+    });
+
+    await memberBySlug("acme");
+
+    expect(videosBuilder.eq).toHaveBeenCalledWith("status", "published");
+    expect(videosBuilder.eq).toHaveBeenCalledWith("member_id", "m1");
   });
 
   it("flattens the two taxonomy joins into separate lists — they are different things", async () => {
@@ -484,6 +501,41 @@ describe("memberBySlug", () => {
   });
 });
 
+describe("memberFacets (GAPS A9.1)", () => {
+  it("returns null without querying when nothing is filtered", async () => {
+    const from = db({});
+    expect(await memberFacets({})).toBeNull();
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("assembles each visible member's industry, services and types, dropping links to members it can't see", async () => {
+    const membersBuilder = queryBuilder(dbOk([
+      { id: "m1", industry: { slug: "laser" } },
+      { id: "m2", industry: null },
+    ]));
+    db({
+      members: () => membersBuilder,
+      member_services: () => queryBuilder(dbOk([
+        { member_id: "m1", service: { slug: "folding" } },
+        { member_id: "m2", service: { slug: "welding" } },
+        { member_id: "archived", service: { slug: "ghost" } },
+      ])),
+      member_membership_types: () => queryBuilder(dbOk([
+        { member_id: "m1", type: { slug: "software" } },
+        { member_id: "m2", type: { slug: "service-provider" } },
+      ])),
+    });
+
+    const f = await memberFacets({ membershipTypes: ["software"] });
+
+    expect([...f!.services]).toEqual(["folding"]);
+    expect([...f!.industries]).toEqual(["laser"]);
+    expect(f!.services.has("ghost")).toBe(false);
+    // paged, so a growing join table is never truncated at max_rows
+    expect(membersBuilder.range).toHaveBeenCalledWith(0, 999);
+  });
+});
+
 describe("searchSite", () => {
   it("returns nothing for a term that escapes away to nothing, without querying", async () => {
     const from = db({});
@@ -491,13 +543,36 @@ describe("searchSite", () => {
     expect(from).not.toHaveBeenCalled();
   });
 
+  // Members come from the search_members RPC (GAPS A9.5), which also matches
+  // services and industry; stories still use their own search_tsv.
+  function withRpc(map: Record<string, () => ReturnType<typeof queryBuilder>>, members: unknown[]) {
+    const from = fromByTable(map, () => queryBuilder(dbOk(null)));
+    const rpc = vi.fn(async () => dbOk(members));
+    const client = asDb(mockDb({ from, rpc }));
+    vi.mocked(publicDb).mockReturnValue(client);
+    return { from, rpc };
+  }
+
   it("searches both members and stories, ranking members conceptually first in the shape returned", async () => {
-    db({
-      members: () => queryBuilder(dbOk([{ slug: "acme" }])),
-      stories: () => queryBuilder(dbOk([{ id: "s1" }], 1)),
-    });
+    withRpc({ stories: () => queryBuilder(dbOk([{ id: "s1" }], 1)) }, [{ slug: "acme" }]);
 
     expect(await searchSite("acme")).toEqual({ members: [{ slug: "acme" }], stories: [{ id: "s1" }], total: 1 });
+  });
+
+  it("hands search_members the same escaped tsquery the story search uses", async () => {
+    const { rpc } = withRpc({ stories: () => queryBuilder(dbOk([], 0)) }, []);
+
+    await searchSite("laser  cutting's");
+
+    expect(rpc).toHaveBeenCalledWith("search_members", { query: "laser & cutting & s", max_results: 10 });
+  });
+
+  it("returns no members rather than throwing when the RPC errors", async () => {
+    const from = fromByTable({ stories: () => queryBuilder(dbOk([], 0)) }, () => queryBuilder(dbOk(null)));
+    const rpc = vi.fn(async () => ({ data: null, error: { message: "syntax error in tsquery" } }));
+    vi.mocked(publicDb).mockReturnValue(asDb(mockDb({ from, rpc })));
+
+    expect((await searchSite("acme")).members).toEqual([]);
   });
 
   it("filters stories to member news when memberOnly is set", async () => {

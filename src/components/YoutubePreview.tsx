@@ -6,21 +6,35 @@ import { youtubeId } from "@/lib/youtube";
 
 /**
  * URL input with a live embed preview, shared by the console video editor and
- * the member "Add a video" form. youtubeId() only matches `?v=` URLs (same
- * limitation the public /video pages already have) — a non-matching URL still
- * submits fine, it just shows the fallback note instead of an embed.
+ * the member "Add a video" form. A link youtubeId() can't read gets a warning
+ * here and is refused by the save action — SMI takes YouTube links only
+ * (USE-CASES gap 23). The warning is advance notice, not the enforcement.
  */
-export function YoutubePreview({ name, defaultValue = "" }: { name: string; defaultValue?: string }) {
+export function YoutubePreview({
+  name,
+  defaultValue = "",
+  required = true,
+  label = "YouTube URL",
+}: {
+  name: string;
+  defaultValue?: string;
+  /** False for an optional video (a Featured Machine's); a blank field is then fine. */
+  required?: boolean;
+  label?: string;
+}) {
   const [url, setUrl] = useState(defaultValue);
   const yt = youtubeId(url);
   return (
     <div>
-      <label htmlFor={name} className="text-sm font-medium">YouTube URL<RequiredMark /></label>
+      <label htmlFor={name} className="text-sm font-medium">
+        {label}
+        {required ? <RequiredMark /> : <span className="font-normal text-graphite"> (optional)</span>}
+      </label>
       <input
         id={name}
         name={name}
         type="url"
-        required
+        required={required}
         defaultValue={defaultValue}
         onChange={(e) => setUrl(e.target.value)}
         placeholder="https://www.youtube.com/watch?v=..."
@@ -38,7 +52,7 @@ export function YoutubePreview({ name, defaultValue = "" }: { name: string; defa
           </div>
         ) : (
           <p className="mt-1 text-xs text-danger">
-            Doesn&apos;t look like a YouTube watch URL — it&apos;ll save, but won&apos;t embed or get a thumbnail fallback.
+            Doesn&apos;t look like a YouTube link — only YouTube videos can be added, so this won&apos;t save.
           </p>
         )
       )}

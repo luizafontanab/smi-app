@@ -67,11 +67,23 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
     const ts = Date.now();
     const company = `E2E Join Ltd ${ts}`;
     const email = `e2e-join-${ts}@test.local`;
+    // The test makes its own code rather than relying on SMI-FREE-YEAR, which
+    // only scripts/seed.ts creates — a database seeded with seed-real.ts has
+    // none, and this test then failed at step 2 with "Unknown promo code".
+    const promo = `E2E-YEAR-${ts}`;
+
+    await login(page, "jas@smi.local");
+    await page.goto("/console/promo-codes");
+    await page.fill('input[name="code"]', promo);
+    await page.fill('input[name="months"]', "12");
+    await page.click("button:has-text('Create code')");
+    await page.waitForURL("**/console/promo-codes?saved=1");
+    await signOut(page);
 
     await createAccount(page, company, email);
 
     // step 2: promo code
-    await page.fill('input[name="promo"]', "SMI-FREE-YEAR");
+    await page.fill('input[name="promo"]', promo);
     await page.click("button:has-text('Pay £40/month')");
     await page.waitForURL("**/dashboard?submitted=paid");
 
@@ -97,9 +109,11 @@ test.describe("join funnel (V13 — account → pay → page → approval)", () 
     await row.locator("button:has-text('Activate')").click();
     await expect(row.getByText("active", { exact: true })).toBeVisible();
 
-    // funnel trail landed in the console inbox (account, payment, page = 3 entries)
-    await page.goto("/console");
-    await expect(page.locator("div", { hasText: company }).locator("text=membership").first()).toBeVisible();
+    // funnel trail landed in the console (account, payment, page = 3 entries).
+    // These are notifications, not messages, so since fix-list 71 they live
+    // on /console/notifications — the Command Centre inbox is messages only.
+    await page.goto("/console/notifications?category=notification");
+    await expect(page.locator("li", { hasText: company })).toHaveCount(3);
   });
 
   test("abandon and resume: checklist highlights the pay step after re-login", async ({ page }) => {

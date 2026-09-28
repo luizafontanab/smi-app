@@ -33,6 +33,7 @@ export function SiteFooter() {
             {/* Terms nobody can reach bind nobody — see the note in GridSiteFooter. */}
             <li><Link href="/pages/terms" className="hover:text-brand">Terms</Link></li>
             <li><Link href="/pages/policies" className="hover:text-brand">Policies</Link></li>
+            <li><Link href="/pages/membership-terms" className="hover:text-brand">Membership terms</Link></li>
             <li><Link href="/pages/faq" className="hover:text-brand">FAQ</Link></li>
             <li><Link href="/contact" className="hover:text-brand">Contact</Link></li>
             <li><CookieSettingsLink /></li>

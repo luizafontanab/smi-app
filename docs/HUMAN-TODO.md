@@ -495,6 +495,9 @@ Do these in order.
       justifies the plan, or whether a middle cadence (hourly, `"0 * * * *"`) is
       enough. Left unchanged deliberately: it is a hosting-cost and deploy
       decision, not an engineering one.
+      **28 Sep:** still held. Luiza is not sure which plan the project is on,
+      so `vercel.json` is unchanged (GAPS A3.1). First step: check the plan in
+      the Vercel dashboard.
 
       Local development is unaffected either way — since 13 Sep a due job runs
       as soon as the response is sent (`runDueJobInlineInDev`), so the member
@@ -658,6 +661,13 @@ push behind again rather than five.
       `20260923000002_member_archive.sql` (`members.archived_at` and a replacement
       RLS policy). Both are additive and idempotent — no column is dropped and no
       row is deleted. **Take a backup first**, as on 22 Sep.
+      **Update (27 Sep), unverified:** probably overtaken by §17 — the new
+      project holds `story_members` (`20260924000001`, the newest migration), and
+      `db push` applies in order, so these two are very likely there. Nobody has
+      run the migration list against the new project to confirm. With the new
+      account's token (17.4):
+      `SUPABASE_ACCESS_TOKEN=… supabase migration list --project-ref bvyxeujhecxulzwvpxfr`
+      — then tick this and run the 16.2 / 16.3 checks.
 - [ ] **16.2 — Know that `20260923000002` REPLACES an RLS policy.** It drops and
       recreates `public_read_active_members` so it also requires
       `archived_at is null`. That policy is the only thing standing between anon
@@ -689,7 +699,7 @@ The full export was imported into the new Supabase project
 2,643 media objects. Verify any of it with `pnpm verify:prod`, which compares the
 live database against `handover-extract/seed/` and names every difference.
 
-- [ ] **17.1 — Delete the five seed fixture logins from production. Do this
+- [x] **17.1 — Delete the five seed fixture logins from production. Do this
       first.** `scripts/seed-real.ts` created `jas@`, `media@` and
       `member1-3@smi.local`, all with the password `local-dev-password`
       **hardcoded in the repo** — and `jas@smi.local` carries `role=admin`.
@@ -704,6 +714,21 @@ live database against `handover-extract/seed/` and names every difference.
       fixtures — so real people are on this database alongside an admin login
       whose password is published in this repository. This stopped being
       housekeeping when the first real account was created.
+      — **done 27 Sep.** All 27 test/fixture logins removed in the dashboard;
+      production auth now holds exactly two accounts, both deliberate
+      (`admin@smi.test`, `member@smi.test` — see 17.12). None of the 27 was a
+      real user. Deleting `media@smi.local` cascaded its profile away but left
+      the `media-co` member row behind as a harmless `draft` orphan, still
+      counted by `pnpm verify:prod` as one of two expected extras.
+      **Still open (27 Sep), re-checked twice:** all five are on
+      `bvyxeujhecxulzwvpxfr`, each created 2026-09-25 03:58 UTC by the original
+      seed — so never deleted, not deleted-and-recreated. Most likely the
+      deletion happened in the old project (`kgjnwyojgajcvsberods`); check the
+      project ref in the dashboard URL. **`jas@smi.local` has signed in —
+      2026-09-26 04:22 UTC**, while `.env.local` still pointed at production
+      (17.9), so probably a local test or dev login using the repo password.
+      Unconfirmed: the Supabase auth logs for that timestamp would show the
+      origin. `verify:prod` now prints each fixture's created / last-sign-in time.
 - [ ] **17.2 — Storage buckets exist only in the seed script, not in a
       migration.** `media` (public) and `invoices` (private) are created by
       `seed-real.ts` at lines 672-674. A schema-only deploy — `db:push:prod` with
@@ -741,7 +766,7 @@ live database against `handover-extract/seed/` and names every difference.
       baseline no longer matches. `pnpm visual:accept <route-id>` — never
       `--all`, and never by an agent: accepting a baseline is asserting you
       looked at the picture.
-- [ ] **17.9 — Remove the test rows the integration suites wrote to
+- [x] **17.9 — Remove the test rows the integration suites wrote to
       production.** `vitest.config.ts` loads `.env.local` into the test
       environment, and eight suites under `tests/unit/` insert real rows gated
       only on `SUPABASE_SECRET_KEY` existing — never on the target being local.
@@ -757,6 +782,11 @@ live database against `handover-extract/seed/` and names every difference.
       What remains is the clean-up: `pnpm audit:test-rows:prod` lists them,
       `-- --delete` removes them. The auth accounts have no cascade from
       `members` and must go in the dashboard, alongside 17.1.
+      — **done 27 Sep.** All 77 rows deleted and the auth accounts cleared with
+      17.1. `pnpm verify:prod` confirms the import survived untouched — stories,
+      videos, events, story_members, brand colours, coordinates, event types and
+      adverts all still match the extract — and the public directory is back to
+      **74 active members** from the 105 the fabricated rows had inflated it to.
 - [ ] **17.8 — Decide how `handover-extract/` gets version-controlled.** It is
       not a git repository and never has been, so the extraction pipeline — the
       code that decides what the migration actually produces — exists only on
@@ -765,6 +795,168 @@ live database against `handover-extract/seed/` and names every difference.
       fixture there, all unversioned. If it gets a repo, `json/` and `seed/`
       should stay ignored: they hold member contact details and full article
       bodies, and git history is forever.
+      **Update (27 Sep):** the extract now also has an adverts step (17.11) and
+      two new tested helpers in `scripts/lib.ts` — more unversioned pipeline.
+- [x] **17.10 — Delete the SAMPLE adverts from production.** The 24 Sep import
+      ran a full `seed:prod`, and a full run seeded `seedAdverts()`'s placeholder
+      inventory on `--remote` too: 8 banners and 5 supplier logos stamped
+      "SAMPLE — NOT A LIVE BOOKING", each **branded with a real member company
+      that has bought nothing**, booked `live`. On the public site that is not a
+      placeholder, it is a false statement that those companies advertise here.
+      Confirmed present on production by Luiza on 27 Sep, with no real adverts
+      beside them. **The code hole is fixed** — `seedAdverts()` now throws on
+      `--remote`, and a full remote run imports the real inventory (17.11)
+      instead — and `pnpm verify:prod` now fails while any `panels/` advert
+      exists on a non-local target. Removing the existing ones needs a person
+      (a production delete): in `/console/adverts/artwork`, or by SQL —
+      `delete from adverts where desktop_path like 'panels/%';` (bookings
+      cascade). The same run also created the sample **rate card**
+      (`advert_products`, eight rows at invented prices, e.g. £650 a banner) —
+      check it against the real media pack before anyone sells from it.
+      — done 27 Sep 2026 on Luiza's go-ahead, via the new
+      `pnpm remove-sample-adverts:prod -- --delete` (dry run by default): **15**
+      SAMPLE adverts (the 13 above plus 2 retired `banner_narrow`), their 15
+      bookings, **82 `analytics_events`** recorded against them (no FK — left
+      behind they would have kept counting as advert impressions on those
+      members' stats pages), and all **8 rate-card rows**, none referenced by a
+      real booking. The rate card is now empty: Jas must enter real products in
+      `/console/adverts/spots` before any booking can carry a price.
+      `verify:prod` shows `SAMPLE adverts 0 / 0`.
+- [ ] **17.11 — Import the old site's real adverts, then have Jas approve them.**
+      Run `pnpm seed:prod -- --legacy-adverts-only` (idempotent — a re-run
+      imports nothing; no backup needed, it only inserts). The inventory was
+      never migrated because it lives in `wp_options` as an ACF options page,
+      where the extract never looked; it is now extracted to
+      `handover-extract/json/adverts.json` and shaped to `seed/adverts.seed.json`.
+      What it creates, per Luiza's decisions on 27 Sep:
+      - **9 in-date runs → `awaiting_approval`** — 5 banners (Prima Power,
+        Compass, Bruderer, Greenfield, MMMA) and 4 supplier logos (White Cross,
+        Bystronic, Yorgrip, Greenfield). Nothing renders until Jas approves each.
+      - **4 lapsed runs → artwork only, no booking** — Kerf, Bystronic and HPC
+        Laser banners (ended 31 Aug–2 Sep) and the Prima Power logo (2 Sep).
+        Rebookable from the artwork page without chasing files.
+      - **No product linked**, so approval raises **no invoice** — these were
+        paid for on the old system.
+
+      Before Jas approves, three things worth her knowing: **approval emails the
+      member twice** ("scheduled", then "live" from the sweep) about an advert
+      they believe never stopped; **White Cross, Yorgrip and HPC Laser are
+      lapsed members**; and the White Cross and Yorgrip "logos" are really
+      560×300 newsletter banners someone put in the logo slot on the old site,
+      so they will look wrong in the logo band. Not imported: slot B's two
+      featured members (both ended 5 Aug) and slot C's Durma takeover (ended
+      12 Nov 2025) — `placements` has no approval state to hold them anyway.
+      After the run, `pnpm verify:prod` should show `legacy adverts imported
+      13 / 13`.
+      **Import done 27 Sep 2026** — 13 adverts, 9 bookings awaiting approval,
+      21 artwork files; re-run imports 0; `verify:prod` shows 13 / 13 and media
+      2664 / 2664. **Left open for the approval half:** the 9 are in the Command
+      Centre's pending-adverts list for Jas.
+- [ ] **17.12 — Delete the two manual test logins before launch.**
+      `admin@smi.test` (role=admin) and `member@smi.test` (role=member, owning
+      the draft company `smi-test-company`) were created on production on
+      27 Sep at Luiza's request, via `pnpm accounts:test:prod`. They share one
+      known password, so the same objection as 17.1 applies — the difference is
+      that these are deliberate and currently in use.
+      `pnpm audit:test-rows` deliberately does **not** match them: its patterns
+      cover `@test.local` and `@smi.local`, not `@smi.test`, so `--delete`
+      cannot sweep away accounts someone is testing with. That safety is why
+      they need removing by hand instead. The company row is `draft`, so it
+      stays out of the public directory, search and sitemap in the meantime.
+
+## 18 · Admin release notes (28 Sep) — for you
+
+`/console/releases` ("What's new", in the admin account menu) renders
+`src/content/release-notes.md`. Members never see the link and are bounced
+from the page.
+
+- [ ] **18.1 — Review the first four entries' wording before it ships.** They
+      were drafted from the 20–25 Sep commits in plain language for Jas; check
+      nothing reads as a promise you don't want to make.
+- [ ] **18.2 — Accept the new visual baseline** once you've looked at it:
+      `pnpm visual:accept console_releases`. Until then `pnpm visual` exits 2
+      on the missing baseline, by design.
+- [ ] **18.3 — Add an entry with each deploy.** Nothing generates it. The
+      format is in the comment at the top of the file, and a malformed edit
+      fails `pnpm check` (`tests/unit/release-notes.test.ts`).
+
+## 19 · GAPS A8/A9 pass (28 Sep) — production follow-through
+
+- [ ] **19.1 — Push the regrouped FAQ and collapsible policies with the same
+      `--pages-only` run as 10.2.** The FAQ is now grouped under Membership /
+      News / Members / Events / Advertising / Account, with seven new answers
+      (social sharing, YouTube-only videos, how readers find you, what's on a
+      company page, how page edits are reviewed, listing an event, exhibiting
+      at a show). Policies and Membership terms now open as collapsible
+      sections. **Two warnings.** First, the run overwrites any edit made to
+      these pages in `/console/content-pages` since the last run, because the
+      authored copy wins on slug. Check the console first and fold any real
+      edits back into `scripts/lib/static-page-content.ts`. Second, 10.2's
+      caution about `[SMI TO CONFIRM]` in the terms pages still applies. The FAQ
+      itself carries none, and a test keeps it that way.
+- [ ] **19.2 — The WordPress agency's liquidation and hosting takeover
+      (USE-CASES gap 26).** It's external and time-sensitive, and nothing in
+      this repo can do it. Hosting has to move out of the agency's fee
+      (estimated £30–70/month, and Jas wants a fixed plan). The staffer posting
+      ~10 stories a week can only cover the next 1–2 months. Terms depend on
+      Jas's follow-up call with the agency.
+- [ ] **19.3 — Look at the moved visual baselines.** Every public route's
+      footer gained a "Membership terms" link, and the FAQ, Policies and
+      Membership terms pages changed shape. So did the member company page
+      (video section), `/featured-machine` (video + seller logo), both lead-gen
+      pages (job titles, disclaimer), `/dashboard/advertising/*` (a fourth tab)
+      and `/console/pages` (Homepage design card). `/dashboard/advertising/assets`
+      is a **new** route with no baseline at all, so `pnpm visual` exits 2 on it
+      until someone looks. Review, then accept each route with
+      `pnpm visual:accept <route-id>`. Not run.
+- [ ] **19.4 — Push this pass's migrations to production in the same release
+      as the code** (`pnpm db:push:prod`, as in 9.1), then check with
+      `supabase migration list --linked`:
+      - `20260928000001_search_members.sql` adds the function `/search` now
+        calls for members. Deployed without it, member results on `/search` are
+        silently empty (the page still loads). Function only.
+      - `20260928000002_featured_machine_video.sql` adds a nullable
+        `featured_machines.video_url`. Additive: no data changes. ⚠ **This one
+        must not lag the code.** `activePlacements()` selects the new column and
+        discards errors, so without it the query returns nothing and **every
+        paid placement silently disappears**: Featured Members and the Featured
+        Machine, on the homepage and the Featured Machine page. There is no
+        error to notice, just empty slots someone has paid for. Machine saves
+        would also fail.
+      - `20260928000003_video_view_event.sql` widens the analytics
+        event-kind check to allow `video_view`. Without it, video views
+        just don't count toward Content reach (the rejected insert is logged
+        and dropped, isolated from the page's own `page_view`); nothing breaks. The check constraint is dropped and
+        re-added on a partitioned table, which re-validates every existing
+        row: quick at today's volume.
+      - `20260928000004_member_event_months.sql` adds the function the member
+        stats page now counts impressions and clicks with. Without it, the
+        Advert impressions and Clicks overview charts read empty (the page
+        still loads). Function only, service-role only.
+      - `20260928000005_inbox_page_edit_kind.sql` re-creates the inbox kind
+        check with `page_edit_submitted` added. Without it nothing breaks: the
+        edit saves, and its console notification is silently dropped
+        (`notifyConsole` never throws), which is exactly the pre-fix behaviour.
+
+- [ ] **19.5 — Restart local Supabase so it picks up `config.toml`.** The
+      running auth container still has `GOTRUE_SITE_URL=http://127.0.0.1:3000`
+      and an allow-list of only `https://127.0.0.1:3000`; `config.toml` has had
+      3100 for weeks. Every auth email link locally (**password reset** and the
+      new **login-email change**) redirects to a dead port. Run
+      `supabase stop && supabase start`. That keeps the data (it is not
+      `db reset`), but it restarts a shared service other sessions use, so pick
+      a quiet moment. Then check `docker exec supabase_auth_app printenv
+      GOTRUE_SITE_URL` shows `:3100`.
+- [ ] **19.6 — Hosted Supabase settings for the login-email change (GAPS
+      A4.12).** In the hosted dashboard, never via `config push`:
+      (a) add `https://<domain>/account/email/confirm` to the redirect
+      allow-list; (b) confirm **Secure email change** is on; (c) optionally
+      switch the "Change email address" template to a `{{ .TokenHash }}` link to
+      `/account/email/confirm?token_hash=…`, so the link works on any device
+      (the default PKCE link only works in the browser that asked). Then do one
+      real change end to end: confirm whether one link or both are needed, and
+      that the member lands back in Settings. Neither could be confirmed locally
+      (19.5).
 
 ---
 

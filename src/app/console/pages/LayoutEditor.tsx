@@ -50,7 +50,7 @@ export function LayoutEditor({ pageType, initial }: Props) {
     <div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
-          <ol className="space-y-1.5">
+          <ol aria-label="Page blocks" className="space-y-1.5">
             {blocks.map((b) => (
               <SortableBlock
                 key={b.id}

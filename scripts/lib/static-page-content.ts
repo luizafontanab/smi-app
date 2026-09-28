@@ -14,39 +14,61 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
     slug: "faq",
     title: "Frequently asked questions",
     collapsible: true,
-    body: `<h2>What is SMI membership and what does it include?</h2>
+    body: `<h2>Membership</h2>
+<h3>What is SMI membership and what does it include?</h3>
 <p>SMI membership gives your company a page in the member directory, the ability to publish your news, videos and events on SMI's channels, quarterly stats on how your content performs, and a backlink from every story we publish about you. Membership is £40/month.</p>
-<h2>How do I join?</h2>
+<h3>How do I join?</h3>
 <p>Use the Become a Member button at the top of any page. You create an account, set up your company page, and our team reviews and activates it — usually within a working day.</p>
-<h2>How do I publish news on SMI?</h2>
-<p>Members submit stories, videos and events from their member area. Everything goes live after a quick editorial check, and we email you when it's published.</p>
-<h2>Can I advertise without being a member?</h2>
-<p>Yes — banner, rail and newsletter advertising are open to any company in the trade. See the Advertising page for formats and the media pack, or send us a message and we'll help you pick the right format.</p>
-<h2>How does advert rotation work?</h2>
-<p>No one can buy position on SMI. Every live advert in a slot rotates with equal visibility, so a smaller advertiser gets the same exposure as a larger one.</p>
-<h2>How do I update or cancel my membership?</h2>
-<p>Everything is self-service from your member area under Settings — update your details, change your password, view invoices, or cancel. Your page and stories stay live until the end of the period you've paid for.</p>
-<h2>How long until my story goes live?</h2>
-<p>Everything members submit gets a quick editorial check before it publishes — usually within a working day. We email you the moment it's live, with a link straight to the page.</p>
-<h2>Can I edit a story after it's published?</h2>
-<p>Not directly, and that's deliberate — reopening a live story for editing would take it off the site and out of search while it waited to be approved again. Instead, find it under Your content and use "request a change". It lands in the SMI editor's inbox and they'll reply to you in your member area. The story stays live throughout.</p>
-<h2>Can I take something down?</h2>
-<p>Yes. Ask us and we'll return it to draft — it comes off the site straight away and stays in your member area, so you can correct it and resubmit. This works for news, videos, events and equipment alike.</p>
-<h2>What makes a submission you can publish quickly?</h2>
-<p>Send us the story rather than the advert: what changed, who it's for, and why the trade should care. A real photograph beats a rendering, and a named contact beats a press office. Our <a href="/pages/press-release-submissions-guide">Press Release Submissions Guide</a> has the full list.</p>
-<h2>What size should my advert artwork be?</h2>
-<p>Sitewide banners are 1280×170px for desktop and 370×280px for mobile — please supply both, because a desktop file scaled down is unreadable on a phone. The newsletter banner is 560×300px with 18pt minimum type, and an "In Association With" logo is 250×60px. If you'd rather not produce them, we offer a one-off banner design service.</p>
-<h2>Can I pay for a particular position?</h2>
-<p>No — and neither can anyone else. Every live advert in a slot rotates with equal visibility, in a random order reshuffled on each page load. A smaller advertiser gets exactly the same exposure as a larger one. That's the same rule in every slot on the site, and we don't make exceptions to it.</p>
-<h2>How do you count an advert impression?</h2>
-<p>Only when your artwork has actually loaded and been on screen — not when the page was served. That makes our numbers lower than a served-impressions count, and more honest: every impression we report is one a reader could genuinely have seen.</p>
-<h2>What is Featured Member?</h2>
-<p>Your logo, company name and industry in the Featured Members carousel on the homepage, plus higher visibility in Find a Member. The carousel shows three at a time and rotates through everyone booked, so each advertiser gets the same turn in the same space. There are eight slots.</p>
-<h2>What happens to my page if I cancel?</h2>
+<h3>What happens to my page if I cancel?</h3>
 <p>Your membership runs to the end of the period you've already paid for, and nothing changes until then. After that your company page comes off the public site. News stories we published about you stay up — they're part of the editorial archive, not part of your page.</p>
-<h2>Where are my invoices?</h2>
+<h2>News</h2>
+<h3>How do I publish news on SMI?</h3>
+<p>Members submit stories, videos and events from their member area. Everything goes live after a quick editorial check, and we email you when it's published.</p>
+<h3>How long until my story goes live?</h3>
+<p>Everything members submit gets a quick editorial check before it publishes — usually within a working day. We email you the moment it's live, with a link straight to the page.</p>
+<h3>What makes a submission you can publish quickly?</h3>
+<p>Send us the story rather than the advert: what changed, who it's for, and why the trade should care. A real photograph beats a rendering, and a named contact beats a press office. Our <a href="/pages/press-release-submissions-guide">Press Release Submissions Guide</a> has the full list.</p>
+<h3>Will my story be shared on social media?</h3>
+<p>Yes. Once a member story is approved it's published with a link back to your company page and shared on SMI's social channels.</p>
+<h3>Can I submit videos?</h3>
+<p>Yes — add a video from your member area with its YouTube link. We take YouTube links only, so the video plays on the page; links from other sites can't be accepted. Like everything else, it's checked before it goes live.</p>
+<h3>Can I edit a story after it's published?</h3>
+<p>Not directly, and that's deliberate — reopening a live story for editing would take it off the site and out of search while it waited to be approved again. Instead, find it under Your content and use "request a change". It lands in the SMI editor's inbox and they'll reply to you in your member area. The story stays live throughout.</p>
+<h3>Can I take something down?</h3>
+<p>Yes. Ask us and we'll return it to draft — it comes off the site straight away and stays in your member area, so you can correct it and resubmit. This works for news, videos, events and equipment alike.</p>
+<h2>Members</h2>
+<h3>How do people find my company on SMI?</h3>
+<p>Through Find a Member, the SMI member directory. Readers can search it by keyword and filter it by industry, by the services you offer and by membership type, or browse members on a map. Every story we publish about you also links back to your company page.</p>
+<h3>What goes on my company page?</h3>
+<p>Your logo, a description of the business, links to your website, phone and social channels, your address with a map, a company video, and every SMI story about your company — collected in one place.</p>
+<h3>How do I change my company page?</h3>
+<p>From My page in your member area. While your page is still being set up, changes save straight away. Once it's live, your edits are checked before they appear, and the current version stays up in the meantime.</p>
+<h2>Events</h2>
+<h3>How do I list an event?</h3>
+<p>Use Add content in your member area and choose Event. Pick its type — webinar, live event, open house, exhibition or the Golf Challenge — and add a location if it has one, which puts it on the events map. It's checked before it appears on the Events page.</p>
+<h3>We're exhibiting at a trade show. Can that go in Events?</h3>
+<p>Not as an event listing — the Events page is for events you run, not a catalogue of every stand at a show. To tell readers where to find you, use a member story, an advert, or a Featured Member slot in the run-up to the show.</p>
+<h3>Can I change an event after submitting it?</h3>
+<p>Yes. While it's waiting for approval, or if it's been sent back to you, edit or withdraw it from Your content. Once it's live, use "request a change" there and we'll update it for you.</p>
+<h2>Advertising</h2>
+<h3>Can I advertise without being a member?</h3>
+<p>Yes — banner, rail and newsletter advertising are open to any company in the trade. See the Advertising page for formats and the media pack, or send us a message and we'll help you pick the right format.</p>
+<h3>How does advert rotation work?</h3>
+<p>No one can buy position on SMI. Every live advert in a slot rotates with equal visibility, so a smaller advertiser gets the same exposure as a larger one.</p>
+<h3>Can I pay for a particular position?</h3>
+<p>No — and neither can anyone else. Every live advert in a slot rotates with equal visibility, in a random order reshuffled on each page load. A smaller advertiser gets exactly the same exposure as a larger one. That's the same rule in every slot on the site, and we don't make exceptions to it.</p>
+<h3>How do you count an advert impression?</h3>
+<p>Only when your artwork has actually loaded and been on screen — not when the page was served. That makes our numbers lower than a served-impressions count, and more honest: every impression we report is one a reader could genuinely have seen.</p>
+<h3>What size should my advert artwork be?</h3>
+<p>Sitewide banners are 1280×170px for desktop and 370×280px for mobile — please supply both, because a desktop file scaled down is unreadable on a phone. The newsletter banner is 560×300px with 18pt minimum type, and an "In Association With" logo is 250×60px. If you'd rather not produce them, we offer a one-off banner design service.</p>
+<h3>What is Featured Member?</h3>
+<p>Your logo, company name and industry in the Featured Members carousel on the homepage, plus higher visibility in Find a Member. The carousel shows three at a time and rotates through everyone booked, so each advertiser gets the same turn in the same space. There are eight slots.</p>
+<h2>Account and billing</h2>
+<h3>How do I update or cancel my membership?</h3>
+<p>Everything is self-service from your member area under Settings — update your details, change your password, view invoices, or cancel. Your page and stories stay live until the end of the period you've paid for.</p>
+<h3>Where are my invoices?</h3>
 <p>In your member area, under Settings → Billing. You'll find every invoice there to download, along with your renewal date and the card on file. You can update your details or cancel from the same page.</p>
-<h2>Who do I contact for anything else?</h2>
+<h3>Who do I contact for anything else?</h3>
 <p>Use the <a href="/contact">Contact page</a> and we'll come back to you — usually the same day.</p>`,
   },
   {
@@ -126,6 +148,7 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
   {
     slug: "policies",
     title: "Policies",
+    collapsible: true,
     body: `<p>This is the Privacy Policy for Sheet Metal Industries, accessible from <a href="https://sheetmetalindustries.com/">https://sheetmetalindustries.com/</a></p>
 
 <h2>What Are Cookies</h2>
@@ -229,6 +252,7 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
   {
     slug: "membership-terms",
     title: "Membership terms",
+    collapsible: true,
     body: `<p>These terms apply to SMI membership. Our <a href="/pages/terms">Terms of use</a> apply to the site as a whole.</p>
 <h2>What membership costs</h2>
 <p>Membership is £40 per month, rolling monthly. [SMI TO CONFIRM: whether £40 is inclusive of VAT or plus VAT. This figure also appears in the FAQ and at the point of sale and must read the same in all three places.]</p>

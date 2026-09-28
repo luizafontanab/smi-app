@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { DEFAULT_HOME_SECTIONS } from "@/lib/home-sections";
 import { isValidElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -200,6 +201,7 @@ const homeData = (over: Partial<HomeData> = {}): HomeData => ({
   categories: [],
   adverts: { banner: [], banner_narrow: [], supplier_logo: [], skyscraper: [], mpu: [], in_feed: [] },
   showPlaceholders: true,
+  homeSections: DEFAULT_HOME_SECTIONS,
   ...over,
 } as unknown as HomeData);
 
@@ -325,6 +327,55 @@ describe("GridHome", () => {
     walk(GridHome(homeData({ stories })));
     const indexes = [...placed].map((id) => Number(id.slice(1))).sort((a, b) => a - b);
     expect(indexes).toEqual(Array.from({ length: indexes.length }, (_, i) => i));
+  });
+
+  // GAPS A9.3: member news rotates into the More News carousel near the top.
+  // The industry stories placed must still be a gap-free prefix — weaving
+  // only pushes out the *oldest* tiles — and the fold stays ≤2 member stories.
+  it("weaves member news into the top carousel without skipping industry stories", () => {
+    const stories = Array.from({ length: 14 }, (_, i) => story({ id: `s${i}`, slug: `s${i}`, title: `Story ${i}` }));
+    const memberNews = ["m1", "m2", "m3"].map((id) => story({ id, slug: id, title: id, is_member_news: true }));
+    const tree = GridHome(homeData({ stories, memberNews }));
+    let carousel: StoryCardType[] = [];
+    const placed = new Set<string>();
+    const walk = (node: ReactNode): void => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!isValidElement(node)) return;
+      const props = node.props as { story?: StoryCardType; stories?: StoryCardType[]; children?: ReactNode };
+      if (props.story) placed.add(props.story.id);
+      if (props.stories) carousel = props.stories;
+      props.stories?.forEach((s) => placed.add(s.id));
+      walk(props.children);
+    };
+    walk(tree);
+
+    expect(carousel.filter((s) => s.is_member_news)).toHaveLength(2);
+    expect(carousel[0].is_member_news).toBe(false); // it still opens on industry news
+    const industry = [...placed].filter((id) => id.startsWith("s")).map((id) => Number(id.slice(1))).sort((x, y) => x - y);
+    expect(industry).toEqual(Array.from({ length: industry.length }, (_, i) => i));
+  });
+
+  // GAPS A1.7: sections render in the configured order, hidden ones drop
+  // out, and the banners keep their rhythm — home_2 after the first section,
+  // home_3 after the last — whatever the order.
+  it("renders sections in the configured order, with the banners still between content", () => {
+    const tree = GridHome(homeData({
+      events: Array.from({ length: 3 }, (_, i) => ({ slug: `e${i}`, title: `E${i}` })) as never,
+      newsletters: [{ number: 1, subject: "N", intro: null, web_slug: "n1", sent_at: null }] as never,
+      memberNews: [story({ id: "m1", slug: "m1", title: "M1", is_member_news: true })],
+      homeSections: { order: ["newsletters", "events", "videos", "member_news", "supplier_logos"], hidden: ["member_news"] },
+    }));
+    const seq: string[] = [];
+    const walk = (node: ReactNode): void => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!isValidElement(node)) return;
+      const props = node.props as { title?: string; slotKey?: string; children?: ReactNode };
+      if (props.slotKey) seq.push(props.slotKey);
+      else if (typeof props.title === "string" && ["Latest newsletters", "Upcoming events", "Latest videos", "Featured member news"].includes(props.title)) seq.push(props.title);
+      walk(props.children);
+    };
+    walk(tree);
+    expect(seq).toEqual(["home_1", "Latest newsletters", "home_2", "Upcoming events", "Latest videos", "home_3"]);
   });
 
   it("never places the same story twice across the page's sections", () => {

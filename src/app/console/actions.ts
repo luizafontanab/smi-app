@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { requireConsole } from "@/lib/auth";
 import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
@@ -23,11 +24,14 @@ import { raiseInvoice } from "@/lib/invoicing";
 import { removeMedia, uploadDocument, uploadImage } from "@/lib/media";
 import { memberValuesFromForm } from "@/lib/member-form";
 import { resolveCoordinates } from "@/lib/member-geocode";
-import { replaceMemberServices } from "@/lib/member-services";
+import { membershipTypeIdsFromForm, membershipTypesError, replaceMemberMembershipTypes, replaceMemberServices } from "@/lib/member-services";
 import { recordRename } from "@/lib/redirects";
 import { activationBlocked, MEMBER_STATUSES, type MemberStatus } from "@/lib/membership";
 import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
 import { siteUrl } from "@/lib/site-url";
+import { isVariant, SITE_VARIANT_KEY, VARIANT_COOKIE } from "@/lib/variant";
+import { HOME_SECTION_IDS, HOME_SECTIONS_KEY, LOCKED_VISIBLE, moveHomeSection, resolveHomeSections, type HomeSectionId } from "@/lib/home-sections";
+import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -227,6 +231,9 @@ export async function saveVideo(formData: FormData) {
   if (!title || !url) {
     redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent("A title and a video link are both required.")}`);
   }
+  // YouTube-only (USE-CASES gap 23): anything youtubeId() can't read would
+  // save, publish and then render as a card with no player.
+  if (!youtubeId(url)) redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(YOUTUBE_ONLY_ERROR)}`);
 
   let thumbnail_path: string | null = null;
   try {
@@ -591,6 +598,11 @@ export async function decideRevision(formData: FormData) {
     const raw = payload as Record<string, unknown>;
     const serviceIds = Array.isArray(raw.service_ids) ? raw.service_ids.map(Number).filter(Boolean) : null;
     delete raw.service_ids;
+    // Membership types ride the same way since members pick their own (A8.1).
+    const membershipTypeIds = Array.isArray(raw.membership_type_ids)
+      ? raw.membership_type_ids.map(Number).filter(Boolean)
+      : null;
+    delete raw.membership_type_ids;
     // revisions written before a column was dropped may still carry its key;
     // applying one would fail on the missing column. 20260902000003 removed
     // testimonials, 20260909000002 renamed category_id to industry_id — both
@@ -609,10 +621,24 @@ export async function decideRevision(formData: FormData) {
       if (clash) return memberFail(rev.member_id, `That member asked for the web address “${newSlug}”, which another member already uses. Approve it after settling the name.`);
     }
 
+    // Refuse an over-cap pick before anything is written, like the slug clash
+    // above — otherwise the rest of the edit lands and the revision stays pending.
+    const typesError = membershipTypeIds ? membershipTypesError(membershipTypeIds) : null;
+    if (typesError) return memberFail(rev.member_id, `This edit asks for too many membership types. ${typesError}`);
+
     await db.from("members").update(payload).eq("id", rev.member_id);
     // null, not [], for a revision written before services existed on the form:
     // that member's existing services must not be wiped by approving it.
     if (serviceIds) await replaceMemberServices(db, rev.member_id, serviceIds);
+    // Same null rule: a revision from before members could pick their types
+    // leaves the types Jas assigned untouched.
+    if (membershipTypeIds) {
+      try {
+        await replaceMemberMembershipTypes(db, rev.member_id, membershipTypeIds);
+      } catch (e) {
+        return memberFail(rev.member_id, e instanceof Error ? e.message : "Could not save membership types.");
+      }
+    }
     // Same redirect bookkeeping saveMember does — a live member's old URL has
     // to keep resolving.
     if (renamed && newSlug && current) await recordRename(`/member/${current.slug}`, `/member/${newSlug}`);
@@ -679,6 +705,8 @@ export async function saveMachine(formData: FormData) {
   if (!name || !memberId) {
     redirect(`/console/machines/${id || "new"}?error=${encodeURIComponent("A machine name and a seller are both required.")}`);
   }
+  const video = optionalYoutubeUrl(formData.get("video_url"));
+  if ("error" in video) redirect(`/console/machines/${id || "new"}?error=${encodeURIComponent(video.error)}`);
   const db = serviceDb();
   const image = await uploadImage(formData.get("image") as File | null, "machines");
   const values = {
@@ -686,6 +714,7 @@ export async function saveMachine(formData: FormData) {
     member_id: memberId,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     external_url: String(formData.get("external_url") ?? "") || null,
+    video_url: video.url,
     ...(image ? { image_path: image } : {}),
   };
   let machineId = id;
@@ -1332,6 +1361,58 @@ export async function saveAdvertFormats(formData: FormData) {
   revalidatePath("/advertising");
 }
 
+/* ---------- site-wide homepage design (GAPS A8.2) ---------- */
+
+/**
+ * A28: switch what every visitor gets between the two built designs, with no
+ * redeploy. Browsers holding their own `smi-theme` cookie (the admin switcher)
+ * keep their choice — including the admin saving this, which is why the page
+ * says so and offers clearMyVariantOverride.
+ */
+export async function saveSiteVariant(formData: FormData) {
+  await requireConsole();
+  const value = formData.get("variant");
+  if (!isVariant(value)) redirect(`/console/pages?error=${encodeURIComponent("Choose Forge or Grid.")}`);
+  const { error } = await serviceDb().from("settings").upsert({ key: SITE_VARIANT_KEY, value });
+  if (error) redirect(`/console/pages?error=${encodeURIComponent(error.message)}`);
+  // Every public route renders per request already; this drops any client
+  // router cache still holding the old design.
+  revalidatePath("/", "layout");
+  redirect("/console/pages?saved=variant");
+}
+
+/**
+ * The grid homepage's below-the-fold sections: order and visibility (A13,
+ * GAPS A1.7). One form: the current order rides in a hidden `order` field, an
+ * up/down button adds `move=<id>:<up|down>`, and each hideable section posts a
+ * `show_<id>` checkbox. resolveHomeSections is the authority on what's legal —
+ * it drops unknown ids, restores anything missing, and refuses to hide a
+ * section carrying a paid placement even if a crafted POST asks it to.
+ */
+export async function saveHomeSections(formData: FormData) {
+  await requireConsole();
+  let order = resolveHomeSections({ order: String(formData.get("order") ?? "").split(",") }).order;
+  const move = String(formData.get("move") ?? "");
+  const [moveId, direction] = move.split(":");
+  if ((HOME_SECTION_IDS as readonly string[]).includes(moveId) && (direction === "up" || direction === "down")) {
+    order = moveHomeSection(order, moveId as HomeSectionId, direction);
+  }
+  const hidden = HOME_SECTION_IDS.filter((id) => !LOCKED_VISIBLE.has(id) && formData.get(`show_${id}`) !== "on");
+  const value = resolveHomeSections({ order, hidden });
+  const { error } = await serviceDb().from("settings").upsert({ key: HOME_SECTIONS_KEY, value });
+  if (error) redirect(`/console/pages?error=${encodeURIComponent(error.message)}`);
+  revalidatePath("/");
+  redirect("/console/pages?saved=sections#home-sections");
+}
+
+/** Forget this browser's own switcher choice, so it sees the site-wide default again. */
+export async function clearMyVariantOverride() {
+  await requireConsole();
+  (await cookies()).delete(VARIANT_COOKIE);
+  revalidatePath("/", "layout");
+  redirect("/console/pages?saved=override");
+}
+
 export async function saveSocialCaps(formData: FormData) {
   await requireConsole();
   const value: SocialCaps = {
@@ -1685,15 +1766,12 @@ export async function saveMember(formData: FormData) {
   }
 
   // Membership types (GAPS A8.1) live in a join table, not a members column —
-  // synced separately from the plain update above, same shape as story_categories.
-  const membershipTypeIds = formData.getAll("membership_types").map(Number).filter(Boolean);
-  const { error: clearErr } = await db.from("member_membership_types").delete().eq("member_id", id);
-  if (clearErr) return memberFail(id, clearErr.message);
-  if (membershipTypeIds.length) {
-    const { error: linkErr } = await db
-      .from("member_membership_types")
-      .insert(membershipTypeIds.map((membership_type_id) => ({ member_id: id, membership_type_id })));
-    if (linkErr) return memberFail(id, linkErr.message);
+  // synced separately from the plain update above, through the same helper the
+  // member's own save and revision approval use, so the cap applies here too.
+  try {
+    await replaceMemberMembershipTypes(db, id, membershipTypeIdsFromForm(formData));
+  } catch (e) {
+    return memberFail(id, e instanceof Error ? e.message : "Could not save membership types.");
   }
 
   // Services, the same way — the console had no way to edit these at all until

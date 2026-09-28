@@ -100,12 +100,33 @@ async function main() {
     ["newsletter_issues", issues, (r) => `#${r.number} ${r.subject}`],
   ];
 
+  const FULL = process.argv.includes("--full") || DELETE;
   let total = 0;
   for (const [table, rows, label] of groups) {
     total += rows.length;
     console.log(`${rows.length > 0 ? "✗" : "✓"} ${table.padEnd(20)} ${String(rows.length).padStart(4)} test row(s)`);
-    for (const r of rows.slice(0, 8)) console.log(`      ${label(r)}`);
-    if (rows.length > 8) console.log(`      … and ${rows.length - 8} more`);
+    const shown = FULL ? rows : rows.slice(0, 8);
+    for (const r of shown) console.log(`      ${label(r)}`);
+    if (!FULL && rows.length > 8) console.log(`      … and ${rows.length - 8} more (--full to list all)`);
+  }
+
+  /*
+   * Auth accounts, reported but never deleted here. They have no cascade from
+   * `members`, so removing a member row leaves its login behind — and deleting
+   * auth users is a different order of risk from deleting a draft member,
+   * because a mistake takes a real person's access with it. The dashboard is
+   * the right place, with a human reading the list.
+   */
+  const { data: authData, error: authErr } = await db.auth.admin.listUsers({ perPage: 1000 });
+  if (authErr) {
+    console.log(`\n!  could not list auth accounts: ${authErr.message}`);
+  } else {
+    const users = authData?.users ?? [];
+    const isTest = (e: string) => TEST_EMAIL_DOMAINS.some((d) => e.endsWith(d)) || e.endsWith("@smi.local");
+    const testUsers = users.filter((u) => isTest(u.email ?? ""));
+    console.log(`\n   auth accounts        ${String(users.length).padStart(4)} total, ${testUsers.length} test/fixture:`);
+    for (const u of testUsers) console.log(`      ${u.email}`);
+    console.log(`   (not deleted by this script — remove in Authentication → Users)`);
   }
 
   if (total === 0) {

@@ -33,6 +33,12 @@ export type Prospect = {
   /** Stable identity, shaped as a LinkedIn URL — how Prosp keys a lead. */
   ref: string;
   name: string;
+  /**
+   * Shown prominently on both panels — Jas's 18 Sep guardrail (TECH-DECISIONS
+   * #16, USE-CASES gap 24): who the person is matters more than their address.
+   * Live, it must come from what the prospect published themselves.
+   */
+  jobTitle: string | null;
   company: string;
   email: string | null;
   phone: string | null;
@@ -76,27 +82,28 @@ export interface LeadGenSource {
  * someone ends up contacting a stranger from sample data.
  */
 const FIXTURES: Prospect[] = [
-  ["Alan Whitcombe", "Pennine Press Brake Services", "service-provider", "Huddersfield", 8],
-  ["Priya Raman", "Calder Laser Cutting", "service-provider", "Halifax", 12],
-  ["Tom Beresford", "Beresford Tooling", "equipment-supplier", "Sheffield", 21],
-  ["Marie Lindqvist", "Nordfab Machinery UK", "equipment-supplier", "Leeds", 16],
-  ["Owen Pritchard", "Pritchard Sheet Metal", "service-provider", "Wakefield", 11],
-  ["Sandra Okafor", "Okafor Fabrication", "service-provider", "Bradford", 9],
-  ["Dev Chaudhary", "Meridian CAD Systems", "software", "Manchester", 38],
-  ["Helen Ashworth", "Ashworth Metrology", "it-services", "Rochdale", 32],
-  ["Jamie Sutcliffe", "Sutcliffe Guillotines", "equipment-supplier", "Barnsley", 19],
-  ["Rachel Nowak", "Nowak Welding Supplies", "equipment-supplier", "Doncaster", 29],
-  ["Ben Iqbal", "Iqbal Precision Components", "service-provider", "Dewsbury", 6],
-  ["Claire Docherty", "Docherty Training Partnership", "training-education", "York", 41],
-  ["Martin Osei", "Osei Powder Coating", "service-provider", "Castleford", 14],
-  ["Yusuf Demir", "Demir Toolroom Software", "software", "Nottingham", 62],
-  ["Lauren Tasker", "Tasker Industrial IT", "it-services", "Leeds", 17],
-  ["Gordon Mackay", "Mackay Apprentice Academy", "training-education", "Newcastle", 88],
-].map(([name, company, companyType, location, distanceMiles]) => {
+  ["Alan Whitcombe", "Operations Director", "Pennine Press Brake Services", "service-provider", "Huddersfield", 8],
+  ["Priya Raman", "Purchasing Manager", "Calder Laser Cutting", "service-provider", "Halifax", 12],
+  ["Tom Beresford", "Managing Director", "Beresford Tooling", "equipment-supplier", "Sheffield", 21],
+  ["Marie Lindqvist", "UK Sales Manager", "Nordfab Machinery UK", "equipment-supplier", "Leeds", 16],
+  ["Owen Pritchard", "Production Manager", "Pritchard Sheet Metal", "service-provider", "Wakefield", 11],
+  ["Sandra Okafor", "Owner", "Okafor Fabrication", "service-provider", "Bradford", 9],
+  ["Dev Chaudhary", "Head of Partnerships", "Meridian CAD Systems", "software", "Manchester", 38],
+  ["Helen Ashworth", "Quality Manager", "Ashworth Metrology", "it-services", "Rochdale", 32],
+  ["Jamie Sutcliffe", "Engineering Manager", "Sutcliffe Guillotines", "equipment-supplier", "Barnsley", 19],
+  ["Rachel Nowak", "Procurement Lead", "Nowak Welding Supplies", "equipment-supplier", "Doncaster", 29],
+  ["Ben Iqbal", "Works Manager", "Iqbal Precision Components", "service-provider", "Dewsbury", 6],
+  ["Claire Docherty", "Training Director", "Docherty Training Partnership", "training-education", "York", 41],
+  ["Martin Osei", "Finishing Supervisor", "Osei Powder Coating", "service-provider", "Castleford", 14],
+  ["Yusuf Demir", "Technical Director", "Demir Toolroom Software", "software", "Nottingham", 62],
+  ["Lauren Tasker", "IT Manager", "Tasker Industrial IT", "it-services", "Leeds", 17],
+  ["Gordon Mackay", "Head of Apprenticeships", "Mackay Apprentice Academy", "training-education", "Newcastle", 88],
+].map(([name, jobTitle, company, companyType, location, distanceMiles]) => {
   const slug = String(company).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   return {
     ref: `https://www.linkedin.com/company/${slug}`,
     name: String(name),
+    jobTitle: String(jobTitle),
     company: String(company),
     email: `${String(name).toLowerCase().split(" ")[0]}@${slug}.example.com`,
     phone: `01${String(1000 + Number(distanceMiles) * 7).slice(0, 3)} ${String(700000 + Number(distanceMiles) * 137).slice(0, 6)}`,

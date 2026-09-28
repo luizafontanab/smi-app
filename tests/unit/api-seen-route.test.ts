@@ -39,6 +39,26 @@ describe("POST /api/seen", () => {
     expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_impression", advert_id: ADVERT, path: "/news" })]);
   });
 
+  // Decision D1 (28 Sep): impressions count with or without cookie consent,
+  // but a declined visitor's row carries nothing that identifies them.
+  it("counts an impression from a visitor who declined cookies, with no identifying data", async () => {
+    liveBookingDb();
+    requestContext.mockResolvedValueOnce({ consented: false, session_hash: "should-not-appear", referrer: "https://x.example", region: "r", company: "c" } as never);
+
+    await POST(beacon([{ id: ADVERT, path: "/news" }]));
+
+    const [rows] = record.mock.calls[0] as unknown as [Record<string, unknown>[]];
+    expect(rows).toEqual([{ kind: "ad_impression", advert_id: ADVERT, path: "/news", session_hash: null, referrer: null, region: null, company: null }]);
+    // never flagged `consented: false`, which is what record() drops
+    expect(rows[0]).not.toHaveProperty("consented");
+  });
+
+  it("keeps a consenting visitor's session context on the impression", async () => {
+    liveBookingDb();
+    await POST(beacon([{ id: ADVERT, path: "/news" }]));
+    expect(record).toHaveBeenCalledWith([expect.objectContaining({ session_hash: "s" })]);
+  });
+
   it("falls back to \"unknown\" for an item with no path", async () => {
     liveBookingDb();
     // deliberately malformed, same as a stale cached client bundle mid-deploy

@@ -26,8 +26,12 @@
     "db:push:prod": "supabase db push --linked",
     "seed:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/seed-real.ts --remote",
     "taxonomies:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/seed-real.ts --remote --taxonomies-only",
+    "accounts:test": "tsx scripts/create-test-accounts.ts",
+    "accounts:test:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/create-test-accounts.ts",
     "audit:test-rows": "tsx scripts/audit-test-rows.ts",
     "audit:test-rows:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/audit-test-rows.ts",
+    "remove-sample-adverts": "tsx scripts/remove-sample-adverts.ts",
+    "remove-sample-adverts:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/remove-sample-adverts.ts",
     "verify:import": "tsx scripts/verify-import.ts",
     "verify:prod": "set -a && . ./.env.production.local && set +a && tsx scripts/verify-import.ts"
   },

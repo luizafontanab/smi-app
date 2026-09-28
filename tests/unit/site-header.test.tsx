@@ -30,6 +30,7 @@ describe("logged in", () => {
     expect(screen.getByRole("link", { name: "Member area" })).toHaveAttribute("href", "/dashboard");
     expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/dashboard/notifications");
     expect(screen.getByRole("link", { name: "Help" })).toHaveAttribute("href", "/dashboard/help");
+    expect(screen.queryByRole("link", { name: "What's new" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Become a Member" })).not.toBeInTheDocument();
   });
 
@@ -38,6 +39,7 @@ describe("logged in", () => {
     expect(screen.getByRole("button", { name: "Account: Jas" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Admin console" })).toHaveAttribute("href", "/console");
     expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/console/notifications");
+    expect(screen.getByRole("link", { name: "What's new" })).toHaveAttribute("href", "/console/releases");
     expect(screen.queryByRole("link", { name: "Help" })).not.toBeInTheDocument();
   });
 

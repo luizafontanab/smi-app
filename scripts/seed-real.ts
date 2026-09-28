@@ -22,6 +22,10 @@
  * Run: pnpm exec tsx scripts/seed-real.ts [--stories-limit N] [--skip-media]
  *        [--no-adverts]    seed everything except the sample adverts
  *        [--adverts-only]  add sample adverts to an already-seeded DB, nothing else
+ *                          — local only: SAMPLE art names real companies
+ *        [--legacy-adverts-only] import the old site's real adverts into an
+ *                          already-seeded DB, each in-date run awaiting approval —
+ *                          idempotent, safe on production
  *        [--demo-rows]     add the synthetic upcoming events, sent newsletter
  *                          issues and console inbox rows to an already-seeded
  *                          DB, nothing else — idempotent, needs no extract,
@@ -48,6 +52,7 @@ import { INDUSTRY_ROWS, industrySlug } from "./lib/industries";
 import { industryForServices } from "./lib/industry-map";
 import { selectMembers } from "./lib/select-members";
 import { AUTHORED_EVENT_COORDS } from "./lib/event-coords";
+import { planLegacyAdverts, type LegacyAdvertRow } from "./lib/legacy-adverts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACT_DIR = process.env.EXTRACT_DIR ?? path.resolve(HERE, "../../handover-extract");
@@ -112,6 +117,12 @@ const TAXONOMIES_ONLY = process.argv.includes("--taxonomies-only");
 // Needed because the full seed plain-inserts and expects a fresh database, so a
 // field added to the shaper after an import can't otherwise reach a live target.
 const EVENTS_ONLY = process.argv.includes("--events-only");
+// --legacy-adverts-only: import the REAL adverts from the old site (legacy
+// slots A banners and D supplier logos) into an already-seeded DB. Unlike
+// --adverts-only, which makes SAMPLE artwork, this is the live inventory the
+// old site was running. Idempotent — matched on artwork path — so re-runs add
+// nothing. Nothing it creates renders until Jas approves it.
+const LEGACY_ADVERTS_ONLY = process.argv.includes("--legacy-adverts-only");
 // --demo-rows: add the synthetic upcoming events and sent newsletter issues to
 // an already-seeded DB, nothing else. Also part of a normal local run;
 // --no-demo-rows opts out, and --remote refuses them outright (see
@@ -156,6 +167,12 @@ async function seedAdverts(
   memberRows: (Record<string, unknown> & { wp_member_id: number; slug: string })[],
   memberId: (wp: number | null | undefined) => string | null,
 ) {
+  // A SAMPLE banner on the live site tells every reader that a real company
+  // is advertising when it has bought nothing — and the 24 Sep production seed
+  // put exactly that there, because this ran on every full run, --remote
+  // included. The caller now skips it on --remote; this repeats the guard
+  // for the same reason seedDemoRows does.
+  if (REMOTE) throw new Error("seedAdverts makes SAMPLE adverts and must never run against a remote target");
   const adMembers = memberRows.filter((m) => m.status === "active" && memberId(m.wp_member_id));
   const palette = ["#1e3a5f", "#7c2d12", "#14532d", "#581c87", "#7f1d1d", "#0c4a6e", "#3f6212", "#701a75"];
   const today = new Date();
@@ -238,6 +255,128 @@ async function seedAdverts(
     { short_name: "Newsletter banner", format: "newsletter_banner", cap: 3, rate_pennies: 35000 },
     { short_name: "Association logo", format: "association_logo", cap: 3, rate_pennies: 15000 },
   ]);
+}
+
+/**
+ * Insert members with everything the full seed gives a member: derived
+ * industry, Services links and membership types. Shared by the full run and by
+ * the local advertiser top-up in --legacy-adverts-only, so a member added
+ * later is not a thinner row than one added by a fresh seed.
+ * Returns wp_member_id → uuid for the rows inserted.
+ */
+async function insertMembers(
+  memberRows: (Record<string, unknown> & { wp_member_id: number; slug: string })[],
+  deps: {
+    industryId: (slug: string) => string | null;
+    serviceId: Map<string, string>;
+    servicesOf: (wp: number) => string[];
+    sectorsOf: (wp: number) => string[];
+  },
+): Promise<Map<number, string>> {
+  const { industryId, serviceId, servicesOf, sectorsOf } = deps;
+  const wpToUuid = new Map<number, string>();
+  for (const rows of chunk(memberRows, 100)) {
+    // testimonials dropped product-wide (migration 20260902000003) — the extract's
+    // rows still carry the field, so it must be excluded rather than spread in.
+    // category_slugs are the member's SERVICES (they seed member_services below);
+    // industry_id is their single derived industry.
+    const insert = rows.map(({ wp_member_id, category_slugs, testimonials, ...r }) => {
+      const industry = industryForServices(servicesOf(wp_member_id));
+      return { ...r, industry_id: industry ? industryId(industrySlug(industry)) : null };
+    });
+    const { data, error } = await db.from("members").insert(insert).select("id, slug");
+    if (error) throw error;
+    for (const m of data!) wpToUuid.set(rows.find((r) => r.slug === m.slug)!.wp_member_id, m.id);
+  }
+  const memberId = (wp: number | null | undefined) => (wp ? wpToUuid.get(wp) ?? null : null);
+
+  // Services per member — the real multi-value taxonomy, previously collapsed
+  // to "first one wins" on members.category_id and otherwise discarded.
+  const memberServiceLinks = memberRows.flatMap((m) => {
+    const id = memberId(m.wp_member_id);
+    if (!id) return [];
+    return servicesOf(m.wp_member_id).flatMap((slug) => {
+      const service_id = serviceId.get(slug);
+      return service_id ? [{ member_id: id, service_id }] : [];
+    });
+  });
+  if (memberServiceLinks.length) {
+    const { error } = await db.from("member_services").insert(memberServiceLinks);
+    if (error) throw error;
+  }
+
+  // Membership types from the legacy WP "sector" field — neither seed populated
+  // these before, so the directory's membership filter matched nothing for
+  // every member. Only 2 of the 4 sector terms have an equivalent in the
+  // 5-item list (docs/ask-jas.md:23 flags the mismatch); the rest stay
+  // unlinked rather than being force-fitted.
+  const { data: mTypes, error: mtErr } = await db.from("membership_types").select("id, slug");
+  if (mtErr) throw mtErr;
+  const membershipTypeId = new Map(mTypes!.map((t) => [t.slug, t.id]));
+  const memberTypeLinks = memberRows.flatMap((m) => {
+    const id = memberId(m.wp_member_id);
+    if (!id) return [];
+    return sectorsOf(m.wp_member_id).flatMap((slug) => {
+      const membership_type_id = membershipTypeId.get(slug);
+      return membership_type_id ? [{ member_id: id, membership_type_id }] : [];
+    });
+  });
+  if (memberTypeLinks.length) {
+    const { error } = await db.from("member_membership_types").insert(memberTypeLinks);
+    if (error) throw error;
+  }
+  console.log(`— member taxonomies: ${memberServiceLinks.length} service links, ${memberTypeLinks.length} membership-type links`);
+  return wpToUuid;
+}
+
+/**
+ * The old site's real adverts — see scripts/lib/legacy-adverts.ts for every
+ * decision this makes. Members are matched by slug, as in --taxonomies-only,
+ * because `members` carries no wp_member_id.
+ */
+async function importLegacyAdverts(
+  memberRows: { wp_member_id: number; slug: string }[],
+  rows: LegacyAdvertRow[],
+  manifest: { source: string; storage_path: string }[],
+) {
+  const { data: members, error: mErr } = await db.from("members").select("id, slug");
+  if (mErr) throw mErr;
+  const idBySlug = new Map(members!.map((m) => [m.slug, m.id]));
+  const slugByWp = new Map(memberRows.map((m) => [m.wp_member_id, m.slug]));
+
+  const { data: existing, error: eErr } = await db
+    .from("adverts").select("desktop_path").in("desktop_path", rows.map((r) => r.desktop_path));
+  if (eErr) throw eErr;
+
+  const now = new Date();
+  const plan = planLegacyAdverts(rows, {
+    today: now.toISOString().slice(0, 10),
+    now: now.toISOString(),
+    memberId: (wp) => idBySlug.get(slugByWp.get(wp) ?? "") ?? null,
+    existingDesktopPaths: new Set(existing!.map((a) => a.desktop_path)),
+  });
+  const pending = plan.inserts.filter((p) => p.booking).length;
+  console.log(
+    `— legacy adverts: ${plan.inserts.length} to import (${pending} awaiting approval, ` +
+      `${plan.inserts.length - pending} lapsed, artwork only), ${plan.present.length} already present` +
+      (plan.noMember.length ? `, ${plan.noMember.length} skipped — member not on target: ${plan.noMember.join(", ")}` : ""),
+  );
+  if (!plan.inserts.length) return;
+
+  // Artwork first, so no advert row ever points at a file that isn't there.
+  if (!SKIP_MEDIA) {
+    await uploadMedia([], [], [], [], manifest, plan.inserts.flatMap((p) => [p.advert.desktop_path, p.advert.mobile_path]));
+  }
+  for (const p of plan.inserts) {
+    const { data: ad, error } = await db.from("adverts").insert(p.advert).select("id").single();
+    if (error) throw new Error(`advert ${p.legacy_key}: ${error.message}`);
+    if (p.booking) {
+      const { error: bErr } = await db.from("advert_bookings").insert({ advert_id: ad!.id, ...p.booking });
+      // Surface it rather than leave an advert with no booking silently
+      // looking like a lapsed one.
+      if (bErr) throw new Error(`booking ${p.legacy_key} (advert ${ad!.id} was created): ${bErr.message}`);
+    }
+  }
 }
 
 /**
@@ -683,9 +822,10 @@ async function uploadMedia(
   videoRows: Record<string, unknown>[],
   eventRows: Record<string, unknown>[],
   manifest: { source: string; storage_path: string }[],
+  extraPaths: string[] = [],
 ) {
   // upload only media referenced by the rows being seeded
-  const wanted = new Set<string>();
+  const wanted = new Set<string>(extraPaths);
   for (const m of memberRows) for (const p of [m.logo_path, m.hero_path]) if (p) wanted.add(p as string);
   for (const s of storyRows) if (s.cover_path) wanted.add(s.cover_path);
   for (const v of videoRows) if (v.thumbnail_path) wanted.add(v.thumbnail_path as string);
@@ -758,7 +898,7 @@ async function main() {
   type StoryRow = Record<string, unknown> & { wp_member_id: number | null; member_wp_ids: number[]; slug: string; category_slugs: string[]; cover_path: string | null };
   type Manifest = { source: string; storage_path: string; used_by: string }[];
 
-  const [catRows, memberRowsAll, storyRowsAll, videoRowsAll, eventRowsAll, pageRows, manifest, rawMembers] =
+  const [catRows, memberRowsAll, storyRowsAll, videoRowsAll, eventRowsAll, pageRows, manifest, rawMembers, advertRows] =
     await Promise.all([
       seed<Cat[]>("categories.seed.json"),
       seed<MemberRow[]>("members.seed.json"),
@@ -768,6 +908,7 @@ async function main() {
       seed<{ slug: string; title: string; body: string }[]>("static_pages.seed.json"),
       seed<Manifest>("media-manifest.json"),
       rawJson<RawMember[]>("members.json"),
+      seed<LegacyAdvertRow[]>("adverts.seed.json"),
     ]);
 
   // The two taxonomies the shaped seed drops, keyed by the id both files share.
@@ -787,7 +928,13 @@ async function main() {
   for (const r of [...storyRowsAll, ...videoRowsAll] as { wp_member_id?: number | null }[]) {
     if (r.wp_member_id) contentPerMember.set(r.wp_member_id, (contentPerMember.get(r.wp_member_id) ?? 0) + 1);
   }
-  const memberRows = selectMembers(memberRowsAll, industryOf, MEMBERS_LIMIT, (m) => contentPerMember.get(m.wp_member_id) ?? 0);
+  // Legacy advertisers always make the local cut, or their real adverts can't
+  // be imported (adverts.member_id is NOT NULL) and the slots show only SAMPLEs.
+  const advertiserWpIds = new Set(advertRows.map((a) => a.wp_member_id));
+  const advertiserSlugs = memberRowsAll.filter((m) => advertiserWpIds.has(m.wp_member_id)).map((m) => m.slug);
+  const memberRows = selectMembers(
+    memberRowsAll, industryOf, MEMBERS_LIMIT, (m) => contentPerMember.get(m.wp_member_id) ?? 0, advertiserSlugs,
+  );
   const keptWpIds = new Set(memberRows.map((m) => m.wp_member_id));
   if (memberRows.length < memberRowsAll.length)
     console.log(`— members limited to ${memberRows.length} of ${memberRowsAll.length} (spread across industries)`);
@@ -843,6 +990,38 @@ async function main() {
     return;
   }
 
+  if (LEGACY_ADVERTS_ONLY) {
+    // A local DB seeded before advertisers were required may lack some. Add
+    // them first — complete rows, via the same insertMembers() as a full seed.
+    // Never on --remote: production has every member, and an importer that
+    // invents members on a live site (say one Jas archived) is worse than a skip.
+    if (!REMOTE) {
+      const { data: present, error: pErr } = await db.from("members").select("slug");
+      if (pErr) throw pErr;
+      const have = new Set(present!.map((m) => m.slug));
+      const missing = memberRowsAll.filter((m) => advertiserWpIds.has(m.wp_member_id) && !have.has(m.slug));
+      if (missing.length) {
+        console.log(`— advertiser members missing locally, adding ${missing.length}: ${missing.map((m) => m.slug).join(", ")}`);
+        const [{ data: inds, error: iErr }, { data: svcs, error: sErr }] = await Promise.all([
+          db.from("industries").select("id, slug"),
+          db.from("services").select("id, slug"),
+        ]);
+        if (iErr) throw iErr;
+        if (sErr) throw sErr;
+        await insertMembers(missing, {
+          industryId: (slug) => inds!.find((i) => i.slug === slug)?.id ?? null,
+          serviceId: new Map(svcs!.map((x) => [x.slug, x.id])),
+          servicesOf,
+          sectorsOf,
+        });
+        if (!SKIP_MEDIA) await uploadMedia(missing, [], [], [], manifest);
+      }
+    }
+    // memberRowsAll, not the local subset: the target decides who is there.
+    await importLegacyAdverts(memberRowsAll, advertRows, manifest);
+    return;
+  }
+
   if (ADVERTS_ONLY) {
     // members already exist — rebuild the wp_member_id → uuid map by slug
     const { data, error } = await db.from("members").select("id, slug");
@@ -894,20 +1073,7 @@ async function main() {
   const serviceId = new Map(serviceCats!.map((s) => [s.slug, s.id]));
 
   console.log(`— members (${memberRows.length})`);
-  const wpToUuid = new Map<number, string>();
-  for (const rows of chunk(memberRows, 100)) {
-    // testimonials dropped product-wide (migration 20260902000003) — the extract's
-    // rows still carry the field, so it must be excluded rather than spread in.
-    // category_slugs are the member's SERVICES (they seed member_services below);
-    // industry_id is their single derived industry.
-    const insert = rows.map(({ wp_member_id, category_slugs, testimonials, ...r }) => {
-      const industry = industryForServices(servicesOf(wp_member_id));
-      return { ...r, industry_id: industry ? industryId(industrySlug(industry)) : null };
-    });
-    const { data, error } = await db.from("members").insert(insert).select("id, slug");
-    if (error) throw error;
-    for (const m of data!) wpToUuid.set(rows.find((r) => r.slug === m.slug)!.wp_member_id, m.id);
-  }
+  const wpToUuid = await insertMembers(memberRows, { industryId, serviceId, servicesOf, sectorsOf });
   const memberId = (wp: number | null | undefined) => (wp ? wpToUuid.get(wp) ?? null : null);
   /**
    * Content inherits its member's industry, matching migration 20260909000002's
@@ -920,44 +1086,9 @@ async function main() {
     return industry ? industryId(industrySlug(industry)) : null;
   };
 
-  // Services per member — the real multi-value taxonomy, previously collapsed
-  // to "first one wins" on members.category_id and otherwise discarded.
-  const memberServiceLinks = memberRows.flatMap((m) => {
-    const id = memberId(m.wp_member_id);
-    if (!id) return [];
-    return servicesOf(m.wp_member_id).flatMap((slug) => {
-      const service_id = serviceId.get(slug);
-      return service_id ? [{ member_id: id, service_id }] : [];
-    });
-  });
-  if (memberServiceLinks.length) {
-    const { error } = await db.from("member_services").insert(memberServiceLinks);
-    if (error) throw error;
-  }
-
-  // Membership types from the legacy WP "sector" field — neither seed populated
-  // these before, so the directory's membership filter matched nothing for
-  // every member. Only 2 of the 4 sector terms have an equivalent in the
-  // 5-item list (docs/ask-jas.md:23 flags the mismatch); the rest stay
-  // unlinked rather than being force-fitted.
-  const { data: mTypes, error: mtErr } = await db.from("membership_types").select("id, slug");
-  if (mtErr) throw mtErr;
-  const membershipTypeId = new Map(mTypes!.map((t) => [t.slug, t.id]));
-  const memberTypeLinks = memberRows.flatMap((m) => {
-    const id = memberId(m.wp_member_id);
-    if (!id) return [];
-    return sectorsOf(m.wp_member_id).flatMap((slug) => {
-      const membership_type_id = membershipTypeId.get(slug);
-      return membership_type_id ? [{ member_id: id, membership_type_id }] : [];
-    });
-  });
-  if (memberTypeLinks.length) {
-    const { error } = await db.from("member_membership_types").insert(memberTypeLinks);
-    if (error) throw error;
-  }
-  console.log(`— member taxonomies: ${memberServiceLinks.length} service links, ${memberTypeLinks.length} membership-type links`);
-
-  if (!NO_ADVERTS) await seedAdverts(memberRows, memberId);
+  // --remote gets the real inventory, never the SAMPLE one (see seedAdverts).
+  if (REMOTE) await importLegacyAdverts(memberRows, advertRows, manifest);
+  else if (!NO_ADVERTS) await seedAdverts(memberRows, memberId);
 
   // These fixtures all share one password, hardcoded immediately below, and one
   // of them is an admin. They must never exist on a live database — anyone who

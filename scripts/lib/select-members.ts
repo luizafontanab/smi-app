@@ -37,6 +37,10 @@ export function selectMembers<T extends SelectableMember>(
    *  are what make /news's "Member news" rail, the member page's story list and
    *  video attribution non-empty. Only 34 of the 123 real members own any. */
   contentCount: (row: T) => number = () => 0,
+  /** Slugs that must survive the cut on top of REQUIRED_MEMBER_SLUGS — the
+   *  legacy advertisers, whose adverts can't be imported without them
+   *  (`adverts.member_id` is NOT NULL). Data-driven, so it follows the extract. */
+  alsoRequired: readonly string[] = [],
 ): T[] {
   if (rows.length <= limit) return rows;
 
@@ -47,9 +51,9 @@ export function selectMembers<T extends SelectableMember>(
   // without a hero image.
   const rank = (a: T, b: T) => contentCount(b) - contentCount(a) || dressed(b) - dressed(a);
 
-  // 1. Non-negotiable: the featured machine's member, plus enough active
-  //    members to back the three seeded member logins.
-  for (const r of rows) if (REQUIRED_MEMBER_SLUGS.includes(r.slug)) keep(r);
+  // 1. Non-negotiable: the featured machine's member, any caller-required
+  //    member, plus enough active members to back the three seeded member logins.
+  for (const r of rows) if (REQUIRED_MEMBER_SLUGS.includes(r.slug) || alsoRequired.includes(r.slug)) keep(r);
   for (const r of rows.filter((r) => r.status === "active").slice(0, 3)) keep(r);
 
   // 2. Spread across industries. Ranking inside each bucket means the industry

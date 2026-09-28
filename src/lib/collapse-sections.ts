@@ -11,8 +11,9 @@
  * Sectioning model is TWO-LEVEL: every <h2> starts a new top-level card, and
  * any <h3> inside its span becomes its own nested <details> rather than a
  * sibling — Policies genuinely nests "Account/Login/Forms/Site preferences
- * cookies" under "The Cookies We Set" (fix-list 13), and a page with no h3s
- * (FAQ) collapses exactly as a flat one would.
+ * cookies" under "The Cookies We Set" (fix-list 13), and the FAQ groups its
+ * questions (h3) under topics (h2) — News, Members, Events… (GAPS A9.6). A
+ * page with no h3s collapses exactly as a flat one would.
  *
  * Purely a string transform — a heading with no matching close tag simply
  * doesn't match and stays put, so malformed HTML degrades to "not collapsed"

@@ -36,6 +36,12 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
   const [video, ctx] = await Promise.all([videoBySlug(slug), requestContext()]);
   if (!video) notFound();
   record([{ kind: "page_view", path: `/video/${slug}`, ...ctx }]);
+  // Content reach (GAPS A9.2): the member's own view count for this video.
+  // Only for member videos — an editorial video has nobody to credit. A
+  // SEPARATE call on purpose: record() inserts its batch as one statement, so
+  // if this kind were ever rejected (a deploy ahead of 20260928000003) it
+  // would take the site-wide page_view above down with it.
+  if (video.member_id) record([{ ...ctx, kind: "video_view", path: `/video/${slug}`, member_id: video.member_id }]);
 
   const yt = youtubeId(video.url);
   const published = fmt(video.published_at);
