@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   consoleUploadImage, decideStory, moveStory, pinStory, saveSocialCaps, saveStory, scheduleStory, setStoryStatus,
-  saveSiteVariant, clearMyVariantOverride, saveHomeSections,
+  saveSiteVariant, clearMyVariantOverride, saveHomeSections, setErrorStatus,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -287,6 +287,40 @@ describe("saveSocialCaps", () => {
     await saveSocialCaps(form({ per_day: "5", delay_minutes: "45" }));
 
     expect(builder.upsert).toHaveBeenCalledWith({ key: "social_caps", value: { per_day: 5, delay_minutes: 45 } });
+  });
+});
+
+// docs/logging.md: resolving an error is developer-only, like the page.
+describe("setErrorStatus", () => {
+  const ID = "11111111-1111-4111-8111-111111111111";
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("404s an admin who isn't on DEVELOPER_EMAILS, without writing", async () => {
+    vi.stubEnv("DEVELOPER_EMAILS", "someone-else@example.com");
+    const from = db({});
+    await expect(setErrorStatus(form({ id: ID, status: "resolved" }))).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("lets a developer resolve an error, stamping resolved_at", async () => {
+    const me = await requireConsole();
+    vi.stubEnv("DEVELOPER_EMAILS", me.email);
+    const builder = queryBuilder(dbOk(null));
+    db({ error_events: () => builder });
+
+    await expect(setErrorStatus(form({ id: ID, status: "resolved" }))).rejects.toThrow(`NEXT_REDIRECT:/console/errors/${ID}?saved=1`);
+
+    expect(builder.update).toHaveBeenCalledWith({ status: "resolved", resolved_at: expect.any(String) });
+    expect(builder.eq).toHaveBeenCalledWith("id", ID);
+  });
+
+  it("ignores an unknown status or a malformed id", async () => {
+    const me = await requireConsole();
+    vi.stubEnv("DEVELOPER_EMAILS", me.email);
+    const from = db({});
+    await setErrorStatus(form({ id: ID, status: "deleted" }));
+    await setErrorStatus(form({ id: "nope", status: "resolved" }));
+    expect(from).not.toHaveBeenCalled();
   });
 });
 

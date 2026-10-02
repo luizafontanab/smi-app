@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/client-error-report";
 
 /**
  * Public-site error boundary. Without it, any thrown server error renders
@@ -15,6 +16,8 @@ import { useEffect } from "react";
 export default function PublicError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
     console.error("[public] render error:", error);
+    // Recorded server-side too (docs/logging.md); the digest ties it to the server's own entry.
+    reportClientError({ message: error.message, stack: error.stack, digest: error.digest, kind: "boundary" });
   }, [error]);
 
   return (

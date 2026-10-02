@@ -140,3 +140,19 @@ test.describe("filing a report and working it on the board", () => {
     await expect(page.getByRole("link", { name: quickTitle, exact: true })).toHaveCount(0);
   });
 });
+
+/**
+ * The error log is developer-only (docs/logging.md): an admin who isn't on
+ * DEVELOPER_EMAILS — jas@smi.local, by design — gets a 404 for the page and
+ * no "Errors" link in the nav. Assumes the local DEVELOPER_EMAILS does not list
+ * jas@smi.local; if you add him to test the page itself, this will fail.
+ */
+test.describe("error log gate", () => {
+  test("an admin who isn't a developer can't see the error log", async ({ page }) => {
+    await loginAsJas(page);
+    await page.goto("/console");
+    await expect(page.getByRole("link", { name: "Errors", exact: true })).toHaveCount(0);
+    const res = await page.goto("/console/errors");
+    expect(res?.status()).toBe(404);
+  });
+});

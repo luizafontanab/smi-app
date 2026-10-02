@@ -310,12 +310,12 @@ async function main() {
 
   console.log("— advert slots, banners, bookings");
   await db.from("advert_slots").insert([
-    { key: "home_1", label: "Homepage banner 1", cap: 3 },
-    { key: "home_2", label: "Homepage banner 2", cap: 3 },
+    { key: "home_1", label: "Homepage — top banner", cap: 3 },
+    { key: "home_2", label: "Homepage — middle banner", cap: 3 },
     // The grid design's replacement for home_2 — same position, narrow column
     // (migration 20260917000001).
     { key: "home_2_narrow", label: "Homepage banner 2 — grid design (830×170)", cap: 3 },
-    { key: "home_3", label: "Homepage banner 3", cap: 3 },
+    { key: "home_3", label: "Homepage — bottom banner", cap: 3 },
     { key: "siderail_a", label: "Side rail A", cap: 3 },
     { key: "siderail_b", label: "Side rail B", cap: 3 },
     { key: "news_mid", label: "News mid-page", cap: 3 },

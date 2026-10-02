@@ -912,6 +912,89 @@ export type Database = {
           },
         ]
       }
+      error_events: {
+        Row: {
+          alerted_at: string | null
+          area: string
+          count: number
+          fingerprint: string
+          first_seen: string
+          id: string
+          last_seen: string
+          message: string
+          resolved_at: string | null
+          source: string
+          stack: string | null
+          status: string
+        }
+        Insert: {
+          alerted_at?: string | null
+          area: string
+          count?: number
+          fingerprint: string
+          first_seen?: string
+          id?: string
+          last_seen?: string
+          message: string
+          resolved_at?: string | null
+          source: string
+          stack?: string | null
+          status?: string
+        }
+        Update: {
+          alerted_at?: string | null
+          area?: string
+          count?: number
+          fingerprint?: string
+          first_seen?: string
+          id?: string
+          last_seen?: string
+          message?: string
+          resolved_at?: string | null
+          source?: string
+          stack?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      error_occurrences: {
+        Row: {
+          context: Json
+          digest: string | null
+          event_id: string
+          id: string
+          occurred_at: string
+          path: string | null
+          user_id: string | null
+        }
+        Insert: {
+          context?: Json
+          digest?: string | null
+          event_id: string
+          id?: string
+          occurred_at?: string
+          path?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          context?: Json
+          digest?: string | null
+          event_id?: string
+          id?: string
+          occurred_at?: string
+          path?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_occurrences_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "error_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           cover_path: string | null
@@ -2373,6 +2456,26 @@ export type Database = {
       ensure_analytics_partition: {
         Args: { p_month: string }
         Returns: undefined
+      }
+      log_error_event: {
+        Args: {
+          p_area: string
+          p_context: Json
+          p_digest: string
+          p_fingerprint: string
+          p_message: string
+          p_path: string
+          p_source: string
+          p_stack: string
+          p_user: string
+        }
+        Returns: {
+          alerted_at: string
+          event_id: string
+          is_new: boolean
+          reopened: boolean
+          status: string
+        }[]
       }
       member_event_months: {
         Args: { p_member: string; p_since: string }

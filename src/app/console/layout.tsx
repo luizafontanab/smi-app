@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isDeveloper } from "@/lib/developer";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { AccountMenu } from "@/components/AccountMenu";
 import { ConsoleNav, type NavSection } from "@/components/console/ConsoleNav";
@@ -81,11 +82,18 @@ const CONSOLE_SECTIONS: NavSection[] = [
 // Internal tool — admin only, so it's appended per-role rather than living
 // in the module-level array.
 const DEV_SECTION: NavSection = { key: "dev", href: "/console/dev", label: "Dev Board" };
+// Developer-only, not merely admin: Jas is an admin too, and the error log is
+// not his to see (docs/logging.md). Gated by the DEVELOPER_EMAILS allowlist.
+const ERRORS_SECTION: NavSection = { key: "errors", href: "/console/errors", label: "Errors" };
 
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const user = await requireConsole();
   const name = user.displayName ?? user.email;
-  const nav = isAdmin(user) ? [...CONSOLE_SECTIONS, DEV_SECTION] : CONSOLE_SECTIONS;
+  const nav = [
+    ...CONSOLE_SECTIONS,
+    ...(isAdmin(user) ? [DEV_SECTION] : []),
+    ...(isDeveloper(user) ? [ERRORS_SECTION] : []),
+  ];
 
   // The layout is already force-dynamic, so the unread count stays fresh on
   // every navigation without any client polling.

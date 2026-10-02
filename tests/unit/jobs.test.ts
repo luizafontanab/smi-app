@@ -200,7 +200,9 @@ describe("runDueJobs", () => {
         "advert_lifecycle",
         "comp_expiry",
         "crm_sync",
+        "dev_error_digest",
         "lead_alert",
+        "log_retention",
         "membership_lapse",
         "newsletter_sync",
         "publish_scheduled",
@@ -531,6 +533,26 @@ describe("runJob kinds", () => {
       kind: "notify_member",
       payload: expect.objectContaining({ member_id: "m1", kind: "lead_alert", count: 2 }),
     }));
+  });
+
+  // Logging plan Phase 1: 90-day retention for the error log.
+  it("log_retention — drops errors and occurrences older than 90 days", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-01T00:00:00.000Z"));
+    const j = job("log_retention");
+    const eventsBuilder = queryBuilder(dbOk(null));
+    const occBuilder = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
+      error_events: () => eventsBuilder, error_occurrences: () => occBuilder,
+    });
+
+    await runJobById(j.id);
+    vi.useRealTimers();
+
+    const cutoff = new Date(Date.parse("2026-10-01T00:00:00.000Z") - 90 * 864e5).toISOString();
+    expect(eventsBuilder.delete).toHaveBeenCalled();
+    expect(eventsBuilder.lt).toHaveBeenCalledWith("last_seen", cutoff);
+    expect(occBuilder.lt).toHaveBeenCalledWith("occurred_at", cutoff);
   });
 
   it("lead_alert — skips a weekly-cadence member on a non-Monday", async () => {

@@ -909,9 +909,14 @@ from the page.
       is a **new** route with no baseline at all, so `pnpm visual` exits 2 on it
       until someone looks. Review, then accept each route with
       `pnpm visual:accept <route-id>`. Not run.
-- [ ] **19.4 — Push this pass's migrations to production in the same release
+- [x] **19.4 — Push this pass's migrations to production in the same release
       as the code** (`pnpm db:push:prod`, as in 9.1), then check with
       `supabase migration list --linked`:
+      **Done 1 Oct 2026** with `supabase db push --linked` (env from
+      `.env.production.local`): 20260928000001–000005, 20260929000001 and
+      20261001000001 applied; `migration list` shows none pending (68 total).
+      The `pgdelta-target-ca.crt: ENOENT` noise after the push is the CLI's
+      drift check, as in 9.1, not a migration failure.
       - `20260928000001_search_members.sql` adds the function `/search` now
         calls for members. Deployed without it, member results on `/search` are
         silently empty (the page still loads). Function only.
@@ -957,6 +962,44 @@ from the page.
       real change end to end: confirm whether one link or both are needed, and
       that the member lands back in Settings. Neither could be confirmed locally
       (19.5).
+
+## 20 · Homepage advert positions (29 Sep) — production follow-through
+
+- [ ] **20.1 — Push `20260929000001_home_banner_slots.sql` to production.**
+      `home_1`, `home_2` and `home_3` (the three homepage banners) were only
+      ever inserted by the seed scripts, so a database built from migrations
+      has no homepage rows on Console → Adverts → Inventory, and Jas can't set
+      their caps. The migration adds them with `on conflict do nothing`, so it
+      is safe on any database. Run `pnpm db:push:prod`, then check that the
+      three "Homepage — … banner" rows appear on the Inventory page.
+- [ ] **20.2 — Decide about the other slots that exist only in the seeds.**
+      Like 17.2, `siderail_a`, `siderail_b`, `news_mid`, `footer`,
+      `supplier_logos`, `home_sky`, `home_mpu_1`, `home_mpu_2` and
+      `home_infeed` are created only by `scripts/seed.ts` and
+      `scripts/seed-real.ts`. Checked 29 Sep: **`news_mid` and `footer`
+      render on `/news`**, so production has the same gap there as it had for
+      the homepage. `supplier_logos` is used by page blocks, and `siderail_b`
+      only by the unused forge homepage. `siderail_a`, `home_sky`,
+      `home_mpu_1/2` and `home_infeed` render nowhere (see 14.3). Add the ones
+      that render to a migration, as 20.1 did, and decide whether the rest
+      should leave the seeds. Not done in 20.1, which is scoped to the homepage.
+
+## 21 · Error logging, Phase 1 (1 Oct) — switches it on
+
+See `docs/logging.md`. The code records errors as soon as it deploys; these
+steps decide who hears about them.
+
+- [x] **21.1 — Push migration `20261001000001_error_log.sql` to production**
+      (`pnpm db:push:prod`; the sandbox can't reach production). Additive: two
+      new tables and one function. Until it's applied, nothing breaks — every
+      error is still printed to Vercel's function log, and the database write
+      simply fails quietly (`[error-log] could not record …`).
+- [ ] **21.2 — Set `DEVELOPER_EMAILS` in Vercel** to your own login email.
+      Unset, `/console/errors` 404s for everyone, you included.
+- [ ] **21.3 — Set `DEV_ALERT_EMAIL` in Vercel** to where error alerts and the
+      daily digest should go. Unset, errors are recorded but nobody is emailed.
+      Alerts also need the Resend key (§1, GAPS B3.3): until then they're inert
+      in production. Locally they arrive in Mailpit.
 
 ---
 

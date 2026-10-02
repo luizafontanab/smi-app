@@ -1,5 +1,8 @@
 "use client"; // error boundaries must be Client Components
 
+import { useEffect } from "react";
+import { reportClientError } from "@/lib/client-error-report";
+
 /**
  * Last resort: a failure in RootLayout itself, which this replaces. Per the
  * Next 16 docs it must render its own <html>/<body>, and it does NOT receive
@@ -10,6 +13,11 @@
  * `retry` is the Next 16 name for what earlier majors called `reset`.
  */
 export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  // The root layout itself failed, so this is the only code still running —
+  // report it like the other boundaries (docs/logging.md).
+  useEffect(() => {
+    reportClientError({ message: error.message, stack: error.stack, digest: error.digest, kind: "boundary" });
+  }, [error]);
   return (
     <html lang="en">
       {/* Literal token values (ink/graphite/shade), not vars: this page renders

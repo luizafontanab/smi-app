@@ -1,6 +1,7 @@
 "use client"; // error boundaries must be Client Components
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/client-error-report";
 
 /**
  * Console error boundary. Operators need the digest to report a problem, and
@@ -10,6 +11,8 @@ import { useEffect } from "react";
 export default function ConsoleError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
     console.error("[console] render error:", error);
+    // Recorded server-side too (docs/logging.md); the digest ties it to the server's own entry.
+    reportClientError({ message: error.message, stack: error.stack, digest: error.digest, kind: "boundary" });
   }, [error]);
 
   return (

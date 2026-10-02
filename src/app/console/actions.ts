@@ -15,7 +15,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } from "@/lib/dev-tasks";
 import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
-import { safeInternalPath } from "@/lib/validate";
+import { safeInternalPath, UUID_RE } from "@/lib/validate";
 import { canMoveStory } from "@/lib/story-board";
 import { canMoveEvent } from "@/lib/event-board";
 import { canMoveVideo } from "@/lib/video-board";
@@ -1403,6 +1403,26 @@ export async function saveHomeSections(formData: FormData) {
   if (error) redirect(`/console/pages?error=${encodeURIComponent(error.message)}`);
   revalidatePath("/");
   redirect("/console/pages?saved=sections#home-sections");
+}
+
+/* ---------- error log (docs/logging.md) ---------- */
+
+/**
+ * Resolve, ignore or reopen an error. Developer-only, like the page: an admin
+ * who isn't on DEVELOPER_EMAILS gets the same 404 the page gives them.
+ */
+export async function setErrorStatus(formData: FormData) {
+  const { requireDeveloper } = await import("@/lib/developer");
+  await requireDeveloper();
+  const id = String(formData.get("id") ?? "");
+  const status = String(formData.get("status") ?? "");
+  if (!UUID_RE.test(id) || !["open", "resolved", "ignored"].includes(status)) return;
+  await serviceDb()
+    .from("error_events")
+    .update({ status, resolved_at: status === "resolved" ? new Date().toISOString() : null })
+    .eq("id", id);
+  revalidatePath("/console/errors");
+  redirect(`/console/errors/${id}?saved=1`);
 }
 
 /** Forget this browser's own switcher choice, so it sees the site-wide default again. */

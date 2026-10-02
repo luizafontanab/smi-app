@@ -24,7 +24,9 @@ export type JobKind =
   | "admin_digest"           // daily sweep: everything waiting on Jas, in one email
   | "newsletter_sync"        // daily sweep: mirror the contact list to the sender
   | "stats_summary"          // daily sweep: fires per member on their chosen stats cadence
-  | "lead_alert";            // daily sweep: fires per member on their chosen leads cadence
+  | "lead_alert"             // daily sweep: fires per member on their chosen leads cadence
+  | "dev_error_digest"       // daily: the last 24h of recorded errors, emailed to DEV_ALERT_EMAIL (docs/logging.md)
+  | "log_retention";         // daily: drops log rows older than 90 days
 
 /**
  * In development only, a job that is due now runs as soon as the response is
@@ -130,6 +132,8 @@ export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   await ensurePeriodic("newsletter_sync", 24 * 60 * 60);
   await ensurePeriodic("stats_summary", 24 * 60 * 60);
   await ensurePeriodic("lead_alert", 24 * 60 * 60);
+  await ensurePeriodic("dev_error_digest", 24 * 60 * 60);
+  await ensurePeriodic("log_retention", 24 * 60 * 60);
 
   const { data: due } = await db
     .from("jobs")
@@ -423,6 +427,23 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
     case "rollup_daily": {
       const { error } = await db.rpc("run_daily_rollup");
       if (error) throw new Error(error.message);
+      break;
+    }
+    case "dev_error_digest": {
+      const { sendErrorDigest } = await import("./log-alerts");
+      await sendErrorDigest();
+      break;
+    }
+    case "log_retention": {
+      // 90 days, decided 29 Sep (docs/logging.md). An error not seen for 90
+      // days goes with its occurrences (cascade); a still-active error keeps
+      // its row but sheds occurrences older than the window. Later logging
+      // phases add their tables here.
+      const cutoff = new Date(Date.now() - 90 * 864e5).toISOString();
+      const { error: eventsErr } = await db.from("error_events").delete().lt("last_seen", cutoff);
+      if (eventsErr) throw new Error(`log retention (events) failed: ${eventsErr.message}`);
+      const { error: occErr } = await db.from("error_occurrences").delete().lt("occurred_at", cutoff);
+      if (occErr) throw new Error(`log retention (occurrences) failed: ${occErr.message}`);
       break;
     }
     case "comp_expiry": {
