@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  AD_PREVIEW_COOKIE, adPreview, advertHref, bookingPhase, dealSlots, liveAdverts, liveAdvertsByFormat,
-  pickOne, resolveAdvertTarget, showAdPlaceholders, uniformShuffle, type LiveAdvert,
+  AD_PREVIEW_COOKIE, adPreview, advertHref, bannerOccupancy, BANNERS_PER_POSITION, bookingPhase, dealSlots, liveAdverts,
+  liveAdvertsByFormat, peakSold, resolveAdvertTarget, showAdPlaceholders, soldOn, uniformShuffle, type LiveAdvert,
+  type SpotBooking,
 } from "@/lib/adverts";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
@@ -156,28 +157,6 @@ describe("uniformShuffle", () => {
   });
 });
 
-describe("pickOne", () => {
-  it("returns undefined for an empty slot", () => {
-    expect(pickOne([])).toBeUndefined();
-  });
-
-  it("returns the only item when there is one", () => {
-    expect(pickOne([1])).toBe(1);
-  });
-
-  it("is deterministic for a given PRNG", () => {
-    const rand = () => 0; // always the first item
-    expect(pickOne([1, 2, 3], rand)).toBe(1);
-  });
-
-  it("can land on every item — not always the first", () => {
-    const items = ["a", "b", "c"];
-    expect(pickOne(items, () => 0)).toBe("a");
-    expect(pickOne(items, () => 0.5)).toBe("b");
-    expect(pickOne(items, () => 0.99)).toBe("c");
-  });
-});
-
 describe("dealSlots", () => {
   const ad = (id: string): LiveAdvert => ({
     advertId: id, name: id, desktopPath: "", mobilePath: "", linkUrl: null, memberSlug: null, memberId: null,
@@ -202,6 +181,88 @@ describe("dealSlots", () => {
     expect(dealt.get("a")).toHaveLength(1);
     expect(dealt.get("b")).toHaveLength(1);
     expect(dealt.get("c")).toHaveLength(1);
+  });
+
+  it("deals BANNERS_PER_POSITION (3) to each position by default", () => {
+    const pool = Array.from({ length: 8 }, (_, i) => ad(String(i)));
+    const dealt = dealSlots(pool, ["home_1", "home_2", "home_3"]);
+    expect(BANNERS_PER_POSITION).toBe(3);
+    for (const key of ["home_1", "home_2", "home_3"]) expect(dealt.get(key)).toHaveLength(3);
+  });
+
+  // The carousels advance in lockstep (AdCarousel's shared ticker), so frame r
+  // of every position is on screen at once. Those must all differ whenever
+  // there are at least as many live banners as positions — for any shuffle.
+  it("never shows the same banner in two positions at the same moment when n ≥ positions", () => {
+    for (let positions = 1; positions <= 5; positions++) {
+      const keys = Array.from({ length: positions }, (_, k) => `p${k}`);
+      for (let n = positions; n <= 20; n++) {
+        const pool = Array.from({ length: n }, (_, i) => ad(String(i)));
+        for (let trial = 0; trial < 5; trial++) {
+          const dealt = dealSlots(pool, keys);
+          const frames = Math.min(BANNERS_PER_POSITION, n);
+          for (let r = 0; r < frames; r++) {
+            const onScreen = keys.map((k) => dealt.get(k)![r].advertId);
+            expect(new Set(onScreen).size, `P=${positions} n=${n} frame ${r}`).toBe(positions);
+          }
+        }
+      }
+    }
+  });
+
+  it("puts every live banner somewhere on the page when there are no more than 3 per position", () => {
+    const keys = ["a", "b", "c"];
+    for (let n = 1; n <= keys.length * BANNERS_PER_POSITION; n++) {
+      const pool = Array.from({ length: n }, (_, i) => ad(String(i)));
+      const dealt = dealSlots(pool, keys);
+      const shown = new Set(keys.flatMap((k) => dealt.get(k)!.map((a) => a.advertId)));
+      expect(shown.size, `n=${n}`).toBe(n);
+    }
+  });
+});
+
+describe("banner spots: soldOn / peakSold / bannerOccupancy", () => {
+  const b = (status: string, starts_on: string, ends_on: string): SpotBooking => ({ status, starts_on, ends_on });
+
+  it("counts only scheduled/live bookings whose term covers the day, edges inclusive", () => {
+    const bookings = [
+      b("live", "2026-10-01", "2026-10-31"),
+      b("scheduled", "2026-10-31", "2026-11-30"), // starts on the last day
+      b("awaiting_approval", "2026-10-01", "2026-10-31"), // pending, not sold
+      b("draft", "2026-10-01", "2026-10-31"),
+      b("ended", "2026-10-01", "2026-10-31"), // ended early: terminal beats dates
+      b("live", "2026-09-01", "2026-10-30"), // ended the day before
+    ];
+    expect(soldOn(bookings, "2026-10-31")).toBe(2);
+    expect(soldOn(bookings, "2026-10-30")).toBe(2);
+    expect(soldOn(bookings, "2026-12-01")).toBe(0);
+  });
+
+  it("finds the busiest day in a range, first one on a tie, null when nothing is sold", () => {
+    const bookings = [b("live", "2026-10-05", "2026-10-10"), b("live", "2026-10-08", "2026-10-20")];
+    expect(peakSold(bookings, "2026-10-01", "2026-10-31")).toEqual({ count: 2, day: "2026-10-08" });
+    expect(peakSold(bookings, "2026-10-21", "2026-10-31")).toEqual({ count: 0, day: null });
+  });
+
+  it("reports six months from today, the current month only from today onward", () => {
+    const bookings = [
+      b("live", "2026-10-01", "2026-10-03"), // before today: must not count for October
+      b("scheduled", "2026-11-15", "2027-01-10"),
+      b("scheduled", "2026-12-01", "2026-12-31"),
+      b("awaiting_approval", "2026-12-20", "2027-02-01"),
+    ];
+    const months = bannerOccupancy(bookings, "2026-10-04");
+    expect(months.map((m) => m.month)).toEqual(["2026-10", "2026-11", "2026-12", "2027-01", "2027-02", "2027-03"]);
+    expect(months[0].peak).toEqual({ count: 0, day: null });
+    expect(months[1].peak).toEqual({ count: 1, day: "2026-11-15" });
+    expect(months[2].peak).toEqual({ count: 2, day: "2026-12-01" });
+    expect(months.map((m) => m.pending)).toEqual([0, 0, 1, 1, 1, 0]);
+  });
+
+  it("crosses a year end and handles February", () => {
+    const months = bannerOccupancy([b("live", "2027-02-28", "2027-02-28")], "2026-12-31", 3);
+    expect(months.map((m) => m.month)).toEqual(["2026-12", "2027-01", "2027-02"]);
+    expect(months[2].peak).toEqual({ count: 1, day: "2027-02-28" });
   });
 });
 

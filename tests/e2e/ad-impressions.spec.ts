@@ -22,7 +22,9 @@ test("impressions count only adverts that loaded and were actually on screen", a
     const original = navigator.sendBeacon?.bind(navigator);
     navigator.sendBeacon = (url: string | URL, data?: BodyInit | null) => {
       if (String(url).includes("/api/seen") && data instanceof Blob) {
-        void data.text().then((t) => w.__seen.push(...(JSON.parse(t).ids ?? [])));
+        // The body is {items:[{id, path}]} (src/lib/ad-impressions.ts). This read
+        // `.ids` for a while after that shape changed, so it saw nothing at all.
+        void data.text().then((t) => w.__seen.push(...((JSON.parse(t).items ?? []) as { id: string }[]).map((i) => i.id)));
       }
       return original ? original(url, data) : true;
     };
@@ -30,11 +32,16 @@ test("impressions count only adverts that loaded and were actually on screen", a
   const seen = () => page.evaluate(() => (window as unknown as { __seen: string[] }).__seen);
 
   await page.setViewportSize({ width: 1280, height: 800 });
+  // Each banner position is a carousel (AdCarousel). Reduced motion holds every
+  // one on its first frame, so this test reads a still page; the carousel's own
+  // turnover is the next test.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/", { waitUntil: "networkidle" });
 
   // Every advert on the page must render real artwork. A blocked or broken image
   // leaves a blank box the same size, which is exactly the bug this guards.
-  const links = page.locator('a[aria-label^="Advert:"]');
+  // Only the showing frame of each carousel — the rest are hidden and inert.
+  const links = page.locator('a[aria-label^="Advert:"][data-active="true"]');
   const onPage = await links.count();
   expect(onPage, "adverts present on the homepage").toBeGreaterThan(0);
   const ids = await links.evaluateAll((els) => els.map((el) => (el as HTMLAnchorElement).pathname.split("/").pop()!));
@@ -66,4 +73,45 @@ test("impressions count only adverts that loaded and were actually on screen", a
 
   const all = await seen();
   expect([...all].sort(), "every advert counted exactly once after reading past it").toEqual([...ids].sort());
+
+  // A hidden frame still intersects the viewport; it must never have counted.
+  const hidden = await page.locator('a[aria-label^="Advert:"][data-active="false"]')
+    .evaluateAll((els) => els.map((el) => (el as HTMLAnchorElement).pathname.split("/").pop()!));
+  const neverShown = hidden.filter((id) => !ids.includes(id));
+  for (const id of neverShown) expect(all, `hidden frame ${id} was not counted`).not.toContain(id);
+});
+
+test("a carousel's next banner is counted once it has turned over and stayed on screen", async ({ page }) => {
+  // One 6s turnover (AD_CAROUSEL_INTERVAL_MS) plus the 1s dwell and the 0.5s batch.
+  test.setTimeout(60_000);
+  await page.addInitScript(() => {
+    const w = window as unknown as { __seen: string[] };
+    w.__seen = [];
+    const original = navigator.sendBeacon?.bind(navigator);
+    navigator.sendBeacon = (url: string | URL, data?: BodyInit | null) => {
+      if (String(url).includes("/api/seen") && data instanceof Blob) {
+        void data.text().then((t) => w.__seen.push(...((JSON.parse(t).items ?? []) as { id: string }[]).map((i) => i.id)));
+      }
+      return original ? original(url, data) : true;
+    };
+  });
+  const seen = () => page.evaluate(() => (window as unknown as { __seen: string[] }).__seen);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/", { waitUntil: "networkidle" });
+
+  const first = page.locator('a[aria-label^="Advert:"][data-active="true"]').first();
+  // frame link → frame wrapper → stacked grid: every frame of this one position
+  const frames = first.locator("xpath=../..").locator('a[aria-label^="Advert:"]');
+  test.skip((await frames.count()) < 2, "needs at least two live banners to rotate");
+  const frameIds = await frames.evaluateAll((els) => els.map((el) => (el as HTMLAnchorElement).pathname.split("/").pop()!));
+
+  await first.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(2000);
+  expect(await seen(), "the first frame counted").toContain(frameIds[0]);
+
+  // Park through one turnover: the second frame becomes active and earns its own.
+  await expect(frames.nth(1)).toHaveAttribute("data-active", "true", { timeout: 8000 });
+  await page.waitForTimeout(2000);
+  expect(await seen(), "the next frame counted after it turned over").toContain(frameIds[1]);
 });

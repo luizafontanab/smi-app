@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { bookingPhase } from "@/lib/adverts";
+import { bookingPhase, peakSold } from "@/lib/adverts";
+import { bannerInventory } from "@/lib/banner-inventory";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
@@ -52,6 +53,16 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
       : Promise.resolve({ count: null }),
   ]);
   const swapDesktop = mediaUrl(pendingSwap?.desktop_path ?? null);
+
+  // Banner spots are shown, never enforced: say what approving would do to the
+  // busiest day of this run, and let Jas decide. Only for a banner still to run.
+  const spotCheckFrom = booking.starts_on > today ? booking.starts_on : today;
+  const spotCheck = booking.status === "awaiting_approval" && booking.advert?.format === "banner" && booking.ends_on >= today
+    ? await bannerInventory(today, "console/adverts booking").then(({ spots, bookings }) => {
+        const peak = peakSold(bookings, spotCheckFrom, booking.ends_on);
+        return { spots, after: peak.count + 1, day: peak.day ?? spotCheckFrom };
+      })
+    : null;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -110,6 +121,12 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Approval</h2>
           <p className="mt-1 text-xs text-graphite">Approving schedules it; it goes live on its start date.</p>
+          {spotCheck && (
+            <p className={`mt-2 text-sm ${spotCheck.after > spotCheck.spots ? "font-semibold text-danger" : "text-graphite"}`}>
+              Approving puts {spotCheck.after} banner{spotCheck.after === 1 ? "" : "s"} live on {spotCheck.day}
+              {spotCheck.after > spotCheck.spots ? ` — over the ${spotCheck.spots} spots we sell.` : ` — within the ${spotCheck.spots} spots we sell.`}
+            </p>
+          )}
           <form action={decideAdvertBooking} className="mt-3">
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="decision" value="approve" />

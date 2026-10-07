@@ -12,6 +12,10 @@ in front of him. Distinct from the other two lists:
 
 Each item says what to check, and what's wrong if it isn't checked.
 
+**Finished items are collapsed** into each section's **Done:** line, with the
+full notes in git: `git show 97975e6:docs/GO-LIVE.md`. Only `fix-list.md` keeps
+ticked `[x]` items.
+
 ---
 
 ## 1 · Member taxonomies — the highest-risk item
@@ -72,36 +76,4 @@ contains two of them, so one is currently **inferred**.
 
 ## 3 · Known gaps to accept or fix before launch
 
-- [x] **3.1 — Event locations have no coordinates.** ~~The WP export never
-      geocoded events~~, and the app only geocodes on save (Nominatim's usage
-      policy forbids bulk lookups — see `20260903000002_event_coords.sql`), so
-      the `/event` map has no pins for imported events until someone re-saves
-      them through the console. **Decide:** re-save the handful of upcoming
-      events by hand, or launch without event pins.
-      **Correction (24 Sep):** the premise was wrong. The export *does* carry
-      coordinates — **50 of the 53 events** have real `lat`/`lng` in their ACF
-      Google Map. They were lost in shaping, not missing at source: the values
-      are PHP doubles (`d:52.454…;`) rather than quoted strings, and
-      `shape-seed.ts` only ever kept the display text. Verified twice, once
-      against the extract and once against the original dump.
-      **Fixed:** `shape-seed.ts` now emits `lat`/`lng`, and `seed-real.ts` takes
-      the export's values in preference to `AUTHORED_EVENT_COORDS`, which now
-      only fills gaps rather than standing in for the lot. Live count confirmed
-      at 50 by `pnpm verify:prod`. The 3 without coordinates (wp ids 3569, 5364,
-      13680) have no location set in WordPress either, so they still need a
-      re-save — a far smaller decision than the original item.
-      *(Working tree, uncommitted.)*
-- [x] **3.2 — Services can't be edited in the console yet.** They're populated
-      by the import; there's no admin UI to change a member's services (industry
-      and membership types both have one). **Decide:** is that needed for
-      launch, or can it wait?
-      **Fixed (fix-list 52, 14 Sep):** no longer a launch decision. Merging the
-      two company-page editors gave the console the Services picker for free —
-      `/console/members/[id]` and `/dashboard/profile` now render the same
-      `CompanyPageForm`, and `saveMember` writes `member_services` the same way
-      it writes membership types. Jas can change any member's services, and a
-      member can change their own (approval-gated).
-      **Still to validate on the day:** the 69-term vocabulary itself — see
-      `ask-jas.md` under Services. Members can now pick from that list
-      themselves, so a wrong or duplicated term gets used rather than just
-      displayed.
+**Done:** 3.1 event coordinates: the export did carry them (50 of 53 events), lost in shaping and now recovered; the 3 left (wp ids 3569, 5364, 13680) have no location in WordPress either, so re-save them if they need a pin · 3.2 Services are editable in the console and by members (fix-list 52, 14 Sep); validating the vocabulary itself is 1.2.

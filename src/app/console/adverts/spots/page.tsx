@@ -3,32 +3,39 @@ import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
-import { RETIRED_SLOT_KEYS } from "@/components/console/advert-formats";
-import { deleteAdvertProduct, saveSlotCap } from "../../actions";
+import { bannerOccupancy, BANNERS_PER_POSITION, soldOn } from "@/lib/adverts";
+import { bannerInventory } from "@/lib/banner-inventory";
+import { deleteAdvertProduct, saveBannerSpots } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
+const monthLabel = (month: string) =>
+  new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+const dayLabel = (day: string) =>
+  new Date(`${day}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
 /**
- * Everything we have to sell, in two halves that are easy to confuse:
+ * What we sell and how much of it: the banner-spot count, and the rate card.
  *
- *  - a POSITION (`advert_slots`) is a physical place on the site — `home_1`,
- *    `news_1` — and its cap says how many adverts that place holds;
- *  - a PRODUCT (`advert_products`) is a line on the rate card — a name, a size,
- *    a price — and its cap says how many advertisers may hold it at once.
- *
- * They lived on two different pages under two names that both read as "slot".
- * The headings below are the whole point of this page: say which is which.
+ * Banners are one sitewide pool — N spots, no page and no position attached —
+ * so there is one number to set, shown against bookings and never enforced.
+ * The per-position caps that used to sit here were never read by anything and
+ * are gone with their table (migration 20261004000002).
  *
  * Not here: the media pack and the public A–F format copy, which are website
  * content and live under Site Config → Advertising page.
  */
-export default async function AdvertInventoryPage() {
+export default async function AdvertInventoryPage(props: PageProps<"/console/adverts/spots">) {
   await requireConsole();
+  const sp = await props.searchParams;
   const db = serviceDb();
-  const [products, slots] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  const [products, { spots, bookings }] = await Promise.all([
     must(db.from("advert_products").select("*").order("created_at"), "console/adverts inventory products"),
-    must(db.from("advert_slots").select("*").order("key"), "console/adverts inventory slots"),
+    bannerInventory(today, "console/adverts inventory"),
   ]);
+  const soldToday = soldOn(bookings, today);
+  const months = bannerOccupancy(bookings, today);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -41,6 +48,63 @@ export default async function AdvertInventoryPage() {
         What we sell and how much of it. Nothing here is a booking — put an advertiser into a run from{" "}
         <Link href="/console/adverts" className="underline">Bookings</Link>.
       </p>
+
+      {typeof sp.saved === "string" && <p role="status" className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+
+      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-ink">Banner spots</h2>
+        <p className="mt-1 text-xs text-graphite">
+          Banners aren&apos;t sold by page or position. Every live banner rotates through every banner position on the
+          site, and each position cycles {BANNERS_PER_POSITION} of them per page load. This number is shown against
+          bookings — it never blocks one.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-end gap-6">
+          <form action={saveBannerSpots} className="flex items-end gap-2 text-sm">
+            <label className="block">Spots we sell
+              <input name="count" type="number" min={1} step={1} defaultValue={spots} required className="mt-1 block w-20 rounded border px-2 py-1.5 text-right" />
+            </label>
+            <button className="rounded border px-3 py-1.5 text-graphite hover:text-ink">Save</button>
+          </form>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-graphite">Sold today</p>
+            <p className={`text-2xl font-bold tabular-nums ${soldToday > spots ? "text-danger" : "text-ink"}`}>
+              {soldToday} <span className="text-base font-normal text-graphite">of {spots}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
+            <thead>
+              <tr className="text-left text-xs uppercase text-graphite">
+                <th scope="col" className="py-1">Month</th>
+                <th scope="col">Busiest day</th>
+                <th scope="col">Spots free</th>
+                <th scope="col">Awaiting approval</th>
+              </tr>
+            </thead>
+            <tbody>
+              {months.map((m) => {
+                const free = spots - m.peak.count;
+                return (
+                  <tr key={m.month} className="border-t">
+                    <td className="py-2 font-medium text-ink">{monthLabel(m.month)}</td>
+                    <td className="tabular-nums">
+                      {m.peak.day ? `${m.peak.count} sold · ${dayLabel(m.peak.day)}` : <span className="text-graphite">none sold</span>}
+                    </td>
+                    <td className={`tabular-nums ${free < 0 ? "font-semibold text-danger" : ""}`}>
+                      {free < 0 ? `over by ${-free}` : free}
+                    </td>
+                    <td className="tabular-nums text-graphite">{m.pending || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Rate card</h2>
@@ -74,7 +138,8 @@ export default async function AdvertInventoryPage() {
                   </td>
                   <td className="font-medium text-ink">{s.short_name}</td>
                   <td className="text-graphite">{s.format.replace(/_/g, " ")}</td>
-                  <td>{s.cap}</td>
+                  {/* A banner product's own cap is never read — banners share the spots above. */}
+                  <td>{s.format === "banner" ? <span className="text-graphite">shares the {spots} banner spots</span> : s.cap}</td>
                   <td className="max-w-xs truncate text-graphite">{s.description}</td>
                   <td className="text-right"><Link href={`/console/adverts/spots/${s.id}`} className="text-xs text-ink hover:underline">edit</Link></td>
                   <td className="text-right">
@@ -91,24 +156,6 @@ export default async function AdvertInventoryPage() {
             )}
           </tbody>
         </table>
-        </div>
-      </section>
-
-      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Positions on the site</h2>
-        <p className="mt-1 text-xs text-graphite">
-          How many adverts each physical position holds. Guidance for selling — it never affects rotation, which stays
-          random-uniform. A position is where an advert appears; a rate-card product above is what someone buys.
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {(slots ?? []).filter((s) => !RETIRED_SLOT_KEYS.has(s.key)).map((s) => (
-            <form key={s.key} action={saveSlotCap} className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm">
-              <input type="hidden" name="key" value={s.key} />
-              <span className="grow truncate" title={s.label}>{s.label}</span>
-              <input name="cap" type="number" min={0} defaultValue={s.cap} aria-label={`Capacity for ${s.label}`} className="w-16 rounded border px-2 py-1 text-right" />
-              <button className="text-xs text-graphite hover:underline">save</button>
-            </form>
-          ))}
         </div>
       </section>
 

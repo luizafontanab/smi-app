@@ -62,8 +62,10 @@
  * Two designs now, not three themes. Both share every token above: "forge" is
  * this block, "grid" is html[data-theme="grid"] and differs structurally rather
  * than by colour, so it overrides only what it must. The root layout stamps the
- * attribute for both from the smi-theme cookie; unknown values resolve to forge,
- * which is how browsers still holding the retired "live"/"demo" values migrate.
+ * attribute for both from siteVariant(): the smi-theme cookie, else the
+ * site-wide default (grid unless the console says otherwise). Unknown cookie
+ * values fall through to that default, which is how browsers still holding the
+ * retired "live"/"demo" values migrate.
  */
 
 @theme inline {

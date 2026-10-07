@@ -15,12 +15,23 @@ import { useRef, useState } from "react";
  * `className` carries the caller's responsive-visibility classes (e.g.
  * "hidden lg:block") so each dropdown keeps the breakpoint its plain-link
  * predecessor had; `relative` stays baked in for the popup's positioning.
+ *
+ * `tone` follows the header it sits in, as IndustryBar's does: "dark" is
+ * forge's near-black chrome, "light" the grid design's white bar, where a
+ * chrome-coloured popup would read as a stray black box.
  */
-export function MediaMenu({ label, items, className = "hidden lg:block" }: {
+const TONES = {
+  dark: { trigger: "hover:bg-chrome-hover", popup: "bg-chrome", link: "hover:bg-chrome-hover" },
+  light: { trigger: "hover:bg-shade", popup: "border border-line bg-white text-ink", link: "hover:bg-shade" },
+} as const;
+
+export function MediaMenu({ label, items, className = "hidden lg:block", tone = "dark" }: {
   label: string;
   items: { href: string; label: string }[];
   className?: string;
+  tone?: keyof typeof TONES;
 }) {
+  const t = TONES[tone];
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -47,17 +58,17 @@ export function MediaMenu({ label, items, className = "hidden lg:block" }: {
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="rounded px-3 py-2 hover:bg-chrome-hover"
+        className={`rounded px-3 py-2 ${t.trigger}`}
       >
         {label} <span aria-hidden="true">▾</span>
       </button>
       <div
-        className={`absolute left-0 z-20 w-44 rounded-b bg-chrome py-1 shadow-lg transition ${
+        className={`absolute left-0 z-20 w-44 rounded-b py-1 shadow-lg transition ${t.popup} ${
           open ? "visible opacity-100" : "invisible opacity-0"
         }`}
       >
         {items.map((i) => (
-          <Link key={i.href} href={i.href} className="block px-4 py-2 hover:bg-chrome-hover" onClick={() => setOpen(false)}>
+          <Link key={i.href} href={i.href} className={`block px-4 py-2 ${t.link}`} onClick={() => setOpen(false)}>
             {i.label}
           </Link>
         ))}

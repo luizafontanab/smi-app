@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   declineInterest, decideArtworkSwap, deleteAdvertProduct, proposeArtworkSwap, saveAdvertArtwork, saveAdvertFormats,
-  saveAdvertProduct, saveMediaPack, saveSlotCap, saveTakeoverPlacement, startAdvertFromInterest,
+  saveAdvertProduct, saveBannerSpots, saveMediaPack, saveTakeoverPlacement, startAdvertFromInterest,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -142,12 +142,19 @@ describe("deleteAdvertProduct", () => {
   });
 });
 
-describe("saveSlotCap", () => {
-  it("floors a negative cap at zero", async () => {
+describe("saveBannerSpots", () => {
+  it("stores a whole number of spots in the banner_spots setting", async () => {
     const builder = queryBuilder(dbOk(null));
-    db({ advert_slots: () => builder });
-    await saveSlotCap(form({ key: "homepage", cap: "-5" }));
-    expect(builder.update).toHaveBeenCalledWith({ cap: 0 });
+    db({ settings: () => builder });
+    await expect(saveBannerSpots(form({ count: "8" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/spots?saved=1");
+    expect(builder.upsert).toHaveBeenCalledWith({ key: "banner_spots", value: { count: 8 } });
+  });
+
+  it.each(["0", "-3", "2.5", "eight", ""])("refuses %j without writing — zero must never read as sold out", async (count) => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+    await expect(saveBannerSpots(form({ count }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/spots\?error=/);
+    expect(builder.upsert).not.toHaveBeenCalled();
   });
 });
 

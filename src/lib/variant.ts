@@ -26,10 +26,10 @@ export function isVariant(value: unknown): value is Variant {
 
 /**
  * The site-wide design, set from the console (A28: switch the live site
- * between the two builds, immediately, no redeploy). Forge when unset — which
- * is every database before this existed — and forge when the read fails: a
- * settings hiccup must never take the public site down, and forge is the
- * design the site had before this setting existed.
+ * between the two builds, immediately, no redeploy). Grid when unset — grid is
+ * the default design — and grid when the read fails: a settings hiccup must
+ * never take the public site down, and falling back to the default keeps a
+ * blip from flipping the design under visitors.
  *
  * serviceDb because `settings` has RLS with no policies. Request-scoped via
  * cache(), so a render reads it at most once and a console change applies to
@@ -38,9 +38,9 @@ export function isVariant(value: unknown): value is Variant {
 export const defaultVariant = cache(async (): Promise<Variant> => {
   try {
     const { data } = await serviceDb().from("settings").select("value").eq("key", SITE_VARIANT_KEY).maybeSingle();
-    return isVariant(data?.value) ? data.value : "forge";
+    return isVariant(data?.value) ? data.value : "grid";
   } catch {
-    return "forge";
+    return "grid";
   }
 });
 

@@ -18,8 +18,9 @@ export type AdvertFormatOption = { value: AdvertFormat; label: string };
  * `banner_narrow` (830×170) is deliberately ABSENT — it renders nowhere since
  * the grid homepage moved its second banner to the full-width `home_2` slot
  * (docs/HUMAN-TODO.md §14.5, fix-list 64), so nobody should be sold that size.
- * The enum value stays registered in Postgres on purpose — an enum value cannot
- * be dropped cleanly — which is why this is a UI-level hide, not a migration.
+ * It stays allowed by the adverts.format CHECK constraint on purpose (existing
+ * rows hold it, and the format may yet find a home), which is why this is a
+ * UI-level hide, not a migration.
  */
 export const ADVERT_FORMATS: AdvertFormatOption[] = [
   { value: "banner", label: "Banner (1280×170 desktop / 370×280 mobile)" },
@@ -47,17 +48,6 @@ export function advertFormatOptions(current?: string | null): AdvertFormatOption
   const label = RETIRED_FORMATS[current] ?? current.replace(/_/g, " ");
   return [...ADVERT_FORMATS, { value: current as AdvertFormat, label }];
 }
-
-/**
- * Slot keys that still exist in advert_slots but render nowhere, so their cap is
- * not a number anyone should be editing. `home_2_narrow` went dark when the grid
- * homepage moved its second banner to the full-width `home_2` slot — the slot-level
- * twin of the `banner_narrow` format hide above. See docs/HUMAN-TODO.md §14.5.
- *
- * Lives here rather than on the page that renders the capacity grid, because that
- * grid has moved between pages once already.
- */
-export const RETIRED_SLOT_KEYS = new Set(["home_2_narrow"]);
 
 /** What to call each phase returned by bookingPhase(). Lower case; screens that want caps apply CSS. */
 export const PHASE_LABELS: Record<string, string> = {

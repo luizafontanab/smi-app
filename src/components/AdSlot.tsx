@@ -1,20 +1,20 @@
 import Image from "next/image";
 import Link from "next/link";
-import { advertHref, pickOne, type LiveAdvert } from "@/lib/adverts";
+import { advertHref, type LiveAdvert } from "@/lib/adverts";
 import { mediaUrl } from "@/lib/db/server";
-import { AdCreative, type AdShape } from "@/components/AdCreative";
+import { type AdShape } from "@/components/AdCreative";
+import { AdCarousel } from "@/components/AdCarousel";
 
 export type { AdShape };
 
 /**
- * Renders one advert slot. Which adverts land here was decided by an
+ * Renders one advert position. Which adverts land here was decided by an
  * unbiased per-request shuffle upstream (lib/adverts.ts) — this component
  * only displays; it must never reorder or filter by advertiser.
  *
- * A2.10: the slot has up to ~3 eligible adverts but shows one — picked
- * uniformly at random on this render, so it stays static for the rest of the
- * page load rather than cycling. Not a carousel, "for now" per the open
- * question logged in docs/HUMAN-TODO.md §5.4.
+ * A2.10: the position cycles through every advert dealt to it (up to
+ * BANNERS_PER_POSITION) as a carousel — AdCarousel, in the order dealt. One
+ * advert renders exactly as a static banner always has.
  *
  * `showPlaceholders` draws the slot's footprint when nothing is booked, so
  * layout stays checkable on an empty inventory. It is resolved per request by
@@ -22,15 +22,16 @@ export type { AdShape };
  * shows readers nothing rather than a hollow box.
  */
 export function AdSlot({ adverts, shape = "banner", slotKey, showPlaceholders = false, path }: { adverts: LiveAdvert[]; shape?: AdShape; slotKey?: string; showPlaceholders?: boolean; path: string }) {
-  const ad = pickOne(adverts);
-  if (!ad) return showPlaceholders ? <AdPlaceholder shape={shape} slotKey={slotKey} /> : null;
+  if (adverts.length === 0) return showPlaceholders ? <AdPlaceholder shape={shape} slotKey={slotKey} /> : null;
   return (
-    <AdCreative
-      advertId={ad.advertId}
-      name={ad.name}
-      href={advertHref(ad)}
-      desktop={mediaUrl(ad.desktopPath)!}
-      mobile={mediaUrl(ad.mobilePath)!}
+    <AdCarousel
+      adverts={adverts.map((ad) => ({
+        advertId: ad.advertId,
+        name: ad.name,
+        href: advertHref(ad),
+        desktop: mediaUrl(ad.desktopPath)!,
+        mobile: mediaUrl(ad.mobilePath)!,
+      }))}
       shape={shape}
       path={path}
     />

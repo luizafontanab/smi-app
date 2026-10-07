@@ -38,8 +38,8 @@ export const STATE_DIR = path.resolve(__dirname, "../.state");
  *              fail against itself. CookieConsent.tsx:8 only tests for the cookie
  *              NAME, so "essential" dismisses it just as well.
  * smi-ads      Empties advert inventory for this browser (src/lib/adverts.ts:30-33),
- *              so the unseeded Math.random shuffle in dealSlots/pickOne never runs and
- *              every slot draws its deterministic dashed placeholder instead.
+ *              so the unseeded Math.random shuffle in dealSlots never runs and every
+ *              slot draws its deterministic dashed placeholder instead — no carousel.
  *              showAdPlaceholders() honours the cookie even in a production build.
  * smi-theme    The homepage has two structurally different designs. Pin forge; the
  *              grid variant is captured as its own route.

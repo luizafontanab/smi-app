@@ -155,15 +155,12 @@ export async function liveAdvertsByFormat<F extends AdvertFormat>(formats: reado
 }
 
 /**
- * Uniformly pick one of a slot's already-dealt adverts (A2.10). A slot shows
- * one advert per page load, not all ~3 at once and not a rotating carousel
- * within one view — the pick is made once per request, same as the shuffle
- * that fed it, so it stays static for the duration of that load.
+ * How many banners each position cycles through on one page load (A2.10). Each
+ * position is a carousel of this many (src/components/AdCarousel.tsx); it is
+ * not a sales number — what we sell is the sitewide banner-spot count, a
+ * setting (bannerSpots() in lib/queries.ts).
  */
-export function pickOne<T>(items: T[], rand: () => number = Math.random): T | undefined {
-  if (items.length === 0) return undefined;
-  return items[Math.floor(rand() * items.length)];
-}
+export const BANNERS_PER_POSITION = 3;
 
 /** Fisher–Yates on a uniform PRNG; slots pick the first N of an unbiased shuffle. */
 export function uniformShuffle<T>(items: T[], rand: () => number = Math.random): T[] {
@@ -176,11 +173,16 @@ export function uniformShuffle<T>(items: T[], rand: () => number = Math.random):
 }
 
 /**
- * Deal live banners across the page's slots for one request:
- * one unbiased shuffle, dealt round-robin so a banner never appears twice
- * on the same page until all others have appeared.
+ * Deal live banners across the page's positions for one request: one unbiased
+ * shuffle, dealt round-robin, so frame r of position k is
+ * shuffled[(r·P + k) mod n] for P positions and n banners.
+ *
+ * The property that buys: the carousels advance in lockstep (one shared ticker
+ * in AdCarousel), so the banners on screen at any one moment are P consecutive
+ * entries of the shuffle — all different whenever n ≥ P. With fewer live
+ * banners than positions a repeat on the page is unavoidable.
  */
-export function dealSlots(adverts: LiveAdvert[], slotKeys: string[], perSlot = 3): Map<string, LiveAdvert[]> {
+export function dealSlots(adverts: LiveAdvert[], slotKeys: string[], perSlot = BANNERS_PER_POSITION): Map<string, LiveAdvert[]> {
   const shuffled = uniformShuffle(adverts);
   const out = new Map<string, LiveAdvert[]>();
   slotKeys.forEach((key) => out.set(key, []));
@@ -192,6 +194,71 @@ export function dealSlots(adverts: LiveAdvert[], slotKeys: string[], perSlot = 3
       if (bucket.length < shuffled.length) bucket.push(shuffled[i % shuffled.length]);
       i++;
     }
+  }
+  return out;
+}
+
+/**
+ * Banner spots: one sitewide number, shown against bookings and never enforced.
+ *
+ * A booking is "sold" onto a day by the same rule the public site uses to show
+ * it — a renderable status and a term covering that day — so the console's
+ * count cannot disagree with what readers see. Bookings awaiting approval are
+ * reported separately: they are a decision Jas still has to make, not a sale.
+ */
+export type SpotBooking = { status: string; starts_on: string; ends_on: string };
+
+const SOLD_STATUSES = new Set<string>(RENDERABLE_BOOKING_STATUSES);
+
+const covers = (b: SpotBooking, day: string) => b.starts_on <= day && b.ends_on >= day;
+
+/** Every YYYY-MM-DD from `from` to `to` inclusive, in UTC like the rest of the term maths. */
+function eachDay(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let d = new Date(`${from}T00:00:00Z`); d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 1)) {
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/** Banner bookings sold onto one day. */
+export function soldOn(bookings: SpotBooking[], day: string): number {
+  return bookings.filter((b) => SOLD_STATUSES.has(b.status) && covers(b, day)).length;
+}
+
+/** The busiest day in [from, to], first one on a tie; day is null when nothing is sold. */
+export function peakSold(bookings: SpotBooking[], from: string, to: string): { count: number; day: string | null } {
+  let best: { count: number; day: string | null } = { count: 0, day: null };
+  for (const day of eachDay(from, to)) {
+    const count = soldOn(bookings, day);
+    if (count > best.count) best = { count, day };
+  }
+  return best;
+}
+
+export type MonthOccupancy = {
+  /** YYYY-MM */
+  month: string;
+  /** Busiest day of the month (from `today` onward in the current month). */
+  peak: { count: number; day: string | null };
+  /** Bookings awaiting approval whose term touches the month. */
+  pending: number;
+};
+
+/** The next `months` calendar months from today, busiest day per month. */
+export function bannerOccupancy(bookings: SpotBooking[], today: string, months = 6): MonthOccupancy[] {
+  const out: MonthOccupancy[] = [];
+  const [y, m] = today.split("-").map(Number);
+  for (let i = 0; i < months; i++) {
+    const first = new Date(Date.UTC(y, m - 1 + i, 1));
+    const last = new Date(Date.UTC(y, m + i, 0)).toISOString().slice(0, 10);
+    const month = first.toISOString().slice(0, 7);
+    const from = i === 0 ? today : first.toISOString().slice(0, 10);
+    out.push({
+      month,
+      peak: peakSold(bookings, from, last),
+      pending: bookings.filter((b) => b.status === "awaiting_approval" && b.starts_on <= last && b.ends_on >= from).length,
+    });
   }
   return out;
 }

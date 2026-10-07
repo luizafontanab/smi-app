@@ -120,7 +120,8 @@ has:
 
 - `smi-ads=empty` — empties advert inventory for this browser
   (`src/lib/adverts.ts`), so the unseeded `Math.random` shuffle in
-  `dealSlots`/`pickOne` never runs and slots draw their fixed placeholder.
+  `dealSlots` never runs and slots draw their fixed placeholder (so no
+  advert carousel is ever captured).
 - `smi-consent=essential` — dismisses the consent banner, which otherwise covers
   the foot of every public page. **It must not be `all`:** `analyticsConsented()`
   only records on `"all"`, and 15 page components call `record()` on GET — so an

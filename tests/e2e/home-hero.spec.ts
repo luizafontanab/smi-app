@@ -10,7 +10,13 @@ import { expect, test } from "@playwright/test";
  * The stage is aria-hidden (it duplicates the active card), which does not
  * affect Playwright's visibility or text matching. toHaveText auto-retries, so
  * it absorbs the 520ms crossfade without an explicit wait.
+ *
+ * HomeHero is forge's alone — the grid homepage, the default, has no hero — so
+ * every test here pins forge.
  */
+test.beforeEach(async ({ context, baseURL }) => {
+  await context.addCookies([{ name: "smi-theme", value: "forge", url: baseURL! }]);
+});
 test("hero opens on the current article, follows hover and focus, and never auto-rotates", async ({ page }) => {
   await page.goto("/");
 

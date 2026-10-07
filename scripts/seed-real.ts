@@ -53,6 +53,7 @@ import { industryForServices } from "./lib/industry-map";
 import { selectMembers } from "./lib/select-members";
 import { AUTHORED_EVENT_COORDS } from "./lib/event-coords";
 import { planLegacyAdverts, type LegacyAdvertRow } from "./lib/legacy-adverts";
+import { newsTopics } from "./lib/news-topics";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACT_DIR = process.env.EXTRACT_DIR ?? path.resolve(HERE, "../../handover-extract");
@@ -1053,7 +1054,8 @@ async function main() {
   // terms — seeding those as industries is what put 69 service names in the
   // industry bar. They go to the `services` tables below; industries are their
   // own table, seeded from the canonical list shared with scripts/seed.ts.
-  const storyCatRows = catRows.filter((c) => c.kind === "story").map(({ slug, name }) => ({ slug, name }));
+  // newsTopics drops WP tag junk (`waer`, `financw`…) — see lib/news-topics.ts.
+  const storyCatRows = newsTopics(catRows.filter((c) => c.kind === "story")).map(({ slug, name }) => ({ slug, name }));
   console.log(`— categories (${storyCatRows.length} news topics)`);
   const { data: cats, error: catErr } = await db.from("categories").upsert(storyCatRows, { onConflict: "slug" }).select();
   if (catErr) throw catErr;
@@ -1221,29 +1223,14 @@ async function main() {
   const { error: pgErr } = await db.from("static_pages").upsert(allPageRows, { onConflict: "slug" });
   if (pgErr) throw pgErr;
 
-  console.log("— infra: advert slots, settings, page layouts");
-  await db.from("advert_slots").insert([
-    { key: "home_1", label: "Homepage — top banner", cap: 3 },
-    { key: "home_2", label: "Homepage — middle banner", cap: 3 },
-    // The grid design's replacement for home_2 — same position, narrow column
-    // (migration 20260917000001).
-    { key: "home_2_narrow", label: "Homepage banner 2 — grid design (830×170)", cap: 3 },
-    { key: "home_3", label: "Homepage — bottom banner", cap: 3 },
-    { key: "siderail_a", label: "Side rail A", cap: 3 },
-    { key: "siderail_b", label: "Side rail B", cap: 3 },
-    { key: "news_mid", label: "News mid-page", cap: 3 },
-    { key: "footer", label: "Footer banner", cap: 3 },
-    { key: "supplier_logos", label: "Supplier logos", cap: 8 },
-    // Grid-design inventory (migration 20260825000001 adds the formats)
-    { key: "home_sky", label: "Homepage skyscraper", cap: 3 },
-    { key: "home_mpu_1", label: "Homepage box 1", cap: 3 },
-    { key: "home_mpu_2", label: "Homepage box 2", cap: 3 },
-    { key: "home_infeed", label: "Homepage in-feed", cap: 3 },
-  ]); // story_ad_* / member_ad_* / machine_ad_* come from migration 20260810000002;
-  // videos_mid / events_mid / directory_mid from 20260811000002
+  console.log("— infra: settings, page layouts");
+  // Banner spots are one settings row (migration 20261004000002), not per-position rows.
   await db.from("settings").insert([
     { key: "grid", value: { blocks: 12, mix: { news: 6, video: 2, member_news: 2, featured_member: 1, featured_machine: 1 } } },
     { key: "social_caps", value: { per_day: 3, delay_minutes: 30 } },
+    // The site-wide design (GAPS A8.2). Grid is also the code fallback; the row
+    // makes the console's "live now" reflect a real choice.
+    { key: "site_variant", value: "grid" },
   ]);
   // No `prospect_marks` here, unlike scripts/seed.ts: those marks point at the
   // LeadGenSource mock's fictional prospects, and this seed builds the real

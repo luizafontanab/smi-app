@@ -54,9 +54,16 @@ type Props = {
   shape: AdShape;
   /** The page this slot renders on — carried into the impression beacon, same literal each page already passes to its own page_view record(). */
   path: string;
+  /**
+   * Whether this is the frame a carousel is currently showing (AdCarousel).
+   * An inactive frame is visibility:hidden but still intersects the viewport —
+   * IntersectionObserver ignores visibility — so without this gate every
+   * hidden frame behind the visible one would score an impression too.
+   */
+  active?: boolean;
 };
 
-export function AdCreative({ advertId, name, href, desktop, mobile, shape, path }: Props) {
+export function AdCreative({ advertId, name, href, desktop, mobile, shape, path, active = true }: Props) {
   const ref = useRef<HTMLAnchorElement>(null);
   const counted = useRef(false);
   const [loaded, setLoaded] = useState(false);
@@ -80,7 +87,10 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape, path 
 
   useEffect(() => {
     const el = ref.current;
-    if (!loaded || counted.current || !el) return;
+    // Re-run on `active`: becoming active observes afresh (observe() reports the
+    // current intersection straight away); going inactive tears down below,
+    // cancelling a dwell timer that had not yet earned the impression.
+    if (!loaded || counted.current || !el || !active) return;
 
     // No IntersectionObserver: count on load rather than never. Undercounting a
     // booked advert is as wrong as overcounting one.
@@ -115,10 +125,10 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape, path 
       if (timer) clearTimeout(timer);
       io.disconnect();
     };
-  }, [advertId, loaded, path]);
+  }, [active, advertId, loaded, path]);
 
   return (
-    <Link ref={ref} href={href} className="block" aria-label={`Advert: ${name}`}>
+    <Link ref={ref} href={href} className="block" aria-label={`Advert: ${name}`} data-active={active}>
       {shape === "banner" || shape === "banner_narrow" ? (
         // The two-creative shapes: a wide strip cannot survive a phone, so the
         // mobile artwork is a different shape, not a resize. Both swap at md:,

@@ -12,8 +12,15 @@ async function login(page: import("@playwright/test").Page, email: string) {
   await page.waitForURL(/\/(console|dashboard)/, { timeout: 20_000 });
 }
 
+/** For assertions about forge's own structure — grid is the default design. */
+async function pinForge(context: import("@playwright/test").BrowserContext, baseURL: string | undefined) {
+  await context.addCookies([{ name: "smi-theme", value: "forge", url: baseURL! }]);
+}
+
 test.describe("reader (V1/V2)", () => {
-  test("homepage renders news-first with rotating adverts", async ({ page }) => {
+  // Forge-only: the hero rail is forge's, and grid's top slot is a sold banner by design.
+  test("homepage renders news-first with rotating adverts", async ({ page, context, baseURL }) => {
+    await pinForge(context, baseURL);
     await page.goto("/");
     // the headline story is card 1 of the hero rail, and the hero stage opens on it
     const headline = page.getByTestId("hero-card").first().locator("h3");
@@ -198,6 +205,12 @@ test.describe("member directory — industry pills + text search", () => {
 });
 
 test.describe("public header follows the session", () => {
+  // Pinned to forge for the page-level checks: they expect forge's navy join
+  // band, which hides for signed-in visitors. Grid's homepage band shows to
+  // everyone. The header itself is one structure on both designs
+  // (site-header.test.tsx covers the light tone).
+  test.beforeEach(async ({ context, baseURL }) => pinForge(context, baseURL));
+
   test("anonymous visitors get the join/login pair", async ({ page }) => {
     await page.goto("/");
     const header = page.locator("header").first();
@@ -460,6 +473,12 @@ test.describe("admin (A1/A4)", () => {
     await page.goto("/console/adverts");
     await expect(page.locator("text=Live bookings")).toBeVisible();
     expect(await page.locator("td:has-text('live')").count()).toBeGreaterThan(0);
+    // banners are one sitewide pool, counted against the spots we sell
+    await expect(page.getByText(/^\d+ of \d+$/).first()).toBeVisible();
+    await page.goto("/console/adverts/spots");
+    await expect(page.getByRole("heading", { name: "Banner spots" })).toBeVisible();
+    await expect(page.getByLabel("Spots we sell")).toHaveValue(/^\d+$/);
+    await expect(page.getByText("Positions on the site")).toHaveCount(0);
   });
 });
 

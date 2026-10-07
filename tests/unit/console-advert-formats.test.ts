@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ADVERT_FORMATS, PHASE_LABELS, RETIRED_SLOT_KEYS, advertFormatOptions } from "@/components/console/advert-formats";
+import { ADVERT_FORMATS, PHASE_LABELS, advertFormatOptions } from "@/components/console/advert-formats";
 import { bookingPhase } from "@/lib/adverts";
 import { resetDbServerMocks } from "../stubs/db-server";
 
@@ -31,23 +31,6 @@ describe("advertFormatOptions", () => {
 
   it("does not duplicate a format the picker already offers", () => {
     expect(advertFormatOptions("mpu")).toEqual(ADVERT_FORMATS);
-  });
-});
-
-describe("RETIRED_SLOT_KEYS", () => {
-  it("hides home_2_narrow from the capacity grid", () => {
-    // The grid it filters moved from the bookings index to the inventory page
-    // (fix-list 74). It is a plain .filter() on the page, so nothing else stops
-    // a retired position reappearing as an editable number — hence this.
-    expect(RETIRED_SLOT_KEYS.has("home_2_narrow")).toBe(true);
-    expect(RETIRED_SLOT_KEYS.has("home_1")).toBe(false);
-    expect(RETIRED_SLOT_KEYS.has("home_2")).toBe(false);
-  });
-
-  it("names slots, not formats — the two vocabularies are separate", () => {
-    // banner_narrow is the *format* twin of this hide; a key landing in the
-    // wrong set silently un-hides one and over-hides the other.
-    expect(RETIRED_SLOT_KEYS.has("banner_narrow")).toBe(false);
   });
 });
 

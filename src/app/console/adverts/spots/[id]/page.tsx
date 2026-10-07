@@ -51,10 +51,13 @@ export default async function AdvertSpotEditor(props: PageProps<"/console/advert
           </div>
           <div>
             {/* Field name stays `cap` — the label was "Allowable spots", which
-                read as an advert_slots position rather than a rate-card limit. */}
+                read as a page position rather than a rate-card limit. */}
             <label htmlFor="cap" className="text-sm font-medium">Concurrent advertisers</label>
             <input id="cap" name="cap" type="number" min={1} defaultValue={spot?.cap ?? 1} required className="mt-1 w-full rounded border px-3 py-2" />
-            <p className="mt-1 text-xs text-graphite">How many advertisers can hold this product at once.</p>
+            <p className="mt-1 text-xs text-graphite">
+              How many advertisers can hold this product at once. Not used for banners — they share the banner spots
+              set on Inventory.
+            </p>
           </div>
         </div>
         <div>

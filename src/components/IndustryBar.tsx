@@ -3,7 +3,7 @@ import Link from "next/link";
 /**
  * Slim industry strip. Data and position come from the public layout — this
  * stays presentational. Forge puts it above the header; grid puts it below the
- * nav bar, which is where the client's comps have it.
+ * header as a secondary nav, which is where the client's comps have it.
  *
  * `tone` follows the header it sits with: "dark" (the default) is forge's
  * near-black chrome; "light" is the grid design's light header, where a

@@ -271,24 +271,6 @@ export type Database = {
         }
         Relationships: []
       }
-      advert_slots: {
-        Row: {
-          cap: number
-          key: string
-          label: string
-        }
-        Insert: {
-          cap?: number
-          key: string
-          label: string
-        }
-        Update: {
-          cap?: number
-          key?: string
-          label?: string
-        }
-        Relationships: []
-      }
       adverts: {
         Row: {
           created_at: string
@@ -559,6 +541,51 @@ export type Database = {
         Relationships: []
       }
       analytics_events_2026_10: {
+        Row: {
+          advert_id: string | null
+          company: string | null
+          id: number
+          kind: string
+          member_id: string | null
+          occurred_at: string
+          path: string | null
+          platform: string | null
+          referrer: string | null
+          region: string | null
+          session_hash: string | null
+          story_id: string | null
+        }
+        Insert: {
+          advert_id?: string | null
+          company?: string | null
+          id?: never
+          kind: string
+          member_id?: string | null
+          occurred_at?: string
+          path?: string | null
+          platform?: string | null
+          referrer?: string | null
+          region?: string | null
+          session_hash?: string | null
+          story_id?: string | null
+        }
+        Update: {
+          advert_id?: string | null
+          company?: string | null
+          id?: never
+          kind?: string
+          member_id?: string | null
+          occurred_at?: string
+          path?: string | null
+          platform?: string | null
+          referrer?: string | null
+          region?: string | null
+          session_hash?: string | null
+          story_id?: string | null
+        }
+        Relationships: []
+      }
+      analytics_events_2026_11: {
         Row: {
           advert_id: string | null
           company: string | null

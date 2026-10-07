@@ -20,6 +20,7 @@ import { canMoveStory } from "@/lib/story-board";
 import { canMoveEvent } from "@/lib/event-board";
 import { canMoveVideo } from "@/lib/video-board";
 import { FEATURED_SLOTS } from "@/lib/pricing";
+import { BANNER_SPOTS_KEY } from "@/lib/banner-spots";
 import { raiseInvoice } from "@/lib/invoicing";
 import { removeMedia, uploadDocument, uploadImage } from "@/lib/media";
 import { memberValuesFromForm } from "@/lib/member-form";
@@ -1274,15 +1275,23 @@ export async function deleteAdvertProduct(formData: FormData) {
   revalidatePath("/console/adverts/spots");
 }
 
-/** Slot caps are Jas's to set — inventory guidance, never a rotation input. */
-export async function saveSlotCap(formData: FormData) {
+/**
+ * How many banner spots we sell, sitewide — Jas's number (A13). Shown against
+ * bookings, never a rotation input and never a booking gate. A whole number of
+ * at least one: zero or a typo must not quietly read as "sold out everywhere".
+ */
+export async function saveBannerSpots(formData: FormData) {
   await requireConsole();
-  const key = String(formData.get("key"));
-  const cap = Math.max(0, Number(formData.get("cap") ?? 0));
-  await serviceDb().from("advert_slots").update({ cap }).eq("key", key);
-  // The capacity grid moved off the bookings index onto the inventory page
-  // (fix-list 74) — a position and a booking are different things.
+  const raw = String(formData.get("count") ?? "").trim();
+  const count = Number(raw);
+  if (!raw || !Number.isInteger(count) || count < 1) {
+    redirect(`/console/adverts/spots?error=${encodeURIComponent("Banner spots must be a whole number, 1 or more.")}`);
+  }
+  const { error } = await serviceDb().from("settings").upsert({ key: BANNER_SPOTS_KEY, value: { count } });
+  if (error) redirect(`/console/adverts/spots?error=${encodeURIComponent(error.message)}`);
+  revalidatePath("/console/adverts");
   revalidatePath("/console/adverts/spots");
+  redirect("/console/adverts/spots?saved=1");
 }
 
 /** Turn a member's expression of interest into a draft run for Jas to fill in. */

@@ -18,7 +18,7 @@ const THEMES = [
 type Theme = (typeof THEMES)[number]["value"];
 
 function currentTheme(): Theme {
-  return document.documentElement.getAttribute("data-theme") === "grid" ? "grid" : "forge";
+  return document.documentElement.getAttribute("data-theme") === "forge" ? "forge" : "grid";
 }
 
 function applyTheme(value: Theme) {

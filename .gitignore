@@ -47,6 +47,9 @@ dev.log
 /tests/visual/.runs/
 /tests/visual/.state/
 
+# smoke suite login state — live Supabase refresh tokens, never committed
+/tests/smoke/.auth/
+
 # env files (can opt-in for committing if needed)
 .env*
 # ...except the documented template, which holds no secrets

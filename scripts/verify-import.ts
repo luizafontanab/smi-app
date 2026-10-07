@@ -106,7 +106,6 @@ async function main() {
   for (const [table, min] of [
     ["page_layouts", 1],
     ["settings", 1],
-    ["advert_slots", 1],
     ["static_pages", 1],
     ["categories", 1],
     ["services", 1],

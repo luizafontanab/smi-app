@@ -116,6 +116,35 @@ describe("impression counting", () => {
     expect(FakeIntersectionObserver.instances).toHaveLength(0);
   });
 
+  // An inactive carousel frame is visibility:hidden but still intersects the
+  // viewport, so the IO alone would count it. The `active` gate must stop that.
+  it("never counts a carousel frame while it is not the one showing", async () => {
+    render(<AdCreative {...PROPS} shape="skyscraper" active={false} />);
+    await markLoaded(screen.getByRole("img"));
+    expect(FakeIntersectionObserver.instances).toHaveLength(0);
+    vi.advanceTimersByTime(5000);
+    expect(reportAdSeen).not.toHaveBeenCalled();
+  });
+
+  it("cancels a dwell in progress when the carousel moves on, and counts once it comes back for a full second", async () => {
+    const { rerender } = render(<AdCreative {...PROPS} shape="skyscraper" active />);
+    await markLoaded(screen.getByRole("img"));
+    const first = FakeIntersectionObserver.instances[0];
+    first.callback([{ intersectionRatio: 0.6 } as IntersectionObserverEntry], first as unknown as IntersectionObserver);
+    vi.advanceTimersByTime(600);
+
+    rerender(<AdCreative {...PROPS} shape="skyscraper" active={false} />);
+    expect(first.disconnect).toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(reportAdSeen).not.toHaveBeenCalled();
+
+    rerender(<AdCreative {...PROPS} shape="skyscraper" active />);
+    const second = FakeIntersectionObserver.instances[1];
+    second.callback([{ intersectionRatio: 0.6 } as IntersectionObserverEntry], second as unknown as IntersectionObserver);
+    vi.advanceTimersByTime(1000);
+    expect(reportAdSeen).toHaveBeenCalledExactlyOnceWith("ad1", "/news");
+  });
+
   it("counts on load instead, when IntersectionObserver isn't available at all", async () => {
     vi.unstubAllGlobals();
     // @ts-expect-error deliberately simulating an older browser

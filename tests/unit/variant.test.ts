@@ -21,15 +21,16 @@ function siteDefault(value: unknown) {
 }
 
 describe("siteVariant", () => {
-  it("defaults to forge with no cookie and no site-wide setting", async () => {
+  it("defaults to grid with no cookie and no site-wide setting", async () => {
     siteDefault(null);
-    expect(await siteVariant()).toBe("forge");
+    expect(await siteVariant()).toBe("grid");
   });
 
   // A28: the console's choice is what a visitor with no cookie of their own gets.
+  // Forge, not grid: grid is also the fallback, so it couldn't prove the row was read.
   it("gives a visitor with no cookie the site-wide default", async () => {
-    const { settings } = siteDefault("grid");
-    expect(await siteVariant()).toBe("grid");
+    const { settings } = siteDefault("forge");
+    expect(await siteVariant()).toBe("forge");
     expect(settings.eq).toHaveBeenCalledWith("key", SITE_VARIANT_KEY);
   });
 
@@ -47,22 +48,22 @@ describe("siteVariant", () => {
   });
 
   it("treats a retired cookie value as no choice, falling through to the site-wide default", async () => {
-    siteDefault("grid");
+    siteDefault("forge");
     cookieStore.set(VARIANT_COOKIE, "live");
-    expect(await siteVariant()).toBe("grid");
+    expect(await siteVariant()).toBe("forge");
   });
 });
 
 describe("defaultVariant", () => {
   it("ignores a stored value that isn't a design", async () => {
     siteDefault("purple");
-    expect(await defaultVariant()).toBe("forge");
+    expect(await defaultVariant()).toBe("grid");
   });
 
   // A settings hiccup must never take the public site down.
-  it("falls back to forge when the settings read throws", async () => {
+  it("falls back to grid when the settings read throws", async () => {
     vi.mocked(serviceDb).mockImplementation(() => { throw new Error("db down"); });
-    expect(await defaultVariant()).toBe("forge");
+    expect(await defaultVariant()).toBe("grid");
   });
 });
 

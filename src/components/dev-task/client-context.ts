@@ -85,7 +85,7 @@ export function collectDevTaskContext(): DevTaskContext {
       viewport: `${window.innerWidth}x${window.innerHeight}`,
       screen: `${screen.width}x${screen.height}`,
       dpr: window.devicePixelRatio || 1,
-      theme: document.documentElement.getAttribute("data-theme") ?? "forge",
+      theme: document.documentElement.getAttribute("data-theme") ?? "grid",
       language: navigator.language,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },

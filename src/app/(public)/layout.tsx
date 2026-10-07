@@ -2,7 +2,6 @@ import Link from "next/link";
 import { JsonLd } from "@/components/JsonLd";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
-import { GridSiteHeader } from "@/components/GridSiteHeader";
 import { GridSiteFooter } from "@/components/GridSiteFooter";
 import { CookieConsent } from "@/components/CookieConsent";
 import { SkipLink } from "@/components/SkipLink";
@@ -17,14 +16,14 @@ import { IndustryBar } from "@/components/IndustryBar";
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const [user, takeover, industries, variant] = await Promise.all([currentUser(), activeTakeover(), industryList(), siteVariant()]);
 
-  // The two designs' chrome differs structurally, not just in colour — grid's
-  // is the light header/footer from the client's comps, forge's the near-black
-  // pair. siteVariant() is cache()-wrapped and the root layout already reads
-  // the same cookie, so this costs nothing extra. Grid's chrome applies to
-  // every grid-mode route, not just the homepage: there is one public layout,
-  // and a light homepage under a near-black header was the thing to avoid.
+  // The header is one structure in two tones — grid's the light bar from the
+  // client's comps, forge's near-black — with the menus right of the mark on
+  // both. The footers still differ structurally. siteVariant() is
+  // cache()-wrapped and the root layout already reads the same cookie, so this
+  // costs nothing extra. Grid's chrome applies to every grid-mode route, not
+  // just the homepage: there is one public layout, and a light homepage under
+  // a near-black header was the thing to avoid.
   const isGrid = variant === "grid";
-  const Header = isGrid ? GridSiteHeader : SiteHeader;
   const Footer = isGrid ? GridSiteFooter : SiteFooter;
 
   // Signed-in members only: an anonymous visit adds no query, and an admin's
@@ -58,12 +57,12 @@ export default async function PublicLayout({ children }: { children: React.React
           <img src={mediaUrl(takeover.bannerPath)!} alt="" className="w-full" />
         )
       )}
-      {/* The strip sits above the header on forge and below the nav on grid —
-          the client's placement for each design, not an inconsistency. On grid
-          it follows the sticky nav bar, so it scrolls away while the nav stays
-          pinned; on forge it is the first thing on the page as before. */}
+      {/* The strip sits above the header on forge and below it on grid — the
+          client's placement for each design, not an inconsistency. On grid it
+          reads as the header's secondary nav; on forge it is the first thing
+          on the page as before. */}
       {!isGrid && <IndustryBar industries={industries} tone="dark" />}
-      <Header user={user} unread={unread} />
+      <SiteHeader user={user} unread={unread} tone={isGrid ? "light" : "dark"} />
       {isGrid && <IndustryBar industries={industries} tone="light" />}
       <main id="main" className="flex-1">{children}</main>
       <Footer />

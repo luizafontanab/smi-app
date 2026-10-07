@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { adPreview, bookingPhase } from "@/lib/adverts";
+import { adPreview, bookingPhase, soldOn } from "@/lib/adverts";
+import { bannerInventory } from "@/lib/banner-inventory";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
@@ -14,9 +15,8 @@ export const dynamic = "force-dynamic";
  * Bookings, and only bookings: who is running, when, and the paid placements
  * that sit alongside them.
  *
- * The slot-capacity grid used to be here too, which put two unrelated meanings
- * of "slot" on one screen. Capacities are inventory and now live with the rate
- * card on /console/adverts/spots.
+ * How many banner spots we sell is inventory, set with the rate card on
+ * /console/adverts/spots; this page only shows today's count against it.
  */
 
 const PHASE_FILTERS = ["all", "live", "upcoming", "awaiting", "changes_needed", "draft", "ended"] as const;
@@ -63,7 +63,7 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
     return `/console/adverts${qs ? `?${qs}` : ""}${key === "placements" ? "#placements" : ""}`;
   };
 
-  const [adverts, bookings, placements, products, { count: openInterest }, { count: impressions30 }, previewOn] = await Promise.all([
+  const [adverts, bookings, placements, products, { count: openInterest }, { count: impressions30 }, previewOn, bannerSpots] = await Promise.all([
     must(db.from("adverts").select("id, name, format").order("created_at", { ascending: false }).limit(500), "console/adverts list"),
     must(db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").order("ends_on", { ascending: false }).limit(500), "console/adverts bookings"),
     must(db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on", { ascending: false }).limit(500), "console/adverts placements"),
@@ -78,7 +78,9 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
       "console/adverts impressions",
     ),
     adPreview(),
+    bannerInventory(today, "console/adverts"),
   ]);
+  const bannersSold = soldOn(bannerSpots.bookings, today);
 
   const live = (bookings ?? []).filter((b) => bookingPhase(b, today) === "live");
   // Tallied per format rather than two hard-coded counters, so a format added to
@@ -112,7 +114,7 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
       <h1 className="text-2xl font-bold text-ink">Advert bookings</h1>
       <p className="mt-1 text-sm text-graphite">
         Rotation is random-uniform — no advertiser can buy position. Impressions are the headline metric.
-        What we sell, and how many adverts each position holds, is on{" "}
+        What we sell, and how many banner spots, is on{" "}
         <Link href="/console/adverts/spots" className="underline">Inventory</Link>.
       </p>
 
@@ -128,7 +130,13 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
           sub={liveFormats.length ? liveFormats.map(([f, n]) => `${n} ${f.replace(/_/g, " ")}`).join(" · ") : "nothing booked"}
         />
         <Stat label="Impressions" value={(impressions30 ?? 0).toLocaleString("en-GB")} sub="last 30 days, all advertisers" />
-        <Stat label="Formats sold" value={String(liveFormats.length)} sub="of 8 bookable" />
+        <Stat
+          label="Banner spots"
+          value={`${bannersSold} of ${bannerSpots.spots}`}
+          sub={bannersSold > bannerSpots.spots
+            ? <span className="font-semibold text-danger">over by {bannersSold - bannerSpots.spots} today</span>
+            : <Link href="/console/adverts/spots" className="underline">sold today · months ahead</Link>}
+        />
         <Stat
           label="Interest"
           value={String(openInterest ?? 0)}

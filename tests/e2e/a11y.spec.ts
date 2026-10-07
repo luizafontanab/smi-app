@@ -38,10 +38,10 @@ for (const path of PAGES) {
   });
 }
 
-// The grid design variant renders a different homepage composition, so the
-// forge-only scan above never sees it.
-test("axe: / (grid variant) has no serious or critical violations", async ({ page, context, baseURL }) => {
-  await context.addCookies([{ name: "smi-theme", value: "grid", url: baseURL! }]);
+// The forge design variant renders a different homepage composition, so the
+// scan above — which runs on the default, grid — never sees it.
+test("axe: / (forge variant) has no serious or critical violations", async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: "smi-theme", value: "forge", url: baseURL! }]);
   await page.goto("/");
   await page.waitForLoadState("networkidle");
   await expectNoSeriousViolations(page);

@@ -23,6 +23,36 @@ describe("logged out", () => {
   });
 });
 
+// Grid shares forge's structure — menus right of the mark — in a light tone.
+describe("light tone (grid design)", () => {
+  it("renders forge's menus and actions on a light bar with the ink mark", () => {
+    const { container } = render(<SiteHeader user={null} tone="light" />);
+    expect(container.querySelector("header")).toHaveClass("bg-white");
+    expect(container.querySelector("header img")).toHaveAttribute("src", "/logo-wide-ink.svg");
+    expect(screen.getByRole("button", { name: /Media/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Members/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Featured Machine" })).toHaveAttribute("href", "/featured-machine");
+    expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute("href", "/event");
+    expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", "/search");
+    expect(screen.getByRole("link", { name: "Become a Member" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Login" })).toBeInTheDocument();
+  });
+
+  // The bar's own controls only — the mobile drawer stays near-black on both.
+  it("keeps near-black hovers off the light bar", () => {
+    render(<SiteHeader user={null} tone="light" />);
+    for (const el of [
+      screen.getByRole("button", { name: /Media/ }),
+      screen.getByRole("link", { name: "Featured Machine" }),
+      screen.getByRole("link", { name: "Login" }),
+      screen.getByRole("button", { name: "Open menu" }),
+    ]) {
+      expect(el.className).not.toContain("chrome-hover");
+      expect(el.className).toContain("hover:bg-shade");
+    }
+  });
+});
+
 describe("logged in", () => {
   it("member gets the account menu with member area, notifications and help", () => {
     render(<SiteHeader user={user({ role: "member" })} />);
