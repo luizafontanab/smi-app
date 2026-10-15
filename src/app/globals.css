@@ -180,11 +180,77 @@ h1, h2, h3 {
   max-width: 68ch;
   margin-inline: auto;
 }
+/*
+ * Story page with the featured-members sidebar (Jas 13/10 item 13: "it looks
+ * very narrow on desktop"). The article fills its own column right up to the
+ * sidebar — a 75ch cap left a wide empty band between the text and the box
+ * (Luiza, 15 Oct). The page's max-w-6xl and the 300px sidebar already bound
+ * the line at roughly 90 characters, so no measure of its own is needed here.
+ */
+@media (min-width: 1024px) {
+  .story-layout--aside .story-read .story-body {
+    max-width: none;
+    margin-inline: 0;
+  }
+}
+
+/*
+ * The company line that closes a story — a last paragraph holding nothing but
+ * a link, by convention the company's name pointing at its homepage (Jas 13/10
+ * item 2's screenshot: "AP&T Group → this goes to their website"). Marked at
+ * render time by lib/company-link, never stored. Capitals, larger, in orange:
+ * the accessible brand orange, because the bright #ff8200 is 2.5:1 on white and
+ * fails AA even at this size.
+ */
+.story-body p[data-company-link] {
+  margin-top: 1.25em;
+  font-size: 1.5rem; /* DESIGN.md's text-2xl step */
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.story-body p[data-company-link] a {
+  color: var(--smi-brand-text);
+  text-decoration-thickness: 2px;
+}
+.story-body p[data-company-link] a:hover { color: var(--smi-ink); }
+/* one line per featured member: stacked as a list, not as paragraphs */
+.story-body p[data-company-link] + p[data-company-link] { margin-top: 0.35em; }
 .story-body h2, .story-body h3 { font-weight: 700; margin: 1.4em 0 0.5em; }
 .story-body ul, .story-body ol { margin: 1em 0; padding-left: 1.5em; }
 .story-body ul { list-style: disc; }
 .story-body ol { list-style: decimal; }
 .story-body img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 1em 0; }
+
+/*
+ * Inline-image layout (lib/image-layout; Jas 13/10 item 19). On a phone every
+ * image is a full-width block — a floated picture beside a 15-character column
+ * of text is worse than no wrap at all. From md the author's choice applies:
+ * left/right float at the chosen share of the column with the copy wrapping
+ * round it; full spans the column.
+ *
+ * Containment: each .story-body clears its own floats (::after), so a tall
+ * picture never pokes into the advert that follows an ad-break segment, and
+ * headings start a fresh line below any float rather than wrapping beside it.
+ * A clearfix rather than display:flow-root, which would stop the first and last
+ * paragraph margins collapsing on every rich-text surface in the app.
+ */
+.story-body::after { content: ""; display: block; clear: both; }
+.story-body h2, .story-body h3 { clear: both; }
+.story-body img[data-align] { display: block; width: 100%; }
+@media (min-width: 768px) {
+  .story-body img[data-align="left"] { float: left; margin: 0.35em 1.5em 1em 0; }
+  .story-body img[data-align="right"] { float: right; margin: 0.35em 0 1em 1.5em; }
+  .story-body img[data-align="left"],
+  .story-body img[data-align="right"] { width: 50%; }
+  .story-body img[data-align="left"][data-size="small"],
+  .story-body img[data-align="right"][data-size="small"] { width: 33%; }
+  .story-body img[data-align="left"][data-size="large"],
+  .story-body img[data-align="right"][data-size="large"] { width: 66%; }
+}
+/* The selected image while editing — TipTap marks it with this class. */
+.story-body img.ProseMirror-selectednode { outline: 3px solid var(--smi-brand); outline-offset: 2px; }
 .story-body a { color: var(--smi-graphite); text-decoration: underline; text-underline-offset: 0.15em; }
 
 /* Advert break — only ever seen while authoring. The public page splits the

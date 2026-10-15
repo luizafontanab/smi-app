@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
@@ -5,6 +6,7 @@ import { record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
 import { narrowOptions } from "@/lib/member-facets";
 import { featuredMembers, industries as industryList, memberDirectory, memberFacets, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
+import { OG_BASE, SITE_CARD } from "@/lib/seo";
 import { AdSlot } from "@/components/AdSlot";
 import { MemberCloud } from "@/components/MemberCloud";
 import { MemberMap } from "@/components/MemberMap";
@@ -19,11 +21,19 @@ const toggled = (arr: string[], slug: string) => (arr.includes(slug) ? arr.filte
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 12;
 
+const TITLE = "Member Directory";
+const DESCRIPTION = "Find UK sheet metal, fabrication and welding companies — search SMI's member directory by name, industry or location.";
+
+// openGraph/twitter restated in full: Next merges metadata shallowly, so a
+// page-level openGraph would drop the layout's — and without one, shares of
+// the directory showed the homepage's title and description.
 export const metadata = {
-  title: "Member Directory",
-  description: "Find UK sheet metal, fabrication and welding companies — search SMI's member directory by name, industry or location.",
+  title: TITLE,
+  description: DESCRIPTION,
   alternates: { canonical: "/member" },
-};
+  openGraph: { ...OG_BASE, type: "website", url: "/member", title: TITLE, description: DESCRIPTION, images: [SITE_CARD] },
+  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION, images: [SITE_CARD] },
+} satisfies Metadata;
 
 export default async function MembersPage(props: PageProps<"/member">) {
   const sp = await props.searchParams;

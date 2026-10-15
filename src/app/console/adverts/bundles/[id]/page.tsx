@@ -7,6 +7,8 @@ import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { saveBundle, saveBundleBooking } from "../../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { SubmitButton } from "@/components/SubmitButton";
+import { InvoicePanel } from "@/components/console/InvoicePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +39,11 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
       <Link href="/console/adverts/bundles" className="text-sm text-graphite hover:text-ink">← Bundles</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{bundle.name}</h1>
       <p className="mt-1 text-sm text-graphite">{bundle.member?.name}</p>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {/* A save used to re-render the page unchanged, so editing read as broken (fix-list 76). */}
+      {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+
+      <InvoicePanel target={{ bundle_id: bundle.id }} returnTo={`/console/adverts/bundles/${bundle.id}`} />
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Details</h2>
@@ -59,7 +65,7 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
             <label htmlFor="notes" className="text-sm font-medium">Notes</label>
             <input id="notes" name="notes" defaultValue={bundle.notes ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           </div>
-          <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+          <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
         </form>
       </section>
 
@@ -67,7 +73,8 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
         <h2 className="font-bold text-ink">Parts ({parts?.length ?? 0})</h2>
         {(parts ?? []).map((p) => (
           <p key={p.id} className="mt-2 border-t pt-2 text-sm">
-            {p.advert?.name} <span className="text-graphite">({p.advert?.format})</span> — {bookingPhase(p, today)}
+            <Link href={`/console/adverts/${p.id}`} className="hover:underline">{p.advert?.name}</Link>{" "}
+            <span className="text-graphite">({p.advert?.format})</span> — {bookingPhase(p, today)}
           </p>
         ))}
         {!parts?.length && <p className="mt-2 text-sm text-graphite">Nothing booked into this bundle yet.</p>}

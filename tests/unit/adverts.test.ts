@@ -259,6 +259,15 @@ describe("banner spots: soldOn / peakSold / bannerOccupancy", () => {
     expect(months.map((m) => m.pending)).toEqual([0, 0, 1, 1, 1, 0]);
   });
 
+  // 6 Oct: a run held for payment isn't sold (it isn't on the site), but it
+  // is spoken for — it sits with the pending count, never with sold.
+  it("counts a run held for payment as pending, not sold", () => {
+    const bookings = [b("awaiting_payment", "2026-10-10", "2026-10-20")];
+    expect(soldOn(bookings, "2026-10-15")).toBe(0);
+    expect(bannerOccupancy(bookings, "2026-10-04", 1)[0].pending).toBe(1);
+    expect(bookingPhase(bookings[0], "2026-10-15")).toBe("awaiting_payment");
+  });
+
   it("crosses a year end and handles February", () => {
     const months = bannerOccupancy([b("live", "2027-02-28", "2027-02-28")], "2026-12-31", 3);
     expect(months.map((m) => m.month)).toEqual(["2026-12", "2027-01", "2027-02"]);

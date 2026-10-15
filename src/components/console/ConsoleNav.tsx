@@ -24,6 +24,13 @@ export function ConsoleNav({ items, root = "/console" }: { items: NavSection[]; 
   const pathname = usePathname();
   const activeSection = items.find((s) => isSectionActive(pathname, s, root));
   const children = activeSection?.children ?? [];
+  // Only the most specific match lights up. Bookings is /console/adverts, a
+  // prefix of every other Adverts page, so a plain prefix test kept it
+  // highlighted beside whichever page was actually open. A booking's own page
+  // (/console/adverts/<id>) matches nothing longer, so it still lights Bookings.
+  const activeChild = children
+    .filter((n) => isActive(pathname, n.href, root))
+    .reduce<NavItem | null>((best, n) => (!best || n.href.length > best.href.length ? n : best), null);
   const hasSubRow = items.some((s) => s.children);
 
   return (
@@ -49,7 +56,7 @@ export function ConsoleNav({ items, root = "/console" }: { items: NavSection[]; 
       </nav>
       {hasSubRow && <nav aria-label="Section pages" className="flex min-h-[2.25rem] items-center gap-1 overflow-x-auto border-t border-white/10 bg-chrome-hover/40 px-4 text-xs">
         {children.map((n) => {
-          const active = isActive(pathname, n.href, root);
+          const active = n === activeChild;
           return (
             <Link
               key={n.href}

@@ -102,6 +102,9 @@ export const SMI_SOCIAL_URLS: Record<SocialKey, string> = {
 
 const channelFor = (key: string) => SOCIAL_CHANNELS.find((c) => c.key === key) ?? null;
 
+/** One channel's display details (label, host, placeholder) by key. */
+export const socialChannel = channelFor;
+
 const escapeDot = (s: string) => s.replace(/\./g, "\\.");
 
 /** Does the value already start with this channel's domain, just without a scheme? */
@@ -242,5 +245,73 @@ export function socialLinks(social: unknown): SocialLink[] {
       handle: href ? socialHandle(key, href) : null,
       value,
     };
+  });
+}
+
+/* ---------- SMI's own posts of a story (Jas 13/10 item 8) ---------- */
+
+/**
+ * The networks a story can link to SMI's own post on. Jas: readers rarely use a
+ * website's share buttons; linking to the post on SMI's pages grows SMI's
+ * reach, and people comment there with more confidence. Same three keys the
+ * stories_social_posts_check constraint admits (migration 20261015000002).
+ */
+export const STORY_POST_CHANNELS = ["linkedin", "facebook", "x"] as const satisfies readonly SocialKey[];
+export type StoryPostChannel = (typeof STORY_POST_CHANNELS)[number];
+
+/**
+ * A pasted post URL → the value to store, or null when it isn't one: https
+ * only, on that network's own host (any subdomain). Stricter than socialHref,
+ * which also builds URLs from bare handles — a post link must be pasted whole.
+ */
+export function storyPostUrl(key: StoryPostChannel, raw: string): string | null {
+  const value = raw.trim();
+  if (!/^https:\/\//i.test(value)) return null;
+  const channel = channelFor(key);
+  if (!channel) return null;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const onHost = channel.domains.some((d) => host === d || host.endsWith(`.${d}`));
+    return url.protocol === "https:" && onHost ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The console form's three fields → the jsonb to store, or the first problem.
+ * Blank fields are simply left out (the story page then falls back to SMI's
+ * page on that network).
+ */
+export function parseStoryPosts(read: (key: StoryPostChannel) => string): { value: Partial<Record<StoryPostChannel, string>> } | { error: string } {
+  const value: Partial<Record<StoryPostChannel, string>> = {};
+  for (const key of STORY_POST_CHANNELS) {
+    const raw = read(key).trim();
+    if (!raw) continue;
+    const url = storyPostUrl(key, raw);
+    if (!url) {
+      const label = channelFor(key)?.label ?? key;
+      return { error: `That ${label} link isn't a ${label} post URL — paste the full https:// address of SMI's post.` };
+    }
+    value[key] = url;
+  }
+  return { value };
+}
+
+export type StoryPostLink = { key: StoryPostChannel; label: string; href: string; isPost: boolean };
+
+/**
+ * The story page's social row: one link per network, to SMI's post of this
+ * story where the editor pasted one, else to SMI's page on that network — so
+ * the row is never empty and never dead. Stored values are re-validated here,
+ * not trusted: the column is only as clean as its writers.
+ */
+export function storyPostLinks(stored: unknown): StoryPostLink[] {
+  const posts = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
+  return STORY_POST_CHANNELS.map((key) => {
+    const raw = posts[key];
+    const post = typeof raw === "string" ? storyPostUrl(key, raw) : null;
+    return { key, label: channelFor(key)!.label, href: post ?? SMI_SOCIAL_URLS[key], isPost: Boolean(post) };
   });
 }

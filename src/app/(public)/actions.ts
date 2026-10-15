@@ -18,16 +18,17 @@ export async function subscribeNewsletter(_prev: { message: string }, formData: 
     return { message: "This address previously unsubscribed — contact us to re-opt-in." };
   }
   await db.from("newsletter_signups").insert({ email });
+  let contactId = existing?.id ?? null;
   if (!existing) {
-    await db.from("contacts").insert({ email, source: "newsletter", subscribed: true });
+    const { data: created } = await db.from("contacts").insert({ email, source: "newsletter", subscribed: true }).select("id").single();
+    contactId = created?.id ?? null;
   }
-  try {
-    const { getCrmSync } = await import("@/lib/adapters/crm");
-    await getCrmSync().pushContact({ email }); // write-through to Bigin (GAPS B6.2)
-  } catch (e) {
-    // The signup is already recorded above — a CRM outage must not cost a
-    // visitor their subscription confirmation.
-    console.error("[newsletter] CRM push failed:", e);
+  // Write-through to Bigin (GAPS B6.2). Never throws: the signup is already
+  // recorded above, and a CRM outage must not cost a visitor their
+  // subscription confirmation — a failed push is queued for retry instead.
+  if (contactId) {
+    const { syncContactToCrm } = await import("@/lib/adapters/crm");
+    await syncContactToCrm(contactId);
   }
   return { message: "Subscribed — see you next issue." };
 }

@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
  * six A–F format cards.
  *
  * Both used to sit on the ad-products page under Adverts, which made that page
- * own three different things at once: the rate card, the marketing copy, and a
- * download. Neither of these is inventory — nothing here is bookable, capped or
+ * own three different things at once: the rate card (since removed, fix-list
+ * 77), the marketing copy, and a download. Neither of these is inventory — nothing here is bookable, capped or
  * sold — so they belong with the rest of the site's public content.
  *
  * The A–F keys are their own vocabulary: they are card slots on one marketing
@@ -39,8 +39,8 @@ export default async function AdvertisingContentPage(props: PageProps<"/console/
       <p className="mt-1 text-sm text-graphite">
         Content for the public{" "}
         <a href="/advertising" target="_blank" rel="noopener" className="underline">/advertising</a>{" "}
-        page. What we actually sell, and how much of it, lives under{" "}
-        <Link href="/console/adverts/spots" className="underline">Adverts → Inventory</Link>.
+        page. How many banner spots we sell, and how many are sold, lives under{" "}
+        <Link href="/console/adverts/banners" className="underline">Adverts → Banners</Link>.
       </p>
 
       {/* Both forms below hand their upload failures back here as ?error=. Without

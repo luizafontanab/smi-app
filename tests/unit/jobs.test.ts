@@ -14,7 +14,8 @@ const publish = vi.fn(async () => {});
 vi.mock("@/lib/adapters/social", () => ({ getSocialPublisher: vi.fn(() => ({ publish })) }));
 
 const crmSync = vi.fn(async () => {});
-vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => ({ sync: crmSync })) }));
+const crmPush = vi.fn(async () => {});
+vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => ({ sync: crmSync, pushContact: crmPush })) }));
 
 const syncContacts = vi.fn(async () => ({ pushed: 3, failed: 0 }));
 const sendIssue = vi.fn<(issueId: string, idempotencyKey: string) => Promise<SendResult>>(
@@ -289,6 +290,52 @@ describe("runJob kinds", () => {
       text: expect.stringContaining("acme-wins-award"),
       tagHandles: { x: "acme" },
     }));
+  });
+
+  // Jas 13/10 item 12: every member the story features is tagged, not only the primary.
+  it("social_push (story) — also tags the members featured alongside the primary", async () => {
+    const j = job("social_push", { payload: { story_id: "s1" } });
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 0)), queryBuilder(dbOk(null))], {
+      stories: () => queryBuilder(dbOk({
+        id: "s1", title: "Southern Manufacturing", slug: "southern", excerpt: "", cover_path: null, member_id: "m1",
+        member: { name: "Acme", social: { x: "acme" } },
+      })),
+      story_members: () => queryBuilder(dbOk([
+        { member: { id: "m1", slug: "acme", name: "Acme", logo_path: null, social: { x: "acme" }, status: "active", archived_at: null } },
+        { member: { id: "m2", slug: "blm", name: "BLM", logo_path: null, social: { x: "blmgroup" }, status: "active", archived_at: null } },
+      ])),
+      settings: () => queryBuilder(dbOk({ value: { per_day: 3 } })),
+    });
+
+    await runJobById(j.id);
+
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+      tagHandles: { x: "acme" },
+      extraTagHandles: [{ x: "blmgroup" }], // the primary isn't repeated as an extra
+    }));
+  });
+
+  it("publish_scheduled — tells each co-featured member their story is live", async () => {
+    const j = job("publish_scheduled");
+    const jobsTail = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
+      stories: () => queryBuilder(dbOk([{ id: "s1", member_id: "m1" }])),
+      videos: () => queryBuilder(dbOk([])),
+      story_members: () => queryBuilder(dbOk([
+        { member: { id: "m1", slug: "a", name: "A", logo_path: null, social: {}, status: "active", archived_at: null } },
+        { member: { id: "m2", slug: "b", name: "B", logo_path: null, social: {}, status: "grace", archived_at: null } },
+        { member: { id: "m3", slug: "c", name: "C", logo_path: null, social: {}, status: "active", archived_at: "2026-10-01" } },
+      ])),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 30 } })),
+    });
+
+    await runJobById(j.id);
+
+    const notices = callsOf(jobsTail.insert)
+      .map(([row]) => row as { kind: string; payload: { member_id: string; kind: string } })
+      .filter((r) => r.kind === "notify_member")
+      .map((r) => `${r.payload.member_id}:${r.payload.kind}`);
+    expect(notices).toEqual(["m1:story_live", "m2:story_featured"]); // the archived m3 is skipped
   });
 
   it("social_push — defers past the daily cap to tomorrow morning instead of posting", async () => {
@@ -591,8 +638,9 @@ describe("runJob kinds", () => {
     const bookingsBuilder = queryBuilder(() => {
       call++;
       if (call === 1) return dbOk([]); // phase 1: starting — none
-      if (call === 2) return dbOk([{ id: "b1", ends_on: "2026-01-01", advert: { member_id: "m1" } }]); // phase 2: finishing select
-      if (call === 3) return dbOk([{ id: "b1" }]); // phase 2: finishing update (claims the transition)
+      if (call === 2) return dbOk([]); // phase 1b: lapsed unpaid holds — none
+      if (call === 3) return dbOk([{ id: "b1", ends_on: "2026-01-01", advert: { member_id: "m1" } }]); // phase 2: finishing select
+      if (call === 4) return dbOk([{ id: "b1" }]); // phase 2: finishing update (claims the transition)
       return dbOk([]); // phase 3: expiring — none
     });
     const jobsTail = queryBuilder(dbOk(null));
@@ -605,13 +653,41 @@ describe("runJob kinds", () => {
     expect(kinds).toContain("notify_member");
   });
 
+  // 6 Oct: a run held for payment whose term passed unpaid.
+  it("advert_lifecycle — ends a lapsed unpaid hold as 'unpaid' and voids its invoice, without emailing", async () => {
+    const j = job("advert_lifecycle");
+    let call = 0;
+    const bookingsBuilder = queryBuilder(() => {
+      call++;
+      if (call === 1) return dbOk([]); // phase 1: starting — none
+      if (call === 2) return dbOk([{ id: "b1", bundle_id: null, ends_on: "2026-01-01" }]); // phase 1b: lapsed select
+      if (call === 3) return dbOk([{ id: "b1" }]); // phase 1b: the conditional end
+      return dbOk([]);
+    });
+    const invoicesBuilder = queryBuilder(dbOk(null));
+    const jobsTail = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
+      advert_bookings: () => bookingsBuilder,
+      invoices: () => invoicesBuilder,
+      placements: () => queryBuilder(dbOk([])),
+    });
+
+    await runJobById(j.id);
+
+    expect(bookingsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "ended", ended_reason: "unpaid" }));
+    expect(invoicesBuilder.update).toHaveBeenCalledWith({ status: "void" });
+    expect(invoicesBuilder.eq).toHaveBeenCalledWith("advert_booking_id", "b1");
+    const kinds = callsOf(jobsTail.insert).map(([row]) => (row as { kind: string }).kind);
+    expect(kinds).not.toContain("notify_member");
+  });
+
   it("advert_lifecycle — warns once, not twice, about a run ending soon", async () => {
     const j = job("advert_lifecycle");
     let call = 0;
     const bookingsBuilder = queryBuilder(() => {
       call++;
-      if (call <= 2) return dbOk([]); // phases 1 and 2: nothing starting or finishing
-      if (call === 3) return dbOk([{ id: "b1", starts_on: "2026-01-01", ends_on: "2026-02-01", ending_soon_notified_for: null, advert: { name: "Spring push", member_id: "m1" } }]);
+      if (call <= 3) return dbOk([]); // phases 1, 1b and 2: nothing starting, lapsed or finishing
+      if (call === 4) return dbOk([{ id: "b1", starts_on: "2026-01-01", ends_on: "2026-02-01", ending_soon_notified_for: null, advert: { name: "Spring push", member_id: "m1" } }]);
       return dbOk([{ id: "b1" }]); // the conditional claim update succeeds
     });
     const jobsTail = queryBuilder(dbOk(null));
@@ -661,6 +737,12 @@ describe("runJob kinds", () => {
     await runJobById(j.id);
 
     expect(sendIssue).not.toHaveBeenCalled();
+  });
+
+  it("crm_push retries one contact's write-through with the options it was queued with", async () => {
+    dbFor(happyPath(job("crm_push", { payload: { contact_id: "c1", name_changed: true, re_opt_in: false } })));
+    await runJobById("job1");
+    expect(crmPush).toHaveBeenCalledWith("c1", { nameChanged: true, reOptIn: false });
   });
 
   it("crm_sync and newsletter_sync delegate to their adapters", async () => {

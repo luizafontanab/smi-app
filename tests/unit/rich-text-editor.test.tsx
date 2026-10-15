@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import type { UploadResult } from "@/lib/upload-limits";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -66,6 +67,112 @@ describe("RichTextEditor", () => {
     render(<RichTextEditor name="body" ariaLabel="Article body" allowAdBreak />);
     await ready("Article body");
     expect(screen.getByTitle("Split the article here for a rotating advert")).toBeInTheDocument();
+  });
+
+  describe("image upload feedback (Jas 13/10 item 3)", () => {
+    function pick(container: HTMLElement, file: File) {
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+      fireEvent.change(input, { target: { files: [file] } });
+    }
+    const jpeg = (bytes = 10) => new File([new Uint8Array(bytes)], "shot.jpg", { type: "image/jpeg" });
+
+    it("shows a spinner line and disables Image while the upload is in flight", async () => {
+      let finish: (r: UploadResult) => void = () => {};
+      const upload = vi.fn(() => new Promise<UploadResult>((r) => { finish = r; }));
+      const { container } = render(<RichTextEditor name="body" ariaLabel="Article body" uploadImage={upload} />);
+      await ready("Article body");
+
+      pick(container, jpeg());
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Uploading image…"));
+      expect(screen.getByTitle("Insert image")).toBeDisabled();
+
+      await act(async () => finish({ url: "http://127.0.0.1:54321/storage/v1/object/public/media/stories/a.jpg" }));
+      await waitFor(() => expect(screen.getByRole("status")).toBeEmptyDOMElement());
+      expect(screen.getByTitle("Insert image")).not.toBeDisabled();
+      expect((container.querySelector('input[type="hidden"][name="body"]') as HTMLInputElement).value).toContain("stories/a.jpg");
+    });
+
+    it("shows the action's refusal reason inline", async () => {
+      const upload = vi.fn(async (): Promise<UploadResult> => ({ error: "Image too large (8MB max)" }));
+      const { container } = render(<RichTextEditor name="body" ariaLabel="Article body" uploadImage={upload} />);
+      await ready("Article body");
+      pick(container, jpeg());
+      expect(await screen.findByRole("alert")).toHaveTextContent("Image too large (8MB max)");
+    });
+
+    it("refuses an oversized or non-image file in the browser, without calling the action", async () => {
+      const upload = vi.fn(async (): Promise<UploadResult> => ({ url: "x" }));
+      const { container } = render(<RichTextEditor name="body" ariaLabel="Article body" uploadImage={upload} />);
+      await ready("Article body");
+
+      pick(container, jpeg(8 * 1024 * 1024 + 1));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/8MB/);
+      pick(container, new File(["<svg/>"], "x.svg", { type: "image/svg+xml" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Images only/);
+      expect(upload).not.toHaveBeenCalled();
+    });
+
+    it("says so when the request itself fails", async () => {
+      const upload = vi.fn(async (): Promise<UploadResult> => { throw new Error("network"); });
+      const { container } = render(<RichTextEditor name="body" ariaLabel="Article body" uploadImage={upload} />);
+      await ready("Article body");
+      pick(container, jpeg());
+      expect(await screen.findByRole("alert")).toHaveTextContent(/didn't upload/);
+      expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    });
+
+    it("blocks the surrounding form from submitting until the image lands", async () => {
+      let finish: (r: UploadResult) => void = () => {};
+      const upload = vi.fn(() => new Promise<UploadResult>((r) => { finish = r; }));
+      const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+      const { container } = render(
+        <form onSubmit={onSubmit}>
+          <RichTextEditor name="body" ariaLabel="Article body" uploadImage={upload} />
+        </form>,
+      );
+      await ready("Article body");
+      pick(container, jpeg());
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Uploading image…"));
+
+      fireEvent.submit(container.querySelector("form")!);
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(await screen.findByRole("alert")).toHaveTextContent(/finish uploading/);
+
+      await act(async () => finish({ url: "http://127.0.0.1:54321/storage/v1/object/public/media/a.jpg" }));
+      await waitFor(() => expect(screen.getByRole("status")).toBeEmptyDOMElement());
+      fireEvent.submit(container.querySelector("form")!);
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Jas 13/10 item 19.
+  it("keeps an image's position and size through a load and re-serialise", async () => {
+    const src = "http://127.0.0.1:54321/storage/v1/object/public/media/stories/a.jpg";
+    const upload = vi.fn(async (): Promise<UploadResult> => ({ url: src }));
+    const { container } = render(
+      <RichTextEditor name="body" ariaLabel="Article body" uploadImage={upload} initialHtml={`<img src="${src}" data-align="right" data-size="small"><p>Text.</p>`} />,
+    );
+    await ready("Article body");
+    const img = container.querySelector(".ProseMirror img")!;
+    expect(img).toHaveAttribute("data-align", "right");
+    expect(img).toHaveAttribute("data-size", "small");
+  });
+
+  it("ignores an unknown position value when loading", async () => {
+    const src = "http://127.0.0.1:54321/storage/v1/object/public/media/stories/a.jpg";
+    const upload = vi.fn(async (): Promise<UploadResult> => ({ url: src }));
+    const { container } = render(
+      <RichTextEditor name="body" ariaLabel="Article body" uploadImage={upload} initialHtml={`<img src="${src}" data-align="sideways">`} />,
+    );
+    await ready("Article body");
+    expect(container.querySelector(".ProseMirror img")).not.toHaveAttribute("data-align");
+  });
+
+  it("shows the image position controls only while an image is selected", async () => {
+    const upload = vi.fn(async (): Promise<UploadResult> => ({ url: "x" }));
+    render(<RichTextEditor name="body" ariaLabel="Article body" uploadImage={upload} initialHtml="<p>Text.</p>" />);
+    await ready("Article body");
+    expect(screen.queryByRole("group", { name: "Image position" })).not.toBeInTheDocument();
   });
 
   it("Link prompts for a URL and doesn't crash without a selection", async () => {

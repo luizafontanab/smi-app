@@ -9,8 +9,8 @@ const PAPER = "#ffffff";
  * Live contrast preview as the admin types — the server re-checks on submit
  * (the authority), this just stops a doomed submission before it happens.
  */
-export function TakeoverColorPicker() {
-  const [hex, setHex] = useState("#ff8200");
+export function TakeoverColorPicker({ initial = "#ff8200" }: { initial?: string }) {
+  const [hex, setHex] = useState(initial);
   const valid = /^#[0-9a-f]{6}$/i.test(hex);
   const ratio = useMemo(() => (valid ? contrastRatio(hex, PAPER) : null), [hex, valid]);
   const passes = valid && meetsWcagAA(hex, PAPER, { largeText: true });

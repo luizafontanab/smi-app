@@ -39,7 +39,7 @@ export const DECORATIONS: Record<PageType, BlockType[]> = {
 export const BLOCK_LABELS: Record<BlockType, string> = {
   story_header: "Title & meta (fixed)",
   story_hero: "Cover image (fixed)",
-  story_body: "Article body (fixed)",
+  story_body: "Article body + featured members (fixed)",
   profile_main: "Member profile (fixed)",
   profile_video: "Company video (fixed)",
   machine_main: "Machine listing (fixed)",

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addContact, createIssue, saveContact, scheduleIssue, sendIssue, unscheduleIssue } from "@/app/console/actions";
+import {
+  addContact, createIssue, previewBiginPull, runBiginSync, saveContact, scheduleIssue, searchBiginCompanies, sendIssue, unscheduleIssue,
+} from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -7,21 +9,31 @@ import type { CurrentUser } from "@/lib/auth";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireConsole, enqueue, pushContact } = vi.hoisted(() => ({
+const { requireConsole, enqueue, syncContactToCrm, crm, saveLastRun } = vi.hoisted(() => ({
   requireConsole: vi.fn(async (): Promise<CurrentUser> => ({
     userId: "admin1", email: "jas@smi.local", role: "admin", memberId: null, displayName: "Jas",
   })),
   enqueue: vi.fn(async () => {}),
-  pushContact: vi.fn(async () => {}),
+  syncContactToCrm: vi.fn(async () => {}),
+  crm: {
+    sync: vi.fn(async (): Promise<unknown> => ({})),
+    pull: vi.fn(async (): Promise<unknown> => null),
+    searchCompanies: vi.fn(async (): Promise<{ id: string; name: string }[]> => []),
+  },
+  saveLastRun: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
-vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => ({ pushContact, sync: vi.fn(async () => {}) })) }));
+vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => crm), syncContactToCrm, saveLastRun }));
 
 afterEach(() => {
   resetDbServerMocks();
   enqueue.mockReset().mockResolvedValue(undefined);
-  pushContact.mockReset().mockResolvedValue(undefined);
+  syncContactToCrm.mockReset().mockResolvedValue(undefined);
+  saveLastRun.mockReset().mockResolvedValue(undefined);
+  crm.sync.mockReset().mockResolvedValue({});
+  crm.pull.mockReset().mockResolvedValue(null);
+  crm.searchCompanies.mockReset().mockResolvedValue([]);
 });
 
 function form(fields: Record<string, string>) {
@@ -147,7 +159,39 @@ describe("saveContact", () => {
       .rejects.toThrow("NEXT_REDIRECT:/console/crm?saved=1");
 
     expect(contactsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ email: "same@example.com", name: "Acme" }));
-    expect(pushContact).toHaveBeenCalledWith(expect.objectContaining({ email: "same@example.com" }));
+    // the whole row goes to Bigin by id; the name changed, so its fields go too
+    expect(syncContactToCrm).toHaveBeenCalledWith("c1", { nameChanged: true, reOptIn: false });
+  });
+
+  it("does not resend the name to Bigin when it wasn't edited", async () => {
+    db({ contacts: () => queryBuilder(dbOk({ id: "c1", email: "same@example.com", name: "Acme", subscribed: true, unsubscribed_at: null })) });
+    await expect(saveContact(form({ id: "c1", email: "same@example.com", name: "Acme", newsletter: "subscribed" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/crm?saved=1");
+    expect(syncContactToCrm).toHaveBeenCalledWith("c1", { nameChanged: false, reOptIn: false });
+  });
+
+  it("tells Bigin about an explicit re-opt-in, the one case that clears its opt-out", async () => {
+    db({ contacts: () => queryBuilder(dbOk({ id: "c1", email: "a@example.com", name: null, subscribed: false, unsubscribed_at: "2026-01-01T00:00:00Z" })) });
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", newsletter: "subscribed", re_opt_in: "on" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/crm?saved=1");
+    expect(syncContactToCrm).toHaveBeenCalledWith("c1", expect.objectContaining({ reOptIn: true }));
+  });
+
+  it("saves the Bigin company chosen in the picker, and clears it when unlinked", async () => {
+    const contactsBuilder = queryBuilder(dbOk({ id: "c1", email: "a@example.com", name: null, subscribed: true, unsubscribed_at: null }));
+    db({ contacts: () => contactsBuilder });
+
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", newsletter: "subscribed", bigin_company_id: "900", bigin_company_name: "Acme" })))
+      .rejects.toThrow("NEXT_REDIRECT");
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", newsletter: "subscribed", bigin_company_id: "", bigin_company_name: "" })))
+      .rejects.toThrow("NEXT_REDIRECT");
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", newsletter: "subscribed" })))
+      .rejects.toThrow("NEXT_REDIRECT");
+
+    const updates = (contactsBuilder.update as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(updates[0]).toMatchObject({ bigin_company_id: "900", bigin_company_name: "Acme" });
+    expect(updates[1]).toMatchObject({ bigin_company_id: null, bigin_company_name: null });
+    expect(updates[2]).not.toHaveProperty("bigin_company_id"); // no picker on the form → link untouched
   });
 
   it("reports a race-lost unique-email conflict in the same friendly words", async () => {
@@ -177,16 +221,47 @@ describe("addContact", () => {
     db({ contacts: () => contactsBuilder });
     await addContact(form({ email: "existing@example.com" }));
     expect(contactsBuilder.insert).not.toHaveBeenCalled();
-    expect(pushContact).not.toHaveBeenCalled();
+    expect(syncContactToCrm).not.toHaveBeenCalled();
   });
 
-  it("creates a new contact and pushes it to the CRM", async () => {
-    const contactsBuilder = queryBuilder(dbOk(null));
+  it("creates a new contact and pushes the whole row to the CRM by id", async () => {
+    let call = 0;
+    // 1: the existing-email lookup (none), 2: the insert returning the new id
+    const contactsBuilder = queryBuilder(() => (call++ === 0 ? dbOk(null) : dbOk({ id: "c-new" })));
     db({ contacts: () => contactsBuilder });
 
-    await addContact(form({ email: "new@example.com" }));
+    await addContact(form({ email: "new@example.com", name: " Ada Byron ", company: "Acme" }));
 
-    expect(contactsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ email: "new@example.com", source: "console" }));
-    expect(pushContact).toHaveBeenCalledWith({ email: "new@example.com" });
+    expect(contactsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ email: "new@example.com", name: "Ada Byron", company: "Acme", source: "console" }));
+    expect(syncContactToCrm).toHaveBeenCalledWith("c-new");
+  });
+});
+
+describe("Bigin console actions", () => {
+  it("searchBiginCompanies passes the term through, and answers empty rather than erroring when Bigin fails", async () => {
+    crm.searchCompanies.mockResolvedValueOnce([{ id: "900", name: "Acme" }]);
+    expect(await searchBiginCompanies("Acm")).toEqual([{ id: "900", name: "Acme" }]);
+    expect(crm.searchCompanies).toHaveBeenCalledWith("Acm");
+
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    crm.searchCompanies.mockRejectedValueOnce(new Error("Bigin down"));
+    expect(await searchBiginCompanies("Acm")).toEqual([]);
+  });
+
+  it("previewBiginPull is a dry run that may include the first import, and records it as a preview", async () => {
+    crm.pull.mockResolvedValueOnce({ inserted: 3 });
+    await expect(previewBiginPull()).rejects.toThrow("NEXT_REDIRECT:/console/crm?synced=preview");
+    expect(crm.pull).toHaveBeenCalledWith({ dryRun: true, allowFirstImport: true });
+    expect(saveLastRun).toHaveBeenCalledWith(expect.objectContaining({ preview: true, pulled: { inserted: 3 } }));
+  });
+
+  it("runBiginSync is the only path allowed to run the first import", async () => {
+    await expect(runBiginSync()).rejects.toThrow("NEXT_REDIRECT:/console/crm?synced=1");
+    expect(crm.sync).toHaveBeenCalledWith({ allowFirstImport: true });
+  });
+
+  it("runBiginSync reports a failure on the page instead of throwing it", async () => {
+    crm.sync.mockRejectedValueOnce(new Error("1 of 1 pending pushes failed"));
+    await expect(runBiginSync()).rejects.toThrow(/console\/crm\?error=Bigin%20sync%20finished%20with%20a%20problem/);
   });
 });

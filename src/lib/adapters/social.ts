@@ -61,7 +61,17 @@ export type SocialPost = {
   text: string;
   imagePath: string | null;
   tagHandles: Record<string, string>; // { linkedin: "company/x", x: "handle", ... }
+  /** The other members a story features (Jas 13/10 item 12), after the primary. */
+  extraTagHandles?: Record<string, string>[];
 };
+
+/**
+ * At most this many co-featured members are tagged on top of the primary. A
+ * story can feature a dozen members, and every tag lands in the post's text
+ * (see formatTags) — past a handful an X post overruns 280 characters and a
+ * LinkedIn post reads as a list of handles rather than a story.
+ */
+export const MAX_EXTRA_TAGGED_MEMBERS = 4;
 
 export interface SocialPublisher {
   publish(post: SocialPost): Promise<void>;
@@ -75,18 +85,27 @@ export interface SocialPublisher {
  * name in `members.social`. Until that data exists, tags ride along in the text
  * rather than silently vanishing. See GAPS B4.3 for what closing it needs.
  */
-function formatTags(tagHandles: Record<string, string>): string {
-  return Object.entries(tagHandles)
-    .map(([ch, h]) => {
+function formatTags(post: Pick<SocialPost, "tagHandles" | "extraTagHandles">): string {
+  const sets = [post.tagHandles, ...(post.extraTagHandles ?? []).slice(0, MAX_EXTRA_TAGGED_MEMBERS)];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const handles of sets) {
+    for (const [ch, h] of Object.entries(handles ?? {})) {
+      if (typeof h !== "string") continue;
       const href = socialHref(ch, h);
-      return `${ch}:${(href && socialHandle(ch, href)) ?? h}`;
-    })
-    .join(" ");
+      const tag = `${ch}:${(href && socialHandle(ch, href)) ?? h}`;
+      // the same company tagged twice (primary and extra, or two branches sharing a handle) reads once
+      if (seen.has(tag.toLowerCase())) continue;
+      seen.add(tag.toLowerCase());
+      out.push(tag);
+    }
+  }
+  return out.join(" ");
 }
 
 class LoggingSocialStub implements SocialPublisher {
   async publish(post: SocialPost): Promise<void> {
-    const tags = formatTags(post.tagHandles);
+    const tags = formatTags(post);
     console.log(`[social] would post (${tags || "no tags"}): ${post.text.split("\n")[0].slice(0, 80)}`);
   }
 }
@@ -119,7 +138,7 @@ class BufferPublisher implements SocialPublisher {
       throw new Error(`[social] no Buffer channel configured — set channel ids in /console/stories.${stale}`);
     }
 
-    const tags = formatTags(post.tagHandles);
+    const tags = formatTags(post);
     const text = tags ? `${post.text}\n\n${tags}` : post.text;
     const image = mediaUrl(post.imagePath);
 

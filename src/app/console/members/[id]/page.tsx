@@ -70,13 +70,14 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   // it has always given, so screen it out first. Same guard as blocks/layouts.ts.
   if (!UUID_RE.test(id)) notFound();
 
-  const [member, inds, revisions, types, memberTypes, svcs, memberSvcs] = await Promise.all([
+  const [member, inds, memberInds, revisions, types, memberTypes, svcs, memberSvcs] = await Promise.all([
     // maybeSingle, not single: a member id that does not exist is an ordinary
     // 404 below, not a query failure worth throwing over.
     must(db.from("members").select(
       "id, slug, name, status, archived_at, industry_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
     ).eq("id", id).maybeSingle(), "console/members detail: member"),
     must(db.from("industries").select("id, name").order("sort_order"), "console/members detail: industries"),
+    must(db.from("member_industries").select("industry_id").eq("member_id", id), "console/members detail: member industries"),
     must(db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1), "console/members detail: revisions"),
     must(db.from("membership_types").select("id, name").order("sort_order"), "console/members detail: membership types"),
     must(db.from("member_membership_types").select("membership_type_id").eq("member_id", id), "console/members detail: member membership types"),
@@ -87,6 +88,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   if (!member) notFound();
   const memberTypeIds = new Set((memberTypes ?? []).map((t) => t.membership_type_id));
   const memberServiceIds = new Set((memberSvcs ?? []).map((r) => r.service_id));
+  const memberIndustryIds = new Set((memberInds ?? []).map((r) => r.industry_id));
 
   // the renewal-call view (A18) — stories, placements, invoices, notifications,
   // advert clicks and newsletter appearances (A5.8), merged in lib/activity.ts
@@ -186,6 +188,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               membershipTypes={types ?? []}
               selectedServiceIds={memberServiceIds}
               selectedMembershipTypeIds={memberTypeIds}
+              selectedIndustryIds={memberIndustryIds}
               uploadImage={consoleUploadImage}
               logoUrl={logo}
               heroUrl={hero}

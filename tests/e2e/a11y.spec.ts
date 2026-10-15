@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
  */
 // Bare /member is the word cloud now, so the tile list needs naming explicitly
 // or it loses the coverage it had when it was the default view.
-const PAGES = ["/", "/news", "/member", "/member?view=list", "/industry/welding", "/join", "/login", "/contact", "/search"];
+const PAGES = ["/", "/news", "/member", "/member?view=list", "/industry/welding-joining", "/join", "/login", "/contact", "/search"];
 
 const PASSWORD = "local-dev-password";
 

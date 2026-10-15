@@ -1,6 +1,6 @@
 /**
- * The visibility products a member can request (no online payment — Jas
- * confirms, schedules and invoices). Shared by the advertising hub's
+ * The visibility products a member can request. Jas confirms, schedules and
+ * invoices; the invoice is payable online since 6 Oct (billing page). Shared by the advertising hub's
  * Information, Buy and Manage pages so names and keys can't drift.
  */
 export const VISIBILITY_PRODUCTS = [

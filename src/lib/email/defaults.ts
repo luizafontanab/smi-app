@@ -262,6 +262,13 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
     "Your story went live 🎉",
     "Your story has been approved and is now published on Sheet Metal Industries.",
   ),
+  // Jas 13/10 item 12: a story can feature several members. The primary gets
+  // story_live above; every other member it's tagged with gets this one.
+  story_featured: approved(
+    "A story featuring you is live on SMI",
+    "A story featuring you went live",
+    "Sheet Metal Industries has published a story that features your company. It now appears on your company page and in your stats too.",
+  ),
   story_rejected: rejected(
     "About your submitted story",
     "Your story needs a change",
@@ -325,6 +332,50 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
     "Your advert has been approved and is booked in. We'll email you again on the day it starts running.",
     BOOKING_CTA,
   ),
+  // Online payment (6 Oct): an approved, priced run is held until it's paid.
+  // Same two tokens as the membership receipt, so the same sentence rules apply.
+  advert_payment_due: make({
+    subject: "Your advert is approved — payment due",
+    label: "Your advert is approved — payment due",
+    paragraphs: [
+      "Your advertising has been approved and is held for you. It goes live once it's paid{{amount_phrase}} — you can pay securely by card from your SMI account.",
+      "{{invoice_line}}",
+    ],
+    ctaLabel: "Pay now",
+    tokens: [
+      {
+        token: "amount_phrase",
+        description: "Reads \" of £650.00\" when we know the amount, and nothing at all when we don't — so write it with no space before it.",
+        sample: " of £650.00",
+      },
+      {
+        token: "invoice_line",
+        description: "The whole reference sentence. The paragraph disappears when there's no reference.",
+        sample: "Your reference is SMI-ADV-MG3K2Q.",
+      },
+    ],
+  }),
+  advert_payment_received: make({
+    subject: "Payment received — your advert is confirmed",
+    label: "Advert payment received",
+    paragraphs: [
+      "We've received your payment{{amount_phrase}}. Thank you — your advertising is confirmed and will run on its booked dates.",
+      "{{invoice_line}}",
+    ],
+    ctaLabel: BOOKING_CTA,
+    tokens: [
+      {
+        token: "amount_phrase",
+        description: "Reads \" of £650.00\" when we know the amount, and nothing at all when we don't — so write it with no space before it.",
+        sample: " of £650.00",
+      },
+      {
+        token: "invoice_line",
+        description: "The whole reference sentence. The paragraph disappears when there's no reference.",
+        sample: "Your reference is SMI-ADV-MG3K2Q.",
+      },
+    ],
+  }),
   advert_changes_needed: rejected(
     "Your advert needs a change before it runs",
     "Your advert needs a change",

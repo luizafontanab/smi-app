@@ -39,6 +39,10 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
           .from("contacts")
           .update(applyOptIn(contact, { newsletter: "unsubscribed", reOptIn: false }))
           .eq("id", contact.id);
+        // Bigin is the office's copy of the list — it has to hear about this
+        // too (never throws; a failed push is queued for retry)
+        const { syncContactToCrm } = await import("@/lib/adapters/crm");
+        await syncContactToCrm(contact.id);
       }
     }
     // Same answer either way — this page must not become a way to check which

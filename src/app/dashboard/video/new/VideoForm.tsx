@@ -7,10 +7,11 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { youtubeId } from "@/lib/youtube";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import type { UploadResult } from "@/lib/upload-limits";
 
 type Props = {
   action: (formData: FormData) => Promise<void>;
-  uploadImage: (formData: FormData) => Promise<string | null>;
+  uploadImage: (formData: FormData) => Promise<UploadResult>;
   industries: { id: number; name: string }[];
   member: { name: string; slug: string; logoUrl: string | null };
   /** Present only in edit mode — pre-fills the form and switches the copy/actions. */

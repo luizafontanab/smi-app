@@ -1,19 +1,15 @@
-import Image from "next/image";
-import Link from "next/link";
+import { MemberTiles } from "@/components/MemberTiles";
 
-/** The member backlink + branding aside shown under stories — and in previews. */
-export function MemberBacklink({ name, slug, logoUrl }: { name: string; slug: string; logoUrl?: string | null }) {
+/**
+ * One member's backlink + branding box — the single-member case of
+ * MemberTiles (Jas 13/10 item 12b), kept for callers with exactly one member
+ * (the member video preview). Stories pass their whole tagged list to
+ * MemberTiles directly.
+ */
+export function MemberBacklink({ name, slug, logoUrl, label }: { name: string; slug: string; logoUrl?: string | null; label?: string }) {
   return (
-    <aside className="mt-8 rounded-lg border-2 border-brand bg-brand/5 p-5">
-      <div className="flex items-center gap-4">
-        {logoUrl && <Image src={logoUrl} alt="" width={56} height={56} className="rounded" unoptimized />}
-        <div>
-          <p className="text-xs uppercase tracking-wide text-graphite">This story features an SMI member</p>
-          <Link href={`/member/${slug}`} className="text-lg font-bold text-ink hover:underline">
-            {name} →
-          </Link>
-        </div>
-      </div>
-    </aside>
+    <div className="mt-8">
+      <MemberTiles members={[{ name, slug, logoUrl: logoUrl ?? null }]} layout="inline" label={label} />
+    </div>
   );
 }

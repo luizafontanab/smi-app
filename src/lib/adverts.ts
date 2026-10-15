@@ -121,10 +121,14 @@ async function liveBookings(): Promise<(LiveAdvert & { format: string })[]> {
 export function bookingPhase(
   booking: { status: string; starts_on: string; ends_on: string },
   today: string,
-): "draft" | "awaiting" | "changes_needed" | "upcoming" | "live" | "ended" {
+): "draft" | "awaiting" | "changes_needed" | "awaiting_payment" | "upcoming" | "live" | "ended" {
   switch (booking.status) {
     case "draft": return "draft";
     case "awaiting_approval": return "awaiting";
+    // Approved and priced, waiting on the member to pay (6 Oct). Its own
+    // phase: falling through to the date logic below would call an unpaid,
+    // unshown run "live".
+    case "awaiting_payment": return "awaiting_payment";
     case "review_required": return "changes_needed";
     case "ended": return "ended";
     default:
@@ -241,9 +245,11 @@ export type MonthOccupancy = {
   month: string;
   /** Busiest day of the month (from `today` onward in the current month). */
   peak: { count: number; day: string | null };
-  /** Bookings awaiting approval whose term touches the month. */
+  /** Bookings awaiting approval or payment whose term touches the month — not sold yet, but spoken for. */
   pending: number;
 };
+
+const PENDING_STATUSES = new Set(["awaiting_approval", "awaiting_payment"]);
 
 /** The next `months` calendar months from today, busiest day per month. */
 export function bannerOccupancy(bookings: SpotBooking[], today: string, months = 6): MonthOccupancy[] {
@@ -257,7 +263,7 @@ export function bannerOccupancy(bookings: SpotBooking[], today: string, months =
     out.push({
       month,
       peak: peakSold(bookings, from, last),
-      pending: bookings.filter((b) => b.status === "awaiting_approval" && b.starts_on <= last && b.ends_on >= from).length,
+      pending: bookings.filter((b) => PENDING_STATUSES.has(b.status) && b.starts_on <= last && b.ends_on >= from).length,
     });
   }
   return out;

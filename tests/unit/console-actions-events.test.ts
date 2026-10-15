@@ -45,6 +45,11 @@ describe("consoleUploadEventImage", () => {
     await consoleUploadEventImage(form({}));
     expect(uploadImage).toHaveBeenCalledWith(null, "events/console");
   });
+
+  it("returns the refusal reason as a value instead of throwing", async () => {
+    uploadImage.mockRejectedValue(new Error("Image too large (8MB max)"));
+    expect(await consoleUploadEventImage(form({}))).toEqual({ error: "Image too large (8MB max)" });
+  });
 });
 
 describe("saveEvent", () => {
@@ -306,6 +311,68 @@ describe("decideRevision", () => {
 
     expect(membersBuilder.update).not.toHaveBeenCalled();
     expect(typesBuilder.delete).not.toHaveBeenCalled();
+  });
+
+  // A member can be in several industries (20261012000001): the primary rides
+  // as the industry_id column, the set as `industry_ids`.
+  it("approving applies industry_ids, keeps them out of the member row, and keeps the primary in the set", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
+    const industriesBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({
+        id: "r1", member_id: "m1", status: "awaiting_approval",
+        // a tampered or stale payload whose set omits its own primary
+        payload: { website: "x", industry_id: 8, industry_ids: [2, 7] },
+      })),
+      members: () => membersBuilder,
+      member_industries: () => industriesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    const [payload] = (membersBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(payload).not.toHaveProperty("industry_ids");
+    expect(payload.industry_id).toBe(8);
+    expect(industriesBuilder.delete).toHaveBeenCalled();
+    expect(industriesBuilder.insert).toHaveBeenCalledWith([
+      { member_id: "m1", industry_id: 2 },
+      { member_id: "m1", industry_id: 7 },
+      { member_id: "m1", industry_id: 8 },
+    ]);
+  });
+
+  // Revisions written before members picked several industries carry no
+  // industry_ids — approving one must not wipe the backfilled set.
+  it("approving a revision with no industry_ids leaves the member's industries alone", async () => {
+    const industriesBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "x" } })),
+      members: () => queryBuilder(dbOk(null)),
+      member_industries: () => industriesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    expect(industriesBuilder.delete).not.toHaveBeenCalled();
+  });
+
+  it("approving an empty industry_ids with no primary clears the member's industries", async () => {
+    const industriesBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({
+        id: "r1", member_id: "m1", status: "awaiting_approval", payload: { industry_id: null, industry_ids: [] },
+      })),
+      members: () => queryBuilder(dbOk(null)),
+      member_industries: () => industriesBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    expect(industriesBuilder.delete).toHaveBeenCalled();
+    expect(industriesBuilder.insert).not.toHaveBeenCalled();
   });
 
   it("rejecting notifies the member with the reason and never touches the member row", async () => {

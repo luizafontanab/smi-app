@@ -110,12 +110,31 @@ async function main() {
     ["categories", 1],
     ["services", 1],
     ["industries", 10],
+    ["member_industries", 1],
     ["membership_types", 5],
   ] as const) {
     const n = await count(table);
     const ok = n >= min;
     if (!ok) allOk = false;
     console.log(`  ${ok ? "✓" : "✗"} ${table.padEnd(30)} ${String(n).padStart(6)}${ok ? "" : `  (expected at least ${min})`}`);
+  }
+
+  // A member's primary industry (members.industry_id) must be one of their
+  // industries (member_industries). The database doesn't enforce it — the
+  // write paths and the backfill do (migration 20261012000001) — so check it.
+  {
+    const [{ data: primaries, error: pErr }, { data: links, error: lErr }] = await Promise.all([
+      db.from("members").select("slug, id, industry_id").not("industry_id", "is", null).limit(10000),
+      db.from("member_industries").select("member_id, industry_id").limit(10000),
+    ]);
+    if (pErr || lErr) throw new Error(`primary industry check: ${(pErr ?? lErr)!.message}`);
+    const linked = new Set((links ?? []).map((l) => `${l.member_id}:${l.industry_id}`));
+    const strays = (primaries ?? []).filter((m) => !linked.has(`${m.id}:${m.industry_id}`));
+    if (strays.length) allOk = false;
+    console.log(
+      `  ${strays.length ? "✗" : "✓"} ${"primary industry ∈ set".padEnd(30)} ${String(strays.length).padStart(6)} stray` +
+        (strays.length ? `  (${strays.slice(0, 5).map((m) => m.slug).join(", ")}${strays.length > 5 ? ", …" : ""})` : ""),
+    );
   }
 
   // Sections that render empty even when the import is perfect, because the
@@ -168,7 +187,14 @@ async function main() {
 
   console.log("\nRelationships");
   const expectedLinks = stories.reduce((n, s) => n + (s.member_wp_ids?.length ?? 0), 0);
-  check("story_members", await count("story_members"), expectedLinks);
+  // Imported stories only: once the app is live, admins tag members on new
+  // stories too (Jas 13/10 item 12), and those links aren't the export's.
+  const { count: importLinks, error: linkErr } = await db
+    .from("story_members")
+    .select("story_id, story:stories!inner(source)", { count: "exact", head: true })
+    .eq("story.source", "import");
+  if (linkErr) throw new Error(`story_members: ${linkErr.message}`);
+  check("story_members (imported stories)", importLinks ?? 0, expectedLinks);
   check(
     "stories with member_id",
     await count("stories", "member_id"),
@@ -263,6 +289,25 @@ async function main() {
       if (error.hint) console.log(`      hint: ${error.hint}`);
     } else {
       check("news page query (12 cards)", data?.length ?? 0, 12);
+    }
+
+    // The same failure, on members: member_industries gave PostgREST a second
+    // members ↔ industries relationship, so a bare `industry:industries(...)`
+    // embed is ambiguous. Mirrors memberDirectory's select in queries.ts.
+    const { data: dir, error: dirErr } = await anon
+      .from("members")
+      .select("id, slug, name, industry:industries!members_industry_id_fkey(slug, name), member_industries(industry:industries(slug))")
+      .eq("status", "active")
+      .order("name")
+      .range(0, 11);
+    if (dirErr) {
+      allOk = false;
+      console.log(`  ✗ ${"member directory query".padEnd(30)} ${dirErr.code ?? ""} ${dirErr.message}`);
+      if (dirErr.details) console.log(`      details: ${dirErr.details}`);
+    } else {
+      const ok = (dir?.length ?? 0) > 0;
+      if (!ok) allOk = false;
+      console.log(`  ${ok ? "✓" : "✗"} ${"member directory query".padEnd(30)} ${String(dir?.length ?? 0).padStart(6)} rows`);
     }
   }
 

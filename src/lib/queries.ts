@@ -26,7 +26,10 @@ export type StoryCard = {
 // an unqualified embed is ambiguous and fails the whole query with PGRST201.
 // Every embed of members *from stories* must name the FK. Embeds from videos,
 // events, placements and adverts still have one path and are unaffected.
-const STORY_CARD = "id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member:members!stories_member_id_fkey(slug, name, logo_path, status)";
+// `excerpt` here is the story_summary computed field (migration
+// 20261015000004): the author's summary, else the opening of the body — so every
+// card, link preview and newsletter has one. The forms read the raw column.
+const STORY_CARD = "id, slug, title, excerpt:story_summary, cover_path, cover_focus, published_at, is_member_news, member:members!stories_member_id_fkey(slug, name, logo_path, status)";
 
 /**
  * Industry slug → industries.id, for the listing filters below.
@@ -114,10 +117,48 @@ export async function storyBySlug(slug: string) {
   const db = publicDb();
   const { data } = await db
     .from("stories")
-    .select(`${STORY_CARD}, member_id, body, categories:story_categories(category:categories(slug, name))`)
+    .select(`${STORY_CARD}, member_id, body, social_posts, categories:story_categories(category:categories(slug, name))`)
     .eq("status", "published")
     .eq("slug", slug)
     .single();
+  return data;
+}
+
+/**
+ * The members a published story features, primary first then by name (Jas
+ * 13/10 item 12) — the tiles beside the article. publicDb on purpose: RLS
+ * returns pairings only for published stories, and nulls the embed for an
+ * archived or lapsed member, so what's left is what may be linked;
+ * isMemberLinkable is the belt to that brace.
+ */
+export async function storyMembers(storyId: string, primaryId: string | null) {
+  const { data } = await publicDb()
+    .from("story_members")
+    .select("member:members(id, slug, name, logo_path, website, status)")
+    .eq("story_id", storyId);
+  return (data ?? [])
+    .map((r) => r.member)
+    .filter(isMemberLinkable)
+    .sort((a, b) => (a.id === primaryId ? -1 : b.id === primaryId ? 1 : a.name.localeCompare(b.name)));
+}
+
+/**
+ * A story in ANY status, for /preview/story/[id] (Jas 13/10 items 10/15). The
+ * service role is the point — RLS hides unpublished stories from everyone but
+ * the owning member, and an admin previewing a draft is neither. So this must
+ * only ever be called after lib/story-preview canPreviewStory has said yes.
+ *
+ * Same projection as storyBySlug plus what the permission check needs, and the
+ * member embed carries `archived_at`: serviceDb skips the RLS that nulls an
+ * archived member for anon reads, so isMemberLinkable needs the column to judge.
+ */
+export async function storyForPreview(id: string) {
+  const { data } = await serviceDb()
+    .from("stories")
+    // one literal, not a concatenation: supabase-js infers the row type from it
+    .select("id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member_id, body, social_posts, status, source, member_draft, member:members!stories_member_id_fkey(slug, name, logo_path, status, archived_at), categories:story_categories(category:categories(slug, name))")
+    .eq("id", id)
+    .maybeSingle();
   return data;
 }
 
@@ -144,7 +185,7 @@ export async function storyCategories() {
   return data ?? [];
 }
 
-/** The industry list — industry bar, industry pages, directory filter. */
+/** The industry list (Jas's ten) — industry bar, industry pages, directory filter. */
 export async function industries() {
   const db = publicDb();
   const { data } = await db.from("industries").select("slug, name").order("sort_order");
@@ -170,9 +211,9 @@ export const industryBySlug = cache(async (slug: string) => {
 });
 
 /**
- * Fixed membership-type tags (GAPS A8.1) — distinct from `categories`: a
- * member's industry is a single FK, but a member can hold several of these
- * (Equipment Supplier, Service Provider, …), so it's a join table instead.
+ * Fixed membership-type tags (GAPS A8.1) — distinct from `categories` and from
+ * industries. A member can hold several (Equipment Supplier, Service Provider,
+ * …), so it's a join table.
  */
 export async function membershipTypes() {
   const db = publicDb();
@@ -183,8 +224,8 @@ export async function membershipTypes() {
 
 /**
  * The Services vocabulary — the live site's /find-a-member "Services" filter,
- * many per member. Distinct from both the single industry (`industries`)
- * and the fixed membership-type tags above.
+ * many per member. Distinct from both the industries (Jas's ten) and the fixed
+ * membership-type tags above.
  */
 export async function services() {
   const db = publicDb();
@@ -312,7 +353,9 @@ export async function activePlacements() {
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await db
     .from("placements")
-    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, status, archived_at, industry:industries(name)), machine:featured_machines(id, name, description, image_path, external_url, video_url, status, member:members(slug, name, logo_path, status, archived_at))")
+    .select("kind, grid_position, config, member:members(slug, name, logo_path, description, address, status, archived_at, industry:industries!members_industry_id_fkey(name)), machine:featured_machines(id, name, description, image_path, external_url, video_url, status, member:members(slug, name, logo_path, status, archived_at))")
+    // an unpaid, held placement isn't on the site until it's paid (6 Oct)
+    .eq("awaiting_payment", false)
     .lte("starts_on", today)
     .gte("ends_on", today);
   return (data ?? []).map((p) => ({
@@ -351,6 +394,7 @@ export async function activeTakeover(): Promise<ActiveTakeover | null> {
     .from("placements")
     .select("config, member:members(slug, status, archived_at)")
     .eq("kind", "takeover")
+    .eq("awaiting_payment", false)
     .lte("starts_on", today)
     .gte("ends_on", today)
     .maybeSingle();
@@ -528,10 +572,11 @@ export function ilikeTerm(raw: string): string {
 }
 
 /**
- * The three member taxonomies are genuinely different things (docs/ask-jas.md):
- * `industries` is the single industry per member, `services` is the many-to-many
- * Services vocabulary from the live /find-a-member filter, and `membershipTypes`
- * is the separate fixed 5-item list. `services` used to resolve against
+ * The three member taxonomies are genuinely different things: `industries` is
+ * Jas's ten-item list (a member can be in several, via member_industries; their
+ * primary is members.industry_id), `services` is the many-to-many Services
+ * vocabulary from the live /find-a-member filter, and `membershipTypes` is the
+ * separate fixed 5-item list. `services` used to resolve against
  * membership_types, so the directory's "Services" filter was really a
  * membership-type filter under a wrong label.
  */
@@ -541,9 +586,9 @@ type MemberFilterOpts = { industries?: string[]; services?: string[]; membership
 async function membersLinkedVia(
   db: ReturnType<typeof publicDb>,
   slugs: string[],
-  table: "services" | "membership_types",
-  join: "member_services" | "member_membership_types",
-  fk: "service_id" | "membership_type_id",
+  table: "industries" | "services" | "membership_types",
+  join: "member_industries" | "member_services" | "member_membership_types",
+  fk: "industry_id" | "service_id" | "membership_type_id",
 ) {
   const { data: terms } = await db.from(table).select("id").in("slug", slugs);
   const ids = (terms ?? []).map((t) => t.id);
@@ -554,17 +599,20 @@ async function membersLinkedVia(
 }
 
 /**
- * Resolves the industry (single FK, OR-matched across the selected slugs) plus
- * the two many-to-many filters to id lists memberDirectory and memberPins can
- * both apply with `.in()`. Null means "not filtering on this axis"; an empty
- * array means "filtered to nothing matches". The two member-id lists are
- * intersected, so services AND membership types both narrow the result.
+ * Resolves the three many-to-many filters (each OR-matched across its selected
+ * slugs) to one member-id list memberDirectory and memberPins can both apply
+ * with `.in()`. Null means "not filtering at all"; an empty array means
+ * "filtered to nothing matches". The axes are intersected, so industries AND
+ * services AND membership types all narrow the result.
+ *
+ * Industries match every industry a member is in, not only their primary — a
+ * member offering welding and bending is listed under both.
  */
 async function memberFilterIds(db: ReturnType<typeof publicDb>, opts: MemberFilterOpts) {
-  const [indRows, serviceIds, typeIds] = await Promise.all([
+  const axes = await Promise.all([
     opts.industries?.length
-      ? db.from("industries").select("id").in("slug", opts.industries)
-      : Promise.resolve({ data: null }),
+      ? membersLinkedVia(db, opts.industries, "industries", "member_industries", "industry_id")
+      : Promise.resolve(null),
     opts.services?.length
       ? membersLinkedVia(db, opts.services, "services", "member_services", "service_id")
       : Promise.resolve(null),
@@ -572,17 +620,14 @@ async function memberFilterIds(db: ReturnType<typeof publicDb>, opts: MemberFilt
       ? membersLinkedVia(db, opts.membershipTypes, "membership_types", "member_membership_types", "membership_type_id")
       : Promise.resolve(null),
   ]);
-  const industryIds = indRows.data ? indRows.data.map((i) => i.id) : null;
-
-  const memberIds =
-    serviceIds && typeIds
-      ? serviceIds.filter((id) => typeIds.includes(id))
-      : serviceIds ?? typeIds;
-  return { industryIds, serviceMemberIds: memberIds };
+  return axes.reduce<string[] | null>(
+    (acc, ids) => (ids === null ? acc : acc === null ? ids : acc.filter((id) => ids.includes(id))),
+    null,
+  );
 }
 
 // members.id is a uuid — this never matches a real row, so an empty
-// serviceMemberIds list correctly filters the result to nothing.
+// member-id list correctly filters the result to nothing.
 const NO_MATCH_UUID = "00000000-0000-0000-0000-000000000000";
 
 export async function memberDirectory(opts: MemberFilterOpts & { q?: string; limit?: number; offset?: number } = {}) {
@@ -592,18 +637,17 @@ export async function memberDirectory(opts: MemberFilterOpts & { q?: string; lim
   if (opts.q?.trim() && !term) return { members: [], total: 0 };
 
   const db = publicDb();
-  const { industryIds, serviceMemberIds } = await memberFilterIds(db, opts);
+  const memberIds = await memberFilterIds(db, opts);
   // `.order("name")` is NOT the display order — it pins the shuffle's input so
   // the same seed always permutes the same sequence (a DB with no ORDER BY may
   // return rows in a different order per query, which would break pagination).
   let q = db
     .from("members")
-    .select("id, slug, name, logo_path, description, address, website, phone, contact_email, lat, lng, industry:industries(slug, name)", { count: "exact" })
+    .select("id, slug, name, logo_path, description, address, website, phone, contact_email, lat, lng, industry:industries!members_industry_id_fkey(slug, name)", { count: "exact" })
     .eq("status", "active")
     .order("name");
-  if (industryIds) q = q.in("industry_id", industryIds.length ? industryIds : [-1]);
-  if (serviceMemberIds) q = q.in("id", serviceMemberIds.length ? serviceMemberIds : [NO_MATCH_UUID]);
-  // Separate PostgREST params are ANDed, so this is industry AND services AND (name OR description).
+  if (memberIds) q = q.in("id", memberIds.length ? memberIds : [NO_MATCH_UUID]);
+  // Separate PostgREST params are ANDed, so this is the taxonomy filters AND (name OR description).
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data, count } = await q;
 
@@ -633,10 +677,9 @@ export async function memberPins(opts: MemberFilterOpts & { q?: string } = {}) {
   const term = ilikeTerm(opts.q ?? "");
   if (opts.q?.trim() && !term) return { members: [], total: 0 };
   const db = publicDb();
-  const { industryIds, serviceMemberIds } = await memberFilterIds(db, opts);
+  const memberIds = await memberFilterIds(db, opts);
   let q = db.from("members").select("slug, name, lat, lng", { count: "exact" }).eq("status", "active").order("name");
-  if (industryIds) q = q.in("industry_id", industryIds.length ? industryIds : [-1]);
-  if (serviceMemberIds) q = q.in("id", serviceMemberIds.length ? serviceMemberIds : [NO_MATCH_UUID]);
+  if (memberIds) q = q.in("id", memberIds.length ? memberIds : [NO_MATCH_UUID]);
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data, count } = await q;
   return { members: data ?? [], total: count ?? 0 };
@@ -659,22 +702,25 @@ export async function memberFacets(opts: MemberFilterOpts & { q?: string }): Pro
   if (opts.q?.trim() && !term) return computeFacets([], selection);
 
   const db = publicDb();
-  const [members, serviceLinks, typeLinks] = await Promise.all([
-    allRows<{ id: string; industry: { slug: string } | null }>((from, to) => {
-      let q = db.from("members").select("id, industry:industries(slug)").eq("status", "active").order("id");
+  const [members, industryLinks, serviceLinks, typeLinks] = await Promise.all([
+    allRows<{ id: string }>((from, to) => {
+      let q = db.from("members").select("id").eq("status", "active").order("id");
       if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
       return q.range(from, to);
     }),
+    allRows<{ member_id: string; industry: { slug: string } | null }>((from, to) =>
+      db.from("member_industries").select("member_id, industry:industries(slug)").order("member_id").order("industry_id").range(from, to)),
     allRows<{ member_id: string; service: { slug: string } | null }>((from, to) =>
       db.from("member_services").select("member_id, service:services(slug)").order("member_id").order("service_id").range(from, to)),
     allRows<{ member_id: string; type: { slug: string } | null }>((from, to) =>
       db.from("member_membership_types").select("member_id, type:membership_types(slug)").order("member_id").order("membership_type_id").range(from, to)),
   ]);
 
-  const byMember = new Map<string, FacetMember & { services: Set<string>; types: Set<string> }>();
-  for (const m of members) byMember.set(m.id, { industry: m.industry?.slug ?? null, services: new Set(), types: new Set() });
+  const byMember = new Map<string, FacetMember & { industries: Set<string>; services: Set<string>; types: Set<string> }>();
+  for (const m of members) byMember.set(m.id, { industries: new Set(), services: new Set(), types: new Set() });
   // Links to members outside the visible set (archived, lapsed, keyword miss)
   // simply find no entry and drop out.
+  for (const l of industryLinks) if (l.industry) byMember.get(l.member_id)?.industries.add(l.industry.slug);
   for (const l of serviceLinks) if (l.service) byMember.get(l.member_id)?.services.add(l.service.slug);
   for (const l of typeLinks) if (l.type) byMember.get(l.member_id)?.types.add(l.type.slug);
   return computeFacets([...byMember.values()], selection);
@@ -714,18 +760,22 @@ export async function memberBySlug(slug: string, opts: { includeArchived?: boole
   const { data: member } = await db
     .from("members")
     .select(
-      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, archived_at, industry:industries(name), member_membership_types(membership_type:membership_types(slug, name)), member_services(service:services(slug, name))",
+      "id, slug, name, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, archived_at, industry:industries!members_industry_id_fkey(name), member_membership_types(membership_type:membership_types(slug, name)), member_services(service:services(slug, name))",
     )
     .in("status", PUBLIC_MEMBER_STATUSES)
     .eq("slug", slug)
     .single();
   if (!member) return null;
   const [{ data: stories }, { data: videos }] = await Promise.all([
+    // Every published story featuring this member — as primary or tagged
+    // alongside others (Jas 13/10 item 12) — through story_members, which
+    // holds the primary too. An inner embed keeps it one round trip with
+    // ordering and paging still done by the database.
     db
       .from("stories")
-      .select(STORY_CARD)
+      .select(`${STORY_CARD}, story_members!inner(member_id)`)
       .eq("status", "published")
-      .eq("member_id", member.id)
+      .eq("story_members.member_id", member.id)
       .order("published_at", { ascending: false }),
     // The member's own published videos, shown after the company video on
     // their page (GAPS A8.5) — already approval-gated, so no new table.
@@ -785,7 +835,7 @@ export async function newsletterBySlug(slug: string) {
   if (!issue) return null;
   const { data: items } = await publicDb()
     .from("newsletter_items")
-    .select("position, story:stories(slug, title, excerpt, cover_path, cover_focus)")
+    .select("position, story:stories(slug, title, excerpt:story_summary, cover_path, cover_focus)")
     .eq("issue_id", issue.id)
     .order("position");
   return { ...issue, items: items ?? [] };

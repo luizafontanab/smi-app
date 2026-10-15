@@ -88,6 +88,9 @@ async function unsubscribe(email: string, why: string): Promise<void> {
   const next = applyOptIn(contact, { newsletter: "unsubscribed", reOptIn: false });
   await db.from("contacts").update(next).eq("id", contact.id);
   console.log(`[resend-webhook] unsubscribed ${email} (${why})`);
+  // …and Bigin, so the office's copy of the list agrees (never throws)
+  const { syncContactToCrm } = await import("@/lib/adapters/crm");
+  await syncContactToCrm(contact.id);
 }
 
 export async function POST(request: NextRequest) {

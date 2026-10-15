@@ -7,6 +7,7 @@ import { getLayout } from "@/lib/blocks/layouts";
 import type { PageType } from "@/lib/blocks/schema";
 import { cookies } from "next/headers";
 import { defaultVariant, isVariant, VARIANT_COOKIE } from "@/lib/variant";
+import { THEME_SWITCHER_ENABLED } from "@/lib/theme-switcher-flag";
 import { clearMyVariantOverride, resetLayout, saveHomeSections, saveLayout, saveSiteVariant } from "../actions";
 import { HOME_SECTION_LABELS, LOCKED_VISIBLE } from "@/lib/home-sections";
 import { homeSectionsSetting } from "@/lib/queries";
@@ -39,6 +40,10 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
   const myChoice = cookieStore.get(VARIANT_COOKIE)?.value;
   const myOverride = isVariant(myChoice) && myChoice !== siteDefault ? myChoice : null;
   const VARIANT_LABEL = { forge: "Forge", grid: "Grid" } as const;
+  // With the switcher off, the card only surfaces as a way back to grid: a
+  // database whose row still says forge, or a browser holding an old preview
+  // cookie, would otherwise be stuck there with no control in sight.
+  const showDesignCard = THEME_SWITCHER_ENABLED || siteDefault !== "grid" || myOverride !== null;
 
   const [layout, overrideRow, entityLabel] = await Promise.all([
     getLayout(type, entity),
@@ -74,6 +79,7 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
 
       {/* A28 / GAPS A8.2: the design every visitor gets. The floating switcher
           only ever changed the admin's own browser. */}
+      {showDesignCard && (
       <section aria-labelledby="site-design" className="mt-4 rounded-xl bg-white p-4 shadow-sm">
         <h2 id="site-design" className="font-bold text-ink">Homepage design</h2>
         <p className="mt-1 text-sm text-graphite">
@@ -98,6 +104,7 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
           </form>
         )}
       </section>
+      )}
 
       {/* A13 / GAPS A1.7: the grid homepage's sections below the fold. */}
       <section id="home-sections" aria-labelledby="home-sections-title" className="mt-4 rounded-xl bg-white p-4 shadow-sm">

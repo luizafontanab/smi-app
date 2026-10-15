@@ -8,6 +8,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { PHASE_LABELS } from "@/components/console/advert-formats";
+import { InvoicePanel } from "@/components/console/InvoicePanel";
 import { decideArtworkSwap, decideAdvertBooking, endBooking, proposeArtworkSwap, renewBooking } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
   if (!UUID_RE.test(id)) notFound();
   const booking = await must(
     db.from("advert_bookings")
-      .select("*, advert:adverts(id, name, format, desktop_path, mobile_path, member:members(name)), product:advert_products(short_name)")
+      .select("*, advert:adverts(id, name, format, desktop_path, mobile_path, member:members(name))")
       .eq("id", id)
       .maybeSingle(),
     "console/adverts booking",
@@ -70,9 +71,12 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
       <h1 className="mt-1 text-xl font-bold text-ink">{booking.advert?.name}</h1>
       <p className="mt-1 text-sm text-graphite">
         {booking.advert?.member?.name} · {booking.advert?.format.replace(/_/g, " ")}
-        {booking.product?.short_name ? ` · sold as ${booking.product.short_name}` : ""}
+        {booking.price_pennies != null ? ` · £${(booking.price_pennies / 100).toFixed(2)}` : " · unpriced"}
       </p>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {/* A bundle part is paid through its bundle's invoice, not one of its own. */}
+      <InvoicePanel target={booking.bundle_id ? { bundle_id: booking.bundle_id } : { advert_booking_id: booking.id }} returnTo={`/console/adverts/${booking.id}`} />
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -130,7 +134,20 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
           <form action={decideAdvertBooking} className="mt-3">
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="decision" value="approve" />
-            <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve &amp; schedule</button>
+            {/* A member's request arrives unpriced; this is where the run gets
+                its price and the invoice is raised off it (fix-list 77). */}
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block text-sm">Price (£)
+                <input
+                  name="price_pounds"
+                  inputMode="decimal"
+                  placeholder="blank = invoice by hand"
+                  defaultValue={booking.price_pennies != null ? (booking.price_pennies / 100).toFixed(2) : ""}
+                  className="mt-1 block w-44 rounded border px-3 py-1.5"
+                />
+              </label>
+              <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve &amp; schedule</button>
+            </div>
           </form>
           <form action={decideAdvertBooking} className="mt-3 flex gap-2">
             <input type="hidden" name="id" value={id} />
@@ -162,9 +179,10 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
         </section>
       )}
 
-      {(phase === "live" || phase === "upcoming") && (
+      {(phase === "live" || phase === "upcoming" || phase === "awaiting_payment") && (
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="font-bold text-ink">End this run early</h2>
+          <h2 className="font-bold text-ink">{phase === "awaiting_payment" ? "Call off this run" : "End this run early"}</h2>
+          {phase === "awaiting_payment" && <p className="mt-1 text-xs text-graphite">It hasn&apos;t been paid for; ending it frees its dates and voids its unpaid invoice.</p>}
           <p className="mt-1 text-xs text-graphite">The booked dates are kept on the record; the advert comes down immediately.</p>
           <form action={endBooking} className="mt-3 flex gap-2">
             <input type="hidden" name="id" value={id} />

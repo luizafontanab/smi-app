@@ -145,8 +145,30 @@ describe("saveFeaturedMemberPlacement", () => {
     const placementsBuilder = queryBuilder(dbOk(null, 1));
     db({ placements: () => placementsBuilder });
 
-    await saveFeaturedMemberPlacement(form({ member_id: "m1", starts_on: "2026-09-01", ends_on: "2026-09-30" }));
+    await expect(saveFeaturedMemberPlacement(form({ member_id: "m1", starts_on: "2026-09-01", ends_on: "2026-09-30" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/adverts/featured-member?saved=1");
 
     expect(placementsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "featured_member", member_id: "m1" }));
+  });
+
+  // fix-list 76: a booked slot can be edited.
+  it("edits a slot in place, not counting it against its own cap", async () => {
+    const placementsBuilder = queryBuilder(dbOk(null, FEATURED_SLOTS.cap - 1));
+    db({ placements: () => placementsBuilder });
+
+    await expect(saveFeaturedMemberPlacement(form({ id: "pl1", member_id: "m2", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/adverts/featured-member/pl1?saved=1");
+
+    expect(placementsBuilder.neq).toHaveBeenCalledWith("id", "pl1");
+    expect(placementsBuilder.insert).not.toHaveBeenCalled();
+    expect(placementsBuilder.update).toHaveBeenCalledWith({ member_id: "m2", starts_on: "2026-10-01", ends_on: "2026-10-31", price_pennies: null });
+    expect(placementsBuilder.eq).toHaveBeenCalledWith("id", "pl1");
+  });
+
+  it("sends an edit that would overfill the term back to the edit page", async () => {
+    db({ placements: () => queryBuilder(dbOk(null, FEATURED_SLOTS.cap)) });
+
+    await expect(saveFeaturedMemberPlacement(form({ id: "pl1", member_id: "m1", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/featured-member\/pl1\?error=/);
   });
 });

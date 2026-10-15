@@ -21,25 +21,28 @@ ticked `[x]` items.
 ## 1 · Member taxonomies — the highest-risk item
 
 The live site has three separate member lists and the WordPress export only
-contains two of them, so one is currently **inferred**.
+contains two of them. The third, Industries, now comes from Jas (12 Oct 2026):
+his list, and his mapping from the other two onto it.
 
-- [ ] **1.1 — Validate the Industries list and every member's industry.**
-      The 10-item list (`ask-jas.md` § Industries) drives the industry bar,
-      `/industry/*` pages, and the directory's industry filter — one per member.
-      **It exists nowhere in the WordPress database.** Verified against the
-      original dump: the only member taxonomies are `best-service` (69 Services
-      terms) and `best-level` (4 legacy Sector terms). There is no `industry`
-      taxonomy and no ACF field.
-      So every member's industry is **derived from their Services tags** by
-      `scripts/lib/industry-map.ts` — a documented dev assumption, not data.
-      About 93% of members resolve; the rest have no industry at all.
-      **Check:** is the 10-item list right, and is each member in the right one?
-      **If wrong:** the industry bar, every `/industry/*` page and the directory
-      filter all mis-sort members, and ~7% of members are missing from them.
+- [ ] **1.1 — Review what Jas's industry mapping left without an industry.**
+      The ten industries are now Jas's own (his spreadsheet, 12 Oct 2026), and a
+      member can be in several, with one primary. Assignments come from his
+      mapping of every Service and news category to an industry
+      (`scripts/lib/industry-map.ts`), applied by `pnpm industries:backfill`
+      (HUMAN-TODO 26.1). Against the full export that leaves **8 of 123 members,
+      ~1,100 stories tagged only "Industry News", and all 53 events** with no
+      industry — events carry no member in the export.
+      **Check:** run `pnpm industries:backfill:prod -- --dry-run --report` and send
+      Jas the two lists; he asked to be told ("I'll let you know later if any
+      ends up without an industry"). Spot-check a few members' primary industry
+      while you're there.
+      **If wrong:** those members and stories are missing from the industry bar,
+      every `/industry/*` page and the directory's industry filter.
 
 - [ ] **1.2 — Validate the Services list.** The export carries 69 terms; the
-      live `/find-a-member` dropdown shows 55. `ask-jas.md:85` already flags
-      apparent duplicates added at different times — "Tool & Die" vs "Tool and
+      live `/find-a-member` dropdown shows 55. The old ask-jas Services section
+      (`git show 2c0a3cc^:docs/ask-jas.md`) flagged apparent duplicates added at
+      different times — "Tool & Die" vs "Tool and
       Die", "Tube Bending and Pipe Fabrication" vs "Tube Bending/ Manipulation
       Services", two Additive Manufacturing variants, two Coil Processing
       variants. **Check:** which of each pair is current, and should the list be
@@ -56,9 +59,11 @@ contains two of them, so one is currently **inferred**.
       members belong? **If wrong:** those members are invisible to the
       membership-type filter.
 
-- [ ] **1.4 — Confirm "Software" appearing in two lists is intentional.** It is
-      both a membership type and an industry (`ask-jas.md:101`). **Check:** is
-      that deliberate, or a naming collision to resolve?
+- [ ] **1.4 — Confirm the Software / IT overlap between lists is intentional.**
+      Jas's industry "Software & IT Services" now sits beside two membership
+      types, "Software" and "IT Services" (the old ask-jas note:
+      `git show 2c0a3cc^:docs/ask-jas.md`). **Check:** is that deliberate, or a
+      naming collision to resolve?
 
 ## 2 · Imported content spot-check
 

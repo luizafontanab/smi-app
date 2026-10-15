@@ -38,11 +38,12 @@ export default async function MemberStatsPage() {
   const yearAgoDay = yearAgo.slice(0, 10);
   const thirtyDaysAgo = new Date(now - 30 * 864e5).toISOString().slice(0, 10);
 
-  const [pageViewsMonth, pageViewsTrend, myStories, storyViews, myAdverts, consent] = await Promise.all([
+  const [pageViewsMonth, pageViewsTrend, myStories, myAdverts, consent] = await Promise.all([
     db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "member_page_view").eq("member_id", user.memberId).gte("occurred_at", monthAgo),
     db.from("rollups_daily").select("day, count").eq("kind", "member_page_view").eq("member_id", user.memberId).gte("day", yearAgoDay),
-    db.from("stories").select("id").eq("member_id", user.memberId).eq("status", "published"),
-    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "story_view").eq("member_id", user.memberId).gte("occurred_at", monthAgo),
+    // Every published story featuring this member — primary or tagged alongside
+    // others (Jas 13/10 item 12). story_members holds the primary too.
+    db.from("stories").select("id, story_members!inner(member_id)").eq("story_members.member_id", user.memberId).eq("status", "published"),
     db.from("adverts").select("id").eq("member_id", user.memberId),
     db.from("consent_stats").select("total_requests, consented_requests").gte("day", thirtyDaysAgo),
   ]);
@@ -54,11 +55,22 @@ export default async function MemberStatsPage() {
 
   // Content reach (GAPS A9.2): all-time totals, counted exactly (head counts,
   // so no max_rows truncation) — the cumulative figure Gap 6 says can only grow.
-  const [allTimeImpressions, allTimeStoryViews, allTimeVideoViews, allTimeNewsletterRows, videoViewsTrend] = await Promise.all([
+  // Story views are counted by story, not by analytics_events.member_id: that
+  // column is stamped with the primary member at view time, so it never saw a
+  // co-featured member. Counting by the stories a member is tagged in credits
+  // every member a story features — including views from before they were
+  // tagged, and following any later change of tags.
+  const storyViewCount = (since?: string) => {
+    if (!storyIds.length) return Promise.resolve({ count: 0 });
+    const q = db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "story_view").in("story_id", storyIds);
+    return since ? q.gte("occurred_at", since) : q;
+  };
+  const [allTimeImpressions, allTimeStoryViews, storyViews, allTimeVideoViews, allTimeNewsletterRows, videoViewsTrend] = await Promise.all([
     advertIds.length
       ? db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "ad_impression").in("advert_id", advertIds)
       : Promise.resolve({ count: 0 }),
-    db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "story_view").eq("member_id", user.memberId),
+    storyViewCount(),
+    storyViewCount(monthAgo),
     db.from("analytics_events").select("*", { count: "exact", head: true }).eq("kind", "video_view").eq("member_id", user.memberId),
     advertIds.length
       ? db.from("newsletter_ads").select("advert_id, issue:newsletter_issues!inner(id, opens_count, status)").in("advert_id", advertIds).eq("issue.status", "sent")

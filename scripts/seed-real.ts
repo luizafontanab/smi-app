@@ -35,6 +35,8 @@
  *        [--taxonomies-only] repair industries/services/membership-type links on an
  *                          already-seeded DB — idempotent, writes no content or media
  *        [--dry-run]       with --taxonomies-only: print the changes, write nothing
+ *        [--overwrite]     with --taxonomies-only: recompute industries even though
+ *                          member_industries already has rows (discards hand edits)
  *        [--remote]        allow a non-localhost target; also lifts the story cap
  */
 import { createClient } from "@supabase/supabase-js";
@@ -48,8 +50,9 @@ import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
 import { listAllObjects } from "./lib/storage-list";
-import { INDUSTRY_ROWS, industrySlug } from "./lib/industries";
-import { industryForServices } from "./lib/industry-map";
+import { INDUSTRY_ROWS } from "./lib/industries";
+import { primaryIndustry } from "./lib/industry-map";
+import { runIndustryBackfill } from "./lib/industry-backfill";
 import { selectMembers } from "./lib/select-members";
 import { AUTHORED_EVENT_COORDS } from "./lib/event-coords";
 import { planLegacyAdverts, type LegacyAdvertRow } from "./lib/legacy-adverts";
@@ -132,6 +135,9 @@ const DEMO_ROWS_ONLY = process.argv.includes("--demo-rows");
 const NO_DEMO_ROWS = process.argv.includes("--no-demo-rows");
 // --dry-run: print what --taxonomies-only would change and write nothing.
 const DRY_RUN = process.argv.includes("--dry-run");
+// --overwrite: let --taxonomies-only recompute industries on a target that
+// already has member_industries rows — see runIndustryBackfill's guard.
+const OVERWRITE = process.argv.includes("--overwrite");
 
 const seed = async <T>(name: string): Promise<T> =>
   JSON.parse(await readFile(path.join(EXTRACT_DIR, "seed", name), "utf8"));
@@ -244,46 +250,47 @@ async function seedAdverts(
     await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
 
-  // Rate card (A2.7): sample rates so this seed path also has priced
-  // products, not just the synthetic scripts/seed.ts.
-  await db.from("advert_products").insert([
-    { short_name: "Homepage banner", format: "banner", cap: 3, rate_pennies: 65000 },
-    { short_name: "Homepage banner (narrow)", format: "banner_narrow", cap: 3, rate_pennies: 65000 },
-    { short_name: "Skyscraper", format: "skyscraper", cap: 3, rate_pennies: 55000 },
-    { short_name: "MPU box", format: "mpu", cap: 3, rate_pennies: 45000 },
-    { short_name: "In-feed card", format: "in_feed", cap: 3, rate_pennies: 40000 },
-    { short_name: "Supplier logo", format: "supplier_logo", cap: 8, rate_pennies: 10000 },
-    { short_name: "Newsletter banner", format: "newsletter_banner", cap: 3, rate_pennies: 35000 },
-    { short_name: "Association logo", format: "association_logo", cap: 3, rate_pennies: 15000 },
-  ]);
+  // Sample prices (fix-list 77): a run carries its own price now that the rate
+  // card is gone — so local revenue and booking pages have numbers to show.
+  // Bundle parts are left unpriced; the bundle carries their price.
+  const SAMPLE_PRICES: Record<string, number> = {
+    banner: 65000, banner_narrow: 65000, skyscraper: 55000, mpu: 45000, in_feed: 40000, supplier_logo: 10000,
+  };
+  for (const [format, price_pennies] of Object.entries(SAMPLE_PRICES)) {
+    const { data: ads } = await db.from("adverts").select("id").eq("format", format);
+    const ids = (ads ?? []).map((a) => a.id);
+    if (ids.length) await db.from("advert_bookings").update({ price_pennies }).in("advert_id", ids).is("bundle_id", null);
+  }
 }
 
 /**
- * Insert members with everything the full seed gives a member: derived
- * industry, Services links and membership types. Shared by the full run and by
- * the local advertiser top-up in --legacy-adverts-only, so a member added
- * later is not a thinner row than one added by a fresh seed.
+ * Insert members with everything the full seed gives a member: Services links
+ * and membership types. Shared by the full run and by the local advertiser
+ * top-up in --legacy-adverts-only, so a member added later is not a thinner
+ * row than one added by a fresh seed. Industries are not set here: both
+ * callers run runIndustryBackfill afterwards, which derives them from the
+ * member_services rows written below.
  * Returns wp_member_id → uuid for the rows inserted.
  */
 async function insertMembers(
   memberRows: (Record<string, unknown> & { wp_member_id: number; slug: string })[],
   deps: {
-    industryId: (slug: string) => string | null;
     serviceId: Map<string, string>;
     servicesOf: (wp: number) => string[];
     sectorsOf: (wp: number) => string[];
   },
 ): Promise<Map<number, string>> {
-  const { industryId, serviceId, servicesOf, sectorsOf } = deps;
+  const { serviceId, servicesOf, sectorsOf } = deps;
   const wpToUuid = new Map<number, string>();
   for (const rows of chunk(memberRows, 100)) {
     // testimonials dropped product-wide (migration 20260902000003) — the extract's
     // rows still carry the field, so it must be excluded rather than spread in.
-    // category_slugs are the member's SERVICES (they seed member_services below);
-    // industry_id is their single derived industry.
-    const insert = rows.map(({ wp_member_id, category_slugs, testimonials, ...r }) => {
-      const industry = industryForServices(servicesOf(wp_member_id));
-      return { ...r, industry_id: industry ? industryId(industrySlug(industry)) : null };
+    // category_slugs are the member's SERVICES (they seed member_services below),
+    // and wp_member_id is the extract's key — neither is a members column.
+    const insert = rows.map((row) => {
+      const r: Record<string, unknown> = { ...row };
+      for (const key of ["wp_member_id", "category_slugs", "testimonials"]) delete r[key];
+      return r;
     });
     const { data, error } = await db.from("members").insert(insert).select("id, slug");
     if (error) throw error;
@@ -686,9 +693,6 @@ async function backfillTaxonomies(
     const { error } = await db.from("industries").upsert(INDUSTRY_ROWS, { onConflict: "slug" });
     if (error) throw error;
   }
-  const { data: inds, error: indErr } = await db.from("industries").select("id, slug");
-  if (indErr) throw indErr;
-  const industryId = new Map((inds ?? []).map((i) => [i.slug, i.id]));
 
   // 2. The Services vocabulary — the extract's member-kind category rows.
   const serviceRows = catRows.filter((c) => c.kind === "member").map(({ slug, name }) => ({ slug, name }));
@@ -714,26 +718,7 @@ async function backfillTaxonomies(
   if (missingFromTarget.length) say(`  ⚠ in the extract but NOT in the target (${missingFromTarget.length}): ${sample(missingFromTarget)}`);
   if (unknownInTarget.length) say(`  ⚠ in the target but NOT in the extract (${unknownInTarget.length}, left untouched): ${sample(unknownInTarget)}`);
 
-  // 4. Each member's derived industry. DEV ASSUMPTION, not source data — see
-  //    scripts/lib/industry-map.ts and docs/GO-LIVE.md 1.1.
-  const assignments = matched.map((m) => {
-    const industry = industryForServices(servicesOf(m.wp_member_id));
-    return { id: idBySlug.get(m.slug)!, slug: m.slug, industry_id: industry ? industryId.get(industrySlug(industry)) ?? null : null };
-  });
-  const resolved = assignments.filter((a) => a.industry_id != null);
-  say(`— member industries: ${resolved.length} resolved, ${assignments.length - resolved.length} left null`);
-  if (!DRY_RUN) {
-    for (const batch of chunk(assignments, 50)) {
-      await Promise.all(
-        batch.map(async (a) => {
-          const { error } = await db.from("members").update({ industry_id: a.industry_id }).eq("id", a.id);
-          if (error) throw error;
-        }),
-      );
-    }
-  }
-
-  // 5. Services per member, and membership types from the legacy `sector`
+  // 4. Services per member, and membership types from the legacy `sector`
   //    field. Only 2 of the 4 sector terms have an equivalent in the 5-item
   //    list (docs/ask-jas.md); the rest stay unlinked rather than force-fitted.
   const { data: mTypes, error: mtErr } = await db.from("membership_types").select("id, slug");
@@ -764,27 +749,10 @@ async function backfillTaxonomies(
     }
   }
 
-  // 6. Content inherits from its member, the same rule migration
-  //    20260909000002 applied — re-run so the industries just assigned in step
-  //    4 reach the stories/videos/events that were null when it ran.
-  const withIndustry = resolved.filter((a) => a.industry_id != null);
-  let touched = 0;
-  for (const a of withIndustry) {
-    for (const table of ["stories", "videos", "events"] as const) {
-      const { count } = await db
-        .from(table)
-        .select("id", { count: "exact", head: true })
-        .eq("member_id", a.id)
-        .is("industry_id", null);
-      if (!count) continue;
-      touched += count;
-      if (!DRY_RUN) {
-        const { error } = await db.from(table).update({ industry_id: a.industry_id }).eq("member_id", a.id).is("industry_id", null);
-        if (error) throw error;
-      }
-    }
-  }
-  say(`— content inheriting a member industry: ${touched} row${touched === 1 ? "" : "s"}`);
+  // 5. Industries — every member's set and primary, and every story, video
+  //    and event's one industry — from Jas's mapping of the links just
+  //    written. Guarded against wiping hand-picked industries; see --overwrite.
+  await runIndustryBackfill(db, { dryRun: DRY_RUN, overwrite: OVERWRITE });
 
   say(DRY_RUN ? "Dry run complete — nothing was written." : "Taxonomy backfill complete.");
 }
@@ -918,9 +886,9 @@ async function main() {
   // a future re-export would abort the whole seed on a PK violation.
   const servicesOf = (wp: number) => [...new Set((rawById.get(wp)?.services ?? []).map((s) => s.slug))];
   const sectorsOf = (wp: number) => [...new Set((rawById.get(wp)?.sector ?? []).map((s) => s.slug))];
-  // Derived, NOT from the export — see scripts/lib/industry-map.ts and the
-  // validation item in docs/GO-LIVE.md.
-  const industryOf = (row: MemberRow) => industryForServices(servicesOf(row.wp_member_id));
+  // The primary industry the backfill will give them (Jas's mapping, see
+  // scripts/lib/industry-map.ts) — used only to spread the local subset.
+  const industryOf = (row: MemberRow) => primaryIndustry(servicesOf(row.wp_member_id));
 
   // Content per member, so the subset keeps the members who actually have
   // stories/videos — otherwise /news's member rail and the member pages'
@@ -1003,18 +971,16 @@ async function main() {
       const missing = memberRowsAll.filter((m) => advertiserWpIds.has(m.wp_member_id) && !have.has(m.slug));
       if (missing.length) {
         console.log(`— advertiser members missing locally, adding ${missing.length}: ${missing.map((m) => m.slug).join(", ")}`);
-        const [{ data: inds, error: iErr }, { data: svcs, error: sErr }] = await Promise.all([
-          db.from("industries").select("id, slug"),
-          db.from("services").select("id, slug"),
-        ]);
-        if (iErr) throw iErr;
+        const { data: svcs, error: sErr } = await db.from("services").select("id, slug");
         if (sErr) throw sErr;
         await insertMembers(missing, {
-          industryId: (slug) => inds!.find((i) => i.slug === slug)?.id ?? null,
           serviceId: new Map(svcs!.map((x) => [x.slug, x.id])),
           servicesOf,
           sectorsOf,
         });
+        // Local only (see above), so recomputing every industry is safe — it
+        // gives the new members theirs and leaves everyone else as they were.
+        await runIndustryBackfill(db, { overwrite: true });
         if (!SKIP_MEDIA) await uploadMedia(missing, [], [], [], manifest);
       }
     }
@@ -1064,9 +1030,8 @@ async function main() {
   // The migration already inserts these; upserting keeps the seed correct on a
   // database built by any route, and re-asserts the names if one was edited.
   console.log(`— industries (${INDUSTRY_ROWS.length})`);
-  const { data: inds, error: indErr } = await db.from("industries").upsert(INDUSTRY_ROWS, { onConflict: "slug" }).select();
+  const { error: indErr } = await db.from("industries").upsert(INDUSTRY_ROWS, { onConflict: "slug" });
   if (indErr) throw indErr;
-  const industryId = (slug: string) => inds!.find((i) => i.slug === slug)?.id ?? null;
 
   console.log(`— services (${catRows.length - storyCatRows.length} terms, the real /find-a-member vocabulary)`);
   const serviceRows = catRows.filter((c) => c.kind === "member").map(({ slug, name }) => ({ slug, name }));
@@ -1075,18 +1040,8 @@ async function main() {
   const serviceId = new Map(serviceCats!.map((s) => [s.slug, s.id]));
 
   console.log(`— members (${memberRows.length})`);
-  const wpToUuid = await insertMembers(memberRows, { industryId, serviceId, servicesOf, sectorsOf });
+  const wpToUuid = await insertMembers(memberRows, { serviceId, servicesOf, sectorsOf });
   const memberId = (wp: number | null | undefined) => (wp ? wpToUuid.get(wp) ?? null : null);
-  /**
-   * Content inherits its member's industry, matching migration 20260909000002's
-   * backfill. Most of the archive has no member and so no industry — that is
-   * the real shape of the data, not a seeding gap (docs/GO-LIVE.md 1.1).
-   */
-  const industryOfWp = (wp: number | null | undefined) => {
-    if (!wp) return null;
-    const industry = industryForServices(servicesOf(wp));
-    return industry ? industryId(industrySlug(industry)) : null;
-  };
 
   // --remote gets the real inventory, never the SAMPLE one (see seedAdverts).
   if (REMOTE) await importLegacyAdverts(memberRows, advertRows, manifest);
@@ -1146,7 +1101,6 @@ async function main() {
     const insert = rows.map(({ wp_member_id, category_slugs, member_wp_ids, ...r }) => ({
       ...r,
       member_id: memberId(wp_member_id),
-      industry_id: industryOfWp(wp_member_id),
     }));
     const { data, error } = await db.from("stories").insert(insert).select("id, slug");
     if (error) throw error;
@@ -1163,9 +1117,15 @@ async function main() {
     }
     // The story↔member graph. A story can name up to 13 members, so this is
     // where most of the relationship lives — member_id holds only the first.
+    // story_members holds the primary too (migration 20261015000003). The
+    // extract has always listed it in member_wp_ids (485/485, checked 14 Oct),
+    // but the invariant shouldn't rest on that — add it if a re-extract drops it.
+    // stories.social_posts (20261015000002) is deliberately left at '{}': the
+    // export has no record of SMI's own social posts.
     const memberLinks = data!.flatMap((st) => {
       const src = rows.find((r) => r.slug === st.slug)!;
-      return (src.member_wp_ids ?? [])
+      const wpIds = [...new Set([...(src.wp_member_id != null ? [src.wp_member_id] : []), ...(src.member_wp_ids ?? [])])];
+      return wpIds
         .map((wp) => memberId(wp))
         .filter((id): id is string => !!id)
         .map((member_id) => ({ story_id: st.id, member_id }));
@@ -1199,7 +1159,6 @@ async function main() {
       ...r,
       slug: videoSlug(r.title as string),
       member_id: memberId(wp_member_id as number | null),
-      industry_id: industryOfWp(wp_member_id as number | null),
     }));
     const { error } = await db.from("videos").insert(insert);
     if (error) throw error;
@@ -1325,6 +1284,11 @@ async function main() {
   // needs published stories to fill each newsletter issue. Local only —
   // seedDemoRows refuses a remote target outright.
   if (!NO_DEMO_ROWS && !REMOTE) await seedDemoRows();
+
+  // Industries for every member, story, video and event, from Jas's mapping of
+  // the member_services and story_categories just written. Last, so the demo
+  // rows above are covered too.
+  await runIndustryBackfill(db);
 
   console.log("Real-content seed complete.");
   const counts = await Promise.all(

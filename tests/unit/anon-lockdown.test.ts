@@ -48,6 +48,17 @@ describe.skipIf(!ANON_KEY || !SECRET_KEY)("anon write lockdown (migration 202609
     expect(error).toBeNull();
   });
 
+  it("anon can read member_industries but not write it (the directory filter reads it; only the service role writes)", async () => {
+    // Migration 20261012000001: public select, no write policies. Without the
+    // read policy /member?industry= and every /industry/* member list go empty.
+    const { error: readError } = await anon().from("member_industries").select("member_id").limit(1);
+    expect(readError).toBeNull();
+    const { error: writeError } = await anon()
+      .from("member_industries")
+      .insert({ member_id: "00000000-0000-0000-0000-000000000000", industry_id: 1 });
+    expect(writeError?.code).toBe("42501");
+  });
+
   it("the service role can still call the metric RPCs", async () => {
     const service = createClient(URL_, SECRET_KEY!, { auth: { persistSession: false } });
     // unknown broadcast id: updates zero rows, proving only that execute is granted

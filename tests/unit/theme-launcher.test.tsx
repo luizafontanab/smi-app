@@ -9,6 +9,16 @@ import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
 
 vi.mock("@/lib/auth", () => ({ currentUser: vi.fn(), isAdmin: vi.fn() }));
 
+// The switcher is switched off site-wide (lib/theme-switcher-flag.ts), but the
+// tests below cover how it behaves when it is back on. A getter, so one test
+// can flip it off without a second file.
+const flag = vi.hoisted(() => ({ enabled: true }));
+vi.mock("@/lib/theme-switcher-flag", () => ({
+  get THEME_SWITCHER_ENABLED() {
+    return flag.enabled;
+  },
+}));
+
 const ADMIN = { userId: "u1", email: "jas@smi.local", role: "admin" as const, memberId: null, displayName: "Jas" };
 
 function signedInAdmin() {
@@ -24,6 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  flag.enabled = true;
   vi.mocked(currentUser).mockReset();
   vi.mocked(isAdmin).mockReset();
   vi.mocked(usePathname).mockReturnValue("/");
@@ -31,6 +42,18 @@ afterEach(() => {
 });
 
 describe("ThemeLauncher", () => {
+  it("renders nothing, even for an admin, while the switcher is switched off", async () => {
+    flag.enabled = false;
+    signedInAdmin();
+    // The stub's cookies() call count is never reset between tests.
+    vi.mocked(cookies).mockClear();
+    const { container } = render(<>{await ThemeLauncher()}</>);
+    expect(container).toBeEmptyDOMElement();
+    // Off means off before any work: no cookie read, no auth round-trip.
+    expect(cookies).not.toHaveBeenCalled();
+    expect(currentUser).not.toHaveBeenCalled();
+  });
+
   it("renders nothing for an anonymous visitor (no sb- cookie at all)", async () => {
     const { container } = render(<>{await ThemeLauncher()}</>);
     expect(container).toBeEmptyDOMElement();

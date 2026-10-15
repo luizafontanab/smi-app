@@ -15,17 +15,24 @@ export const dynamic = "force-dynamic";
  * Bookings, and only bookings: who is running, when, and the paid placements
  * that sit alongside them.
  *
- * How many banner spots we sell is inventory, set with the rate card on
- * /console/adverts/spots; this page only shows today's count against it.
+ * How many banner spots we sell is set on /console/adverts/banners; this page
+ * only shows today's count against it. A run's price is set here, on the
+ * booking itself (fix-list 77 — there is no rate card).
  */
 
-const PHASE_FILTERS = ["all", "live", "upcoming", "awaiting", "changes_needed", "draft", "ended"] as const;
+const PHASE_FILTERS = ["all", "live", "upcoming", "awaiting", "awaiting_payment", "changes_needed", "draft", "ended"] as const;
 const PHASE_FILTER_LABELS: Record<string, string> = { all: "All", ...PHASE_LABELS };
 /** Work first, dead rows last. Both tables used to open on the oldest expired run. */
-const PHASE_ORDER: Record<string, number> = { live: 0, awaiting: 1, changes_needed: 2, upcoming: 3, draft: 4, ended: 5 };
+const PHASE_ORDER: Record<string, number> = { live: 0, awaiting: 1, awaiting_payment: 2, changes_needed: 3, upcoming: 4, draft: 5, ended: 6 };
 
 const PLACEMENT_FILTERS = ["all", "current", "upcoming", "past"] as const;
 const PLACEMENT_ORDER: Record<string, number> = { current: 0, upcoming: 1, past: 2 };
+
+/** Where each placement kind is edited (fix-list 76). Featured machines are Site Config's. */
+const PLACEMENT_EDIT: Record<string, string> = {
+  featured_member: "/console/adverts/featured-member",
+  takeover: "/console/adverts/takeover",
+};
 
 /** Placements carry no status column — the term alone decides where they sit. */
 function placementPhase(p: { starts_on: string; ends_on: string }, today: string): "current" | "upcoming" | "past" {
@@ -63,11 +70,10 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
     return `/console/adverts${qs ? `?${qs}` : ""}${key === "placements" ? "#placements" : ""}`;
   };
 
-  const [adverts, bookings, placements, products, { count: openInterest }, { count: impressions30 }, previewOn, bannerSpots] = await Promise.all([
+  const [adverts, bookings, placements, { count: openInterest }, { count: impressions30 }, previewOn, bannerSpots] = await Promise.all([
     must(db.from("adverts").select("id, name, format").order("created_at", { ascending: false }).limit(500), "console/adverts list"),
     must(db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").order("ends_on", { ascending: false }).limit(500), "console/adverts bookings"),
-    must(db.from("placements").select("id, kind, grid_position, starts_on, ends_on, member:members(name), machine:featured_machines(name)").order("ends_on", { ascending: false }).limit(500), "console/adverts placements"),
-    must(db.from("advert_products").select("id, short_name, format").is("archived_at", null).order("short_name"), "console/adverts products"),
+    must(db.from("placements").select("id, kind, grid_position, starts_on, ends_on, awaiting_payment, member:members(name), machine:featured_machines(name)").order("ends_on", { ascending: false }).limit(500), "console/adverts placements"),
     // head:true — only the count comes back, so these two go through mustList.
     mustList(db.from("visibility_requests").select("id", { count: "exact", head: true }).eq("status", "requested"), "console/adverts open interest"),
     // The metric the page calls the headline one, finally readable here: the
@@ -114,8 +120,8 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
       <h1 className="text-2xl font-bold text-ink">Advert bookings</h1>
       <p className="mt-1 text-sm text-graphite">
         Rotation is random-uniform — no advertiser can buy position. Impressions are the headline metric.
-        What we sell, and how many banner spots, is on{" "}
-        <Link href="/console/adverts/spots" className="underline">Inventory</Link>.
+        How many banner spots we sell is on{" "}
+        <Link href="/console/adverts/banners" className="underline">Banners</Link>.
       </p>
 
       {typeof sp.saved === "string" && <p role="status" className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
@@ -135,7 +141,7 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
           value={`${bannersSold} of ${bannerSpots.spots}`}
           sub={bannersSold > bannerSpots.spots
             ? <span className="font-semibold text-danger">over by {bannersSold - bannerSpots.spots} today</span>
-            : <Link href="/console/adverts/spots" className="underline">sold today · months ahead</Link>}
+            : <Link href="/console/adverts/banners" className="underline">sold today · months ahead</Link>}
         />
         <Stat
           label="Interest"
@@ -184,6 +190,8 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
                       ? <Badge tone="green">live</Badge>
                       : b.phase === "awaiting"
                       ? <Badge tone="brand">awaiting approval</Badge>
+                      : b.phase === "awaiting_payment"
+                      ? <Badge tone="brand">awaiting payment</Badge>
                       : PHASE_LABELS[b.phase]}
                   </td>
                   <td className="text-right">
@@ -210,15 +218,14 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
               {(adverts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.format})</option>)}
             </select>
           </label>
-          <label className="block max-w-full">Sold as
-            <select name="product_id" className="mt-1 block max-w-full rounded border px-3 py-2">
-              <option value="">— not set —</option>
-              {(products ?? []).map((p) => <option key={p.id} value={p.id}>{p.short_name}</option>)}
-            </select>
+          {/* The price lives on the run itself (fix-list 77); blank means Jas
+              invoices by hand. */}
+          <label className="block">Price (£)
+            <input name="price_pounds" inputMode="decimal" placeholder="optional" className="mt-1 block w-28 rounded border px-3 py-2" />
           </label>
           <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block rounded border px-3 py-2" /></label>
           <label className="block">End<input type="date" name="ends_on" required className="mt-1 block rounded border px-3 py-2" /></label>
-          <label className="block grow">Notes<input name="notes" className="mt-1 block w-full rounded border px-3 py-2" placeholder="rate, PO ref…" /></label>
+          <label className="block grow">Notes<input name="notes" className="mt-1 block w-full rounded border px-3 py-2" placeholder="PO ref…" /></label>
           <button className="rounded bg-ink px-4 py-2 text-white">Book</button>
         </form>
         <p className="mt-2 text-xs text-graphite">
@@ -252,19 +259,28 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
         </p>
         <div className="overflow-x-auto mt-2">
         <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Kind</th><th scope="col">Who / what</th><th scope="col">Position</th><th scope="col">From</th><th scope="col">To</th></tr></thead>
+          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Kind</th><th scope="col">Who / what</th><th scope="col">Position</th><th scope="col">From</th><th scope="col">To</th><th scope="col" /></tr></thead>
           <tbody>
-            {placementRows.map((p) => (
-              <tr key={p.id} className="border-t">
-                <td className="py-2">{p.kind.replace("_", " ")}</td>
-                <td>{p.machine?.name ?? p.member?.name}</td>
-                <td>{p.grid_position ?? "—"}</td>
-                <td>{p.starts_on}</td>
-                <td>{p.ends_on}</td>
-              </tr>
-            ))}
+            {placementRows.map((p) => {
+              const edit = PLACEMENT_EDIT[p.kind];
+              return (
+                <tr key={p.id} className="border-t">
+                  <td className="py-2">
+                    {p.kind.replace("_", " ")}
+                    {p.awaiting_payment && <span className="ml-1.5 text-xs font-semibold text-brand-text">awaiting payment</span>}
+                  </td>
+                  <td>{p.machine?.name ?? p.member?.name}</td>
+                  <td>{p.grid_position ?? "—"}</td>
+                  <td>{p.starts_on}</td>
+                  <td>{p.ends_on}</td>
+                  <td className="text-right">
+                    {edit && <Link href={`${edit}/${p.id}`} className="text-xs text-graphite hover:underline">edit</Link>}
+                  </td>
+                </tr>
+              );
+            })}
             {!placementRows.length && (
-              <tr><td colSpan={5} className="py-4 text-center text-graphite">
+              <tr><td colSpan={6} className="py-4 text-center text-graphite">
                 {placementFilter === "all" ? "No paid placements yet." : `No ${placementFilter} placements.`}
               </td></tr>
             )}

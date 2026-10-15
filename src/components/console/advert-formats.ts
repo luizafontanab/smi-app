@@ -54,6 +54,7 @@ export const PHASE_LABELS: Record<string, string> = {
   draft: "draft",
   awaiting: "awaiting approval",
   changes_needed: "changes needed",
+  awaiting_payment: "awaiting payment",
   upcoming: "upcoming",
   live: "live",
   ended: "ended",

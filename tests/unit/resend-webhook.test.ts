@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 
 /**
@@ -10,6 +10,10 @@ import { createClient } from "@supabase/supabase-js";
  * bytes, real `contacts` row), so this runs against the local Supabase stack
  * rather than mocking the DB.
  */
+// Bigin is an outside service — stub the write-through and assert it was asked.
+const { syncContactToCrm } = vi.hoisted(() => ({ syncContactToCrm: vi.fn(async () => {}) }));
+vi.mock("@/lib/adapters/crm", () => ({ syncContactToCrm }));
+
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
 const KEY = process.env.SUPABASE_SECRET_KEY;
 const SECRET = "whsec_dGVzdC13ZWJob29rLXNlY3JldC1iYXNlNjQ=";
@@ -44,6 +48,7 @@ describe.skipIf(!KEY)("/api/webhooks/resend", () => {
     else process.env.RESEND_WEBHOOK_SECRET = savedSecret;
     if (emails.length) await db.from("contacts").delete().in("email", emails);
     emails.length = 0;
+    syncContactToCrm.mockClear();
   });
 
   async function makeContact(email: string, opts?: { unsubscribed_at?: string }) {
@@ -82,9 +87,11 @@ describe.skipIf(!KEY)("/api/webhooks/resend", () => {
     const res = await POST(request(body, signedHeaders(body)));
     expect(res.status).toBe(200);
 
-    const { data } = await db.from("contacts").select("subscribed, unsubscribed_at").eq("email", email).single();
+    const { data } = await db.from("contacts").select("id, subscribed, unsubscribed_at").eq("email", email).single();
     expect(data?.subscribed).toBe(false);
     expect(data?.unsubscribed_at).not.toBeNull();
+    // …and Bigin is told, so the office's copy of the list agrees (S6)
+    expect(syncContactToCrm).toHaveBeenCalledWith(data?.id);
   });
 
   it("unsubscribes on a hard bounce but not a soft one", async () => {

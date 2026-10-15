@@ -43,6 +43,11 @@ describe("consoleUploadVideoImage", () => {
     await consoleUploadVideoImage(form({}));
     expect(uploadImage).toHaveBeenCalledWith(null, "videos/console");
   });
+
+  it("returns the refusal reason as a value instead of throwing", async () => {
+    uploadImage.mockRejectedValue(new Error("Image too large (8MB max)"));
+    expect(await consoleUploadVideoImage(form({}))).toEqual({ error: "Image too large (8MB max)" });
+  });
 });
 
 describe("saveVideo", () => {

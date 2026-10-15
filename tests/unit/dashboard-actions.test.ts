@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  cancelMembership, editEvent, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
+  cancelMembership, deleteStoryDraft, editEvent, previewStoryBody, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
   memberUploadImage, memberUploadVideoImage, proposeOwnArtworkSwap, renewAdvertBooking, requestVisibility,
   resubmitAdvert, savePrefs, submitAdvert, submitEvent, submitMachine, submitProfileEdit, submitStory, submitVideo,
   markProspectFollowUp, unmarkProspect,
@@ -78,7 +78,7 @@ describe("member upload actions", () => {
   it("upload the file under the member's own namespace and return its public URL", async () => {
     uploadImage.mockResolvedValue("stories/mem1/abc.jpg");
 
-    expect(await memberUploadImage(form({}))).toContain("stories/mem1/abc.jpg");
+    expect(await memberUploadImage(form({}))).toEqual({ url: expect.stringContaining("stories/mem1/abc.jpg") });
     expect(uploadImage.mock.calls[0][1]).toBe("stories/mem1");
 
     await memberUploadVideoImage(form({}));
@@ -86,6 +86,21 @@ describe("member upload actions", () => {
 
     await memberUploadEventImage(form({}));
     expect(uploadImage.mock.calls[2][1]).toBe("events/mem1");
+  });
+
+  // Jas 13/10 item 3: a refused photo used to throw, which Next turns into a
+  // generic error in production and the editor turned into nothing at all.
+  // The reason now comes back as a value the editor can show.
+  it("return the refusal reason instead of throwing", async () => {
+    uploadImage.mockRejectedValue(new Error("Image too large (8MB max)"));
+    expect(await memberUploadImage(form({}))).toEqual({ error: "Image too large (8MB max)" });
+    expect(await memberUploadVideoImage(form({}))).toEqual({ error: "Image too large (8MB max)" });
+    expect(await memberUploadEventImage(form({}))).toEqual({ error: "Image too large (8MB max)" });
+  });
+
+  it("say so when no file arrived, rather than inserting a broken image", async () => {
+    uploadImage.mockResolvedValue(null);
+    expect(await memberUploadImage(form({}))).toEqual({ error: expect.stringMatching(/no image/i) });
   });
 });
 
@@ -267,6 +282,46 @@ describe("submitProfileEdit", () => {
     expect(from).not.toHaveBeenCalledWith("member_membership_types");
   });
 
+  // Several industries per member, one primary (migration 20261012000001).
+  const withIndustries = (fields: Record<string, string>, ids: number[]) => {
+    const fd = form(fields);
+    for (const id of ids) fd.append("industries", String(id));
+    return fd;
+  };
+
+  it("an active member's industries ride the revision as industry_ids, primary included", async () => {
+    const revisionsBuilder = queryBuilder(dbOk(null));
+    const from = db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })), member_revisions: () => revisionsBuilder });
+
+    // primary 9 not ticked — picking it as primary is enough
+    await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "9" }, [2, 7]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
+
+    expect(revisionsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ industry_id: 9, industry_ids: [2, 7, 9] }),
+    }));
+    expect(from).not.toHaveBeenCalledWith("member_industries");
+  });
+
+  it("a draft member's industries apply straight away, a single tick becoming the primary", async () => {
+    const membersBuilder = queryBuilder(dbOk({ slug: "acme", status: "draft", draft_submitted_at: "2026-01-01T00:00:00.000Z", social: null, address: "", lat: null, lng: null }));
+    const industriesBuilder = queryBuilder(dbOk(null));
+    db({ members: () => membersBuilder, member_industries: () => industriesBuilder });
+
+    await expect(submitProfileEdit(withIndustries({ name: "Acme" }, [4]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
+
+    expect(membersBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ industry_id: 4 }));
+    expect(industriesBuilder.insert).toHaveBeenCalledWith([{ member_id: "mem1", industry_id: 4 }]);
+  });
+
+  it("refuses several industries with no primary before writing anything", async () => {
+    const from = db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
+
+    await expect(submitProfileEdit(withIndustries({ name: "Acme" }, [2, 7])))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/profile\?error=Choose%20which/);
+    expect(from).not.toHaveBeenCalledWith("member_revisions");
+    expect(from).not.toHaveBeenCalledWith("member_industries");
+  });
+
   // GAPS A1.12: a live page's edit notifies the console like every other submission.
   it("an active member's edit notifies the console, linking to their record", async () => {
     db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })), member_revisions: () => queryBuilder(dbOk(null)) });
@@ -388,6 +443,127 @@ describe("withdrawStory / editStory", () => {
     await expect(editStory(form({ id: "s1", title: "Fixed title" })))
       .rejects.toThrow("NEXT_REDIRECT:/dashboard/story/s1/edit?error=A%20cover%20image%20is%20required.");
     expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+});
+
+// Jas 13/10: members can save a story as a private draft, preview it, and
+// submit it later. A draft is theirs alone — and an admin's draft that merely
+// names them must never become theirs.
+describe("member story drafts", () => {
+  it("Save draft inserts a private draft without a cover and tells nobody", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1" }));
+    db({ stories: () => storiesBuilder });
+
+    await expect(submitStory(form({ title: "Work in progress", intent: "draft" })))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/story/s1/edit?saved=draft");
+
+    expect(storiesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Work in progress", status: "draft", member_draft: true, source: "member", member_id: "mem1", cover_path: null,
+    }));
+    expect(notifyConsole).not.toHaveBeenCalled();
+  });
+
+  it("a member's own story features them: their row goes into story_members", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1" }));
+    const tagsBuilder = queryBuilder(dbOk(null));
+    db({ stories: () => storiesBuilder, story_members: () => tagsBuilder });
+    await expect(submitStory(form({ title: "Mine", intent: "draft" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(tagsBuilder.insert).toHaveBeenCalledWith([{ story_id: "s1", member_id: "mem1" }]);
+  });
+
+  it("Save draft still needs a title, and says so (the button skips native validation)", async () => {
+    const from = db({});
+    await expect(submitStory(form({ title: " ", intent: "draft" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/story\/new\?error=Give/);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("a plain submit is unchanged: awaiting approval, not a draft", async () => {
+    uploadImage.mockResolvedValue("stories/mem1/cover.jpg");
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1" }));
+    db({ stories: () => storiesBuilder });
+    await expect(submitStory(form({ title: "Ready" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
+    expect(storiesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_draft: false }));
+  });
+
+  it("editing a draft with Save draft keeps it a draft", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: true, cover_path: null }));
+    db({ stories: () => storiesBuilder });
+
+    await expect(editStory(form({ id: "s1", title: "Still drafting", intent: "draft" })))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/story/s1/edit?saved=draft");
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "draft", member_draft: true }));
+    expect(notifyConsole).not.toHaveBeenCalled();
+  });
+
+  it("submitting a draft needs a cover by then", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: true, cover_path: null }));
+    db({ stories: () => storiesBuilder });
+    await expect(editStory(form({ id: "s1", title: "Done" })))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/story/s1/edit?error=A%20cover%20image%20is%20required.");
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("submitting a draft hands it to the editor as a fresh submission", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: true, cover_path: "stories/c.jpg" }));
+    db({ stories: () => storiesBuilder });
+    await expect(editStory(form({ id: "s1", title: "Done" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_draft: false }));
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/^Submitted a story/) }));
+  });
+
+  it("Save draft can't pull an already-submitted story back out of the editor's queue", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "awaiting_approval", member_id: "mem1", member_draft: false, cover_path: "stories/c.jpg" }));
+    db({ stories: () => storiesBuilder });
+    await expect(editStory(form({ id: "s1", title: "x", intent: "draft" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_draft: false }));
+  });
+
+  it("an admin's draft that names the member is not the member's to edit", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: false, cover_path: "c.jpg" }));
+    db({ stories: () => storiesBuilder });
+    await expect(editStory(form({ id: "s1", title: "Hijack", intent: "draft" }))).resolves.toBeUndefined();
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("deleteStoryDraft deletes only the member's own draft, and its cover", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: true, cover_path: "stories/c.jpg" }));
+    db({ stories: () => storiesBuilder });
+    await expect(deleteStoryDraft(form({ id: "s1" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard/submissions?deleted=draft");
+    expect(storiesBuilder.delete).toHaveBeenCalled();
+    expect(removeMedia).toHaveBeenCalledWith("stories/c.jpg");
+  });
+
+  it.each([
+    ["a submitted story", { status: "awaiting_approval", member_id: "mem1", member_draft: false }],
+    ["someone else's draft", { status: "draft", member_id: "other", member_draft: true }],
+    ["an admin's draft naming the member", { status: "draft", member_id: "mem1", member_draft: false }],
+  ])("deleteStoryDraft refuses %s", async (_label, row) => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, ...row }));
+    db({ stories: () => storiesBuilder });
+    await expect(deleteStoryDraft(form({ id: "s1" }))).resolves.toBeUndefined();
+    expect(storiesBuilder.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe("previewStoryBody", () => {
+  it("cleans the body exactly as the published page will", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL ??= "http://127.0.0.1:54321";
+    db({ members: () => queryBuilder(dbOk({ id: "mem1", name: "Acme", website: null, status: "active", archived_at: null })) });
+    const out = await previewStoryBody(`<p>Hi</p><script>alert(1)</script><img src="https://evil.example/x.jpg">`);
+    expect(out).toBe("<p>Hi</p>");
+  });
+
+  it("closes with the member's own website line, as the published page will", async () => {
+    db({ members: () => queryBuilder(dbOk({ id: "mem1", name: "Acme", website: "https://acme.example", status: "active", archived_at: null })) });
+    expect(await previewStoryBody("<p>Hi</p>")).toBe(
+      `<p>Hi</p><p data-company-link=""><a href="/go/mem1?kind=website" target="_blank" rel="noopener">Acme</a></p>`,
+    );
+  });
+
+  it("is member-only", async () => {
+    requireMember.mockRejectedValueOnce(new Error("NEXT_REDIRECT:/login?next=/dashboard"));
+    await expect(previewStoryBody("<p>x</p>")).rejects.toThrow(/NEXT_REDIRECT/);
   });
 });
 
@@ -646,19 +822,20 @@ describe("resubmitAdvert", () => {
 
 describe("renewAdvertBooking", () => {
   it("does nothing for a run that isn't the caller's own advert", async () => {
-    db({ advert_bookings: () => queryBuilder(dbOk({ id: "b1", advert_id: "ad1", product_id: null, advert: { member_id: "someone-else" } })) });
+    db({ advert_bookings: () => queryBuilder(dbOk({ id: "b1", advert_id: "ad1", price_pennies: null, advert: { member_id: "someone-else" } })) });
 
     await expect(renewAdvertBooking(form({ id: "b1" }))).resolves.toBeUndefined();
   });
 
   it("books a fresh run linked back to the one it renews", async () => {
-    const bookingsBuilder = queryBuilder(dbOk({ id: "b1", advert_id: "ad1", product_id: "p1", advert: { member_id: "mem1" } }));
+    const bookingsBuilder = queryBuilder(dbOk({ id: "b1", advert_id: "ad1", price_pennies: 65000, advert: { member_id: "mem1" } }));
     db({ advert_bookings: () => bookingsBuilder });
 
     await expect(renewAdvertBooking(form({ id: "b1", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
       .rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=advert");
 
-    expect(bookingsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ advert_id: "ad1", renewed_from: "b1" }));
+    // last run's price carries over for the admin to confirm on approval (fix-list 77)
+    expect(bookingsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ advert_id: "ad1", renewed_from: "b1", price_pennies: 65000 }));
   });
 });
 

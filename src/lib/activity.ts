@@ -12,8 +12,10 @@ export async function memberActivityTimeline(memberId: string, limit = 15): Prom
   const db = serviceDb();
 
   const [stories, allStories, placements, invoices, notifications, adverts] = await Promise.all([
-    db.from("stories").select("title, published_at").eq("member_id", memberId).eq("status", "published").order("published_at", { ascending: false }).limit(10),
-    db.from("stories").select("id").eq("member_id", memberId).eq("status", "published"),
+    // Every published story featuring the member, primary or tagged alongside
+    // others (Jas 13/10 item 12) — story_members holds the primary too.
+    db.from("stories").select("title, published_at, member_id, story_members!inner(member_id)").eq("story_members.member_id", memberId).eq("status", "published").order("published_at", { ascending: false }).limit(10),
+    db.from("stories").select("id, story_members!inner(member_id)").eq("story_members.member_id", memberId).eq("status", "published"),
     db.from("placements").select("kind, starts_on").eq("member_id", memberId).order("starts_on", { ascending: false }).limit(5),
     db.from("invoices").select("number, issued_on, status").eq("member_id", memberId).order("issued_on", { ascending: false }).limit(5),
     db.from("notifications").select("kind, created_at").eq("member_id", memberId).order("created_at", { ascending: false }).limit(5),
@@ -40,7 +42,10 @@ export async function memberActivityTimeline(memberId: string, limit = 15): Prom
   ]);
 
   const timeline: ActivityEntry[] = [
-    ...(stories.data ?? []).map((s) => ({ when: s.published_at ?? "", what: `Story published: ${s.title}` })),
+    ...(stories.data ?? []).map((s) => ({
+      when: s.published_at ?? "",
+      what: s.member_id === memberId ? `Story published: ${s.title}` : `Featured in story: ${s.title}`,
+    })),
     ...(placements.data ?? []).map((p) => ({ when: p.starts_on, what: `Placement: ${p.kind.replace("_", " ")}` })),
     ...(invoices.data ?? []).map((i) => ({ when: i.issued_on, what: `Invoice ${i.number} (${i.status})` })),
     ...(notifications.data ?? []).map((n) => ({ when: n.created_at, what: `Notified: ${n.kind}` })),

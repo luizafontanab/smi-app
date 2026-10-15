@@ -118,6 +118,36 @@ describe("saveMember", () => {
     expect(typesBuilder.insert).not.toHaveBeenCalled();
   });
 
+  // Several industries per member, one primary (migration 20261012000001).
+  it("replaces the member's industries with the ticked ones plus the primary, and writes the primary to the row", async () => {
+    const membersBuilder = queryBuilder(dbOk({ id: "m1", slug: "acme", status: "active", social: null }));
+    const industriesBuilder = queryBuilder(dbOk(null));
+    db({ members: () => membersBuilder, member_industries: () => industriesBuilder });
+    const fd = form({ id: "m1", ...baseFields, slug: "acme", industry_id: "5" });
+    for (const id of ["2", "5"]) fd.append("industries", id);
+
+    await expect(saveMember(fd)).rejects.toThrow("NEXT_REDIRECT:/console/members/m1?saved=1");
+
+    expect(membersBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ industry_id: 5 }));
+    expect(industriesBuilder.delete).toHaveBeenCalled();
+    expect(industriesBuilder.insert).toHaveBeenCalledWith([
+      { member_id: "m1", industry_id: 2 },
+      { member_id: "m1", industry_id: 5 },
+    ]);
+  });
+
+  it("refuses several industries with no primary before writing the row", async () => {
+    const membersBuilder = queryBuilder(dbOk({ id: "m1", slug: "acme", status: "active", social: null }));
+    const industriesBuilder = queryBuilder(dbOk(null));
+    db({ members: () => membersBuilder, member_industries: () => industriesBuilder });
+    const fd = form({ id: "m1", ...baseFields, slug: "acme" });
+    for (const id of ["2", "5"]) fd.append("industries", id);
+
+    await expect(saveMember(fd)).rejects.toThrow(/error=Choose%20which/);
+    expect(membersBuilder.update).not.toHaveBeenCalled();
+    expect(industriesBuilder.insert).not.toHaveBeenCalled();
+  });
+
   it("refuses to change a live member's web address without the confirmation checkbox", async () => {
     db({ members: () => queryBuilder(dbOk({ id: "m1", slug: "old-slug", status: "active", social: null })) });
 

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { currentUser, isAdmin } from "@/lib/auth";
+import { THEME_SWITCHER_ENABLED } from "@/lib/theme-switcher-flag";
 import { FloatingThemeSwitcher } from "./FloatingThemeSwitcher";
 
 /**
@@ -18,6 +19,7 @@ import { FloatingThemeSwitcher } from "./FloatingThemeSwitcher";
  * switcher is absent there.
  */
 export async function ThemeLauncher() {
+  if (!THEME_SWITCHER_ENABLED) return null;
   // Cheap pre-test before touching auth: no sb-* cookie means certainly logged
   // out. Same reasoning as DevTaskLauncher — this runs on every public page
   // view, and proxy.ts avoids the GoTrue /auth/v1/user round-trip for

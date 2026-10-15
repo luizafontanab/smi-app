@@ -1,6 +1,8 @@
 import { requireMember } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { signedInvoiceUrl } from "@/lib/invoice-pdf";
+import Link from "next/link";
+import { advertPaymentsMode } from "@/lib/adapters/advert-checkout";
 import { cancelMembership } from "../../actions";
 import { SettingsTabs } from "../SettingsTabs";
 import { CancelMembershipDialog } from "./CancelMembershipDialog";
@@ -13,13 +15,16 @@ export default async function BillingSettingsPage(props: PageProps<"/dashboard/s
   const sp = await props.searchParams;
   const db = serviceDb();
   const [{ data: invoices }, { data: member }] = await Promise.all([
-    db.from("invoices").select("number, amount_pennies, issued_on, status, pdf_path").eq("member_id", user.memberId).order("issued_on", { ascending: false }),
+    db.from("invoices").select("id, number, description, amount_pennies, issued_on, status, pdf_path").eq("member_id", user.memberId).order("issued_on", { ascending: false }),
     db.from("members").select("billing_mode, joined_at, status, cancel_requested_at").eq("id", user.memberId).single(),
   ]);
 
   // Invoices live in a private bucket (they carry name + amount); each render
   // signs a short-lived URL per PDF. Ownership is already enforced by the
   // member_id scope on the invoices query above.
+  // Advertising invoices can be paid online (6 Oct); membership is paid by
+  // its own subscription and is never "issued" here waiting on the member.
+  const payable = advertPaymentsMode() !== "off";
   const pdfUrls = new Map<string, string | null>();
   await Promise.all(
     (invoices ?? [])
@@ -32,6 +37,7 @@ export default async function BillingSettingsPage(props: PageProps<"/dashboard/s
       <h1 className="mt-1 text-xl font-bold text-ink">Billing</h1>
       <p className="mt-1 text-sm text-graphite">
         £40/month membership · member since {member?.joined_at} · paid by {member?.billing_mode === "card" ? "card (Stripe)" : "invoice"}.
+        Advertising invoices are listed here too, and can be paid by card.
       </p>
       <SettingsTabs active="billing" />
       {sp.cancelled === "1" && (
@@ -49,10 +55,19 @@ export default async function BillingSettingsPage(props: PageProps<"/dashboard/s
           <tbody>
             {(invoices ?? []).map((i) => (
               <tr key={i.number} className="border-t">
-                <td className="py-2 font-medium">{i.number}</td>
+                <td className="py-2">
+                  <span className="font-medium">{i.number}</span>
+                  {i.description && <span className="block text-xs text-graphite">{i.description}</span>}
+                </td>
                 <td>{i.issued_on}</td>
                 <td>£{(i.amount_pennies / 100).toFixed(2)}</td>
-                <td>{i.status === "paid" ? <span className="text-success">paid</span> : i.status}</td>
+                <td>
+                  {i.status === "paid"
+                    ? <span className="text-success">paid</span>
+                    : i.status === "issued" && payable && !i.number.startsWith("SMI-JOIN-")
+                      ? <Link href={`/dashboard/pay/invoice/${i.id}`} className="rounded bg-ink px-3 py-1 text-xs font-semibold text-white">Pay now</Link>
+                      : i.status === "issued" ? "unpaid" : i.status}
+                </td>
                 <td className="text-right">
                   {i.pdf_path && pdfUrls.get(i.number)
                     ? <a href={pdfUrls.get(i.number)!} className="text-xs text-graphite underline">download</a>

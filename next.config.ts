@@ -36,21 +36,29 @@ const supabaseOrigin = (() => {
 // Dev-only allowance so impeccable live mode can load. Guarded by NODE_ENV.
 const __impeccableLiveDev = isDev ? " http://localhost:8400" : "";
 
+// Stripe embedded Checkout on /dashboard/pay/invoice (6 Oct). Hosts per
+// Stripe's CSP guide (docs.stripe.com/security/guide#content-security-policy)
+// for Stripe.js + Checkout: the script and its frames, the API it calls, and
+// hooks.stripe.com for 3-D Secure challenges.
+const stripeScript = " https://js.stripe.com https://*.js.stripe.com https://checkout.stripe.com";
+const stripeFrame = " https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://checkout.stripe.com";
+const stripeConnect = " https://api.stripe.com https://checkout.stripe.com";
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${__impeccableLiveDev}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${stripeScript}${__impeccableLiveDev}`,
   "style-src 'self' 'unsafe-inline'",
   // tile.openstreetmap.org: the raster tiles behind MemberMap's Leaflet view (A6.4).
   // i.ytimg.com: YouTube's still-image host. Video cards, the home hero and
   // og:image all fall back to its stills when a video has no uploaded
   // thumbnail — blocked until 28 Sep, so that fallback never rendered (GAPS
   // A8.5). Images only; frame-src already trusts YouTube's players.
-  `img-src 'self' data: blob: https://*.tile.openstreetmap.org https://i.ytimg.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  `img-src 'self' data: blob: https://*.tile.openstreetmap.org https://i.ytimg.com https://*.stripe.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
   "font-src 'self' data:",
-  `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}${__impeccableLiveDev}`,
+  `connect-src 'self'${stripeConnect}${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}${__impeccableLiveDev}`,
   "media-src 'self' https:",
   // nocookie is what /video/[slug] embeds — same player, no ad cookies before consent
-  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
+  `frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com${stripeFrame}`,
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",

@@ -23,11 +23,12 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
   const user = await requireMember();
   const sp = await props.searchParams;
   const db = serviceDb();
-  const [{ data: m }, { data: pendingRev }, { data: inds }, { data: svcs }, { data: mySvcs }, { data: types }, { data: myTypes }] =
+  const [{ data: m }, { data: pendingRev }, { data: inds }, { data: myInds }, { data: svcs }, { data: mySvcs }, { data: types }, { data: myTypes }] =
     await Promise.all([
       db.from("members").select(SELECT).eq("id", user.memberId).single(),
       db.from("member_revisions").select("id").eq("member_id", user.memberId).eq("status", "awaiting_approval").limit(1),
       db.from("industries").select("id, name").order("sort_order"),
+      db.from("member_industries").select("industry_id").eq("member_id", user.memberId),
       db.from("services").select("id, name").order("name"),
       db.from("member_services").select("service_id").eq("member_id", user.memberId),
       db.from("membership_types").select("id, name").order("sort_order"),
@@ -61,6 +62,7 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
           membershipTypes={types ?? []}
           selectedServiceIds={new Set((mySvcs ?? []).map((r) => r.service_id))}
           selectedMembershipTypeIds={new Set((myTypes ?? []).map((r) => r.membership_type_id))}
+          selectedIndustryIds={new Set((myInds ?? []).map((r) => r.industry_id))}
           uploadImage={memberUploadImage}
           logoUrl={mediaUrl(m.logo_path)}
           heroUrl={mediaUrl(m.hero_path)}

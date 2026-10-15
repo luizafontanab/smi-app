@@ -4,7 +4,7 @@ import {
   forYouStories, headlineStory, headlineVideo, ilikeTerm, industries,
   industryBySlug, memberBySlug, memberDirectory, memberFacets, memberPins, membershipTypes, mostViewedStories, newsletterBySlug,
   pastEvents, publishedStories, publishedVideos,
-  searchSite, sentNewsletters, services, staticPage, storyBySlug, storyCategories, storyIndustrySlug, storyIntros,
+  searchSite, sentNewsletters, services, staticPage, storyBySlug, storyForPreview, storyMembers, storyCategories, storyIndustrySlug, storyIntros,
   upcomingEventPins, upcomingEvents,
   videoBySlug,
 } from "@/lib/queries";
@@ -145,6 +145,65 @@ describe("storyBySlug / videoBySlug / eventBySlug / staticPage", () => {
 
     db({ static_pages: () => queryBuilder(dbOk(null)) });
     expect(await staticPage("missing")).toBeNull();
+  });
+});
+
+// Jas 13/10 item 12: a member's profile lists every story featuring them.
+describe("memberBySlug — stories featuring the member", () => {
+  it("reads through story_members (inner), not stories.member_id", async () => {
+    const stories = queryBuilder(dbOk([]));
+    db({
+      members: () => queryBuilder(dbOk({ id: "m1", slug: "blm", member_membership_types: [], member_services: [] })),
+      stories: () => stories,
+    });
+    await memberBySlug("blm");
+    expect(stories.select).toHaveBeenCalledWith(expect.stringContaining("story_members!inner(member_id)"));
+    expect(stories.eq).toHaveBeenCalledWith("story_members.member_id", "m1");
+    expect(stories.eq).not.toHaveBeenCalledWith("member_id", "m1");
+  });
+});
+
+// Luiza 15 Oct: cards, newsletters and link previews read the story_summary
+// computed field (migration 20261015000004) — the author's summary, else the
+// body's opening — so a story with no excerpt still has a description.
+describe("story summaries", () => {
+  it("story cards select the summary field under the excerpt name", async () => {
+    const stories = queryBuilder(dbOk({ slug: "s" }));
+    db({ stories: () => stories });
+    await storyBySlug("s");
+    expect(stories.select).toHaveBeenCalledWith(expect.stringContaining("excerpt:story_summary"));
+  });
+});
+
+describe("storyMembers", () => {
+  it("only linkable members, primary first then by name", async () => {
+    db({
+      story_members: () => queryBuilder(dbOk([
+        { member: { id: "m3", slug: "z", name: "Zeta", logo_path: null, status: "active" } },
+        { member: null },
+        { member: { id: "m2", slug: "l", name: "Lapsed", logo_path: null, status: "lapsed" } },
+        { member: { id: "m1", slug: "p", name: "Primary", logo_path: null, status: "active" } },
+      ])),
+    });
+    expect((await storyMembers("s1", "m1")).map((m) => m.name)).toEqual(["Primary", "Zeta"]);
+  });
+});
+
+// Jas 13/10 items 10/15: the preview reads unpublished rows, so it must be the
+// service role with no status filter — and must carry what the visibility and
+// permission checks need, since RLS isn't doing that work for it.
+describe("storyForPreview", () => {
+  it("reads by id with the service role, without the published filter", async () => {
+    const stories = queryBuilder(dbOk({ id: "s1", status: "draft" }));
+    const client = asDb(mockDb({ from: fromByTable({ stories: () => stories }, () => queryBuilder(dbOk(null))) }));
+    vi.mocked(serviceDb).mockReturnValue(client);
+    vi.mocked(publicDb).mockImplementation(() => { throw new Error("must not use publicDb"); });
+
+    expect(await storyForPreview("s1")).toEqual({ id: "s1", status: "draft" });
+    expect(stories.eq).toHaveBeenCalledWith("id", "s1");
+    expect(stories.eq).not.toHaveBeenCalledWith("status", "published");
+    expect(stories.select).toHaveBeenCalledWith(expect.stringMatching(/\bmember_draft\b.*\bsource\b|\bsource\b.*\bmember_draft\b/));
+    expect(stories.select).toHaveBeenCalledWith(expect.stringMatching(/members!stories_member_id_fkey\([^)]*archived_at/));
   });
 });
 
@@ -364,13 +423,46 @@ describe("memberDirectory", () => {
     expect(membersBuilder.or).toHaveBeenCalledWith("name.ilike.%fabrication%,description.ilike.%fabrication%");
   });
 
-  it("resolves industry slugs and filters by their ids", async () => {
+  // A member is in several industries (member_industries, 20261012000001), so
+  // the filter goes through the join table, not the primary in industry_id.
+  it("filters industries through member_industries, not the member's primary industry_id", async () => {
     const membersBuilder = queryBuilder(dbOk([], 0));
-    db({ members: () => membersBuilder, industries: () => queryBuilder(dbOk([{ id: "ind1" }])) });
+    const linksBuilder = queryBuilder(dbOk([{ member_id: "m1" }, { member_id: "m2" }, { member_id: "m1" }]));
+    db({
+      members: () => membersBuilder,
+      industries: () => queryBuilder(dbOk([{ id: 3 }])),
+      member_industries: () => linksBuilder,
+    });
 
-    await memberDirectory({ industries: ["fabrication"] });
+    await memberDirectory({ industries: ["welding-joining"] });
 
-    expect(membersBuilder.in).toHaveBeenCalledWith("industry_id", ["ind1"]);
+    expect(linksBuilder.in).toHaveBeenCalledWith("industry_id", [3]);
+    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m1", "m2"]);
+    expect(membersBuilder.in).not.toHaveBeenCalledWith("industry_id", expect.anything());
+  });
+
+  it("intersects industries with services, like the other axes", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    db({
+      members: () => membersBuilder,
+      industries: () => queryBuilder(dbOk([{ id: 3 }])),
+      member_industries: () => queryBuilder(dbOk([{ member_id: "m1" }, { member_id: "m2" }])),
+      services: () => queryBuilder(dbOk([{ id: 7 }])),
+      member_services: () => queryBuilder(dbOk([{ member_id: "m2" }, { member_id: "m3" }])),
+    });
+
+    await memberDirectory({ industries: ["welding-joining"], services: ["automation-robotics"] });
+
+    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m2"]);
+  });
+
+  it("filters to nothing when an industry slug resolves to no industry", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    db({ members: () => membersBuilder, industries: () => queryBuilder(dbOk([])) });
+
+    await memberDirectory({ industries: ["welding"] });
+
+    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["00000000-0000-0000-0000-000000000000"]);
   });
 
   it("filters services through member_services, not membership_types", async () => {
@@ -508,13 +600,15 @@ describe("memberFacets (GAPS A9.1)", () => {
     expect(from).not.toHaveBeenCalled();
   });
 
-  it("assembles each visible member's industry, services and types, dropping links to members it can't see", async () => {
-    const membersBuilder = queryBuilder(dbOk([
-      { id: "m1", industry: { slug: "laser" } },
-      { id: "m2", industry: null },
-    ]));
+  it("assembles each visible member's industries, services and types, dropping links to members it can't see", async () => {
+    const membersBuilder = queryBuilder(dbOk([{ id: "m1" }, { id: "m2" }]));
     db({
       members: () => membersBuilder,
+      member_industries: () => queryBuilder(dbOk([
+        { member_id: "m1", industry: { slug: "laser" } },
+        { member_id: "m1", industry: { slug: "bending" } },
+        { member_id: "archived", industry: { slug: "ghost-industry" } },
+      ])),
       member_services: () => queryBuilder(dbOk([
         { member_id: "m1", service: { slug: "folding" } },
         { member_id: "m2", service: { slug: "welding" } },
@@ -529,8 +623,9 @@ describe("memberFacets (GAPS A9.1)", () => {
     const f = await memberFacets({ membershipTypes: ["software"] });
 
     expect([...f!.services]).toEqual(["folding"]);
-    expect([...f!.industries]).toEqual(["laser"]);
+    expect([...f!.industries].sort()).toEqual(["bending", "laser"]);
     expect(f!.services.has("ghost")).toBe(false);
+    expect(f!.industries.has("ghost-industry")).toBe(false);
     // paged, so a growing join table is never truncated at max_rows
     expect(membersBuilder.range).toHaveBeenCalledWith(0, 999);
   });
@@ -812,5 +907,19 @@ describe("memberPins", () => {
   it("is empty rather than null when the read fails", async () => {
     db({ members: () => queryBuilder(dbOk(null, null)) });
     expect(await memberPins()).toEqual({ members: [], total: 0 });
+  });
+
+  it("filters industries through member_industries, the same as the directory beside it", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    db({
+      members: () => membersBuilder,
+      industries: () => queryBuilder(dbOk([{ id: 3 }])),
+      member_industries: () => queryBuilder(dbOk([{ member_id: "m1" }])),
+    });
+
+    await memberPins({ industries: ["welding-joining"] });
+
+    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m1"]);
+    expect(membersBuilder.in).not.toHaveBeenCalledWith("industry_id", expect.anything());
   });
 });

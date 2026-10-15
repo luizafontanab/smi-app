@@ -46,6 +46,12 @@
     that way, because a handle mention on someone else's platform is not obviously the
     same thing as a link on ours. If "hidden" should mean hidden there too, it is one line.
 
+    *Note (15 Oct): a story can now feature several members (fix-list 84), and every
+    one of them is tagged in the post, so the answer covers all of them at once. They
+    follow the same rule as the main member today: tagged even if archived. One
+    difference is already in place: an archived co-featured member gets no "story
+    featuring you is live" email, because their tile isn't on the page.*
+
 15. **Sign off the lead-gen disclaimer wording (you asked to see the exact text).** Both
     lead panels, yours and the members', now show job titles prominently and carry this
     draft (GAPS A8.3/A8.4, from the 18 Sep call):
@@ -92,4 +98,39 @@
 ## Data validation
 
 - sent to Jas on oct 4th
+
+### Industries — your 12 Oct spreadsheet
+
+*Note (12 Oct): your ten are in, in your order, with the punctuation tidied:
+Automation & Robotics · Inspection & Measurement · Grinding & Surface Finishing ·
+Processing Technology · Machinery, Tools & Equipment · Software & IT Services ·
+Bending & Forming · Welding & Joining · Subcontractor News · Events, Open Houses &
+Education. A member can now be in several, with one shown as their primary, and
+every member and story was assigned from your mapping exactly as written. A few
+things we'd like you to look at:*
+
+1. **The two tabs disagree on four terms that appear in both.** Financial Services →
+   Events (news) but no industry (services); Material / Sheet Handling and Material
+   Handling Equipment → Processing Technology (news) but Machinery, Tools & Equipment
+   (services); Roll Forming → Processing Technology (news) but Bending & Forming
+   (services). Should each pair agree, and which way?
+2. **Financial Services → "Events / Openhouse / Education"** on the news tab looks like
+   a slip (17 stories). Where should it go, or nowhere?
+3. **"Tool and Die" is missing from the services tab.** It's the near-twin of "Tool &
+   Die", which you put under Subcontractor News, so we've done the same. Right?
+4. **"Subcontractor News" as a directory filter.** It's also how members are filtered
+   on Find a Member (`/member?industry=subcontractor-news`), where "News" reads oddly.
+   Would "Subcontractors" work as the name, or is News deliberate?
+5. **Events with no member.** None of the 53 events in the old site is linked to a
+   member, so none got an industry. Your tab 1 says the ten should cover every event.
+   Should those default to "Events, Open Houses & Education"?
+6. **Only coil processing maps to Processing Technology** among services, so it starts
+   with very few members (5 as primary industry). Intended?
+7. **Your "Services" bucket** (the New Category / New Member Services columns) for the
+   terms with no industry: PR, finance, recruitment, servicing, and so on. Not done yet.
+   Did you mean a new news category and service called "Services" that those merge
+   into, or something else?
+8. **What's still without an industry.** You asked to be told: 8 of the 123 members,
+   about 1,100 stories tagged only "Industry News", and the events in 5. The full list
+   comes from the production run (HUMAN-TODO 26.2).
 

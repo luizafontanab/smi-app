@@ -215,24 +215,35 @@ nothing charged — the copy now says so honestly (C5), but no money moves.
       touched by this integration. Confirm nothing here reaches them before
       going live.
 
-## 7 · Bigin/Zoho CRM — blocks the contacts write-through
+## 7 · Bigin/Zoho CRM — blocks the two-way contact sync
 
-The code is written and merged (`GAPS.md` B6.1–B6.2) but inert until this is
-done. Without it, contacts still only live in the app's own `contacts` table
-— nothing is lost, but Bigin never hears about a new member or newsletter
-signup.
+The code is written (`GAPS.md` B6.4–B6.8, 7 Oct) but inert until this is
+done. Without it, contacts only live in the app's own `contacts` table —
+nothing is lost, but Bigin never hears about a new contact or an unsubscribe,
+and nothing added in Bigin shows up here. Order matters: **7.6 before the code
+is deployed, 7.7 before the next newsletter goes out.**
 
 - [ ] **7.1 — Create the Bigin account, SMI-owned**, and register an OAuth
       client (client id + secret) in the Zoho API console.
-- [ ] **7.2 — Generate a refresh token** via Zoho's OAuth consent flow (a
-      one-time authorization-code exchange) and set `BIGIN_REFRESH_TOKEN`.
-      Zoho access tokens expire hourly; the refresh token is what makes this
-      unattended.
+- [ ] **7.2 — Generate a refresh token** with a **Self Client** in the Zoho API
+      Console (Generate Code tab → portal **Bigin** → the SMI org), then
+      exchange the code (`grant_type=authorization_code`) for a refresh token
+      and set `BIGIN_REFRESH_TOKEN`. Scopes, comma-separated:
+
+      ```
+      ZohoBigin.modules.contacts.ALL,ZohoBigin.modules.accounts.READ,ZohoSearch.securesearch.READ,ZohoBigin.notifications.ALL
+      ```
+
+      `ZohoSearch.securesearch.READ` is easy to miss and every duplicate check
+      fails without it. Zoho access tokens expire hourly; the refresh token is
+      what makes this unattended. The code lives 3–10 minutes, so exchange it
+      straight away.
 - [ ] **7.3 — Confirm the account's data centre** and set `BIGIN_ACCOUNTS_BASE`
       / `BIGIN_API_BASE` accordingly if it isn't the EU one
       (`accounts.zoho.eu` / `www.zohoapis.eu`, the defaults) — Zoho pins an
       account to a data centre at creation and the wrong host rejects every
-      call.
+      call. Each data centre also has its own client secret. Canada's
+      accounts host is `accounts.zohocloud.ca`.
 - [ ] **7.4 — Set the production env vars in Vercel**:
 
       ```
@@ -241,11 +252,45 @@ signup.
       BIGIN_REFRESH_TOKEN=     # from 7.2
       BIGIN_ACCOUNTS_BASE=     # only if not the EU default
       BIGIN_API_BASE=          # only if not the EU default
+      BIGIN_WEBHOOK_TOKEN=     # any random string ≤ 50 chars, e.g. `openssl rand -hex 24`
       ```
-- [ ] **7.5 — Watch the first real push closely.** `BiginCrmSync` is written
-      against Bigin's *documented* Contacts API but has never run against a
-      live account — confirm the request/response shape on the first real
-      `pushContact` call (console CRM edit page, or a newsletter signup).
+
+      `BIGIN_WEBHOOK_TOKEN` switches on live updates from Bigin
+      (`/api/webhooks/bigin`). Without it everything still syncs, just only
+      when `crm_sync` runs — which is **once a day** while production cron is
+      daily (GAPS A3.1, §13.1).
+- [ ] **7.5 — Watch the first real run closely.** `BiginCrmSync` is written
+      against Bigin's *documented* v2 API but has never run against a live
+      account. On the first push (add a contact in `/console/crm`) and the
+      first import (7.7), check:
+      - the contact appears in Bigin with the right name, company and
+        email opt-out;
+      - the duplicate check works: adding a contact Bigin already has must
+        update it, not create a second one;
+      - a contact who unsubscribes here shows as *Email Opt Out* in Bigin;
+      - after the first sync with `BIGIN_WEBHOOK_TOKEN` set, the "Last sync"
+        line on `/console/crm` doesn't report a *live updates* error, and an
+        edit made in Bigin shows up here within a minute or so.
+
+      Unconfirmed in Bigin's docs, and written defensively: whether search
+      answers "no match" with 204 or an empty list (both handled); whether
+      `Unsubscribed_Time` is filled alongside `Email_Opt_Out` (used as the
+      opt-out date when present); whether re-registering the same webhook
+      channel needs the update call (the code tries create, then update).
+- [ ] **7.6 — Push `20261007000001_contacts_bigin_sync.sql` to production
+      before deploying this code** (`pnpm db:push:prod`, or `supabase db push
+      --linked` as in 19.4). It only adds four nullable columns and an index to
+      `contacts`, but `/console/crm` and every push read them, so the code
+      without the migration breaks the CRM page and every contact write-through.
+- [ ] **7.7 — Run the first import from `/console/crm`, with Jas, before the
+      next newsletter send.** Nothing is pulled from Bigin until someone does:
+      click **Preview import**, read the counts (how many would be added, how
+      many are opted out in Bigin, how many have no email or are duplicates),
+      then **Run first import**. Imported contacts are **subscribed unless
+      they opted out in Bigin** — that mirrors today's Bigin → MailChimp list,
+      but it means subscriber counts jump, the daily `newsletter_sync` copies
+      them into Resend, and the next issue goes to them. If Bigin still feeds
+      MailChimp, our unsubscribes now reach MailChimp through it too.
 
 ---
 
@@ -327,21 +372,7 @@ any of it, read the full notes in git. Two lessons from that run:
   different names, so the Services vocabulary carries a term that is also an
   industry facet. That question has since left ask-jas (it was §11).
 
-- [ ] **12.3 — The industry assignment is still a dev assumption.** It is derived
-      from each member's Services tags by `scripts/lib/industry-map.ts`, not
-      stated by any source. This is `GO-LIVE.md` item 1.1 and it does not close
-      just because production now has the data — Jas still has to confirm the
-      10-item list and the per-member assignments.
-- [ ] **12.4 — Content industries stay almost entirely empty on prod, by
-      choice.** Existing stories/videos/events inherited from their member only
-      (decided 9 Sep, no inference from news topics), which on production is 16
-      video rows and nothing else — prod's 300 stories and 53 events have no
-      member at all. `/industry/[slug]` will therefore show no news there until
-      content is tagged. Tag it at `/console/stories/…` as stories are edited, or
-      revisit the decision — deriving from news topics would have resolved 88 of
-      the 300.
-
-**Done:** 12.1 industries migration applied (22 Sep, backup first; three other pending migrations went with it) · 12.2 taxonomy backfill run (114 of 123 members with an industry, 483 `member_services`, 90 `member_membership_types`).
+**Done:** 12.1 industries migration applied (22 Sep, backup first; three other pending migrations went with it) · 12.2 taxonomy backfill run (114 of 123 members with an industry, 483 `member_services`, 90 `member_membership_types`). · 12.3 and 12.4 superseded 12 Oct by §26: the industries and the mapping are now Jas's, and stories take an industry from their news topics too (that was 12.4's "revisit the decision"), so content is no longer almost empty.
 
 ---
 
@@ -609,7 +640,7 @@ live database against `handover-extract/seed/` and names every difference.
       they need removing by hand instead. The company row is `draft`, so it
       stays out of the public directory, search and sitemap in the meantime.
 
-**Done:** 17.1 the five `@smi.local` fixture logins (including the admin whose password is in the repo) are gone from `bvyxeujhecxulzwvpxfr`, confirmed by Luiza 5 Oct; this settles the 27 Sep "still open" note, and production auth holds only 17.12's two accounts · 17.3 paid Supabase plan (24 Sep) · 17.4 CLI reaches the new project: `supabase/.temp/project-ref` is `bvyxeujhecxulzwvpxfr` and 19.4's `db push --linked` worked with `SUPABASE_ACCESS_TOKEN` from `.env.production.local`. The stored login may still be the old account, so still **don't `supabase logout`** · 17.5 legacy event types (25 Sep) · 17.7 folded into 19.3 · 17.9 77 test rows the suites wrote to production removed (27 Sep; `tests/setup.ts` now refuses remote targets) · 17.10 SAMPLE adverts and the invented rate card removed (27 Sep): Jas must enter real products in `/console/adverts/spots` before a booking can carry a price.
+**Done:** 17.1 the five `@smi.local` fixture logins (including the admin whose password is in the repo) are gone from `bvyxeujhecxulzwvpxfr`, confirmed by Luiza 5 Oct; this settles the 27 Sep "still open" note, and production auth holds only 17.12's two accounts · 17.3 paid Supabase plan (24 Sep) · 17.4 CLI reaches the new project: `supabase/.temp/project-ref` is `bvyxeujhecxulzwvpxfr` and 19.4's `db push --linked` worked with `SUPABASE_ACCESS_TOKEN` from `.env.production.local`. The stored login may still be the old account, so still **don't `supabase logout`** · 17.5 legacy event types (25 Sep) · 17.7 folded into 19.3 · 17.9 77 test rows the suites wrote to production removed (27 Sep; `tests/setup.ts` now refuses remote targets) · 17.10 SAMPLE adverts and the invented rate card removed (27 Sep): Jas must enter real products in `/console/adverts/spots` before a booking can carry a price. *(Superseded 6 Oct, fix-list 77: there is no rate card any more — the price goes on each booking, see §24.1.)*
 
 ## 18 · Admin release notes (28 Sep) — for you
 
@@ -740,6 +771,125 @@ steps decide who hears about them.
       definition of an impression didn't change, only how many get shown.
 
 ---
+
+## 24 · Fix-list 75–79 (6 Oct) — production follow-through
+
+- [ ] **24.1 — Push `20261006000001_advert_booking_price.sql` to production.** Adds
+      `advert_bookings.price_pennies` and copies any rate-card product's rate onto the
+      bookings sold under it. Until it's applied, the new Bookings / Supplier Logos price
+      fields and approval invoicing fail on production (the column doesn't exist), and
+      the Command Centre revenue query errors. Additive and idempotent:
+      `pnpm db:push:prod` (or `supabase db push --linked`, as 19.4). Ship it **with** the
+      code, not after.
+- [ ] **24.2 — Look at the new console screenshots before accepting them.** `pnpm visual`
+      has new ids `console_adverts_banners`, `console_adverts_suppliers`,
+      `console_stories_list`, `console_featured_member_id` and `console_supplier_logo_id`
+      (no baselines, so they hard-fail until accepted), and every console baseline moves
+      with the nav (Adverts & Banners, + Supplier Logos). `console_adverts_spots` and
+      `console_adverts_spots_new` are orphaned. `console_takeover_id` is skipped until a
+      takeover is booked locally.
+
+## 25 · Online payment for advertising (6 Oct) — switches it on
+
+Built and tested locally in "simulated" mode: a priced run, bundle, supplier logo,
+Featured Member slot or takeover is **held** (not on the site) until the member pays
+its invoice from `/dashboard/pay/invoice/…`, then released. Without the keys below,
+production behaves exactly as before: nothing is held, invoices are issued and Jas
+collects by hand. It has **never run against real Stripe** — 25.4 is the first time.
+
+- [ ] **25.1 — Push `20261006000002_advert_payments.sql` to production**, with or
+      after 24.1 (`pnpm db:push:prod`). Adds the invoice links, `paid_at`, the
+      `awaiting_payment` booking status, and the placements price and hold flag.
+      Additive. The code reads these columns, so ship it **with** the code.
+- [ ] **25.2 — Set `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`** (the `pk_…` key) in Vercel,
+      production and preview, beside §6.3's `STRIPE_SECRET_KEY`. Advert payments go
+      live only with **both** set. It's a `NEXT_PUBLIC_` variable, so it is baked in
+      at build time: redeploy after setting it.
+- [ ] **25.3 — Add `checkout.session.async_payment_succeeded`** to the webhook
+      endpoint's events (§6.2). `checkout.session.completed` already covers cards;
+      this one settles delayed methods such as bank debits if they're ever enabled.
+- [ ] **25.4 — Test one payment end to end in Stripe test mode** before going live:
+      book a priced run for a test member, pay it with card `4242 4242 4242 4242`,
+      and confirm three things: the run turns "scheduled", the invoice says "paid"
+      on both the console and the member's billing page, and the webhook delivery
+      shows 200 in the Stripe dashboard. Also try `4000 0025 0000 3155` (3-D
+      Secure): it opens a frame from `hooks.stripe.com`, which the CSP allows.
+- [ ] **25.5 — Decide (Jas):** an unpaid hold keeps its dates reserved until its
+      term ends, and is then ended as "unpaid" with the invoice voided. Nothing
+      chases it in between: no reminder email, and no earlier expiry. If either is
+      wanted, it's a small follow-up in the `advert_lifecycle` sweep.
+
+## 26 · Jas's industries (12 Oct) — production follow-through
+
+Jas's ten industries replace ours, a member can be in several (with one
+primary), and every member, story, video and event gets its industry from his
+mapping of Services and news categories (`scripts/lib/industry-map.ts`).
+Migration `20261012000001_industries_jas_member_industries.sql` swaps the list
+and **clears every existing assignment**. The backfill then re-derives them all
+from the `member_services` and `story_categories` already on the target. It
+needs no WordPress export. Industry slugs change (`/industry/welding` →
+`/industry/welding-joining` and so on), with no redirects because the site isn't
+public yet. *(Working tree, uncommitted.)*
+
+- [ ] **26.1 — Push the migration, then run the backfill straight away.**
+      `pnpm db:push:prod`, then `pnpm industries:backfill:prod -- --dry-run`
+      (compare against the full-export simulation: primaries Automation 23 ·
+      Welding 22 · Machinery 18 · Bending 16 · Inspection 10 · Software 7 ·
+      Grinding 6 · Subcontractor 6 · Processing 5 · Events 2 · none 8), then
+      `pnpm industries:backfill:prod`.
+      Until the backfill runs, **nothing has an industry**: the `/industry/*`
+      pages are empty and the directory's industry filter matches no one.
+      Ship the code **with** the migration. Code that reads `member_industries`
+      before it exists, or the old code reading members' industry without the
+      `members_industry_id_fkey` hint once it does, fails silently (PGRST201):
+      member profiles 404 and the directory renders empty. Run
+      `pnpm verify:prod` afterwards. Its "member directory query" and "primary
+      industry ∈ set" lines prove both halves.
+      The backfill refuses to run a second time without `--overwrite`, because
+      after launch the links are curated data. Pending profile revisions lose
+      their proposed industry; the rest of each revision survives.
+- [ ] **26.2 — Send Jas the "no industry" report** (GO-LIVE 1.1):
+      `pnpm industries:backfill:prod -- --dry-run --report` prints every member
+      and story left without one, as tab-separated rows.
+- [ ] **26.3 — Accept the moved visual baselines.** Two causes, both expected:
+      `tests/visual/manifest.ts`'s `industry_slug` route is now
+      `/industry/welding-joining`; and the industry strip changed on **every
+      public route**: two balanced, centred rows from `lg` up (three on a
+      tablet, still one scrolling row on phones) to fit Jas's longer names, and
+      on grid it is now a very light grey band (`bg-shade`) instead of white. Run `pnpm visual`, look, then accept each route:
+      `pnpm visual:accept <route-id>`.
+
+## 27 · Jas's Story Engine feedback (13 Oct) — production follow-through
+
+Fix-list 80–87. Four migrations, all additive and idempotent:
+`20261015000001_story_member_drafts.sql` (`stories.member_draft`),
+`20261015000002_story_social_posts.sql` (`stories.social_posts`) and
+`20261015000003_story_members_tagging.sql` (backfills every story's primary
+member into `story_members`, adds a story-views index on `analytics_events`,
+and narrows `story_members`' public read to published stories), and
+`20261015000004_story_summary.sql` (the `story_summary` computed field). All four were
+applied locally with `supabase migration up`; no reset. *(Working tree, uncommitted.)*
+
+- [ ] **27.1 — Push the four migrations with the code, not after it.**
+      `pnpm db:push:prod`. The code reads `member_draft`, `social_posts`,
+      `story_members` and `story_summary` straight away: without the columns, saving a story fails
+      and member profiles lose their story lists. The `analytics_events` index
+      is built on the partitioned parent, so it locks every partition while it
+      builds. Run it outside traffic once there is real traffic.
+- [ ] **27.2 — Jas pastes SMI's post links after Buffer posts.** Each story in the
+      console has three new fields, "SMI's posts of this story" (LinkedIn,
+      Facebook, X). Buffer never returns the live post's URL, so nothing fills
+      them automatically. Any left empty link to SMI's page on that network, so
+      the story page is never broken, just less specific. Worth telling him in
+      the reply to his feedback.
+- [ ] **27.3 — Look at the visual baselines for the story route and every
+      rich-text surface.** Run `pnpm visual`, look, then accept each route:
+      `pnpm visual:accept <route-id>`. Expected changes:
+      - The story page is wider from `lg`, with a member sidebar.
+      - The share buttons became an icon row.
+      - The member box became tiles.
+      - Every `.story-body` (profiles, events, videos, machines, static pages)
+        gained a float-clearing `::after` for the new image alignment.
 
 ## Not in this list
 

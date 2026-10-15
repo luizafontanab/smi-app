@@ -1,153 +1,215 @@
 /**
- * Derives a member's single Industry from their real WordPress Services tags.
+ * Which Industries a member's Services, and a story's news categories, point
+ * at — Jas's mapping, used to backfill industries onto data that predates them.
  *
- * ⚠ THIS IS A DEV-ONLY ASSUMPTION, NOT REAL DATA. ⚠
+ * Source: Jas's spreadsheet of 12 Oct 2026 — tab 3 ("Current Member Services →
+ * Industry") and tab 2 ("Current Story Category → Industry"), keyed here by the
+ * terms' slugs. His spellings of the industry names varied between tabs
+ * ("Bending & Forming" / "Bending/ Forming", "Software" / "Software/ IT
+ * Services", "Metal Finishing"); each is resolved to tab 1's list, as tidied in
+ * industries.ts. Where he left the industry blank the value is `null` —
+ * reviewed, belongs to no industry — which is different from a slug missing
+ * from the map: that one nobody has looked at, and the backfill reports it.
  *
- * The live site shows a 10-item Industries list (docs/ask-jas.md) with one per
- * member, but that list exists nowhere in the WordPress export — verified
- * against the original database dump, whose only member taxonomies are
- * `best-service` (69 Services terms) and `best-level` (4 legacy Sector terms).
- * So every assignment below is inferred from a member's Services tags rather
- * than stated by the source, and roughly 8% of members resolve to no industry
- * at all. Jas has to validate the real assignments before launch — this is the
- * top item in docs/GO-LIVE.md.
+ * This is a one-off backfill, not a live rule: "going forward you'll be able to
+ * pick them separately" (Jas). Nothing at request time reads these maps.
  *
- * Rule: highest-priority matching service wins. Ties go to the industry with
- * the fewest mapped terms here — the narrower bucket is the more specific claim
- * (Welding has 2 terms, Fabrication 21) — and any remaining tie falls back to
- * INDUSTRIES order, which is arbitrary and flagged as such.
- *
- * Two other rules were tried against the real 123 members and rejected:
- * "first match wins" is order-dependent (WordPress stores a member's services
- * arbitrarily) and starved Tube Bending to zero; adding a per-extra-tag breadth
- * bonus starved *Welding* to zero, because it silently rewards industries by
- * how many service terms happen to be mapped to them rather than by what the
- * member does.
- *
- * Priority: 5 = names the industry almost exactly · 4 = strongly specific to it
- * · 3 = clearly belongs but is as often a supporting capability · 2 =
- * weak/generic. Terms that are not an industry at all (finance, PR,
- * recruitment, logistics, trade bodies) are deliberately absent, so those
- * members get no industry rather than a forced one.
+ * The two maps disagree on a few terms that appear in both vocabularies —
+ * Financial Services, the material-handling pair, roll forming. Each map
+ * follows its own tab as written; the conflicts are in docs/ask-jas.md.
  */
 import { INDUSTRIES, type Industry } from "./industries";
 
-type Rule = { industry: Industry; priority: number };
+type IndustryMap = Readonly<Record<string, Industry | null>>;
 
-export const SERVICE_TO_INDUSTRY: Record<string, Rule> = {
-  // — Laser Cutting
-  "cutting-systems-laser-plasma-waterjet-oxyfuel": { industry: "Laser Cutting", priority: 5 },
-  "laser-profiling-plasma-waterjet-oxyfuel-cutting": { industry: "Laser Cutting", priority: 5 },
-  "laser-part-marking-equipment": { industry: "Laser Cutting", priority: 3 },
+const AR: Industry = "Automation & Robotics";
+const IM: Industry = "Inspection & Measurement";
+const GSF: Industry = "Grinding & Surface Finishing";
+const PT: Industry = "Processing Technology";
+const MTE: Industry = "Machinery, Tools & Equipment";
+const SW: Industry = "Software & IT Services";
+const BF: Industry = "Bending & Forming";
+const WJ: Industry = "Welding & Joining";
+const SUB: Industry = "Subcontractor News";
+const EV: Industry = "Events, Open Houses & Education";
 
-  // — Welding
-  "welding-joining-fastening": { industry: "Welding", priority: 5 },
-  "fastening-joining": { industry: "Welding", priority: 4 },
-
-  // — Automation & Robotics
-  "automation-robotics": { industry: "Automation & Robotics", priority: 5 },
-
-  // — Tube Bending. Only 6 of the 19 tube-bending members are also tagged
-  // welding, so these sit at 5 with everything else and let the specificity
-  // tiebreak decide; forcing them higher emptied Welding entirely.
-  "tube-bending-and-pipe-fabrication": { industry: "Tube Bending", priority: 5 },
-  "tube-bending-manipulation-services": { industry: "Tube Bending", priority: 5 },
-
-  // — Press Brakes
-  "press-brakes-guillotines-nibbling-notching-ironworkers": { industry: "Press Brakes", priority: 5 },
-  "press-brake-guillotine-nibbling-notching-services": { industry: "Press Brakes", priority: 5 },
-  "bending-folding-levelling-manipulation-machines": { industry: "Press Brakes", priority: 3 },
-  "bending-folding-levelling-services": { industry: "Press Brakes", priority: 3 },
-
-  // — Finishing & Coating
-  "finishing-polishing-powder-coating-painting": { industry: "Finishing & Coating", priority: 5 },
-  "surface-finishing-deburring-grinding-heat-treatment": { industry: "Finishing & Coating", priority: 4 },
-  "grinding-lapping-polishing": { industry: "Finishing & Coating", priority: 3 },
-
-  // — Software. Deliberately low: a press manufacturer that also ships CAD/ERP
-  // is not a software company (Bruderer UK came out as Software at priority 5).
-  // A member whose only mapped tag is software still lands here, since nothing
-  // outranks it.
-  "software-cad-cam-erp": { industry: "Software", priority: 3 },
-  "it-services": { industry: "Software", priority: 3 },
-
-  // — Service & Maintenance
-  "equipment-servicing-maintenance-repair-installation": { industry: "Service & Maintenance", priority: 5 },
-  "equipment-hire-specialists": { industry: "Service & Maintenance", priority: 3 },
-  "inspection-test-measurement": { industry: "Service & Maintenance", priority: 3 },
-  "quality-control-inspection-testing-measurement": { industry: "Service & Maintenance", priority: 3 },
-  "consultancy-services": { industry: "Service & Maintenance", priority: 2 },
-  "training-education-providers": { industry: "Service & Maintenance", priority: 2 },
-  "apprenticeships-education": { industry: "Service & Maintenance", priority: 2 },
-
-  // — Machinery Sales (equipment and supply, rather than a process)
-  "material-handling-equipment": { industry: "Machinery Sales", priority: 3 },
-  "material-sheet-handling-storage-systems": { industry: "Machinery Sales", priority: 3 },
-  "factory-equipment": { industry: "Machinery Sales", priority: 3 },
-  "materials-suppliers-metals-composites-exotics": { industry: "Machinery Sales", priority: 3 },
-  "cleaning-equipment": { industry: "Machinery Sales", priority: 3 },
-  "casting-equipment": { industry: "Machinery Sales", priority: 3 },
-  "extrusion-machines": { industry: "Machinery Sales", priority: 3 },
-  "sawing-technology": { industry: "Machinery Sales", priority: 3 },
-  "sawing-cutting-off": { industry: "Machinery Sales", priority: 3 },
-  "consumables": { industry: "Machinery Sales", priority: 2 },
-  "coolants-oils-lubricants-chemicals": { industry: "Machinery Sales", priority: 2 },
-  "tool-storage-vending": { industry: "Machinery Sales", priority: 2 },
-  "workholding": { industry: "Machinery Sales", priority: 2 },
-  "personal-protective-equipment": { industry: "Machinery Sales", priority: 2 },
-
-  // — Fabrication (the forming/pressing/tooling processes)
-  "punching-hole-making": { industry: "Fabrication", priority: 4 },
-  "power-presses-stamping-low-high-speed": { industry: "Fabrication", priority: 4 },
-  "presses-stamping": { industry: "Fabrication", priority: 4 },
-  "press-works-stamping-services": { industry: "Fabrication", priority: 4 },
-  "press-tools-punches": { industry: "Fabrication", priority: 3 },
-  "tooling-press-tools-punches-and-dies": { industry: "Fabrication", priority: 3 },
-  "tool-and-die": { industry: "Fabrication", priority: 3 },
-  "tool-die": { industry: "Fabrication", priority: 3 },
-  "roll-forming-plate-rolling": { industry: "Fabrication", priority: 3 },
-  "cold-forming-machines": { industry: "Fabrication", priority: 3 },
-  "cold-forming-services": { industry: "Fabrication", priority: 3 },
-  "forging": { industry: "Fabrication", priority: 3 },
-  "edm-electro-discharge-machining": { industry: "Fabrication", priority: 3 },
-  "coil-processing-cut-to-length-lines-slitting-blanking-lines": { industry: "Fabrication", priority: 3 },
-  "coil-processing-cutting-slitting-services": { industry: "Fabrication", priority: 3 },
-  "additive-manufacturing-3d-printing": { industry: "Fabrication", priority: 3 },
-  "additive-manufacturing-3d-printing-services": { industry: "Fabrication", priority: 3 },
-  "forming": { industry: "Fabrication", priority: 2 },
-  "assembly": { industry: "Fabrication", priority: 2 },
-  "design-prototyping-services": { industry: "Fabrication", priority: 2 },
-  "product-design-research-and-development": { industry: "Fabrication", priority: 2 },
-
-  // Deliberately unmapped (not an industry): auctioneer-valuers,
-  // financial-services-leasing-asset-financing-funding, pr-marketing-service-providers,
-  // recruitment-services, trade-association-events, transportation-services,
-  // utility-services, waste-management, packaging-suppliers,
-  // part-marking-product-identification.
+/** Member Services (the WP `best-service` taxonomy) → industry. Tab 3. */
+export const SERVICE_TO_INDUSTRY: IndustryMap = {
+  "additive-manufacturing-3d-printing": MTE,
+  "additive-manufacturing-3d-printing-services": SUB,
+  "apprenticeships-education": EV,
+  "assembly": SUB,
+  "auctioneer-valuers": null,
+  "automation-robotics": AR,
+  "bending-folding-levelling-manipulation-machines": BF,
+  "bending-folding-levelling-services": SUB,
+  "casting-equipment": MTE,
+  "cleaning-equipment": MTE,
+  "coil-processing-cut-to-length-lines-slitting-blanking-lines": PT,
+  "coil-processing-cutting-slitting-services": SUB,
+  "cold-forming-machines": MTE,
+  "cold-forming-services": SUB,
+  "consultancy-services": SUB,
+  "consumables": MTE,
+  "coolants-oils-lubricants-chemicals": MTE,
+  "cutting-systems-laser-plasma-waterjet-oxyfuel": MTE,
+  "design-prototyping-services": SUB,
+  "edm-electro-discharge-machining": MTE,
+  "equipment-hire-specialists": MTE,
+  "equipment-servicing-maintenance-repair-installation": null,
+  "extrusion-machines": MTE,
+  "factory-equipment": MTE,
+  "fastening-joining": SUB,
+  "financial-services-leasing-asset-financing-funding": null,
+  "finishing-polishing-powder-coating-painting": SUB,
+  "forging": MTE,
+  "forming": BF,
+  "grinding-lapping-polishing": GSF,
+  "inspection-test-measurement": IM,
+  "it-services": SW,
+  "laser-part-marking-equipment": MTE,
+  "laser-profiling-plasma-waterjet-oxyfuel-cutting": MTE,
+  "material-handling-equipment": MTE,
+  "material-sheet-handling-storage-systems": MTE,
+  "materials-suppliers-metals-composites-exotics": null,
+  "packaging-suppliers": MTE,
+  "part-marking-product-identification": SUB,
+  "personal-protective-equipment": MTE,
+  "power-presses-stamping-low-high-speed": MTE,
+  "pr-marketing-service-providers": null,
+  "press-brake-guillotine-nibbling-notching-services": SUB,
+  "press-brakes-guillotines-nibbling-notching-ironworkers": MTE,
+  "press-tools-punches": MTE,
+  "press-works-stamping-services": SUB,
+  "presses-stamping": MTE,
+  "product-design-research-and-development": SUB,
+  "punching-hole-making": MTE,
+  "quality-control-inspection-testing-measurement": IM,
+  "recruitment-services": null,
+  "roll-forming-plate-rolling": BF,
+  "sawing-cutting-off": MTE,
+  "sawing-technology": MTE,
+  "software-cad-cam-erp": SW,
+  // Jas wrote "Metal Finishing" here — not one of his ten; the closest is this.
+  "surface-finishing-deburring-grinding-heat-treatment": GSF,
+  "tool-die": SUB,
+  // NOT in Jas's sheet (the only one of the 69 export terms missing). Assumed to
+  // follow its near-duplicate "Tool & Die" above; asked in docs/ask-jas.md.
+  "tool-and-die": SUB,
+  "tool-storage-vending": MTE,
+  "tooling-press-tools-punches-and-dies": MTE,
+  "trade-association-events": EV,
+  "training-education-providers": EV,
+  "transportation-services": null,
+  "tube-bending-and-pipe-fabrication": BF,
+  "tube-bending-manipulation-services": SUB,
+  "utility-services": null,
+  "waste-management": null,
+  "welding-joining-fastening": WJ,
+  "workholding": MTE,
 };
 
-/** How many service terms map to each industry — the tiebreak weight: a narrower
- * bucket is the more specific claim. Computed once from the table above. */
-const TERMS_PER_INDUSTRY = Object.values(SERVICE_TO_INDUSTRY).reduce<Map<Industry, number>>(
-  (acc, r) => acc.set(r.industry, (acc.get(r.industry) ?? 0) + 1),
-  new Map(),
-);
+/** News categories (the `categories` table, from WP post tags) → industry. Tab 2. */
+export const CATEGORY_TO_INDUSTRY: IndustryMap = {
+  "additive-manufacturing": MTE,
+  "associations-events": EV,
+  "automation-robotics": AR,
+  "bending-folding-levelling-manipulation-machines": BF,
+  "castings": MTE,
+  "coil-processing": PT,
+  "cold-forming-machines": MTE,
+  "coolants-oils-lubricants-chemicals": MTE,
+  "cut-to-length-lines-slitting-blanking-lines": PT,
+  "cutting-systems-laser-plasma-waterjet-oxyfuel": MTE,
+  "edm-electro-discharge-machining": MTE,
+  "education-apprenticeships": EV,
+  "equipment-servicing-maintenance-repair-installation": null,
+  "exhibitions": EV,
+  "extrusion-machines": MTE,
+  // As written; the Services tab leaves Financial Services without an
+  // industry, so this looks like a slip. Asked in docs/ask-jas.md.
+  "financial-services": EV,
+  "forging": MTE,
+  "industry-news": null,
+  "inspection-testing-measurement": IM,
+  "laser-part-marking-equipment": MTE,
+  "material-handling-equipment": PT,
+  "material-sheet-handling": PT,
+  "powder-paint-coating": GSF,
+  "pr-marketing": null,
+  "press-brakes-guillotines-nibbling-notching": MTE,
+  "presses-stamping": MTE,
+  "punching-hole-making": MTE,
+  "roll-forming": PT,
+  "sawing-technology": MTE,
+  "software-cad-cam-erp": SW,
+  "surface-finishing-heat-treatment": GSF,
+  "tool-storage-vending": MTE,
+  "tooling-press-tools-punches-and-dies-2": MTE,
+  "tube-bending-and-pipe-fabrication": BF,
+  "welding-joining-fastening": WJ,
+  "work-holding": MTE,
+};
 
-/** The member's industry, or null when none of their services map to one. */
-export function industryForServices(serviceSlugs: string[]): Industry | null {
-  const best = new Map<Industry, number>();
-  for (const slug of serviceSlugs) {
-    const rule = SERVICE_TO_INDUSTRY[slug];
-    if (rule) best.set(rule.industry, Math.max(best.get(rule.industry) ?? 0, rule.priority));
+/**
+ * The two broad buckets. Most members carry at least one machinery or
+ * subcontracting service alongside what they actually specialise in — 90 of the
+ * 123 real members touch Machinery — so a catch-all only becomes someone's
+ * primary industry when nothing more specific applies.
+ */
+export const CATCH_ALLS: ReadonlySet<Industry> = new Set<Industry>([MTE, SUB]);
+
+const order = (i: Industry) => INDUSTRIES.indexOf(i);
+
+/** Terms mapped to each industry, per map — the tiebreak weight. */
+const termsPer = new WeakMap<IndustryMap, Map<Industry, number>>();
+const termsIn = (map: IndustryMap) => {
+  let counts = termsPer.get(map);
+  if (!counts) {
+    counts = new Map();
+    for (const industry of Object.values(map)) if (industry) counts.set(industry, (counts.get(industry) ?? 0) + 1);
+    termsPer.set(map, counts);
   }
-  let winner: Industry | null = null;
-  for (const industry of INDUSTRIES) {
-    if (!best.has(industry)) continue;
-    if (winner === null) { winner = industry; continue; }
-    const [a, b] = [best.get(industry)!, best.get(winner)!];
-    // higher priority wins; on a tie the narrower (fewer-term) industry wins;
-    // INDUSTRIES order settles the rest, arbitrarily but deterministically.
-    if (a > b || (a === b && TERMS_PER_INDUSTRY.get(industry)! < TERMS_PER_INDUSTRY.get(winner)!)) winner = industry;
+  return counts;
+};
+
+/** How many of the given terms map to each industry. Duplicates count once. */
+const tally = (slugs: readonly string[], map: IndustryMap) => {
+  const counts = new Map<Industry, number>();
+  for (const slug of new Set(slugs)) {
+    const industry = map[slug];
+    if (industry) counts.set(industry, (counts.get(industry) ?? 0) + 1);
   }
-  return winner;
+  return counts;
+};
+
+/** Every industry a member's services point at, in INDUSTRIES order. */
+export function industriesForServices(slugs: readonly string[]): Industry[] {
+  const hit = tally(slugs, SERVICE_TO_INDUSTRY);
+  return INDUSTRIES.filter((i) => hit.has(i));
 }
+
+/**
+ * The single industry that best describes a set of terms, or null when none of
+ * them maps to one. A specific industry beats a catch-all; then the industry
+ * the most terms point at; then the narrower one (fewer terms mapped to it in
+ * this map — the more specific claim); then INDUSTRIES order, which is
+ * arbitrary but deterministic. Input order never matters.
+ */
+export function primaryIndustry(slugs: readonly string[], map: IndustryMap = SERVICE_TO_INDUSTRY): Industry | null {
+  const hit = tally(slugs, map);
+  if (!hit.size) return null;
+  const all = [...hit.keys()];
+  const specific = all.filter((i) => !CATCH_ALLS.has(i));
+  const pool = specific.length ? specific : all;
+  const terms = termsIn(map);
+  pool.sort((a, b) => hit.get(b)! - hit.get(a)! || terms.get(a)! - terms.get(b)! || order(a) - order(b));
+  return pool[0];
+}
+
+/** A story's industry from its news categories. */
+export const industryForCategories = (slugs: readonly string[]) => primaryIndustry(slugs, CATEGORY_TO_INDUSTRY);
+
+/** Slugs the map has never seen — vocabulary drift, reported rather than guessed at. */
+export const unknownSlugs = (slugs: readonly string[], map: IndustryMap) =>
+  [...new Set(slugs)].filter((s) => !(s in map));

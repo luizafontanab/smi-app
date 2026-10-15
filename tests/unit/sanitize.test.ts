@@ -68,6 +68,40 @@ describe("sanitizeRichText", () => {
   });
 });
 
+// Jas 13/10 item 19: image position + size, admitted only from the closed lists.
+describe("sanitizeRichText — image layout", () => {
+  const img = (attrs: string) => `<img src="${MEDIA}/stories/x.jpg" alt="" ${attrs} />`;
+
+  it("keeps an allowed alignment and size", () => {
+    const out = sanitizeRichText(img(`data-align="left" data-size="small"`));
+    expect(out).toContain(`data-align="left"`);
+    expect(out).toContain(`data-size="small"`);
+  });
+
+  it("removes an unknown value outright rather than leaving an empty attribute", () => {
+    const out = sanitizeRichText(img(`data-align="center" data-size="huge"`));
+    expect(out).not.toContain("data-align");
+    expect(out).not.toContain("data-size");
+    expect(out).toContain(`src="${MEDIA}/stories/x.jpg"`);
+  });
+
+  it("still drops every other data-* and style on an image", () => {
+    const out = sanitizeRichText(img(`data-x="1" style="float:left" class="alignleft"`));
+    expect(out).not.toMatch(/data-x|style|class/);
+  });
+
+  it("is idempotent, and still refuses images from anywhere but our bucket", () => {
+    const once = sanitizeRichText(img(`data-align="right" data-size="large"`));
+    expect(sanitizeRichText(once)).toBe(once);
+    expect(sanitizeRichText(`<img src="https://evil.example/x.jpg" data-align="left" />`)).toBe("");
+  });
+
+  it("survives the split at advert breaks", () => {
+    const [first] = splitAtAdBreaks(`${img(`data-align="left" data-size="medium"`)}<p>a</p>${BREAK}<p>b</p>`);
+    expect(first).toContain(`data-align="left"`);
+  });
+});
+
 describe("richTextFromPlain", () => {
   it("wraps blank-line paragraphs and escapes markup", () => {
     expect(richTextFromPlain("one <b>\n\ntwo & three")).toBe("<p>one &lt;b&gt;</p><p>two &amp; three</p>");

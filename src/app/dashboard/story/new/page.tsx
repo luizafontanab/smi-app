@@ -1,7 +1,7 @@
 import { requireMember } from "@/lib/auth";
 import { mediaUrl, publicDb, serviceDb } from "@/lib/db/server";
 import { AddContentTabs } from "@/components/dashboard/AddContentTabs";
-import { memberUploadImage, submitStory } from "../../actions";
+import { memberUploadImage, previewStoryBody, submitStory } from "../../actions";
 import { StoryForm } from "./StoryForm";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export default async function NewMemberStory(props: PageProps<"/dashboard/story/
   const user = await requireMember();
   const sp = await props.searchParams;
   const [{ data: cats }, { data: member }, { data: inds }] = await Promise.all([
-    publicDb().from("categories").select("id, name").order("name"),
+    publicDb().from("categories").select("id, name, slug").order("name"),
     serviceDb().from("members").select("name, slug, logo_path, industry_id").eq("id", user.memberId).single(),
     publicDb().from("industries").select("id, name").order("sort_order"),
   ]);
@@ -27,6 +27,7 @@ export default async function NewMemberStory(props: PageProps<"/dashboard/story/
       <StoryForm
         action={submitStory}
         uploadImage={memberUploadImage}
+        previewBody={previewStoryBody}
         categories={cats ?? []}
         industries={inds ?? []}
         defaultIndustryId={member?.industry_id ?? null}

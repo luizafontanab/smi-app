@@ -6,10 +6,11 @@ import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import type { UploadResult } from "@/lib/upload-limits";
 
 type Props = {
   action: (formData: FormData) => Promise<void>;
-  uploadImage: (formData: FormData) => Promise<string | null>;
+  uploadImage: (formData: FormData) => Promise<UploadResult>;
   member: { name: string; slug: string };
   industries: { id: number; name: string }[];
   /** Present only in edit mode — pre-fills the form and switches the copy/actions. */

@@ -39,6 +39,7 @@ import {
 
 export const NOTIFICATION_KINDS = [
   "story_live",
+  "story_featured",
   "story_rejected",
   "video_live",
   "video_rejected",
@@ -56,6 +57,8 @@ export const NOTIFICATION_KINDS = [
   "advert_ended",
   "advert_artwork_approved",
   "advert_artwork_rejected",
+  "advert_payment_due",
+  "advert_payment_received",
   "visibility_confirmed",
   "visibility_declined",
   "welcome",
@@ -97,6 +100,8 @@ export type NotificationPayload = {
   booking_id?: string;
   amount?: string;
   invoice_ref?: string;
+  /** The `invoices` row an advert payment email is about — its pay page is keyed on it. */
+  invoice_id?: string;
   months?: number;
   comped_until?: string;
   action_link?: string;
@@ -189,6 +194,8 @@ function varsFor(kind: string, payload: NotificationPayload): TemplateVars {
       return { ends_on: String(payload.ends_on ?? "soon") };
 
     case "payment_receipt":
+    case "advert_payment_due":
+    case "advert_payment_received":
       return {
         amount_phrase: payload.amount ? ` of ${payload.amount}` : "",
         invoice_line: payload.invoice_ref ? `Your reference is ${payload.invoice_ref}.` : "",
@@ -242,6 +249,18 @@ function ctaFor(kind: string, payload: NotificationPayload, base: string): { hre
       return payload.booking_id
         ? { href: `${base}/dashboard/advert/${payload.booking_id}`, specific: true }
         : { href: dashboard, specific: false };
+
+    // The pay page is keyed on the invoice, not the booking: one invoice can
+    // pay for a whole bundle, or for a placement with no booking at all.
+    case "advert_payment_due":
+      return typeof payload.invoice_id === "string" && payload.invoice_id
+        ? { href: `${base}/dashboard/pay/invoice/${payload.invoice_id}`, specific: true }
+        : { href: `${base}/dashboard/settings/billing`, specific: false };
+
+    case "advert_payment_received":
+      return payload.booking_id
+        ? { href: `${base}/dashboard/advert/${payload.booking_id}`, specific: true }
+        : { href: `${base}/dashboard/settings/billing`, specific: true };
 
     case "account_created": {
       const link = typeof payload.action_link === "string" ? payload.action_link.trim() : "";
@@ -398,6 +417,7 @@ export function sampleVarsFor(kind: string): TemplateVars {
 function samplePayload(base: string): NotificationPayload {
   return {
     booking_id: "00000000-0000-0000-0000-000000000000",
+    invoice_id: "00000000-0000-0000-0000-000000000000",
     action_link: `${base}/reset/confirm?token=example`,
   };
 }

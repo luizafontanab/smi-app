@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import { IMAGE_ALIGNS, IMAGE_SIZES } from "@/lib/image-layout";
 
 const MEDIA_PREFIX = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/media/`;
 
@@ -10,12 +11,28 @@ export const RICH_TEXT_ALLOWLIST: sanitizeHtml.IOptions = {
   allowedTags: ["p", "h2", "h3", "strong", "em", "u", "s", "a", "ul", "ol", "li", "br", "blockquote", "img", "hr"],
   allowedAttributes: {
     a: ["href", "rel"],
-    img: ["src", "alt", "width", "height"],
+    // data-align / data-size are value-checked in transformTags.img below.
+    img: ["src", "alt", "width", "height", "data-align", "data-size"],
     hr: ["data-ad-break"],
   },
   allowedSchemes: ["http", "https", "mailto"],
   transformTags: {
     a: sanitizeHtml.simpleTransform("a", { rel: "noopener nofollow" }),
+    // Image layout (lib/image-layout): only the enumerated values survive, and a
+    // bad one removes the attribute outright. (sanitize-html's own `values`
+    // option would leave an empty `data-align` behind, which still matches an
+    // attribute selector.)
+    img: (tagName, attribs) => {
+      const { "data-align": align, "data-size": size, ...rest } = attribs;
+      return {
+        tagName,
+        attribs: {
+          ...rest,
+          ...((IMAGE_ALIGNS as readonly string[]).includes(align) ? { "data-align": align } : {}),
+          ...((IMAGE_SIZES as readonly string[]).includes(size) ? { "data-size": size } : {}),
+        },
+      };
+    },
   },
   exclusiveFilter: (frame) =>
     // images may only come from our own public media bucket

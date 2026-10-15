@@ -5,18 +5,26 @@ import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/auth";
 import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
-import { mediaUrl, serviceDb, sessionDb } from "@/lib/db/server";
+import { serviceDb, sessionDb } from "@/lib/db/server";
 import { isEventType } from "@/lib/event-types";
+import { editorImageUpload } from "@/lib/editor-upload";
+import type { UploadResult } from "@/lib/upload-limits";
 import { removeMedia, uploadImage } from "@/lib/media";
 import { companyPageValuesFromForm } from "@/lib/member-form";
 import { resolveCoordinates } from "@/lib/member-geocode";
 import {
   membershipTypeIdsFromForm,
   membershipTypesError,
+  replaceMemberIndustries,
   replaceMemberMembershipTypes,
   replaceMemberServices,
 } from "@/lib/member-services";
-import { sanitizeRichText } from "@/lib/sanitize";
+import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
+import { companyLinksFor, withCompanyLines } from "@/lib/company-link";
+import { isMemberLinkable } from "@/lib/member-visibility";
+import { memberCanDeleteStory, memberCanEditStory } from "@/lib/member-story";
+import { isMemberDraft } from "@/lib/story-board";
+import { replaceStoryMembers } from "@/lib/story-members";
 import { HOUR, withinLimit } from "@/lib/rate-limit";
 import { siteUrl } from "@/lib/site-url";
 import { EMAIL_RE } from "@/lib/validate";
@@ -73,17 +81,17 @@ async function assertOwnsAdvert(db: ReturnType<typeof serviceDb>, id: string, me
   return data?.member_id === memberId;
 }
 
-type OwnedBooking = { id: string; status: string; advert_id: string; product_id: string | null };
+type OwnedBooking = { id: string; status: string; advert_id: string; price_pennies: number | null };
 
 /** The `advert_bookings` row `id` if it belongs to this member (via its advert), else null. */
 async function assertOwnsBooking(db: ReturnType<typeof serviceDb>, id: string, memberId: string): Promise<OwnedBooking | null> {
   const { data } = await db
     .from("advert_bookings")
-    .select("id, status, advert_id, product_id, advert:adverts(member_id)")
+    .select("id, status, advert_id, price_pennies, advert:adverts(member_id)")
     .eq("id", id)
     .single();
   if (!data || data.advert?.member_id !== memberId) return null;
-  return { id: data.id, status: data.status, advert_id: data.advert_id, product_id: data.product_id };
+  return { id: data.id, status: data.status, advert_id: data.advert_id, price_pennies: data.price_pennies };
 }
 
 /** True when the `prospect_marks` row `id` is this member's own — never an admin mark. */
@@ -92,18 +100,28 @@ async function assertOwnsMark(db: ReturnType<typeof serviceDb>, id: string, memb
   return data?.member_id === memberId;
 }
 
-/** Editor image upload — returns the public URL for insertion as <img src>. */
-export async function memberUploadImage(formData: FormData): Promise<string | null> {
+/** Editor image upload — returns { url } for insertion as <img src>, or { error } to show. */
+export async function memberUploadImage(formData: FormData): Promise<UploadResult> {
   const user = await requireMember();
-  const path = await uploadImage(formData.get("file") as File | null, `stories/${user.memberId}`);
-  return mediaUrl(path);
+  return editorImageUpload(formData.get("file"), `stories/${user.memberId}`);
 }
 
-/** M3 — member self-post: lands awaiting approval, never live directly. */
+/**
+ * M3 — member self-post. "Submit for approval" lands it awaiting approval, never
+ * live directly. "Save draft" (intent=draft, Jas 13/10) keeps it as the
+ * member's private draft — no cover needed yet, nobody notified — and opens it
+ * in the editor, where it can be previewed as published and submitted later.
+ */
 export async function submitStory(formData: FormData) {
   const user = await requireMember();
+  const asDraft = formData.get("intent") === "draft";
   const title = String(formData.get("title") ?? "").trim();
-  if (!title) return;
+  if (!title) {
+    // The draft button skips native validation (a draft needn't have a cover
+    // yet), so the title rule has to be said here rather than by the browser.
+    if (asDraft) redirect(`/dashboard/story/new?error=${encodeURIComponent("Give the story a title to save it as a draft.")}`);
+    return;
+  }
   let cover: string | null = null;
   try {
     cover = await uploadImage(formData.get("cover") as File | null, "stories");
@@ -113,14 +131,15 @@ export async function submitStory(formData: FormData) {
     // not be caught as an upload failure.
     redirect(`/dashboard/story/new?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
   }
-  if (!cover) redirect(`/dashboard/story/new?error=${encodeURIComponent("A cover image is required.")}`);
+  if (!cover && !asDraft) redirect(`/dashboard/story/new?error=${encodeURIComponent("A cover image is required.")}`);
   const db = serviceDb();
   const { data } = await db.from("stories").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
     title,
     excerpt: String(formData.get("excerpt") ?? ""),
     body: sanitizeRichText(String(formData.get("body") ?? "")),
-    status: "awaiting_approval",
+    status: asDraft ? "draft" : "awaiting_approval",
+    member_draft: asDraft,
     source: "member",
     is_member_news: true,
     member_id: user.memberId,
@@ -133,9 +152,49 @@ export async function submitStory(formData: FormData) {
   }).select("id").single();
   const cat = Number(formData.get("category") || 0);
   if (cat && data) await db.from("story_categories").insert({ story_id: data.id, category_id: cat });
-  await notifySubmitted("story_submitted", user.memberId, { story_id: data?.id }, `Submitted a story for approval: “${title}”.`);
+  // story_members holds every member a story features, the primary included
+  // (migration 20261015000003) — a member's own story features them.
+  if (data) await replaceStoryMembers(db, data.id, [user.memberId]);
   revalidatePath("/dashboard");
+  if (asDraft) {
+    revalidatePath("/dashboard/submissions");
+    redirect(data ? `/dashboard/story/${data.id}/edit?saved=draft` : "/dashboard/submissions");
+  }
+  await notifySubmitted("story_submitted", user.memberId, { story_id: data?.id }, `Submitted a story for approval: “${title}”.`);
   redirect("/dashboard?submitted=story");
+}
+
+/**
+ * The member's Preview tab (Jas 13/10 items 10/15): the body they are typing,
+ * cleaned by the same sanitiser the published page uses, so what the preview
+ * shows is what will publish — the tab used to inject the editor's raw HTML.
+ * Server-side so sanitize-html stays out of the browser bundle.
+ */
+export async function previewStoryBody(html: string): Promise<string> {
+  const user = await requireMember();
+  // closes with the member's own name + website line, as the published page will
+  const { data: member } = await serviceDb()
+    .from("members").select("id, name, website, status, archived_at").eq("id", user.memberId).maybeSingle();
+  const links = member && isMemberLinkable(member) ? companyLinksFor([member], member.id) : [];
+  return withCompanyLines(renderableHtml(String(html ?? "").slice(0, 200_000)), links);
+}
+
+/**
+ * Delete the member's own unsubmitted draft. Only a draft: anything already
+ * submitted has been seen by the editor, so it is withdrawn instead and the
+ * record stays.
+ */
+export async function deleteStoryDraft(formData: FormData) {
+  const user = await requireMember();
+  const id = String(formData.get("id") ?? "");
+  const db = serviceDb();
+  const { data: story } = await db.from("stories").select("id, status, member_id, member_draft, cover_path").eq("id", id).single();
+  if (!memberCanDeleteStory(story, user.memberId)) return;
+  await db.from("stories").delete().eq("id", id);
+  await removeMedia(story!.cover_path);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/submissions");
+  redirect("/dashboard/submissions?deleted=draft");
 }
 
 /** Pull back a story that's still waiting on (or was sent back from) a decision. */
@@ -149,14 +208,26 @@ export async function withdrawStory(formData: FormData) {
   redirect("/dashboard");
 }
 
-/** Edit and resubmit a story that's awaiting approval or was rejected — mirrors resubmitAdvert. */
+/**
+ * Edit and resubmit a story that's awaiting approval or was rejected — mirrors
+ * resubmitAdvert. Also where a member's draft is saved again (intent=draft,
+ * stays a draft) or finally submitted (moves to awaiting approval).
+ */
 export async function editStory(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
   const db = serviceDb();
-  if (!(await assertOwnsRow(db, "stories", id, user.memberId))) return;
+  const { data: row } = await db.from("stories").select("id, status, member_id, member_draft").eq("id", id).single();
+  if (!memberCanEditStory(row, user.memberId)) return;
+  const wasDraft = isMemberDraft(row!);
+  // "Save draft" only means something for a draft: a submitted story can't be
+  // pulled back into the member's private workspace this way.
+  const asDraft = wasDraft && formData.get("intent") === "draft";
   const title = String(formData.get("title") ?? "").trim();
-  if (!title) return;
+  if (!title) {
+    if (asDraft) redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("Give the story a title to save it as a draft.")}`);
+    return;
+  }
   let cover: string | null = null;
   try {
     cover = await uploadImage(formData.get("cover") as File | null, "stories");
@@ -164,8 +235,9 @@ export async function editStory(formData: FormData) {
     redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
   }
   // A cover is mandatory — fine to keep the existing one on a resubmit, but a
-  // story that somehow has neither (pre-dates this rule) can't stay without one.
-  if (!cover) {
+  // story that somehow has neither (pre-dates this rule, or a draft saved
+  // before one was chosen) can't be submitted without one.
+  if (!cover && !asDraft) {
     const { data: existing } = await db.from("stories").select("cover_path").eq("id", id).single();
     if (!existing?.cover_path) redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("A cover image is required.")}`);
   }
@@ -173,7 +245,8 @@ export async function editStory(formData: FormData) {
     title,
     excerpt: String(formData.get("excerpt") ?? ""),
     body: sanitizeRichText(String(formData.get("body") ?? "")),
-    status: "awaiting_approval",
+    status: asDraft ? "draft" : "awaiting_approval",
+    member_draft: asDraft,
     industry_id: Number(formData.get("industry_id")) || null,
     // cleared so the member is not still shown last time's reason once they act on it
     rejected_reason: null,
@@ -188,16 +261,24 @@ export async function editStory(formData: FormData) {
     await db.from("story_categories").delete().eq("story_id", id);
     await db.from("story_categories").insert({ story_id: id, category_id: cat });
   }
-  await notifySubmitted("story_submitted", user.memberId, { story_id: id }, `Resubmitted their story “${title}” after changes.`);
   revalidatePath("/dashboard");
+  if (asDraft) {
+    revalidatePath("/dashboard/submissions");
+    redirect(`/dashboard/story/${id}/edit?saved=draft`);
+  }
+  await notifySubmitted(
+    "story_submitted",
+    user.memberId,
+    { story_id: id },
+    wasDraft ? `Submitted a story for approval: “${title}”.` : `Resubmitted their story “${title}” after changes.`,
+  );
   redirect("/dashboard?submitted=story");
 }
 
-/** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
-export async function memberUploadVideoImage(formData: FormData): Promise<string | null> {
+/** Editor image upload for the description field — returns { url } for insertion as <img src>, or { error } to show. */
+export async function memberUploadVideoImage(formData: FormData): Promise<UploadResult> {
   const user = await requireMember();
-  const path = await uploadImage(formData.get("file") as File | null, `videos/${user.memberId}`);
-  return mediaUrl(path);
+  return editorImageUpload(formData.get("file"), `videos/${user.memberId}`);
 }
 
 /** Member self-post: lands awaiting approval, never live directly. */
@@ -264,11 +345,10 @@ export async function editVideo(formData: FormData) {
   redirect("/dashboard?submitted=video");
 }
 
-/** Editor image upload for the description field — returns the public URL for insertion as <img src>. */
-export async function memberUploadEventImage(formData: FormData): Promise<string | null> {
+/** Editor image upload for the description field — returns { url } for insertion as <img src>, or { error } to show. */
+export async function memberUploadEventImage(formData: FormData): Promise<UploadResult> {
   const user = await requireMember();
-  const path = await uploadImage(formData.get("file") as File | null, `events/${user.memberId}`);
-  return mediaUrl(path);
+  return editorImageUpload(formData.get("file"), `events/${user.memberId}`);
 }
 
 /** M4 — member adds an event; Jas approves. */
@@ -403,6 +483,9 @@ export async function submitProfileEdit(formData: FormData) {
   const parsed = companyPageValuesFromForm(formData, member, uploaded);
   if ("error" in parsed) return back(parsed.error);
   const values = { ...parsed.values };
+  // Industries: the set, reconciled with the primary in values.industry_id.
+  // Like services, it travels as `industry_ids` on a live member's revision.
+  const industryIds = parsed.industryIds;
 
   // The member owns their own URL now that the form is shared, so the same
   // guards the console applies have to apply here: a clash would violate the
@@ -442,6 +525,7 @@ export async function submitProfileEdit(formData: FormData) {
     // so its services apply straight away rather than through a revision.
     await replaceMemberServices(db, user.memberId, serviceIds);
     await replaceMemberMembershipTypes(db, user.memberId, membershipTypeIds);
+    await replaceMemberIndustries(db, user.memberId, industryIds);
     if (firstSubmit) {
       const { notifyAdminFunnel } = await import("@/lib/notify-admin");
       await notifyAdminFunnel({
@@ -460,7 +544,7 @@ export async function submitProfileEdit(formData: FormData) {
 
   await db.from("member_revisions").insert({
     member_id: user.memberId,
-    payload: { ...values, service_ids: serviceIds, membership_type_ids: membershipTypeIds } as import("@/lib/db/types").Json,
+    payload: { ...values, service_ids: serviceIds, membership_type_ids: membershipTypeIds, industry_ids: industryIds } as import("@/lib/db/types").Json,
   });
   // Like every other member submission, it lands in the console as a
   // notification linking to where it's approved (GAPS A1.12).
@@ -838,7 +922,8 @@ export async function renewAdvertBooking(formData: FormData) {
 
   const { data: renewal } = await db.from("advert_bookings").insert({
     advert_id: prev.advert_id,
-    product_id: prev.product_id,
+    // last run's price, which the admin sees prefilled when approving
+    price_pennies: prev.price_pennies,
     starts_on: String(formData.get("starts_on")),
     ends_on: String(formData.get("ends_on")),
     status: "awaiting_approval",

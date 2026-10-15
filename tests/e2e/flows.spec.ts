@@ -37,7 +37,8 @@ test.describe("reader (V1/V2)", () => {
     await page.goto("/news?filter=members");
     // scoped to the filtered All-news grid — the rails above it are unfiltered
     await page.locator('[data-testid="all-news-grid"] a[href^="/news/"]:has(h3)').first().click();
-    await expect(page.locator("text=This story features an SMI member")).toBeVisible();
+    // Jas 13/10 item 12b: the member box became tiles headed "Featured SMI member(s)"
+    await expect(page.getByText(/^Featured SMI members?$/).first()).toBeVisible();
   });
 
   test("search ranks members before stories", async ({ page }) => {
@@ -145,8 +146,11 @@ test.describe("member directory — industry pills + text search", () => {
   test("the industry pills filter the directory", async ({ page }) => {
     await page.goto("/member");
     const pills = page.getByRole("navigation", { name: "Filter by industry" });
-    // "All industries" plus one per industry — 10 in the dev seed
+    // "All industries" plus one per industry — 10, Jas's list (migration 20261012000001)
     const links = pills.getByRole("link");
+    // count() doesn't wait, and the page streams in behind (public)/loading.tsx —
+    // wait for a real pill first or this counts the skeleton's zero.
+    await expect(links.nth(1)).toBeVisible();
     expect(await links.count()).toBeGreaterThan(1);
 
     const pill = links.nth(1);
@@ -189,9 +193,9 @@ test.describe("member directory — industry pills + text search", () => {
 
   test("the legacy ?category= param still filters (external links must not die)", async ({ page }) => {
     // /industry/[slug] linked here as ?category= before migration 20260909000002.
-    await page.goto("/member?industry=welding");
+    await page.goto("/member?industry=welding-joining");
     const viaIndustry = (await page.getByText(/\d+ members? in /).textContent())!.trim();
-    await page.goto("/member?category=welding");
+    await page.goto("/member?category=welding-joining");
     await expect(page.getByText(/\d+ members? in /)).toHaveText(viaIndustry);
   });
 
@@ -293,7 +297,8 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
 
     // preview shows the backlink + branding BEFORE publish (req §7 fix)
     await page.click("button:has-text('Preview')");
-    await expect(page.locator("text=This story features an SMI member")).toBeVisible();
+    // Jas 13/10 item 12b: the member box became tiles headed "Featured SMI member(s)"
+    await expect(page.getByText(/^Featured SMI members?$/).first()).toBeVisible();
     await expect(page.getByTestId("story-preview").locator("p", { hasText: "Body paragraph one." })).toBeVisible();
     await page.click("button:has-text('Write')");
 
@@ -462,7 +467,7 @@ test.describe("admin (A1/A4)", () => {
       "Command Centre",
       "Analytics",
       "Content",
-      "Adverts & Inventory",
+      "Adverts & Banners",
       "Members & CRM",
     ]);
     await expect(page.locator('header nav a[aria-current="page"]')).toHaveText("Command Centre");
@@ -475,10 +480,33 @@ test.describe("admin (A1/A4)", () => {
     expect(await page.locator("td:has-text('live')").count()).toBeGreaterThan(0);
     // banners are one sitewide pool, counted against the spots we sell
     await expect(page.getByText(/^\d+ of \d+$/).first()).toBeVisible();
+    // the old Inventory URL still lands, on the renamed page (fix-list 79)
     await page.goto("/console/adverts/spots");
+    await page.waitForURL("**/console/adverts/banners");
+    await expect(page.getByRole("heading", { name: "Banners", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Banner spots" })).toBeVisible();
+    // the rate card is gone (fix-list 77)
+    await expect(page.getByRole("heading", { name: "Rate card" })).toHaveCount(0);
     await expect(page.getByLabel("Spots we sell")).toHaveValue(/^\d+$/);
     await expect(page.getByText("Positions on the site")).toHaveCount(0);
+  });
+
+  // fix-list 75
+  test("story engine has a list view that finds every status and returns from the editor", async ({ page }) => {
+    await login(page, "jas@smi.local");
+    await page.goto("/console/stories");
+    await page.getByRole("link", { name: "List", exact: true }).click();
+    await page.waitForURL(/view=list/);
+    await expect(page.getByRole("link", { name: "List", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("columnheader", { name: "Status" })).toBeVisible();
+
+    await page.getByRole("link", { name: "Published", exact: true }).click();
+    await page.waitForURL(/status=published/);
+    const first = page.locator("tbody tr").first().getByRole("link").first();
+    await first.click();
+    await page.waitForURL(/from=list/);
+    await page.getByRole("link", { name: "← Story Engine" }).click();
+    await page.waitForURL(/view=list&status=published/);
   });
 });
 

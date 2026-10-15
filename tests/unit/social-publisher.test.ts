@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getSocialPublisher, type SocialPost } from "@/lib/adapters/social";
+import { getSocialPublisher, MAX_EXTRA_TAGGED_MEMBERS, type SocialPost } from "@/lib/adapters/social";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -226,5 +226,37 @@ describe("getSocialPublisher — Buffer", () => {
     // One bad channel must not stop the others, and the error has to say which.
     await expect(getSocialPublisher().publish(post())).rejects.toThrow(/channel-2: revoked/);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Jas 13/10 item 12: co-featured members are tagged too — deduped, and capped
+// so a dozen-member story doesn't turn the post into a list of handles.
+describe("formatTags with co-featured members", () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "");
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    logSpy.mockRestore();
+  });
+
+  it("tags the extras after the primary, once each", async () => {
+    const publisher = getSocialPublisher();
+    await publisher.publish(post({ tagHandles: { x: "acme" }, extraTagHandles: [{ x: "blmgroup" }, { x: "acme" }] }));
+    const line = String(logSpy.mock.calls[0][0]);
+    expect(line).toContain("x:@acme x:@blmgroup");
+    expect(line.match(/@acme/g)).toHaveLength(1);
+  });
+
+  it(`stops after ${MAX_EXTRA_TAGGED_MEMBERS} extra members`, async () => {
+    const publisher = getSocialPublisher();
+    const extras = Array.from({ length: MAX_EXTRA_TAGGED_MEMBERS + 3 }, (_, i) => ({ x: `member${i}` }));
+    await publisher.publish(post({ tagHandles: {}, extraTagHandles: extras }));
+    const line = String(logSpy.mock.calls[0][0]);
+    expect(line.match(/x:@member/g)).toHaveLength(MAX_EXTRA_TAGGED_MEMBERS);
   });
 });

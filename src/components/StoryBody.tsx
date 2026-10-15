@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { withCompanyLines, type CompanyLink } from "@/lib/company-link";
 import { sanitizeRichText } from "@/lib/sanitize";
 
 /**
@@ -19,19 +20,28 @@ import { sanitizeRichText } from "@/lib/sanitize";
  * Each segment gets its own .story-body wrapper so the breaks sit outside it —
  * otherwise `.story-body img` would restyle the advert artwork.
  */
-export function StoryBody({ segments, breaks, className }: {
+export function StoryBody({ segments: given, breaks, className, companyLinks = [] }: {
   segments: string[];
   /** One node per gap; a gap with no node collapses (nothing booked, no placeholder). */
   breaks: React.ReactNode[];
   className?: string;
+  /** Each featured member's name + website link, closing the story (lib/company-link). */
+  companyLinks?: readonly CompanyLink[];
 }) {
+  // an empty body still closes with the members' lines
+  const segments = given.length || !companyLinks.length ? given : [""];
   return (
     <>
       {segments.map((segment, i) => (
         <Fragment key={i}>
           <div
             className={`story-body ${i === 0 ? className ?? "" : ""}`.trim()}
-            dangerouslySetInnerHTML={{ __html: sanitizeRichText(segment) }}
+            // the closing company line (lib/company-link) — styled apart, and
+            // added for each featured member the author's own line doesn't already cover. Only the
+            // last segment can hold it.
+            dangerouslySetInnerHTML={{
+              __html: i === segments.length - 1 ? withCompanyLines(sanitizeRichText(segment), companyLinks) : sanitizeRichText(segment),
+            }}
           />
           {i < segments.length - 1 && breaks[i]}
         </Fragment>

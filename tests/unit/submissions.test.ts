@@ -51,6 +51,57 @@ describe("pendingSubmissions", () => {
     expect(stories.limit).not.toHaveBeenCalled();
   });
 
+  // Jas 13/10: a `draft` story is only listed when the member saved it — an
+  // admin's draft naming them is the desk's unfinished work.
+  it("lists story drafts only when they are the member's own, and marks them", async () => {
+    const stories = queryBuilder(dbOk([row("s1", "2026-09-01T10:00:00Z", { status: "draft", member_draft: true })], 1));
+    db({ stories: () => stories });
+
+    const { items } = await memberContent("mem1", { statuses: CONTENT_FILTERS.drafts });
+
+    expect(stories.or).toHaveBeenCalledWith("status.neq.draft,member_draft.eq.true");
+    expect(items[0]).toMatchObject({ kind: "story", status: "draft", memberDraft: true, publicHref: null });
+  });
+
+  // Jas 13/10 item 12: stories led by someone else that feature this member.
+  it("lists published stories featuring the member alongside its own, marked featured", async () => {
+    let call = 0;
+    const own = queryBuilder(dbOk([row("s1", "2026-09-02T10:00:00Z", { status: "published", slug: "own" })], 1));
+    const featured = queryBuilder(dbOk([row("s9", "2026-09-01T10:00:00Z", { status: "published", slug: "joint" })], 1));
+    db({ stories: () => (call++ === 0 ? own : featured) });
+
+    const { items, total } = await memberContent("mem1", { statuses: CONTENT_FILTERS.published });
+
+    expect(featured.eq).toHaveBeenCalledWith("story_members.member_id", "mem1");
+    expect(featured.or).toHaveBeenCalledWith("member_id.is.null,member_id.neq.mem1");
+    expect(items.map((i) => [i.id, Boolean(i.featured)])).toEqual([["s1", false], ["s9", true]]);
+    expect(items[1]).toMatchObject({ publicHref: "/news/joint" });
+    expect(total).toBe(2);
+  });
+
+  it("doesn't look for featured stories when published ones weren't asked for", async () => {
+    const from = db({});
+    await memberContent("mem1", { statuses: CONTENT_FILTERS.drafts });
+    expect(from.mock.calls.filter(([t]) => t === "stories")).toHaveLength(1);
+  });
+
+  it("offers a preview of the member's own unpublished stories only", async () => {
+    db({
+      stories: () => queryBuilder(dbOk([
+        row("s1", "2026-09-04T10:00:00Z", { source: "member" }),
+        row("s2", "2026-09-03T10:00:00Z", { status: "draft", member_draft: true, source: "member" }),
+        row("s3", "2026-09-02T10:00:00Z", { status: "published", slug: "live", source: "member" }),
+        row("s4", "2026-09-01T10:00:00Z", { source: "admin" }),
+      ], 4)),
+    });
+    const { items } = await memberContent("mem1", { statuses: CONTENT_FILTERS.all });
+    const href = (id: string) => items.find((i) => i.id === id)?.previewHref;
+    expect(href("s1")).toBe("/preview/story/s1");
+    expect(href("s2")).toBe("/preview/story/s2");
+    expect(href("s3")).toBeUndefined();
+    expect(href("s4")).toBeUndefined();
+  });
+
   it("with a limit, trims the merged list but keeps the true total for the badge", async () => {
     const stories = queryBuilder(dbOk([row("s1", "2026-09-05T10:00:00Z"), row("s2", "2026-09-01T10:00:00Z")], 7));
     db({
@@ -143,12 +194,16 @@ describe("memberContent", () => {
   // A draft or pending row has a slug, but that URL 404s until it publishes —
   // linking to it would be worse than not linking at all.
   it("withholds the public href until a row is actually published", async () => {
+    // first stories query: the member's own; second: stories featuring them (none here)
+    let call = 0;
     db({
-      stories: () => queryBuilder(dbOk([
-        row("s1", "2026-09-01T10:00:00Z", { status: "awaiting_approval", slug: "pending-news" }),
-        row("s2", "2026-08-01T10:00:00Z", { status: "draft", slug: "draft-news" }),
-        row("s3", "2026-07-01T10:00:00Z", { status: "scheduled", slug: "soon-news" }),
-      ], 3)),
+      stories: () => call++ === 0
+        ? queryBuilder(dbOk([
+          row("s1", "2026-09-01T10:00:00Z", { status: "awaiting_approval", slug: "pending-news" }),
+          row("s2", "2026-08-01T10:00:00Z", { status: "draft", slug: "draft-news" }),
+          row("s3", "2026-07-01T10:00:00Z", { status: "scheduled", slug: "soon-news" }),
+        ], 3))
+        : queryBuilder(dbOk([], 0)),
     });
 
     const { items } = await memberContent("mem1", { statuses: CONTENT_FILTERS.all });

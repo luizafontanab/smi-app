@@ -10,6 +10,7 @@ export const MEMBER_ADVERT_PHASE: Record<ReturnType<typeof bookingPhase>, { labe
   draft: { label: "draft, not sent", className: "text-graphite" },
   awaiting: { label: "awaiting approval", className: "text-brand-text" },
   changes_needed: { label: "needs a change", className: "text-danger" },
+  awaiting_payment: { label: "approved — payment due", className: "text-brand-text" },
   upcoming: { label: "scheduled", className: "text-graphite" },
   live: { label: "live now", className: "text-success" },
   ended: { label: "ended — run it again?", className: "text-graphite" },

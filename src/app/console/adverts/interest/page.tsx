@@ -34,7 +34,7 @@ export default async function AdvertInterestPage() {
       <Link href="/console/adverts" className="text-sm text-graphite hover:text-ink">← Bookings</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">Interest</h1>
       <p className="mt-1 text-sm text-graphite">
-        Members who asked about advertising from their dashboard. There is no online payment — you confirm availability and invoice.
+        Members who asked about advertising from their dashboard. You confirm availability and set the amount; the member can pay that invoice by card from their billing page.
       </p>
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">

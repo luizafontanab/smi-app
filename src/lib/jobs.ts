@@ -3,6 +3,7 @@ import type { Json } from "./db/types";
 import { notifyConsole } from "./notify-admin";
 import { siteUrl } from "./site-url";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "./social-caps";
+import { enqueueStoryLive, taggedMembers } from "./story-members";
 
 /**
  * Postgres-backed job queue (TECH-DECISIONS #13).
@@ -16,6 +17,7 @@ export type JobKind =
   | "social_push"            // payload: { story_id } or { video_id } — delayed push after publish
   | "notify_member"          // payload: { member_id, kind, ... }
   | "crm_sync"               // periodic Bigin poll
+  | "crm_push"               // payload: { contact_id, name_changed, re_opt_in } — retry of a failed write-through to Bigin
   | "rollup_daily"           // nightly analytics rollup + partition upkeep
   | "newsletter_send"        // payload: { issue_id }
   | "comp_expiry"            // daily sweep: expired promo comps → grace + console note
@@ -237,9 +239,8 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       for (const s of ready ?? []) {
         await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", s.id);
         await enqueue("social_push", { story_id: s.id }, new Date(Date.now() + caps.delay_minutes * 60_000));
-        if (s.member_id) {
-          await enqueue("notify_member", { member_id: s.member_id, kind: "story_live", story_id: s.id });
-        }
+        // every member the story features hears it's live (Jas 13/10 item 12)
+        await enqueueStoryLive(db, s, enqueue);
       }
       const { data: readyVideos } = await db
         .from("videos")
@@ -285,7 +286,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       const { data: story } = await db
         .from("stories")
         // FK named: story_members makes a bare `members` embed ambiguous here.
-        .select("id, title, slug, excerpt, cover_path, member:members!stories_member_id_fkey(name, social)")
+        .select("id, title, slug, excerpt, cover_path, member_id, member:members!stories_member_id_fkey(name, social)")
         .eq("id", String(payload.story_id))
         .single();
       if (!story) return;
@@ -301,12 +302,17 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         await enqueue("social_push", payload, await nextOverflowSlot(db, caps.delay_minutes));
         return;
       }
+      // Every other member the story features is tagged too (Jas 13/10 item
+      // 12). Same rule as the primary's tag — ask-jas 14 (archived members in
+      // social posts) is still open, and its answer should apply to both alike.
+      const extras = (await taggedMembers(db, story.id, story.member_id)).filter((m) => m.id !== story.member_id);
       const { getSocialPublisher } = await import("./adapters/social");
       await getSocialPublisher().publish({
         text: `${story.title}\n\nhttps://sheetmetalindustries.com/news/${story.slug}`,
         imagePath: story.cover_path,
         // @-tag from the CRM-stored handle — never hand-typed
         tagHandles: (story.member?.social ?? {}) as Record<string, string>,
+        extraTagHandles: extras.map((m) => (m.social ?? {}) as Record<string, string>),
       });
       break;
     }
@@ -422,6 +428,13 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
     case "crm_sync": {
       const { getCrmSync } = await import("./adapters/crm");
       await getCrmSync().sync();
+      break;
+    }
+    case "crm_push": {
+      const { getCrmSync } = await import("./adapters/crm");
+      const contactId = typeof payload.contact_id === "string" ? payload.contact_id : null;
+      if (!contactId) throw new Error("crm_push: payload has no contact_id");
+      await getCrmSync().pushContact(contactId, { nameChanged: payload.name_changed === true, reOptIn: payload.re_opt_in === true });
       break;
     }
     case "rollup_daily": {
@@ -591,6 +604,46 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         if (b.advert?.member_id) {
           await enqueue("notify_member", { member_id: b.advert.member_id, kind: "advert_live", booking_id: b.id });
         }
+      }
+
+      // 1b. lapsed unpaid holds (6 Oct). A run held for payment whose term
+      // has passed was never shown and now never will be: end it as 'unpaid'
+      // and void its invoice so the member's pay link stops asking for money
+      // for dates already gone. A bundle's one invoice is voided only once no
+      // part of it is still held. Placements have no status to end — their
+      // held rows simply never surface (src/lib/queries.ts) — so only their
+      // invoices are voided. No member email: they chose not to pay.
+      const { data: lapsed } = await db
+        .from("advert_bookings")
+        .select("id, bundle_id, ends_on")
+        .eq("status", "awaiting_payment")
+        .lt("ends_on", today);
+      const lapsedBundles = new Set<string>();
+      for (const b of lapsed ?? []) {
+        const { data: done } = await db.from("advert_bookings")
+          .update({ status: "ended", ended_at: now, ended_reason: "unpaid", ended_notified_for: b.ends_on, updated_at: now })
+          .eq("id", b.id)
+          .eq("status", "awaiting_payment")
+          .select("id");
+        if (!done?.length) continue;
+        await db.from("invoices").update({ status: "void" }).eq("advert_booking_id", b.id).eq("status", "issued");
+        if (b.bundle_id) lapsedBundles.add(b.bundle_id);
+      }
+      for (const bundleId of lapsedBundles) {
+        const { count: stillHeld } = await db.from("advert_bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("bundle_id", bundleId)
+          .eq("status", "awaiting_payment");
+        if (!stillHeld) await db.from("invoices").update({ status: "void" }).eq("bundle_id", bundleId).eq("status", "issued");
+      }
+      const { data: lapsedPlacements } = await db
+        .from("placements")
+        .select("id")
+        .eq("awaiting_payment", true)
+        .lt("ends_on", today);
+      const placementIds = (lapsedPlacements ?? []).map((p) => p.id);
+      if (placementIds.length) {
+        await db.from("invoices").update({ status: "void" }).in("placement_id", placementIds).eq("status", "issued");
       }
 
       // 2. finished. Includes scheduled runs whose whole term elapsed inside a

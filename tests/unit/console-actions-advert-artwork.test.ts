@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  declineInterest, decideArtworkSwap, deleteAdvertProduct, proposeArtworkSwap, saveAdvertArtwork, saveAdvertFormats,
-  saveAdvertProduct, saveBannerSpots, saveMediaPack, saveTakeoverPlacement, startAdvertFromInterest,
+  declineInterest, decideArtworkSwap, proposeArtworkSwap, saveAdvertArtwork, saveAdvertFormats,
+  saveBannerSpots, saveMediaPack, saveTakeoverPlacement, startAdvertFromInterest,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
 
@@ -92,68 +92,18 @@ describe("proposeArtworkSwap", () => {
   });
 });
 
-describe("saveAdvertProduct", () => {
-  it("requires a short_name and format", async () => {
-    const from = db({});
-    await saveAdvertProduct(form({ short_name: "", format: "banner" }));
-    expect(from).not.toHaveBeenCalled();
-  });
-
-  it("converts pounds to pennies, and treats a blank rate as free/unpriced", async () => {
-    const builder = queryBuilder(dbOk(null));
-    db({ advert_products: () => builder });
-
-    await expect(saveAdvertProduct(form({ short_name: "Homepage banner", format: "banner", rate_pounds: "75.50" })))
-      .rejects.toThrow(/NEXT_REDIRECT/);
-    expect(builder.insert).toHaveBeenCalledWith(expect.objectContaining({ rate_pennies: 7550 }));
-
-    await saveAdvertProduct(form({ id: "p1", short_name: "Free slot", format: "banner", rate_pounds: "" })).catch(() => {});
-    expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ rate_pennies: null }));
-  });
-
-  it("floors cap at 1, however it's entered", async () => {
-    const builder = queryBuilder(dbOk(null));
-    db({ advert_products: () => builder });
-
-    await saveAdvertProduct(form({ short_name: "x", format: "banner", cap: "0" })).catch(() => {});
-    expect(builder.insert).toHaveBeenCalledWith(expect.objectContaining({ cap: 1 }));
-  });
-});
-
-describe("deleteAdvertProduct", () => {
-  it("archives instead of deleting once a booking references it", async () => {
-    const builder = queryBuilder(dbOk(null, 2));
-    db({ advert_bookings: () => queryBuilder(dbOk(null, 2)), advert_products: () => builder });
-
-    await deleteAdvertProduct(form({ id: "p1" }));
-
-    expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ archived_at: expect.any(String) }));
-    expect(builder.delete).not.toHaveBeenCalled();
-  });
-
-  it("deletes outright when nothing references it", async () => {
-    const builder = queryBuilder(dbOk(null, 0));
-    db({ advert_bookings: () => queryBuilder(dbOk(null, 0)), advert_products: () => builder });
-
-    await deleteAdvertProduct(form({ id: "p1" }));
-
-    expect(builder.delete).toHaveBeenCalled();
-    expect(builder.update).not.toHaveBeenCalled();
-  });
-});
-
 describe("saveBannerSpots", () => {
   it("stores a whole number of spots in the banner_spots setting", async () => {
     const builder = queryBuilder(dbOk(null));
     db({ settings: () => builder });
-    await expect(saveBannerSpots(form({ count: "8" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/spots?saved=1");
+    await expect(saveBannerSpots(form({ count: "8" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/banners?saved=1");
     expect(builder.upsert).toHaveBeenCalledWith({ key: "banner_spots", value: { count: 8 } });
   });
 
   it.each(["0", "-3", "2.5", "eight", ""])("refuses %j without writing — zero must never read as sold out", async (count) => {
     const builder = queryBuilder(dbOk(null));
     db({ settings: () => builder });
-    await expect(saveBannerSpots(form({ count }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/spots\?error=/);
+    await expect(saveBannerSpots(form({ count }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/banners\?error=/);
     expect(builder.upsert).not.toHaveBeenCalled();
   });
 });
@@ -225,9 +175,48 @@ describe("saveTakeoverPlacement", () => {
     const builder = queryBuilder(dbOk(null));
     db({ placements: () => builder });
 
-    await saveTakeoverPlacement(form({ member_id: "m1", hex: "#003366", starts_on: "2026-09-01", ends_on: "2026-09-30" }));
+    await expect(saveTakeoverPlacement(form({ member_id: "m1", hex: "#003366", starts_on: "2026-09-01", ends_on: "2026-09-30" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/adverts/takeover?saved=1");
 
     expect(builder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "takeover", config: { hex: "#003366", banner_path: "takeovers/b.jpg" } }));
+  });
+
+  // fix-list 76: a booked takeover can be edited.
+  it("updates in place, keeping the stored banner when no new one is uploaded", async () => {
+    const builder = queryBuilder(dbOk({ config: { hex: "#112233", banner_path: "takeovers/old.jpg" } }));
+    db({ placements: () => builder });
+
+    await expect(saveTakeoverPlacement(form({ id: "t1", member_id: "m1", hex: "#003366", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/adverts/takeover/t1?saved=1");
+
+    expect(builder.insert).not.toHaveBeenCalled();
+    expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({
+      config: { hex: "#003366", banner_path: "takeovers/old.jpg" }, starts_on: "2026-10-01",
+    }));
+    expect(builder.eq).toHaveBeenCalledWith("id", "t1");
+  });
+
+  it("swaps the banner on an edit when a new one is uploaded", async () => {
+    uploadImage.mockResolvedValue("takeovers/new.jpg");
+    const builder = queryBuilder(dbOk({ config: { hex: "#112233", banner_path: "takeovers/old.jpg" } }));
+    db({ placements: () => builder });
+
+    await saveTakeoverPlacement(form({ id: "t1", member_id: "m1", hex: "#003366", starts_on: "2026-10-01", ends_on: "2026-10-31" })).catch(() => {});
+
+    expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ config: { hex: "#003366", banner_path: "takeovers/new.jpg" } }));
+  });
+
+  it("sends an edit's validation errors back to the edit page", async () => {
+    await expect(saveTakeoverPlacement(form({ id: "t1", member_id: "m1", hex: "orange" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/takeover\/t1\?error=/);
+  });
+
+  it("maps the overlap constraint to plain English on an edit", async () => {
+    // first .from("placements") reads the stored config, the second is the update
+    db({ placements: sequence<unknown>(dbOk({ config: { banner_path: "takeovers/old.jpg" } }), dbError('violates exclusion constraint "placements_takeover_no_overlap"')) });
+
+    await expect(saveTakeoverPlacement(form({ id: "t1", member_id: "m1", hex: "#003366", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
+      .rejects.toThrow(/only%20one%20can%20run%20at%20a%20time/);
   });
 });
 

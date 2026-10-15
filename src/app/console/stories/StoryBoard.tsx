@@ -196,8 +196,9 @@ function StoryCard({ story }: { story: BoardStory }) {
             </>
           ) : (
             <>
+              {/* optional, never part of approving: nothing pre-filled (15 Oct) */}
               <span className="text-graphite">📌 Pin</span>
-              <input type="number" name="days" defaultValue={2} min={1} max={30} aria-label="Days to pin" className="w-10 rounded border px-1 py-0.5" />
+              <input type="number" name="days" required min={1} max={30} placeholder="–" aria-label="Days to pin" className="w-10 rounded border px-1 py-0.5" />
               <span className="text-graphite">days</span>
               <button className="text-graphite hover:text-ink underline">Go</button>
             </>

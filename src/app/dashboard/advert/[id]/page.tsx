@@ -7,6 +7,7 @@ import { renewAdvertBooking, resubmitAdvert } from "../../actions";
 import { AdvertForm } from "../AdvertForm";
 import { ArtworkSwapForm } from "../ArtworkSwapForm";
 import { RequiredMark } from "@/components/RequiredMark";
+import { openInvoiceFor, formatPounds } from "@/lib/advert-payments";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your advert" };
@@ -15,6 +16,7 @@ const STATUS_COPY: Record<string, string> = {
   draft: "Not sent yet — finish it below and submit when you are ready.",
   awaiting: "With us for approval. We will email you when it is scheduled.",
   changes_needed: "We have asked for a change before this can run.",
+  awaiting_payment: "Approved — it goes live once it's paid. Pay securely by card below.",
   upcoming: "Approved and scheduled — it starts on its start date.",
   live: "Running on the site now.",
   ended: "This run has finished.",
@@ -39,6 +41,11 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
   const editable = phase === "draft" || phase === "changes_needed";
   const canSwap = phase === "upcoming" || phase === "live";
 
+  // A held run (6 Oct): its invoice, directly or through its bundle, and the way to pay it.
+  const dueInvoice = phase === "awaiting_payment"
+    ? await openInvoiceFor(booking.bundle_id ? { bundle_id: booking.bundle_id } : { advert_booking_id: booking.id })
+    : null;
+
   const { data: pendingSwap } = canSwap
     ? await db.from("advert_artwork_proposals").select("id, submitted_at").eq("advert_id", booking.advert!.id).eq("status", "pending").maybeSingle()
     : { data: null };
@@ -49,6 +56,16 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
       <h1 className="mt-1 text-xl font-bold text-ink">{booking.advert?.name}</h1>
       <p className="mt-1 text-sm text-graphite">{STATUS_COPY[phase]}</p>
       {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+
+      {dueInvoice?.status === "issued" && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-brand bg-brand/5 p-4">
+          <p className="text-sm text-ink">
+            <span className="font-semibold">Payment due: {formatPounds(dueInvoice.amount_pennies)}</span>
+            <span className="text-graphite"> · {dueInvoice.number}</span>
+          </p>
+          <Link href={`/dashboard/pay/invoice/${dueInvoice.id}`} className="rounded bg-ink px-4 py-2 text-sm font-semibold text-white">Pay now</Link>
+        </div>
+      )}
 
       {booking.review_reason && (
         <div className="mt-4 rounded-xl border-2 border-brand bg-brand/5 p-4">

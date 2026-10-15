@@ -3,21 +3,26 @@ import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { FEATURED_SLOTS } from "@/lib/pricing";
+import { placementGroup } from "@/lib/booking-groups";
+import { SubmitButton } from "@/components/SubmitButton";
+import { BookingCard } from "@/components/console/BookingSections";
+import { PlacementCards } from "@/components/console/PlacementCards";
 import { saveFeaturedMemberPlacement } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
+/** Booked → Pending → Book a slot: the same order as the other Adverts booking pages. */
 export default async function FeaturedMemberPage(props: PageProps<"/console/adverts/featured-member">) {
   const sp = await props.searchParams;
   await requireConsole();
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [members, booked] = await Promise.all([
+  const [members, slots] = await Promise.all([
     must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/featured-member members"),
-    must(db.from("placements").select("id, starts_on, ends_on, member:members(name)").eq("kind", "featured_member").order("starts_on", { ascending: false }), "console/featured-member placements"),
+    must(db.from("placements").select("id, starts_on, ends_on, price_pennies, awaiting_payment, member:members(name)").eq("kind", "featured_member").order("starts_on", { ascending: false }), "console/featured-member placements"),
   ]);
-  const liveCount = (booked ?? []).filter((p) => p.starts_on <= today && p.ends_on >= today).length;
+  const liveCount = (slots ?? []).filter((p) => placementGroup(p, today) === "booked" && p.starts_on <= today).length;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -26,44 +31,27 @@ export default async function FeaturedMemberPage(props: PageProps<"/console/adve
       <p className="mt-1 text-sm text-graphite">
         Homepage carousel slot, by the month. Up to {FEATURED_SLOTS.cap} can run at once — {liveCount} live today.
       </p>
-      {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
-      <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Book a slot</h2>
-        <form action={saveFeaturedMemberPlacement} className="mt-3 space-y-4 text-sm">
+      <PlacementCards rows={slots ?? []} today={today} editBase="/console/adverts/featured-member" noun="slot" />
+
+      <BookingCard title="Book a slot" hint="A priced slot is held until the member pays; unpriced goes straight to Booked. Held slots count towards the cap.">
+        <form action={saveFeaturedMemberPlacement} className="space-y-4 text-sm">
           <div>
             <label htmlFor="member_id" className="text-sm font-medium">Member</label>
             <select id="member_id" name="member_id" required className="mt-1 w-full rounded border px-3 py-2">
               {(members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block w-full rounded border px-3 py-2" /></label>
             <label className="block">End<input type="date" name="ends_on" required className="mt-1 block w-full rounded border px-3 py-2" /></label>
+            <label className="block">Price (£)<input name="price_pounds" inputMode="decimal" placeholder="optional" className="mt-1 block w-full rounded border px-3 py-2" /></label>
           </div>
-          <button className="rounded bg-ink px-5 py-2.5 text-white">Book slot</button>
+          <SubmitButton pendingLabel="Booking…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Book slot</SubmitButton>
         </form>
-      </section>
-
-      <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
-        <h2 className="font-bold text-ink">Booked</h2>
-        <div className="overflow-x-auto mt-2">
-        <table className="w-full text-sm min-w-[560px]">
-          <thead><tr className="text-left text-xs uppercase text-graphite"><th scope="col" className="py-1">Member</th><th scope="col">From</th><th scope="col">To</th><th scope="col" /></tr></thead>
-          <tbody>
-            {(booked ?? []).map((p) => (
-              <tr key={p.id} className="border-t">
-                <td className="py-2">{p.member?.name}</td>
-                <td>{p.starts_on}</td>
-                <td>{p.ends_on}</td>
-                <td className="text-right">{p.starts_on <= today && p.ends_on >= today && <span className="rounded bg-success/10 px-2 py-0.5 text-xs text-success">live</span>}</td>
-              </tr>
-            ))}
-            {!booked?.length && <tr><td colSpan={4} className="py-4 text-center text-graphite">None booked yet.</td></tr>}
-          </tbody>
-        </table>
-        </div>
-      </section>
+      </BookingCard>
     </div>
   );
 }

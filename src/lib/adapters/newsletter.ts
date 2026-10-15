@@ -93,7 +93,8 @@ export async function renderIssueHtml(issueId: string): Promise<{ subject: strin
 
   const [{ data: items }, { data: ads }] = await Promise.all([
     db.from("newsletter_items")
-      .select("position, story:stories(slug, title, excerpt, cover_path), video:videos(slug, title, thumbnail_path)")
+      // excerpt = the story_summary computed field: the author's summary, else the body's opening
+      .select("position, story:stories(slug, title, excerpt:story_summary, cover_path), video:videos(slug, title, thumbnail_path)")
       .eq("issue_id", issueId).order("position"),
     db.from("newsletter_ads").select("position, advert:adverts(id, name, desktop_path, mobile_path, link_url)").eq("issue_id", issueId).order("position"),
   ]);

@@ -6,10 +6,12 @@ import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { allowRequest, send } = vi.hoisted(() => ({
+const { allowRequest, send, syncContactToCrm } = vi.hoisted(() => ({
   allowRequest: vi.fn(async () => true),
   send: vi.fn(async () => {}),
+  syncContactToCrm: vi.fn(async () => {}),
 }));
+vi.mock("@/lib/adapters/crm", () => ({ syncContactToCrm }));
 vi.mock("@/lib/rate-limit", () => ({ allowRequest, HOUR: 3_600_000 }));
 vi.mock("@/lib/adapters/email", () => ({ getEmailSender: vi.fn(() => ({ send })) }));
 vi.mock("@/lib/notify-admin", () => ({ ADMIN_EMAIL: "jas@sheetmetalindustries.com" }));
@@ -18,6 +20,7 @@ afterEach(() => {
   resetDbServerMocks();
   allowRequest.mockReset().mockResolvedValue(true);
   send.mockReset().mockResolvedValue(undefined);
+  syncContactToCrm.mockReset().mockResolvedValue(undefined);
 });
 
 function form(fields: Record<string, string>) {
@@ -61,6 +64,27 @@ describe("subscribeNewsletter", () => {
     expect(result).toEqual({ message: "Subscribed — see you next issue." });
     expect(signupsBuilder.insert).toHaveBeenCalledWith({ email: "new@example.com" });
     expect(contactsBuilder.insert).toHaveBeenCalledWith({ email: "new@example.com", source: "newsletter", subscribed: true });
+  });
+
+  it("writes a new signup through to Bigin by contact id", async () => {
+    let call = 0;
+    // 1: the existing-contact lookup (none), 2: the insert returning the new id
+    const contactsBuilder = queryBuilder(() => (call++ === 0 ? dbOk(null) : dbOk({ id: "c-new" })));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({ contacts: () => contactsBuilder, newsletter_signups: () => queryBuilder(dbOk(null)) }),
+    })));
+
+    await subscribeNewsletter({ message: "" }, form({ email: "new@example.com" }));
+
+    expect(syncContactToCrm).toHaveBeenCalledWith("c-new");
+  });
+
+  it("re-pushes an existing contact on a repeat signup", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({ contacts: () => queryBuilder(dbOk({ id: "c1", unsubscribed_at: null })), newsletter_signups: () => queryBuilder(dbOk(null)) }),
+    })));
+    await subscribeNewsletter({ message: "" }, form({ email: "existing@example.com" }));
+    expect(syncContactToCrm).toHaveBeenCalledWith("c1");
   });
 
   it("does not duplicate the contact row for an already-subscribed address", async () => {

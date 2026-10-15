@@ -86,3 +86,22 @@ describe("SubmissionList per-status actions", () => {
     expect(container.querySelector('input[name="filter"]')).toHaveValue("published");
   });
 });
+
+// Jas 13/10: member drafts, previews, and stories featuring the member.
+describe("SubmissionList — drafts, previews and featured stories", () => {
+  it("a member's draft: Edit and Preview, never Withdraw", () => {
+    render(<SubmissionList items={[item({ kind: "story", status: "draft", memberDraft: true, previewHref: "/preview/story/x1" })]} />);
+    expect(screen.getByText(/only you can see it/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/dashboard/story/x1/edit");
+    expect(screen.getByRole("link", { name: /Preview/ })).toHaveAttribute("href", "/preview/story/x1");
+    expect(screen.queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
+  });
+
+  it("a story featuring the member: badged, viewable, but no change request — it isn't theirs", () => {
+    render(<SubmissionList items={[item({ kind: "story", status: "published", featured: true, publicHref: "/news/joint" })]} />);
+    expect(screen.getByText("Featured")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View" })).toHaveAttribute("href", "/news/joint");
+    expect(screen.queryByText("Request a change")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edit" })).not.toBeInTheDocument();
+  });
+});

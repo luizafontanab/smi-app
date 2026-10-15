@@ -31,7 +31,7 @@ describe("memberActivityTimeline", () => {
     db({
       // Queried twice: the titled page, then every id for the newsletter lookup.
       stories: sequence<unknown>(
-        dbOk([{ title: "New laser cell", published_at: "2026-03-01" }]),
+        dbOk([{ title: "New laser cell", published_at: "2026-03-01", member_id: MEMBER }]),
         dbOk([{ id: "s1" }]),
       ),
       placements: () => queryBuilder(dbOk([{ kind: "featured_member", starts_on: "2026-05-01" }])),
@@ -55,6 +55,20 @@ describe("memberActivityTimeline", () => {
       "Featured in newsletter issue 7",
       "Invoice INV-9 (paid)",
     ]);
+  });
+
+  // Jas 13/10 item 12: a story led by another member that also features this one.
+  it("reads stories through story_members, and says when the member was featured rather than the lead", async () => {
+    const stories = queryBuilder(dbOk([
+      { title: "Own news", published_at: "2026-03-02", member_id: MEMBER },
+      { title: "Joint show", published_at: "2026-03-01", member_id: "someone-else" },
+    ]));
+    db({ stories: () => stories });
+
+    const timeline = await memberActivityTimeline(MEMBER);
+
+    expect(stories.eq).toHaveBeenCalledWith("story_members.member_id", MEMBER);
+    expect(timeline.map((e) => e.what)).toEqual(["Story published: Own news", "Featured in story: Joint show"]);
   });
 
   it("underscores in a placement kind become spaces", async () => {
@@ -117,7 +131,7 @@ describe("memberActivityTimeline", () => {
   it("sorts a null published_at last rather than throwing", async () => {
     db({
       stories: sequence<unknown>(
-        dbOk([{ title: "Undated", published_at: null }, { title: "Dated", published_at: "2026-03-01" }]),
+        dbOk([{ title: "Undated", published_at: null, member_id: MEMBER }, { title: "Dated", published_at: "2026-03-01", member_id: MEMBER }]),
         dbOk([]),
       ),
       placements: () => queryBuilder(dbOk([])),

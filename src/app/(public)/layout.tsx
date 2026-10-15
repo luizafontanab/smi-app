@@ -63,7 +63,7 @@ export default async function PublicLayout({ children }: { children: React.React
           on the page as before. */}
       {!isGrid && <IndustryBar industries={industries} tone="dark" />}
       <SiteHeader user={user} unread={unread} tone={isGrid ? "light" : "dark"} />
-      {isGrid && <IndustryBar industries={industries} tone="light" />}
+      {isGrid && <IndustryBar industries={industries} tone="grey" />}
       <main id="main" className="flex-1">{children}</main>
       <Footer />
       <CookieConsent />

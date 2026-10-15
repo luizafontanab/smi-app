@@ -1,19 +1,24 @@
 import Link from "next/link";
 import { serviceDb } from "@/lib/db/server";
-import { must } from "@/lib/db/must";
+import { must, mustList } from "@/lib/db/must";
 import { requireConsole } from "@/lib/auth";
 import { saveSocialCaps, saveSocialChannels } from "../actions";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
 import { readSocialChannels } from "@/lib/social-channels";
 import { CalendarView, monthGrid, parseMonth, type CalendarStory } from "./CalendarView";
 import { StoryBoard } from "./StoryBoard";
+import { StoryList, type ListStory } from "./StoryList";
+import { parseStoryListFilters, parseStoryView, STORY_LIST_PAGE_SIZE, storyListHref } from "@/lib/story-board";
 
 export const dynamic = "force-dynamic";
 
 const TABS = [
   { view: "board", label: "Board" },
   { view: "calendar", label: "Calendar" },
+  { view: "list", label: "List" },
 ] as const;
+
+const TAB_HREF = { board: "/console/stories", calendar: "/console/stories?view=calendar" } as const;
 
 // FK named: story_members makes a bare `members` embed ambiguous on stories.
 const SELECT = "id, title, status, source, scheduled_at, published_at, pinned_until, member:members!stories_member_id_fkey(name)";
@@ -21,15 +26,17 @@ const SELECT = "id, title, status, source, scheduled_at, published_at, pinned_un
 export default async function StoriesPage(props: PageProps<"/console/stories">) {
   await requireConsole();
   const sp = await props.searchParams;
-  const view = sp.view === "calendar" ? "calendar" : "board";
+  const view = parseStoryView(sp.view);
+  const listFilters = parseStoryListFilters(sp);
   const month = parseMonth(typeof sp.month === "string" ? sp.month : undefined);
   const db = serviceDb();
 
   // The board's "most recently touched 120" is the wrong window for a calendar —
   // a story scheduled months out can fall outside it. Query by date range instead.
   const { start, end } = monthGrid(month);
-  const [stories, capsSetting, channelsSetting] = await Promise.all([
-    must(
+  const listFrom = (listFilters.page - 1) * STORY_LIST_PAGE_SIZE;
+  const [stories, capsSetting, channelsSetting, list] = await Promise.all([
+    view === "list" ? Promise.resolve(null) : must(
       view === "calendar"
         ? db
             .from("stories")
@@ -41,12 +48,22 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
         : db
             .from("stories")
             .select(SELECT)
+            .eq("member_draft", false)
             .order("updated_at", { ascending: false })
             .limit(120),
       "console/stories list",
     ),
     must(db.from("settings").select("value").eq("key", "social_caps").maybeSingle(), "console/stories social caps"),
     must(db.from("settings").select("value").eq("key", "social_channels").maybeSingle(), "console/stories social channels"),
+    // The list's own window: every status, paged by count — the board's
+    // "120 most recently touched" would hide everything older.
+    view === "list"
+      ? (() => {
+          let q = db.from("stories").select(`${SELECT}, updated_at`, { count: "exact" }).eq("member_draft", false);
+          if (listFilters.status !== "all") q = q.eq("status", listFilters.status);
+          return mustList(q.order("updated_at", { ascending: false }).range(listFrom, listFrom + STORY_LIST_PAGE_SIZE - 1), "console/stories list view");
+        })()
+      : Promise.resolve(null),
   ]);
   const caps: SocialCaps = { ...DEFAULT_SOCIAL_CAPS, ...(capsSetting?.value as Partial<SocialCaps> | null) };
   const channels = readSocialChannels(channelsSetting?.value);
@@ -65,7 +82,8 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
         {TABS.map((t) => (
           <Link
             key={t.view}
-            href={t.view === "board" ? "/console/stories" : "/console/stories?view=calendar"}
+            href={t.view === "list" ? storyListHref({ status: "all", page: 1 }) : TAB_HREF[t.view]}
+            aria-current={t.view === view ? "page" : undefined}
             className={`rounded-t px-4 py-2 ${t.view === view ? "border border-b-0 bg-white font-semibold text-ink" : "text-graphite hover:text-ink"}`}
           >
             {t.label}
@@ -73,7 +91,9 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
         ))}
       </div>
 
-      {view === "calendar" ? (
+      {view === "list" ? (
+        <StoryList stories={(list?.data ?? []) as ListStory[]} total={list?.count ?? 0} filters={listFilters} />
+      ) : view === "calendar" ? (
         <CalendarView month={month} stories={(stories ?? []) as CalendarStory[]} />
       ) : (
         <StoryBoard stories={stories ?? []} />

@@ -15,6 +15,7 @@ import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { assertSeedTarget } from "./lib/target-guard";
 import { INDUSTRY_ROWS } from "./lib/industries";
+import { runIndustryBackfill } from "./lib/industry-backfill";
 import { newsTopics } from "./lib/news-topics";
 
 faker.seed(42);
@@ -87,27 +88,36 @@ async function main() {
   const storyCatIds = cats!.map((c) => c.id);
   const wpCatMap = new Map(storyCats.map((c) => [c.id, cats!.find((x) => x.slug === c.slug)?.id]));
 
-  // Industries are their own table since 20260909000002, and that migration
-  // already inserts these rows — upserting keeps the seed self-sufficient.
-  const { data: inds, error: indErr } = await db.from("industries").upsert(INDUSTRY_ROWS, { onConflict: "slug" }).select();
+  // Industries are their own table, and migration 20261012000001 already
+  // inserts these rows — upserting keeps the seed self-sufficient. Who is in
+  // which comes from runIndustryBackfill at the end, exactly as on real data.
+  const { error: indErr } = await db.from("industries").upsert(INDUSTRY_ROWS, { onConflict: "slug" });
   if (indErr) throw indErr;
-  const industryIds = inds!.map((i) => i.id);
 
-  // Services: many per member, distinct from the single industry above. Migration
-  // 20260909000001 deliberately seeds no rows — the real 69-term vocabulary comes
-  // out of the WordPress `best-service` taxonomy in seed-real.ts. This is a
-  // representative subset so the synthetic seed still exercises the directory's
-  // Services filter and the member profile's services picker, which otherwise
-  // render against an empty table. Not shared with INDUSTRY_ROWS-style constants
-  // on purpose: the two seeds legitimately carry different vocabularies here.
-  const SERVICE_NAMES = [
-    "Assembly", "Automation / Robotics", "Bending / Folding", "Consultancy Services",
-    "Design & Prototyping Services", "Finishing / Coating", "Laser Cutting Services",
-    "Powder Coating", "Press Braking", "Punching Services", "Tube Bending", "Welding / Fabrication",
+  // Services: many per member. Migration 20260909000001 deliberately seeds no
+  // rows — the full 69-term vocabulary comes out of the WordPress
+  // `best-service` taxonomy in seed-real.ts. This is a subset of those real
+  // terms, real slugs included, so the directory's Services filter and the
+  // services picker have something to render AND the industry backfill maps
+  // them: at least one per industry, plus one Jas left without an industry.
+  const SERVICES = [
+    { slug: "automation-robotics", name: "Automation / Robotics" },
+    { slug: "inspection-test-measurement", name: "Inspection / Test & Measurement" },
+    { slug: "grinding-lapping-polishing", name: "Grinding / Lapping / Polishing" },
+    { slug: "coil-processing-cut-to-length-lines-slitting-blanking-lines", name: "Coil Processing / Cut to length lines / Slitting / Blanking lines" },
+    { slug: "cutting-systems-laser-plasma-waterjet-oxyfuel", name: "Cutting Systems - Laser / Plasma / Waterjet / Oxyfuel" },
+    { slug: "press-brakes-guillotines-nibbling-notching-ironworkers", name: "Press Brakes / Guillotines / Nibbling / Notching/ Ironworkers" },
+    { slug: "software-cad-cam-erp", name: "Software CAD / CAM / ERP" },
+    { slug: "tube-bending-and-pipe-fabrication", name: "Tube Bending and Pipe Fabrication" },
+    { slug: "welding-joining-fastening", name: "Welding / Joining / Fastening" },
+    { slug: "assembly", name: "Assembly" },
+    { slug: "design-prototyping-services", name: "Design & Prototyping Services" },
+    { slug: "training-education-providers", name: "Training / Education Providers" },
+    { slug: "pr-marketing-service-providers", name: "PR / Marketing Service Providers" },
   ];
   const { data: svcs, error: svcErr } = await db
     .from("services")
-    .upsert(SERVICE_NAMES.map((name) => ({ slug: slugify(name), name })), { onConflict: "slug" })
+    .upsert(SERVICES, { onConflict: "slug" })
     .select();
   if (svcErr) throw svcErr;
   const serviceIds = svcs!.map((s) => s.id);
@@ -127,7 +137,6 @@ async function main() {
       // join funnel: one draft ready to activate (paid + page submitted), one mid-funnel (neither)
       paid_at: i === 83 ? faker.date.recent({ days: 3 }).toISOString() : null,
       draft_submitted_at: i === 83 ? faker.date.recent({ days: 2 }).toISOString() : null,
-      industry_id: faker.helpers.arrayElement(industryIds),
       description: faker.lorem.paragraphs(2),
       address: `${faker.location.streetAddress()}, ${faker.helpers.arrayElement(UK_REGIONS)}`,
       lat: faker.location.latitude({ min: 50.5, max: 55.5 }),
@@ -139,12 +148,9 @@ async function main() {
       joined_at: faker.date.past({ years: 4 }).toISOString().slice(0, 10),
     };
   });
-  const { data: members, error: memErr } = await db.from("members").insert(memberRows).select("id, slug, name, status, industry_id");
+  const { data: members, error: memErr } = await db.from("members").insert(memberRows).select("id, slug, name, status");
   if (memErr) throw memErr;
   const activeMembers = members!.filter((m) => m.status === "active");
-  /** Content inherits its member's industry, matching migration 20260909000002. */
-  const industryOfMember = (id: string | null) =>
-    id ? members!.find((m) => m.id === id)?.industry_id ?? null : null;
 
   // Both are join tables, so a member can hold several of each — that is the
   // whole reason they aren't columns. Without these links the directory's
@@ -269,9 +275,15 @@ async function main() {
       source: "import",
       is_member_news: asMemberNews,
       member_id: storyMemberId,
-      industry_id: industryOfMember(storyMemberId),
       cover_path,
       published_at: p.date,
+      // SMI's own posts of the story (Jas 13/10 item 8, migration
+      // 20261015000002). Every 6th story gets sample links so the story page
+      // shows both cases: a real post link, and the fallback to SMI's page.
+      social_posts:
+        i % 6 === 0
+          ? { linkedin: `https://www.linkedin.com/posts/sheet-metal-industries_seed-${i}`, x: `https://x.com/SMIUK_/status/18${String(i).padStart(8, "0")}` }
+          : {},
       wp_cats: (p.tags ?? []) as number[],
     });
   }
@@ -298,15 +310,21 @@ async function main() {
     { title: "Trade show preview: what to expect at EuroBLECH", status: "awaiting_approval", source: "member", member_id: memberLogins[2], is_member_news: true },
     { title: "UK steel prices steady into autumn", status: "scheduled", source: "admin", member_id: null, is_member_news: false },
     { title: "Draft: bending cell automation roundup", status: "draft", source: "admin", member_id: null, is_member_news: false },
+    // A member's own unsubmitted draft (Jas 13/10, migration 20261015000001):
+    // visible to member1 under Your content → Drafts, invisible to the console.
+    { title: "Draft: our new press brake line", status: "draft", source: "member", member_id: memberLogins[0], is_member_news: true, member_draft: true },
   ];
   for (const p of pending) {
-    await db.from("stories").insert({
+    const { data: row, error } = await db.from("stories").insert({
       slug: slugify(p.title), title: p.title, body: `<p>${faker.lorem.paragraphs(3, "</p><p>")}</p>`,
       excerpt: faker.lorem.sentence(), status: p.status, source: p.source, member_id: p.member_id,
-      industry_id: industryOfMember(p.member_id),
-      is_member_news: p.is_member_news,
+      is_member_news: p.is_member_news, member_draft: p.member_draft ?? false,
       scheduled_at: p.status === "scheduled" ? faker.date.soon({ days: 3 }).toISOString() : null,
-    });
+    }).select("id").single();
+    if (error) throw error;
+    // story_members holds every member a story features, the primary included
+    // (migration 20261015000003). The migration's backfill ran before seeding.
+    if (p.member_id) await db.from("story_members").insert({ story_id: row!.id, member_id: p.member_id });
   }
 
   console.log("— banners, bookings");
@@ -358,18 +376,17 @@ async function main() {
     await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
   }
 
-  // Rate card (A2.7): sample rates so local dev has priced products to book
-  // against and invoice off, instead of every rate_pennies being null.
-  await db.from("advert_products").insert([
-    { short_name: "Homepage banner", format: "banner", cap: 3, rate_pennies: 65000 },
-    { short_name: "Homepage banner (narrow)", format: "banner_narrow", cap: 3, rate_pennies: 65000 },
-    { short_name: "Skyscraper", format: "skyscraper", cap: 3, rate_pennies: 55000 },
-    { short_name: "MPU box", format: "mpu", cap: 3, rate_pennies: 45000 },
-    { short_name: "In-feed card", format: "in_feed", cap: 3, rate_pennies: 40000 },
-    { short_name: "Supplier logo", format: "supplier_logo", cap: 8, rate_pennies: 10000 },
-    { short_name: "Newsletter banner", format: "newsletter_banner", cap: 3, rate_pennies: 35000 },
-    { short_name: "Association logo", format: "association_logo", cap: 3, rate_pennies: 15000 },
-  ]);
+  // Sample prices (fix-list 77): a run carries its own price now that the rate
+  // card is gone — so local revenue and booking pages have numbers to show.
+  // Bundle parts are left unpriced; the bundle carries their price.
+  const SAMPLE_PRICES: Record<string, number> = {
+    banner: 65000, banner_narrow: 65000, skyscraper: 55000, mpu: 45000, in_feed: 40000, supplier_logo: 10000,
+  };
+  for (const [format, price_pennies] of Object.entries(SAMPLE_PRICES)) {
+    const { data: ads } = await db.from("adverts").select("id").eq("format", format);
+    const ids = (ads ?? []).map((a) => a.id);
+    if (ids.length) await db.from("advert_bookings").update({ price_pennies }).in("advert_id", ids).is("bundle_id", null);
+  }
 
   // One priced bundle (A2.3/A2.7): two formats for one member, sold together
   // under a single bundle_id and price — so the bundle UI and its invoicing
@@ -410,7 +427,7 @@ async function main() {
     // and seeds must never call Nominatim (usage policy: one lookup per save).
     { slug: "smi-golf-challenge-2026", title: "SMI Golf Challenge 2026", location: "Belfry, West Midlands", lat: 52.5623, lng: -1.7259, starts_on: "2026-09-17", status: "published", description: "The annual SMI golf day.", type: "golf_challenge" },
     { slug: "euroblech-2026", title: "EuroBLECH 2026", location: "Hanover, Germany", lat: 52.3207, lng: 9.8106, starts_on: "2026-10-20", ends_on: "2026-10-23", status: "published", link: "https://www.euroblech.com", type: "exhibition" },
-    { slug: "open-house-bending-demo", title: "Open house: bending cell demo", location: faker.location.city(), starts_on: iso(new Date(today.getTime() + 30 * 864e5)), status: "awaiting_approval", member_id: memberLogins[0], industry_id: industryOfMember(memberLogins[0]) },
+    { slug: "open-house-bending-demo", title: "Open house: bending cell demo", location: faker.location.city(), starts_on: iso(new Date(today.getTime() + 30 * 864e5)), status: "awaiting_approval", member_id: memberLogins[0] },
     // past and published — the archive on /event and the "already taken place"
     // notice on /event/[slug] are otherwise unreachable from seed data
     { slug: "smi-golf-challenge-2025", title: "SMI Golf Challenge 2025", location: "Belfry, West Midlands", starts_on: iso(new Date(today.getTime() - 340 * 864e5)), status: "published", description: "<p>Last year's golf day.</p>" },
@@ -425,7 +442,7 @@ async function main() {
       slug: `${slugify(title)}-${i}`,
       title, url: `https://www.youtube.com/watch?v=${v}`,
       description: `<p>${faker.lorem.paragraph()}</p>`,
-      member_id: videoMemberId, industry_id: industryOfMember(videoMemberId),
+      member_id: videoMemberId,
       status: "published", source: i < 2 ? "manual" : "curated",
       published_at: faker.date.recent({ days: 60 }).toISOString(),
     };
@@ -445,12 +462,22 @@ async function main() {
   console.log("— contacts (~120)");
   await db.from("contacts").insert(Array.from({ length: 120 }, (_, i) => {
     const unsub = i % 17 === 0;
+    // every Bigin sync state the console CRM list distinguishes: linked, never
+    // pushed (inBigin false), and a local edit still waiting to go (dirty)
+    const inBigin = i % 10 !== 9;
+    const dirty = i % 10 === 8;
+    const company = faker.company.name();
     return {
-      email: faker.internet.email().toLowerCase(), name: faker.person.fullName(), company: faker.company.name(),
+      email: faker.internet.email().toLowerCase(), name: faker.person.fullName(), company,
       member_id: i < 30 ? activeMembers[i % activeMembers.length].id : null,
       subscribed: !unsub, unsubscribed_at: unsub ? faker.date.past({ years: 1 }).toISOString() : null,
-      bigin_id: `bigin-${1000 + i}`, source: faker.helpers.arrayElement(["newsletter", "trade-show", "linkedin", "member"]),
-      last_synced_at: new Date().toISOString(),
+      bigin_id: inBigin ? `bigin-${1000 + i}` : null,
+      bigin_company_id: inBigin && i % 3 === 0 ? `bigin-co-${2000 + i}` : null,
+      bigin_company_name: inBigin && i % 3 === 0 ? company : null,
+      bigin_modified_at: inBigin ? faker.date.recent({ days: 30 }).toISOString() : null,
+      crm_dirty_at: dirty ? new Date().toISOString() : null,
+      source: faker.helpers.arrayElement(["newsletter", "trade-show", "linkedin", "member"]),
+      last_synced_at: inBigin ? new Date().toISOString() : null,
     };
   }));
 
@@ -676,6 +703,10 @@ async function main() {
     { title: "Spike: image CDN options", status: "done", assignee: "Jas", priority: "low", sort_order: 1 },
     { title: "Old machine listing importer", status: "canceled", assignee: null, priority: "low", sort_order: 0 },
   ]);
+
+  // Industries for every member and piece of content, from the member_services
+  // and story_categories written above — the same backfill real data gets.
+  await runIndustryBackfill(db);
 
   console.log("Seed complete.");
   const counts = await Promise.all(

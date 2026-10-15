@@ -117,6 +117,7 @@ export type Database = {
           ends_on: string
           id: string
           notes: string | null
+          price_pennies: number | null
           product_id: string | null
           renewed_from: string | null
           review_reason: string | null
@@ -143,6 +144,7 @@ export type Database = {
           ends_on: string
           id?: string
           notes?: string | null
+          price_pennies?: number | null
           product_id?: string | null
           renewed_from?: string | null
           review_reason?: string | null
@@ -169,6 +171,7 @@ export type Database = {
           ends_on?: string
           id?: string
           notes?: string | null
+          price_pennies?: number | null
           product_id?: string | null
           renewed_from?: string | null
           review_reason?: string | null
@@ -741,9 +744,13 @@ export type Database = {
       }
       contacts: {
         Row: {
+          bigin_company_id: string | null
+          bigin_company_name: string | null
           bigin_id: string | null
+          bigin_modified_at: string | null
           company: string | null
           created_at: string
+          crm_dirty_at: string | null
           email: string
           id: string
           last_synced_at: string | null
@@ -755,9 +762,13 @@ export type Database = {
           unsubscribed_at: string | null
         }
         Insert: {
+          bigin_company_id?: string | null
+          bigin_company_name?: string | null
           bigin_id?: string | null
+          bigin_modified_at?: string | null
           company?: string | null
           created_at?: string
+          crm_dirty_at?: string | null
           email: string
           id?: string
           last_synced_at?: string | null
@@ -769,9 +780,13 @@ export type Database = {
           unsubscribed_at?: string | null
         }
         Update: {
+          bigin_company_id?: string | null
+          bigin_company_name?: string | null
           bigin_id?: string | null
+          bigin_modified_at?: string | null
           company?: string | null
           created_at?: string
+          crm_dirty_at?: string | null
           email?: string
           id?: string
           last_synced_at?: string | null
@@ -1290,41 +1305,80 @@ export type Database = {
       }
       invoices: {
         Row: {
+          advert_booking_id: string | null
           amount_pennies: number
+          bundle_id: string | null
           created_at: string
+          description: string | null
           id: string
           issued_on: string
           member_id: string
           number: string
+          paid_at: string | null
           pdf_path: string | null
+          placement_id: string | null
           status: string
+          stripe_session_id: string | null
         }
         Insert: {
+          advert_booking_id?: string | null
           amount_pennies: number
+          bundle_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           issued_on: string
           member_id: string
           number: string
+          paid_at?: string | null
           pdf_path?: string | null
+          placement_id?: string | null
           status?: string
+          stripe_session_id?: string | null
         }
         Update: {
+          advert_booking_id?: string | null
           amount_pennies?: number
+          bundle_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           issued_on?: string
           member_id?: string
           number?: string
+          paid_at?: string | null
           pdf_path?: string | null
+          placement_id?: string | null
           status?: string
+          stripe_session_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_advert_booking_id_fkey"
+            columns: ["advert_booking_id"]
+            isOneToOne: false
+            referencedRelation: "advert_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_bundle_id_fkey"
+            columns: ["bundle_id"]
+            isOneToOne: false
+            referencedRelation: "bundles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoices_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
             referencedColumns: ["id"]
           },
         ]
@@ -1409,6 +1463,36 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      member_industries: {
+        Row: {
+          industry_id: number
+          member_id: string
+        }
+        Insert: {
+          industry_id: number
+          member_id: string
+        }
+        Update: {
+          industry_id?: number
+          member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_industries_industry_id_fkey"
+            columns: ["industry_id"]
+            isOneToOne: false
+            referencedRelation: "industries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_industries_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1889,6 +1973,7 @@ export type Database = {
       }
       placements: {
         Row: {
+          awaiting_payment: boolean
           config: Json
           created_at: string
           ends_on: string
@@ -1897,9 +1982,11 @@ export type Database = {
           id: string
           kind: Database["public"]["Enums"]["placement_kind"]
           member_id: string | null
+          price_pennies: number | null
           starts_on: string
         }
         Insert: {
+          awaiting_payment?: boolean
           config?: Json
           created_at?: string
           ends_on: string
@@ -1908,9 +1995,11 @@ export type Database = {
           id?: string
           kind: Database["public"]["Enums"]["placement_kind"]
           member_id?: string | null
+          price_pennies?: number | null
           starts_on: string
         }
         Update: {
+          awaiting_payment?: boolean
           config?: Json
           created_at?: string
           ends_on?: string
@@ -1919,6 +2008,7 @@ export type Database = {
           id?: string
           kind?: Database["public"]["Enums"]["placement_kind"]
           member_id?: string | null
+          price_pennies?: number | null
           starts_on?: string
         }
         Relationships: [
@@ -2211,6 +2301,7 @@ export type Database = {
           id: string
           industry_id: number | null
           is_member_news: boolean
+          member_draft: boolean
           member_id: string | null
           pinned_until: string | null
           published_at: string | null
@@ -2218,11 +2309,13 @@ export type Database = {
           scheduled_at: string | null
           search_tsv: unknown
           slug: string
+          social_posts: Json
           source: string
           status: Database["public"]["Enums"]["content_status"]
           submitted_by: string | null
           title: string
           updated_at: string
+          story_summary: string | null
         }
         Insert: {
           body?: string
@@ -2233,6 +2326,7 @@ export type Database = {
           id?: string
           industry_id?: number | null
           is_member_news?: boolean
+          member_draft?: boolean
           member_id?: string | null
           pinned_until?: string | null
           published_at?: string | null
@@ -2240,6 +2334,7 @@ export type Database = {
           scheduled_at?: string | null
           search_tsv?: unknown
           slug: string
+          social_posts?: Json
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
           submitted_by?: string | null
@@ -2255,6 +2350,7 @@ export type Database = {
           id?: string
           industry_id?: number | null
           is_member_news?: boolean
+          member_draft?: boolean
           member_id?: string | null
           pinned_until?: string | null
           published_at?: string | null
@@ -2262,6 +2358,7 @@ export type Database = {
           scheduled_at?: string | null
           search_tsv?: unknown
           slug?: string
+          social_posts?: Json
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
           submitted_by?: string | null
@@ -2524,6 +2621,12 @@ export type Database = {
         }[]
       }
       site_sessions_last_year: { Args: never; Returns: number }
+      story_summary: {
+        Args: { "": Database["public"]["Tables"]["stories"]["Row"] }
+        Returns: {
+          error: true
+        } & "the function public.story_summary with parameter or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache"
+      }
     }
     Enums: {
       content_status:

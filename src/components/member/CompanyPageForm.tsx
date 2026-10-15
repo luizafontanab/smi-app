@@ -5,6 +5,7 @@ import { SOCIAL_CHANNELS } from "@/lib/social";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { ServicesPicker } from "@/components/member/ServicesPicker";
 import { MAX_MEMBERSHIP_TYPES } from "@/lib/member-services";
+import type { UploadResult } from "@/lib/upload-limits";
 
 const field = "mt-1 w-full rounded border px-3 py-2";
 const label = "text-sm font-medium";
@@ -57,6 +58,7 @@ export function CompanyPageForm({
   membershipTypes,
   selectedServiceIds,
   selectedMembershipTypeIds,
+  selectedIndustryIds,
   uploadImage,
   logoUrl,
   heroUrl,
@@ -68,7 +70,9 @@ export function CompanyPageForm({
   membershipTypes: Taxonomy[];
   selectedServiceIds: Set<number>;
   selectedMembershipTypeIds: Set<number>;
-  uploadImage: (formData: FormData) => Promise<string | null>;
+  /** member_industries — every industry they are in, the primary included. */
+  selectedIndustryIds: Set<number>;
+  uploadImage: (formData: FormData) => Promise<UploadResult>;
   logoUrl: string | null;
   heroUrl: string | null;
 }) {
@@ -84,7 +88,7 @@ export function CompanyPageForm({
           <input id="name" name="name" defaultValue={member.name} required className={field} />
         </div>
         <div>
-          <label htmlFor="industry_id" className={label}>Industry</label>
+          <label htmlFor="industry_id" className={label}>Primary industry</label>
           <select id="industry_id" name="industry_id" defaultValue={member.industry_id ?? ""} className={field}>
             <option value="">— none —</option>
             {industries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
@@ -92,10 +96,29 @@ export function CompanyPageForm({
         </div>
       </div>
 
+      {/* A set plus a primary (migration 20261012000001): listed under every
+          ticked industry, labelled with the primary. resolveIndustryPick
+          reconciles the two on save. */}
+      <fieldset>
+        <legend className={label}>Industries</legend>
+        <p className="text-xs text-graphite">
+          {isConsole ? "They appear" : "You appear"} under every industry ticked here; the primary industry above is
+          the one shown on {isConsole ? "their" : "your"} listing.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+          {industries.map((i) => (
+            <label key={i.id} className="flex items-center gap-1.5 text-sm">
+              <input type="checkbox" name="industries" value={i.id} defaultChecked={selectedIndustryIds.has(i.id)} />
+              {i.name}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <fieldset>
         <legend className={label}>Membership types</legend>
         <p className="text-xs text-graphite">
-          Shown on the public directory as a filter — distinct from Industry above, and from the Services list.
+          Shown on the public directory as a filter — distinct from Industries above, and from the Services list.
           Tick every one that applies, up to {MAX_MEMBERSHIP_TYPES}.
         </p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">

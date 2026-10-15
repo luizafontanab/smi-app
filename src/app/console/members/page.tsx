@@ -34,7 +34,7 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
   // pattern as /console/crm.
   let membersQuery = db
     .from("members")
-    .select("id, name, status, archived_at, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, industry:industries(name)", { count: "exact" })
+    .select("id, name, status, archived_at, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, industry:industries!members_industry_id_fkey(name)", { count: "exact" })
     .order("name");
   // The unfiltered list excludes archived members — otherwise archiving someone
   // would change nothing visible here and the button would read as broken.

@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { serviceDb } from "@/lib/db/server";
+import { ALLOWED_IMAGE_TYPES, IMAGE_TOO_LARGE, IMAGE_WRONG_TYPE, MAX_UPLOAD_BYTES } from "@/lib/upload-limits";
 
 /**
  * What may land in the `media` bucket. The bucket is PUBLIC, so whatever is
@@ -7,19 +8,11 @@ import { serviceDb } from "@/lib/db/server";
  * uploaded `text/html` would be a stored-XSS page on our own domain. Hence an
  * allowlist rather than a denylist, and the extension is derived from the
  * approved type rather than taken from the (client-controlled) filename.
- *
- * SVG is deliberately absent: it is scriptable, and nothing in the app needs
- * user-supplied vector artwork.
+ * The list itself lives in lib/upload-limits so the editor can pre-check it.
  */
-const ALLOWED_TYPES: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-  "image/avif": "avif",
-};
+const ALLOWED_TYPES = ALLOWED_IMAGE_TYPES;
 
-export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+export { MAX_UPLOAD_BYTES };
 
 /**
  * Stored images are served byte-for-byte (next/image runs `unoptimized`; see
@@ -82,9 +75,9 @@ async function recordMedia(db: ReturnType<typeof serviceDb>, path: string, kind:
 /** Upload an image to the public media bucket. Returns the storage path. */
 export async function uploadImage(file: File | null, prefix: string): Promise<string | null> {
   if (!file || file.size === 0) return null;
-  if (file.size > MAX_UPLOAD_BYTES) throw new Error("Image too large (8MB max)");
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error(IMAGE_TOO_LARGE);
   const ext = ALLOWED_TYPES[file.type];
-  if (!ext) throw new Error("Images only — JPEG, PNG, WebP, GIF or AVIF.");
+  if (!ext) throw new Error(IMAGE_WRONG_TYPE);
   const db = serviceDb();
   const path = `${prefix}/${Date.now().toString(36)}.${ext}`;
   const { body, byteSize } = await normalizeImage(file, ext);

@@ -27,7 +27,7 @@ const KIND_LABELS: Record<SubmissionKind, string> = {
   profile: "Your page",
 };
 
-/** Only these two are the member's to edit — mirrors EDITABLE_STATUSES server-side. */
+/** The member's to edit — mirrors EDITABLE_STATUSES server-side; a story the member saved as a draft (memberDraft) is too. */
 const EDITABLE: readonly SubmissionStatus[] = ["awaiting_approval", "rejected"];
 
 function StatusText({ item }: { item: PendingSubmission }) {
@@ -39,7 +39,7 @@ function StatusText({ item }: { item: PendingSubmission }) {
     case "scheduled":
       return <span className="text-brand-text">scheduled</span>;
     case "draft":
-      return <span className="text-graphite">draft</span>;
+      return <span className="text-graphite">{item.memberDraft ? "draft — only you can see it" : "draft"}</span>;
     case "withdrawn":
       return <span className="text-graphite">withdrawn</span>;
     default:
@@ -68,7 +68,9 @@ export function SubmissionList({ items, flush = false, filter }: {
   return (
     <>
       {items.map((s) => {
-        const editable = EDITABLE.includes(s.status);
+        const editable = EDITABLE.includes(s.status) || Boolean(s.memberDraft);
+        // a draft is deleted from its editor, never withdrawn — it was never sent
+        const withdrawable = EDITABLE.includes(s.status);
         const withdraw = WITHDRAW[s.kind];
         return (
           <div
@@ -81,16 +83,26 @@ export function SubmissionList({ items, flush = false, filter }: {
                 <span className="mr-2 rounded bg-shade px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-wide text-graphite">
                   {KIND_LABELS[s.kind]}
                 </span>
+                {s.featured && (
+                  <span title="A story that features you alongside another member" className="mr-2 rounded bg-brand/10 px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-wide text-brand-text">
+                    Featured
+                  </span>
+                )}
                 {s.title} — <StatusText item={s} />
               </p>
               <div className="flex items-center gap-3 text-xs">
                 {s.publicHref && (
                   <Link href={s.publicHref} className="tap px-1 text-graphite underline">View</Link>
                 )}
+                {s.previewHref && (
+                  <a href={s.previewHref} target="_blank" rel="noopener" className="tap px-1 text-graphite underline">
+                    Preview<span className="sr-only"> {s.title} as published (opens in a new tab)</span>
+                  </a>
+                )}
                 {editable && (
                   <>
                     <Link href={s.editHref} className="tap px-1 text-graphite underline">Edit</Link>
-                    {withdraw && (
+                    {withdraw && withdrawable && (
                       <form action={withdraw}>
                         <input type="hidden" name="id" value={s.id} />
                         <button type="submit" className="tap px-1 text-graphite underline hover:text-danger">Withdraw</button>
@@ -101,7 +113,7 @@ export function SubmissionList({ items, flush = false, filter }: {
               </div>
             </div>
 
-            {s.status === "published" && s.kind !== "profile" && (
+            {s.status === "published" && s.kind !== "profile" && !s.featured && (
               // <details> keeps the row compact until someone actually wants to
               // ask for something — no client JS needed for the toggle.
               <details className="mt-1.5">

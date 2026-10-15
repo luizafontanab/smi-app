@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { League_Spartan, Source_Sans_3 } from "next/font/google";
 import { DevTaskLauncher } from "@/components/dev-task/DevTaskLauncher";
 import { ThemeLauncher } from "@/components/ThemeLauncher";
+import { OG_BASE, SITE_DESCRIPTION, SITE_NAME } from "@/lib/seo";
 import { siteUrl } from "@/lib/site-url";
 import { siteVariant } from "@/lib/variant";
 import "./globals.css";
@@ -24,10 +25,6 @@ const sourceSans = Source_Sans_3({
   style: ["normal", "italic"],
 });
 
-const SITE_NAME = "Sheet Metal Industries";
-const DESCRIPTION =
-  "The voice of the UK sheet metal, fabrication and welding trade: industry news, member companies, machinery and events.";
-
 export const metadata: Metadata = {
   // Without metadataBase, Next resolves relative OG/Twitter image URLs against
   // localhost and warns at build. Every page-level openGraph.url below is
@@ -37,15 +34,14 @@ export const metadata: Metadata = {
     default: `${SITE_NAME} — UK sheet metal, fabrication & welding news`,
     template: `%s | ${SITE_NAME}`,
   },
-  description: DESCRIPTION,
+  description: SITE_DESCRIPTION,
   openGraph: {
+    ...OG_BASE,
     type: "website",
-    siteName: SITE_NAME,
-    locale: "en_GB",
     title: `${SITE_NAME} — UK sheet metal, fabrication & welding news`,
-    description: DESCRIPTION,
+    description: SITE_DESCRIPTION,
   },
-  twitter: { card: "summary_large_image", title: SITE_NAME, description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: SITE_NAME, description: SITE_DESCRIPTION },
 };
 
 export const viewport: Viewport = {

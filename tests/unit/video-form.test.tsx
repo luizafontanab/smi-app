@@ -8,7 +8,7 @@ vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 const noop = async () => {};
 const props = {
   action: noop,
-  uploadImage: async () => null,
+  uploadImage: async () => ({ error: "not in this test" }),
   industries: [{ id: 1, name: "Fabrication" }, { id: 2, name: "Laser cutting" }],
   member: { name: "Acme Metal", slug: "acme", logoUrl: null },
   defaultIndustryId: 2,

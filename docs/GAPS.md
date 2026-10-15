@@ -22,7 +22,7 @@ When an item is *coded but inert* pending an account, key or approval, the human
 
 ### A2 · Advert & inventory management
 
-**Closed:** A2.1 homepage takeover (was already built) · A2.2 featured-member booking · A2.3 bundles UI · A2.4 newsletter advert slots · A2.5 members see all their adverts · A2.6 visibility confirm raises an invoice · A2.7 invoicing on approval · A2.8 `news_mid` renders unconditionally · A2.9 `mpu` mobile artwork · A2.10 each banner position cycles its 3 in-page (decided 4 Oct, HUMAN-TODO §5.4; was random one-of-three per load) · A2.11 migration `set not null` guard.
+**Closed:** A2.1 homepage takeover (was already built) · A2.2 featured-member booking · A2.3 bundles UI · A2.4 newsletter advert slots · A2.5 members see all their adverts · A2.6 visibility confirm raises an invoice · A2.7 invoicing on approval (since 6 Oct, fix-list 77, off the booking's own `price_pennies` — the rate card it used to read is gone) · A2.8 `news_mid` renders unconditionally · A2.9 `mpu` mobile artwork · A2.10 each banner position cycles its 3 in-page (decided 4 Oct, HUMAN-TODO §5.4; was random one-of-three per load) · A2.11 migration `set not null` guard.
 
 ### A3 · Publishing pipeline & scheduling
 
@@ -89,11 +89,12 @@ Several closed B items were written against documented APIs and **have never run
 - Stripe checkout, subscriptions and cancel (B1.1, B1.5)
 - Buffer GraphQL enums (B4.4)
 - Resend Broadcasts/Contacts (B5.1) and its webhook fields (A5.4)
-- Bigin search and opt-out (B6.1, B6.3)
+- Bigin push, pull, opt-out and webhook (B6.4–B6.8)
 
 ### B1 · Stripe (payments)
 
 - [ ] **B1.7 — Checkout is a redirect, not an embedded modal (V13).** `StripePayments.createCheckout` creates a redirect-mode Checkout Session (`mode: "subscription"`, `success_url`/`cancel_url`, no `ui_mode`). `pay/actions.ts` does a full-page `redirect(payment.url)`. This needs Embedded Checkout or the Payment Element. → `src/lib/adapters/payments.ts:94-105`, `src/app/dashboard/pay/actions.ts`
+  **Half done (6 Oct):** advertising invoices now pay through **embedded** Checkout (`ui_mode: embedded_page`, pinned to API `2026-03-25.dahlia`, Stripe.js loaded from js.stripe.com) on `/dashboard/pay/invoice/[id]` → `src/lib/adapters/advert-checkout.ts`, `src/app/dashboard/pay/invoice/[id]/EmbeddedCheckout.tsx`. Membership is still the redirect described above. Moving it over is the same component, but a subscription session plus the join funnel's promo-code path, so it's left for its own change. The CSP already allows Stripe. *(Working tree, uncommitted.)*
 
 **Closed:** B1.1 `StripePayments` · B1.2 `getPayments()` branches on the key · B1.3 webhook + mock simulator · B1.4 failed payment → grace · B1.5 member-side cancellation · B1.6 moved to "What is solid" (standing constraint).
 
@@ -124,11 +125,16 @@ Several closed B items were written against documented APIs and **have never run
 
 ### B5 · Newsletter delivery
 
+- [ ] **B5.4 — A repeat newsletter signup doesn't re-subscribe a "not subscribed" contact.** `subscribeNewsletter` refuses an *unsubscribed* address (right) and inserts a new one (right), but for an existing row with `subscribed=false` and no `unsubscribed_at` — someone an admin set to "not subscribed" — it records the signup, says "Subscribed — see you next issue", and leaves `subscribed` false. They then never receive the issue they were told is coming. → `src/app/(public)/actions.ts:16-33`
+  **Found and not fixed (7 Oct, during B6.5):** out of scope for the Bigin pass; the fix is one `applyOptIn(existing, { newsletter: "subscribed" })` update, but it changes a public flow so it gets its own change.
+
 **Closed:** B5.1 Resend sender, the candidate under test (Jas's MailChimp deliverability gate still open) · B5.2 unsubscribe + webhook sync-back · B5.3 issue preview, edit and video pick.
 
 ### B6 · CRM — Bigin / Zoho
 
-**Closed:** B6.1 `BiginCrmSync` · B6.2 public signup pushes to Bigin · B6.3 dedupe write-through + unsubscribe sync-back.
+**Correction (7 Oct):** ~~B6.1 and B6.3 closed~~ — both were written against **Zoho CRM's** API (`/crm/v2/Contacts`), not Bigin's (`/bigin/v2/Contacts`), and Bigin search needs a `ZohoSearch.securesearch.READ` scope HUMAN-TODO §7 never asked for. They would have failed on the first live call. Rewritten as B6.4–B6.8 below. The sync was also one-way: nothing new in Bigin ever came back, and an unsubscribe here never reached Bigin.
+
+**Closed:** B6.1 `BiginCrmSync` (superseded by B6.4) · B6.2 public signup pushes to Bigin · B6.3 dedupe write-through + unsubscribe sync-back (superseded by B6.4/B6.5) · B6.4 push rewritten for `/bigin/v2`: whole-row push by contact id (`syncContactToCrm`), PUT by stored `bigin_id` so an email change no longer orphans the Bigin record, `Email_Opt_Out` pushed (cleared only on an explicit console re-opt-in), names sent on create or when edited here only, `trigger: []` so our writes fire no Bigin workflows, per-record 202 rejections treated as failures, and a failed push queues a `crm_push` retry and marks the row `crm_dirty_at` instead of throwing past the console action · B6.5 pull of new and edited Bigin contacts by `Modified_Time` cursor (`settings.crm_sync_cursor`), matched on `bigin_id` then email; opt-out wins both ways and a dirty row's profile fields aren't overwritten. **The first import (~2,700 contacts, subscribed unless opted out in Bigin) is never automatic** — it waits for "Preview import" → "Run first import" on `/console/crm`; the cost is one manual step on launch · B6.6 our unsubscribes reach Bigin: the unsubscribe page and the Resend webhook (unsubscribe, complaint, hard bounce) now push · B6.7 Bigin Notifications API webhook at `/api/webhooks/bigin` (token-checked, ids re-read from Bigin, deletes only unlink), channel renewed by `crm_sync`. Bigin channels last ≤1 day and production cron is daily (A3.1), so live updates have a short daily gap the poll covers · B6.8 Bigin company link (`contacts.bigin_company_id/_name`, migration `20261007000001`): auto-linked on an exact single name match, otherwise set with the console picker; companies are never created in Bigin. Also fixed en route: `sync()` stamped `last_synced_at` on contacts that had never been synced, so "Synced" in the console was false. → `src/lib/adapters/crm.ts`, `src/app/api/webhooks/bigin/route.ts`, `src/app/console/crm/page.tsx` *(Working tree, uncommitted. Never run against a live Bigin account — HUMAN-TODO 7.5.)*
 
 ---
 
@@ -153,7 +159,7 @@ Per [`PHASE-1-TECHNICAL.md §04`](../../proposal/PHASE-1-TECHNICAL.md), these ar
 These are not engineering gaps either, so they are tracked elsewhere:
 
 - **The WordPress agency's liquidation and hosting takeover** (USE-CASES gap 26) is external and time-sensitive. → HUMAN-TODO §19.2.
-- **Industries** became their own table, directly linked from stories, videos and events, on 10 Sep (migration `20260909000002`). Existing content was backfilled from its member only. A story's industry is now a snapshot, not a join.
+- **Industries** became their own table, directly linked from stories, videos and events, on 10 Sep (migration `20260909000002`). On 12 Oct Jas's ten replaced ours and a member can be in several, with one primary (`20261012000001`, `member_industries`). Every assignment is backfilled from his mapping of Services and news topics (`scripts/lib/industry-map.ts`, `pnpm industries:backfill`); a story's industry is a snapshot, not a join. Production steps: HUMAN-TODO §26; open questions: ask-jas § Industries. *(Working tree, uncommitted.)*
 
 ## What is solid — do not re-litigate
 

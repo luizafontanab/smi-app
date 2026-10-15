@@ -14,7 +14,7 @@ export default async function AdvertisingBuyPage(props: PageProps<"/dashboard/ad
     <div className="mx-auto max-w-2xl">
       <h1 className="mt-1 text-xl font-bold text-ink">Buy advertising</h1>
       <p className="mt-1 text-sm text-graphite">
-        Pick what you&apos;re interested in — Jas confirms availability, schedules it, and invoices you. No online payment.
+        Pick what you&apos;re interested in — Jas confirms availability and schedules it, and you can pay the invoice by card from your account.
       </p>
       <AdvertisingTabs active="buy" />
 

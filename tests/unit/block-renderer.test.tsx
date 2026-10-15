@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { BlockRenderer } from "@/components/blocks/BlockRenderer";
+import { BlockRenderer, STORY_AD_WRAPPER } from "@/components/blocks/BlockRenderer";
 import type { Block, PageLayout } from "@/lib/blocks/schema";
 import type { LiveAdvert } from "@/lib/adverts";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
@@ -136,6 +136,15 @@ describe("ad_banner", () => {
       <BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "ad_banner" })} anchors={{}} showPlaceholders />,
     );
     expect(container.querySelector(".my-8")).toBeInTheDocument();
+  });
+
+  // Jas 13/10 item 6: the story page caps its mobile adverts; nothing else does.
+  it("uses the caller's wrapper class when one is given, and my-8 otherwise", () => {
+    const { container } = render(
+      <BlockRenderer pageType="story" path="/news/x" layout={layout({ id: "b1", type: "ad_banner" })} anchors={{}} showPlaceholders adWrapperClassName={STORY_AD_WRAPPER} />,
+    );
+    const wrapper = container.querySelector(".my-8");
+    expect(wrapper).toHaveClass("max-w-[300px]", "md:max-w-none", "mx-auto");
   });
 });
 

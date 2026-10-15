@@ -178,6 +178,42 @@ describe("companyPageValuesFromForm", () => {
     expect((values.social as Record<string, string>).facebook).toBeUndefined();
   });
 
+  // Several industries per member, one primary (migration 20261012000001).
+  describe("industries", () => {
+    const withIndustries = (ids: string[], overrides: Record<string, string> = {}) => {
+      const fd = shared(overrides);
+      for (const id of ids) fd.append("industries", id);
+      return fd;
+    };
+    const pick = (fd: FormData) => {
+      const r = companyPageValuesFromForm(fd, existing);
+      if ("error" in r) throw new Error(`expected values, got error: ${r.error}`);
+      return { primary: r.values.industry_id, set: r.industryIds };
+    };
+
+    it("adds a primary that wasn't ticked to the set", () => {
+      expect(pick(withIndustries(["2", "7"], { industry_id: "9" }))).toEqual({ primary: 9, set: [2, 7, 9] });
+    });
+
+    it("keeps a ticked primary once", () => {
+      expect(pick(withIndustries(["2", "7", "7"], { industry_id: "7" }))).toEqual({ primary: 7, set: [2, 7] });
+    });
+
+    it("makes a single tick the primary", () => {
+      expect(pick(withIndustries(["4"]))).toEqual({ primary: 4, set: [4] });
+    });
+
+    it("refuses several ticks with no primary rather than guessing", () => {
+      expect(companyPageValuesFromForm(withIndustries(["2", "7"]), existing)).toEqual({
+        error: "Choose which of the ticked industries is the primary one.",
+      });
+    });
+
+    it("allows none at all", () => {
+      expect(pick(withIndustries([]))).toEqual({ primary: null, set: [] });
+    });
+  });
+
   it("requires a company name", () => {
     const r = companyPageValuesFromForm(shared({ name: "" }), existing);
     expect(r).toEqual({ error: "Company name is required." });

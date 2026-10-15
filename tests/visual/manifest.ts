@@ -28,7 +28,7 @@ export type Route = {
   skip?: string;
 };
 
-/** `/` -> home, `/console/adverts/spots` -> console_adverts_spots, `/search?q=x` -> search */
+/** `/` -> home, `/console/adverts/banners` -> console_adverts_banners, `/search?q=x` -> search */
 function idFor(path: string): string {
   const clean = path.split("?")[0].replace(/\/+$/, "");
   return clean === "" ? "home" : clean.slice(1).replace(/\//g, "_");
@@ -91,7 +91,7 @@ const PUBLIC_PINNED: Route[] = [
     role: "anon",
     skip: "no newsletter issue exists in the current database — /newsletters lists none and issue-47 renders the not-found page. Unskip after a seed that creates one.",
   },
-  anon("/industry/welding", { id: "industry_slug", pin: "an industry from scripts/lib/industries.ts, inserted by migration 20260909000002" }),
+  anon("/industry/welding-joining", { id: "industry_slug", pin: "an industry from scripts/lib/industries.ts, inserted by migration 20261012000001" }),
   anon("/pages/about", { id: "pages_slug", pin: "authored static page (scripts/lib/static-page-content.ts)" }),
 ];
 
@@ -163,10 +163,14 @@ const CONSOLE: Route[] = [
   admin("/console/adverts/bundles"),
   admin("/console/adverts/featured-member"),
   admin("/console/adverts/interest"),
-  admin("/console/adverts/spots"),
+  // Was /console/adverts/spots ("Inventory") until fix-list 79; the old path
+  // only redirects now. New id, so this needs a first human accept.
+  admin("/console/adverts/banners"),
+  // fix-list 78 — new route, no baseline yet.
+  admin("/console/adverts/suppliers"),
   admin("/console/adverts/takeover"),
   // Site Config → Advertising page: the media pack and the public A–F format
-  // cards, moved off /console/adverts/spots. Both of those baselines change.
+  // cards, moved off the old Inventory page (now /console/adverts/banners).
   admin("/console/advertising"),
   admin("/console/categories"),
   admin("/console/industries"),
@@ -186,6 +190,8 @@ const CONSOLE: Route[] = [
   admin("/console/releases"),
   admin("/console/resources"),
   admin("/console/stories"),
+  // fix-list 75. Explicit id: idFor() strips the query and would collide with console_stories.
+  { id: "console_stories_list", path: "/console/stories?view=list", role: "admin" },
   admin("/console/videos"),
 ];
 
@@ -205,7 +211,7 @@ const CONSOLE_NEW: Route[] = [
   admin("/console/members/new"),
   admin("/console/content-pages/new"),
   admin("/console/adverts/artwork/new"),
-  admin("/console/adverts/spots/new"),
+  // /console/adverts/spots/new was the rate-card product editor, removed in fix-list 77.
 ];
 
 const CONSOLE_PINNED: Route[] = [
@@ -227,6 +233,25 @@ const CONSOLE_PINNED: Route[] = [
     role: "admin",
     skip: "the newsletter index is empty in the current database — repin when an issue exists",
   },
+  // fix-list 76/78 edit pages — new routes, no baselines yet.
+  admin("/console/adverts/featured-member/4b350595-ab6a-4d62-8a20-f36c276fd117", {
+    id: "console_featured_member_id",
+    pin: "first slot on /console/adverts/featured-member",
+  }),
+  {
+    id: "console_takeover_id",
+    path: "/console/adverts/takeover/PIN",
+    role: "admin",
+    skip: "no takeover in the current database — repin when one is booked",
+  },
+  admin("/console/adverts/banners/f98d4427-077b-4d91-b9c4-45b893ba3651", {
+    id: "console_banner_run_id",
+    pin: "the latest-ending banner run in the local seed (advert_bookings joined to adverts.format = banner, ends_on desc)",
+  }),
+  admin("/console/adverts/suppliers/3b9314bc-e2dd-4ed2-99d9-6ace54129ba6", {
+    id: "console_supplier_logo_id",
+    pin: "first row on /console/adverts/suppliers",
+  }),
   {
     id: "console_bundle_id",
     path: "/console/adverts/bundles/PIN",

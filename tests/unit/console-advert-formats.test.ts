@@ -40,6 +40,8 @@ describe("PHASE_LABELS", () => {
       { status: "draft", starts_on: "2026-01-01", ends_on: "2026-12-31" },
       { status: "awaiting_approval", starts_on: "2026-01-01", ends_on: "2026-12-31" },
       { status: "review_required", starts_on: "2026-01-01", ends_on: "2026-12-31" },
+      // held for payment (6 Oct) — mid-term, which must NOT read as "live"
+      { status: "awaiting_payment", starts_on: "2026-01-01", ends_on: "2026-12-31" },
       { status: "ended", starts_on: "2026-01-01", ends_on: "2026-12-31" },
       { status: "scheduled", starts_on: "2026-07-01", ends_on: "2026-07-31" }, // upcoming
       { status: "live", starts_on: "2026-01-01", ends_on: "2026-12-31" }, // live
@@ -47,7 +49,8 @@ describe("PHASE_LABELS", () => {
     ];
     const today = "2026-06-15";
     const phases = new Set(cases.map((c) => bookingPhase(c, today)));
-    expect(phases.size).toBe(6);
+    expect(phases.size).toBe(7);
+    expect(phases).toContain("awaiting_payment");
     for (const phase of phases) expect(PHASE_LABELS[phase]).toBeTruthy();
   });
 });

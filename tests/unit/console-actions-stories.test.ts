@@ -47,8 +47,67 @@ function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
 describe("consoleUploadImage", () => {
   it("uploads under stories/console and returns a public URL", async () => {
     uploadImage.mockResolvedValue("stories/console/a.jpg");
-    expect(await consoleUploadImage(form({}))).toContain("stories/console/a.jpg");
+    expect(await consoleUploadImage(form({}))).toEqual({ url: expect.stringContaining("stories/console/a.jpg") });
     expect(uploadImage).toHaveBeenCalledWith(null, "stories/console");
+  });
+
+  it("returns the refusal reason as a value instead of throwing", async () => {
+    uploadImage.mockRejectedValue(new Error("Images only — JPEG, PNG, WebP, GIF or AVIF."));
+    expect(await consoleUploadImage(form({}))).toEqual({ error: "Images only — JPEG, PNG, WebP, GIF or AVIF." });
+  });
+
+  it("still lets the auth guard's redirect through", async () => {
+    requireConsole.mockRejectedValueOnce(new Error("NEXT_REDIRECT;/login"));
+    await expect(consoleUploadImage(form({}))).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
+});
+
+// Jas 13/10 item 12.
+describe("saveStory — tagging several members", () => {
+  const A = "11111111-1111-1111-1111-111111111111";
+  const B = "22222222-2222-2222-2222-222222222222";
+
+  it("writes the subject member and every tagged member to story_members, primary first", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    const tagsBuilder = queryBuilder(dbOk(null));
+    db({ stories: () => storiesBuilder, story_members: () => tagsBuilder });
+    const f = form({ id: "s1", title: "Southern Manufacturing", member_id: A });
+    f.append("tagged_member_ids", B);
+    f.append("tagged_member_ids", A);
+
+    await expect(saveStory(f)).rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?saved=1");
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ member_id: A }));
+    expect(tagsBuilder.insert).toHaveBeenCalledWith([{ story_id: "s1", member_id: A }, { story_id: "s1", member_id: B }]);
+  });
+
+  it("refuses tagged members without a subject member, before writing anything", async () => {
+    const from = db({});
+    const f = form({ id: "s1", title: "T", member_id: "" });
+    f.append("tagged_member_ids", B);
+    await expect(saveStory(f)).rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/s1\?error=/);
+    expect(from).not.toHaveBeenCalled();
+  });
+});
+
+// Jas 13/10 item 8.
+describe("saveStory — SMI's posts of the story", () => {
+  it("stores the pasted post links, leaving blank networks out", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    db({ stories: () => storiesBuilder });
+    await expect(saveStory(form({ id: "s1", title: "T", post_linkedin: "https://www.linkedin.com/posts/a", post_x: "" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?saved=1");
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({
+      social_posts: { linkedin: "https://www.linkedin.com/posts/a" },
+    }));
+  });
+
+  it("refuses a link that isn't that network's, before uploading anything", async () => {
+    const from = db({});
+    await expect(saveStory(form({ id: "s1", title: "T", post_facebook: "https://evil.example/fb" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/s1\?error=.*Facebook/);
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
   });
 });
 
@@ -183,6 +242,17 @@ describe("decideStory", () => {
     expect(from).not.toHaveBeenCalledWith("approvals");
   });
 
+  // Pinning is a separate, optional step once a story is live (15 Oct) —
+  // approving must never set pinned_until, by either approval route.
+  it("approving never pins the story", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: null, status: "awaiting_approval" }));
+    db({ stories: () => storiesBuilder, approvals: () => queryBuilder(dbOk(null)) });
+    await decideStory(form({ id: "s1", decision: "approve" }));
+    await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(storiesBuilder.update).toHaveBeenCalled();
+    expect(storiesBuilder.update).not.toHaveBeenCalledWith(expect.objectContaining({ pinned_until: expect.anything() }));
+  });
+
   it("approving publishes and enqueues social push + notify, and records the approval", async () => {
     const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval" }));
     const approvalsBuilder = queryBuilder(dbOk(null));
@@ -216,6 +286,41 @@ describe("pinStory", () => {
 
     await pinStory(form({ id: "s1", days: "0" }));
     expect(builder.update).toHaveBeenCalledWith({ pinned_until: null });
+  });
+});
+
+// Jas 13/10: a member's unsubmitted draft is theirs until they submit it — the
+// desk can't publish, schedule, move or overwrite it, by any route.
+describe("member drafts are out of the console's reach", () => {
+  const memberDraft = { id: "s1", status: "draft", source: "member", member_draft: true, member_id: "m1", cover_path: null };
+
+  it("moveStory treats one as not found, and never publishes it", async () => {
+    const storiesBuilder = queryBuilder(dbOk(memberDraft));
+    db({ stories: () => storiesBuilder });
+    expect(await moveStory({ id: "s1", to: "published" })).toEqual({ ok: false, error: "Story not found." });
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("scheduleStory's Publish now refuses one", async () => {
+    const storiesBuilder = queryBuilder(dbOk(memberDraft));
+    db({ stories: () => storiesBuilder });
+    await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories");
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("saveStory refuses to overwrite one", async () => {
+    const storiesBuilder = queryBuilder(dbOk(memberDraft));
+    db({ stories: () => storiesBuilder });
+    await expect(saveStory(form({ id: "s1", title: "Admin edit" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\?error=/);
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("an admin's own draft about a member still moves as before", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ ...memberDraft, source: "admin", member_draft: false }));
+    db({ stories: () => storiesBuilder });
+    expect(await moveStory({ id: "s1", to: "published" })).toEqual({ ok: true });
   });
 });
 

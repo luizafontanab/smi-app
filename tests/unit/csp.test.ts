@@ -28,4 +28,13 @@ describe("Content-Security-Policy", () => {
   it("still frames only the YouTube players for video", async () => {
     expect(directive(await csp(), "frame-src")).toContain("https://www.youtube-nocookie.com");
   });
+
+  // 6 Oct: embedded Checkout on /dashboard/pay/invoice — Stripe.js, its
+  // frames (incl. 3-D Secure) and its API, and nothing broader.
+  it("lets Stripe's embedded Checkout load, frame and call home", async () => {
+    const policy = await csp();
+    expect(directive(policy, "script-src").split(/\s+/)).toContain("https://js.stripe.com");
+    expect(directive(policy, "frame-src").split(/\s+/)).toEqual(expect.arrayContaining(["https://js.stripe.com", "https://hooks.stripe.com"]));
+    expect(directive(policy, "connect-src").split(/\s+/)).toContain("https://api.stripe.com");
+  });
 });

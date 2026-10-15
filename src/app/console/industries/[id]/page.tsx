@@ -25,21 +25,28 @@ export default async function IndustryEditor(props: PageProps<"/console/industri
     : await must(db.from("industries").select("id, name, slug, sort_order").eq("id", industryId).maybeSingle(), "console/industries editor");
   if (!isNew && !industry) notFound();
 
-  // Four tables reference an industry and all four FKs default to RESTRICT, so
+  // Five tables reference an industry and every FK defaults to RESTRICT, so
   // any one of them blocks a delete. Count them all rather than reporting the
-  // member count and letting the other three surprise you.
-  const [members, stories, videos, events] = isNew
-    ? [0, 0, 0, 0]
-    : await Promise.all(
-        (["members", "stories", "videos", "events"] as const).map(async (t) =>
+  // member count and letting the others surprise you. `members` here is the
+  // industry's members via member_industries; `primaries` those for whom it is
+  // also members.industry_id.
+  const [members, primaries, stories, videos, events] = isNew
+    ? [0, 0, 0, 0, 0]
+    : await Promise.all([
+        mustList(
+          db.from("member_industries").select("member_id", { count: "exact", head: true }).eq("industry_id", industry!.id),
+          "console/industries usage: member_industries",
+        ).then((r) => r.count ?? 0),
+        ...(["members", "stories", "videos", "events"] as const).map(async (t) =>
           (await mustList(
             db.from(t).select("id", { count: "exact", head: true }).eq("industry_id", industry!.id),
             `console/industries usage: ${t}`,
           )).count ?? 0,
         ),
-      );
+      ]);
   const usage = [
     [members, `member${members === 1 ? "" : "s"}`],
+    [primaries, "as primary"],
     [stories, `stor${stories === 1 ? "y" : "ies"}`],
     [videos, `video${videos === 1 ? "" : "s"}`],
     [events, `event${events === 1 ? "" : "s"}`],

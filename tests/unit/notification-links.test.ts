@@ -83,6 +83,15 @@ describe("notificationHref", () => {
     expect(notificationHref("something_new", p({ story_id: "s1" }), slugs)).toBeNull();
   });
 
+  // 6 Oct: "payment due" opens the pay page for its invoice — one invoice can
+  // pay for a bundle or a placement, so it isn't keyed on a booking.
+  it("sends a payment-due notice to its invoice's pay page, falling back to billing", () => {
+    expect(notificationHref("advert_payment_due", p({ invoice_id: "inv1", booking_id: "b1" }), slugs)).toBe("/dashboard/pay/invoice/inv1");
+    expect(notificationHref("advert_payment_due", p({}), slugs)).toBe("/dashboard/settings/billing");
+    expect(notificationHref("advert_payment_received", p({ booking_id: "b1" }), slugs)).toBe("/dashboard/advert/b1");
+    expect(notificationHref("advert_payment_received", p({}), slugs)).toBe("/dashboard/settings/billing");
+  });
+
   // The map is keyed by hand, so a kind added to NOTIFICATION_KINDS without a
   // case here silently loses its link. This is the guard against that going
   // unnoticed: every kind must be a deliberate decision, including "no link".

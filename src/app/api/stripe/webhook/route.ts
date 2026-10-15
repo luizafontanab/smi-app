@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { applyPaymentResult, applyPaymentFailure, applySubscriptionEnded } from "@/lib/membership";
 import { mockBaseUrl } from "@/lib/adapters/mock-base-url";
 import { serviceDb } from "@/lib/db/server";
+import { ADVERT_INVOICE_KIND } from "@/lib/adapters/advert-checkout";
+import { settleInvoice } from "@/lib/advert-payments";
 
 /**
  * Stripe events → membership state (GAPS B1.3/B1.4).
@@ -40,8 +42,10 @@ type StripeEvent = {
   type?: string;
   data?: {
     object?: {
+      id?: string;
       client_reference_id?: string;
-      metadata?: { member_id?: string };
+      payment_status?: string;
+      metadata?: { member_id?: string; kind?: string; invoice_id?: string };
       subscription?: string;
       customer?: string;
       parent?: { subscription_details?: { subscription?: string } };
@@ -91,6 +95,31 @@ export async function POST(request: NextRequest) {
     event = JSON.parse(body) as StripeEvent;
   } catch {
     return NextResponse.json({ error: "bad payload" }, { status: 400 });
+  }
+
+  // Advert invoices (6 Oct) first, and they never fall through. An advert
+  // Checkout Session also carries client_reference_id = the member, so
+  // without this branch the membership path below would read an advert
+  // payment as the £40 join fee — stamping paid_at and raising a second,
+  // membership invoice for money that was for an advert.
+  const object = event.data?.object;
+  if (object?.metadata?.kind === ADVERT_INVOICE_KIND) {
+    const invoiceId = object.metadata.invoice_id;
+    // A card settles inside checkout.session.completed; a delayed method
+    // (bank debit) completes the session unpaid and settles later.
+    const paid =
+      (event.type === "checkout.session.completed" && object.payment_status === "paid") ||
+      event.type === "checkout.session.async_payment_succeeded";
+    let settled = false;
+    if (invoiceId && paid) {
+      settled = (await settleInvoice(invoiceId, { sessionId: object.id })).settled;
+      // Not settled is normal on a replay (already paid). It is NOT normal if
+      // the invoice was voided while the member had Checkout open — money
+      // taken for nothing owed. Logged so the error log surfaces it; the
+      // refund is a by-hand Stripe dashboard job.
+      if (!settled) console.error(`[stripe-webhook] advert payment ${object.id} for invoice ${invoiceId} settled nothing — already paid, or voided (check for a refund).`);
+    }
+    return NextResponse.json({ ok: true, advert_invoice: invoiceId ?? null, settled });
   }
 
   let memberId = event.data?.object?.client_reference_id ?? event.data?.object?.metadata?.member_id ?? null;

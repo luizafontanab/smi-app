@@ -62,7 +62,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     // one exception is the sessions RPC, left raw on purpose — this page already
     // degrades it to "unknown" rather than failing.
     mustList(db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"), "console/overview active members"),
-    must(db.from("advert_bookings").select("advert:adverts(format, member_id), product:advert_products(rate_pennies)").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today), "console/overview live bookings"),
+    must(db.from("advert_bookings").select("advert:adverts(format, member_id), price_pennies").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today), "console/overview live bookings"),
     must(db.from("stories").select("id, title, member:members!stories_member_id_fkey(name)").eq("status", "awaiting_approval"), "console/overview pending stories"),
     must(db.from("events").select("id, title, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending events"),
     must(db.from("advert_bookings").select("id, advert:adverts(name)").eq("status", "awaiting_approval"), "console/overview pending adverts"),
@@ -82,8 +82,9 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     must(db.from("newsletter_issues").select("id, number").eq("status", "draft").limit(1), "console/overview draft issue"),
     must(db.from("newsletter_issues").select("id, number, send_error").eq("status", "send_failed"), "console/overview failed issues"),
     mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true), "console/overview subscriber count"),
-    mustList(db.from("placements").select("*", { count: "exact", head: true }).eq("kind", "featured_member").lte("starts_on", today).gte("ends_on", today), "console/overview featured slots sold"),
-    mustList(db.from("stories").select("*", { count: "exact", head: true }).eq("status", "draft"), "console/overview draft stories"),
+    mustList(db.from("placements").select("*", { count: "exact", head: true }).eq("kind", "featured_member").eq("awaiting_payment", false).lte("starts_on", today).gte("ends_on", today), "console/overview featured slots sold"),
+    // a member's unsubmitted draft is theirs, not the desk's (lib/story-board isMemberDraft)
+    mustList(db.from("stories").select("*", { count: "exact", head: true }).eq("status", "draft").eq("member_draft", false), "console/overview draft stories"),
     mustList(db.from("stories").select("*", { count: "exact", head: true }).eq("status", "scheduled"), "console/overview scheduled stories"),
     mustList(db.from("stories").select("*", { count: "exact", head: true }).eq("status", "published"), "console/overview published stories"),
     // Left raw deliberately: the site-sessions RPC is optional telemetry, and
@@ -120,7 +121,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
 
   const revenue = revenueByStream({
     activeMembers: members.count ?? 0,
-    liveBookings: live.map((b) => ({ format: b.advert?.format ?? null, productPennies: b.product?.rate_pennies ?? null })),
+    liveBookings: live.map((b) => ({ format: b.advert?.format ?? null, pricePennies: b.price_pennies ?? null })),
     featuredSold: slotsSold,
   });
   const maxStream = Math.max(revenue.membership, revenue.advertising, revenue.featured);

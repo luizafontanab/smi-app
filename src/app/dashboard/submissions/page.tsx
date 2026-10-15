@@ -9,6 +9,7 @@ export const metadata = { title: "Your content" };
 
 const TABS = [
   { key: "all", label: "All" },
+  { key: "drafts", label: "Drafts" },
   { key: "pending", label: "Awaiting approval" },
   { key: "published", label: "Live" },
   { key: "attention", label: "Needs attention" },
@@ -16,6 +17,7 @@ const TABS = [
 
 const EMPTY: Record<ContentFilter, string> = {
   all: "You haven't added any content yet.",
+  drafts: "No drafts. Use “Save draft” on a new story to keep working on it before you submit.",
   pending: "Nothing awaiting approval.",
   published: "Nothing of yours is live yet.",
   attention: "Nothing needs your attention.",
@@ -60,6 +62,9 @@ export default async function SubmissionsPage(props: PageProps<"/dashboard/submi
       />
 
       {typeof sp.error === "string" && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {sp.deleted === "draft" && (
+        <p role="status" className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Draft deleted.</p>
+      )}
       {sp.requested === "1" && (
         <p className="mt-3 rounded bg-brand/10 p-2 text-sm text-graphite">
           Thanks — your change request is with the SMI editor. Your page stays live in the meantime.

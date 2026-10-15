@@ -67,3 +67,46 @@ export async function replaceMemberMembershipTypes(db: Db, memberId: string, ids
     .insert(unique.map((membership_type_id) => ({ member_id: memberId, membership_type_id })));
   if (insertError) throw insertError;
 }
+
+/** The `industries` checkboxes every form posts, de-duplicated. */
+export function industryIdsFromForm(formData: FormData): number[] {
+  return [...new Set(formData.getAll("industries").map(Number).filter(Boolean))];
+}
+
+/**
+ * A member's industries are a set with one primary (migration 20261012000001):
+ * the set drives the directory filter and /industry/* member lists, the
+ * primary is the label on their card and what their new content defaults to.
+ * The form posts both — `industries` checkboxes and an `industry_id` select —
+ * so reconcile them here, once, for every write path:
+ *
+ *  - a primary that wasn't ticked is added to the set (picking it says enough);
+ *  - a single tick with no primary becomes the primary;
+ *  - several ticks and no primary is refused — which one leads is the member's
+ *    call, not something to guess.
+ */
+export function resolveIndustryPick(
+  ids: number[],
+  primaryId: number | null,
+): { industryIds: number[]; primaryId: number | null } | { error: string } {
+  const unique = [...new Set(ids)];
+  if (primaryId != null) return { industryIds: unique.includes(primaryId) ? unique : [...unique, primaryId], primaryId };
+  if (unique.length === 1) return { industryIds: unique, primaryId: unique[0] };
+  if (unique.length > 1) return { error: "Choose which of the ticked industries is the primary one." };
+  return { industryIds: [], primaryId: null };
+}
+
+/**
+ * Replace a member's `member_industries` rows with exactly `ids` — the same
+ * delete-then-insert shape as replaceMemberServices, for the same reasons.
+ * Callers pass a set already reconciled with the primary by resolveIndustryPick.
+ */
+export async function replaceMemberIndustries(db: Db, memberId: string, ids: number[]) {
+  const { error } = await db.from("member_industries").delete().eq("member_id", memberId);
+  if (error) throw error;
+  if (!ids.length) return;
+  const { error: insertError } = await db
+    .from("member_industries")
+    .insert([...new Set(ids)].map((industry_id) => ({ member_id: memberId, industry_id })));
+  if (insertError) throw insertError;
+}

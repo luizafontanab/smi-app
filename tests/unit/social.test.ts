@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeSocial, socialHandle, socialHref, socialLinks } from "@/lib/social";
+import { mergeSocial, parseStoryPosts, SMI_SOCIAL_URLS, socialHandle, socialHref, socialLinks, storyPostLinks, storyPostUrl } from "@/lib/social";
 
 /** Shorthand: the pair the profile card actually renders. */
 const render = (key: string, value: string) => {
@@ -166,5 +166,65 @@ describe("socialLinks", () => {
       .toBe("LinkedIn: schuler-group → https://www.linkedin.com/company/schuler-group/");
     expect(render("youtube", "https://www.youtube.com/watch?v=QmEZ9TPXpxA"))
       .toBe("YouTube: — → https://www.youtube.com/watch?v=QmEZ9TPXpxA");
+  });
+});
+
+// Jas 13/10 item 8: links to SMI's own posts of a story.
+describe("storyPostUrl", () => {
+  it.each([
+    ["linkedin", "https://www.linkedin.com/posts/sheet-metal-industries_blm-activity-1234"],
+    ["linkedin", "https://uk.linkedin.com/feed/update/urn:li:activity:1234/"],
+    ["facebook", "https://www.facebook.com/SMIUK/posts/pfbid0abc"],
+    ["facebook", "https://fb.com/SMIUK/posts/1"],
+    ["x", "https://x.com/SMIUK_/status/1845"],
+    ["x", "https://twitter.com/SMIUK_/status/1845"],
+  ] as const)("accepts a %s post on its own host: %s", (network, url) => {
+    expect(storyPostUrl(network, url)).toBe(new URL(url).toString());
+  });
+
+  it.each([
+    ["http, not https", "linkedin", "http://www.linkedin.com/posts/x"],
+    ["another network's host", "linkedin", "https://x.com/SMIUK_/status/1"],
+    ["a look-alike host", "facebook", "https://facebook.com.evil.example/x"],
+    ["a script URL", "x", "javascript:alert(1)//x.com/"],
+    ["a bare handle", "x", "SMIUK_"],
+    ["junk", "linkedin", "https://"],
+  ] as const)("refuses %s", (_label, network, url) => {
+    expect(storyPostUrl(network, url)).toBeNull();
+  });
+});
+
+describe("parseStoryPosts", () => {
+  const fields = (v: Record<string, string>) => (k: string) => v[k] ?? "";
+
+  it("keeps the filled-in posts and leaves blanks out", () => {
+    expect(parseStoryPosts(fields({ linkedin: " https://www.linkedin.com/posts/a ", x: "" }))).toEqual({
+      value: { linkedin: "https://www.linkedin.com/posts/a" },
+    });
+  });
+
+  it("names the network of the first bad link", () => {
+    const r = parseStoryPosts(fields({ facebook: "https://example.com/post" }));
+    expect(r).toEqual({ error: expect.stringContaining("Facebook") });
+  });
+});
+
+describe("storyPostLinks", () => {
+  it("one link per network, the post where there is one, SMI's page otherwise", () => {
+    const links = storyPostLinks({ linkedin: "https://www.linkedin.com/posts/a" });
+    expect(links.map((l) => l.key)).toEqual(["linkedin", "facebook", "x"]);
+    expect(links[0]).toMatchObject({ href: "https://www.linkedin.com/posts/a", isPost: true });
+    expect(links[1]).toMatchObject({ href: SMI_SOCIAL_URLS.facebook, isPost: false });
+    expect(links[2]).toMatchObject({ href: SMI_SOCIAL_URLS.x, isPost: false });
+  });
+
+  it("doesn't trust what's stored: a bad value falls back to SMI's page", () => {
+    const links = storyPostLinks({ x: "javascript:alert(1)", facebook: 42 });
+    expect(links.every((l) => !l.isPost)).toBe(true);
+  });
+
+  it("copes with nothing stored at all", () => {
+    expect(storyPostLinks(null)).toHaveLength(3);
+    expect(storyPostLinks([])).toHaveLength(3);
   });
 });

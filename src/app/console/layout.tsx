@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { isDeveloper } from "@/lib/developer";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { THEME_SWITCHER_ENABLED } from "@/lib/theme-switcher-flag";
 import { AccountMenu } from "@/components/AccountMenu";
 import { ConsoleNav, type NavSection } from "@/components/console/ConsoleNav";
 import { IconBell } from "@/components/icons";
@@ -33,18 +34,17 @@ const CONSOLE_SECTIONS: NavSection[] = [
   {
     key: "adverts",
     href: "/console/adverts",
-    label: "Adverts & Inventory",
+    label: "Adverts & Banners",
     children: [
       { href: "/console/adverts", label: "Bookings" },
       { href: "/console/adverts/artwork", label: "Artwork" },
-      // "Ad Spots" read as the physical slots it is not. It is the rate card,
-      // and it now holds the slot capacities too — both answer "what do we sell
-      // and how much of it", so: Inventory. The path is unchanged on purpose:
-      // saveAdvertProduct redirects to it from actions.ts.
-      { href: "/console/adverts/spots", label: "Inventory" },
+      // Was "Inventory" (rate card + banner spots). The rate card went in
+      // fix-list 77, leaving only banner spots, so: Banners (fix-list 79).
+      { href: "/console/adverts/banners", label: "Banners" },
       { href: "/console/adverts/bundles", label: "Bundles" },
       { href: "/console/adverts/takeover", label: "Takeover" },
       { href: "/console/adverts/featured-member", label: "Featured Member" },
+      { href: "/console/adverts/suppliers", label: "Supplier Logos" },
       { href: "/console/adverts/interest", label: "Interest" },
     ],
   },
@@ -132,7 +132,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
                 </span>
               )}
             </Link>
-            <ThemeSwitcher compact />
+            {THEME_SWITCHER_ENABLED && <ThemeSwitcher compact />}
             <AccountMenu name={name} links={accountLinks(user)} signOutAction={signOut} />
           </div>
         </div>

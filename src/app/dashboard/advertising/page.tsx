@@ -30,8 +30,8 @@ export default async function AdvertisingInfoPage() {
       <section className="mt-5">
         <h2 className="font-bold text-ink">Banner adverts</h2>
         <p className="mt-1 text-sm text-graphite">
-          Upload your artwork, pick the dates, and we take it from there. We confirm availability and invoice you —
-          there is no online payment.
+          Upload your artwork, pick the dates, and we take it from there. We confirm availability and send you
+          an invoice, which you can pay by card from your account — your advert goes live once it&apos;s paid.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {formats.map((f) => (

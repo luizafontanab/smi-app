@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { computeFacets, narrowOptions, type FacetMember } from "@/lib/member-facets";
 
-const m = (industry: string | null, services: string[], types: string[]): FacetMember => ({
-  industry,
+const m = (industries: string[], services: string[], types: string[]): FacetMember => ({
+  industries: new Set(industries),
   services: new Set(services),
   types: new Set(types),
 });
 
 // Two equipment suppliers and one service provider, with different services.
 const members = [
-  m("laser", ["laser-cutting", "folding"], ["equipment-supplier"]),
-  m("welding", ["welding-robots"], ["equipment-supplier", "software"]),
-  m("laser", ["subcontract-laser"], ["service-provider"]),
+  m(["laser"], ["laser-cutting", "folding"], ["equipment-supplier"]),
+  m(["welding"], ["welding-robots"], ["equipment-supplier", "software"]),
+  m(["laser"], ["subcontract-laser"], ["service-provider"]),
 ];
 const none = { industries: [], services: [], membershipTypes: [] };
 
@@ -41,9 +41,19 @@ describe("computeFacets (GAPS A9.1)", () => {
   });
 
   it("ignores a member with no industry for the industry facet but keeps its services", () => {
-    const f = computeFacets([m(null, ["folding"], ["software"])], none);
+    const f = computeFacets([m([], ["folding"], ["software"])], none);
     expect(f.industries.size).toBe(0);
     expect([...f.services]).toEqual(["folding"]);
+  });
+
+  // A member is in several industries since migration 20261012000001.
+  it("matches a member on any of its industries, and offers all of them", () => {
+    const both = m(["welding", "bending"], ["tube-bending"], ["subcontractor"]);
+    const f = computeFacets([both], { ...none, industries: ["bending"] });
+    expect([...f.services]).toEqual(["tube-bending"]);
+    expect([...f.membershipTypes]).toEqual(["subcontractor"]);
+    // the industry facet ignores its own selection, so both industries stay on offer
+    expect([...f.industries].sort()).toEqual(["bending", "welding"]);
   });
 
   it("offers nothing when no member matches", () => {

@@ -7,9 +7,9 @@ import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
 import { breadcrumbLd, localBusinessLd } from "@/lib/jsonld";
+import { memberMetadata } from "@/lib/member-seo";
 import { memberBySlug, publishedStories } from "@/lib/queries";
 import { resolveRedirect } from "@/lib/redirects";
-import { excerptFromHtml } from "@/lib/sanitize";
 import { socialLinks } from "@/lib/social";
 import { memberVideoList } from "@/lib/member-videos";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
@@ -31,25 +31,7 @@ const viewerIsAdmin = async () => isAdmin(await currentUser());
 export async function generateMetadata(props: PageProps<"/member/[slug]">) {
   const { slug } = await props.params;
   const m = await memberBySlug(slug, { includeArchived: await viewerIsAdmin() });
-  const title = m?.name ?? "Member";
-  const description = m?.description ? excerptFromHtml(m.description, 200) ?? undefined : undefined;
-  const image = mediaUrl(m?.hero_path) ?? mediaUrl(m?.logo_path);
-  return {
-    title,
-    description,
-    // An archived page is only ever served to a signed-in admin, so a crawler
-    // gets the 404 regardless — but say it out loud rather than rely on that.
-    robots: m?.archived_at ? { index: false, follow: false } : undefined,
-    alternates: { canonical: `/member/${slug}` },
-    openGraph: {
-      type: "profile",
-      url: `/member/${slug}`,
-      title,
-      description,
-      images: image ? [image] : undefined,
-    },
-    twitter: { card: "summary_large_image", title, description, images: image ? [image] : undefined },
-  };
+  return memberMetadata(m && { ...m, heroUrl: mediaUrl(m.hero_path), logoUrl: mediaUrl(m.logo_path) }, slug);
 }
 
 export default async function MemberPage(props: PageProps<"/member/[slug]">) {

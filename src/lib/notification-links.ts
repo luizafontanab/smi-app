@@ -77,6 +77,7 @@ export function notificationHref(kind: string, payload: NotificationPayload, slu
 
   switch (kind) {
     case "story_live":
+    case "story_featured":
       return liveHref("/news", storyId, slugs.stories);
     case "video_live":
       return liveHref("/video", videoId, slugs.videos);
@@ -115,6 +116,14 @@ export function notificationHref(kind: string, payload: NotificationPayload, slu
     case "advert_artwork_approved":
     case "advert_artwork_rejected":
       return bookingId ? `/dashboard/advert/${bookingId}` : "/dashboard/advertising/manage";
+
+    // The pay page needs the invoice; without one, billing lists it.
+    case "advert_payment_due": {
+      const invoiceId = id(payload, "invoice_id");
+      return invoiceId ? `/dashboard/pay/invoice/${invoiceId}` : "/dashboard/settings/billing";
+    }
+    case "advert_payment_received":
+      return bookingId ? `/dashboard/advert/${bookingId}` : "/dashboard/settings/billing";
 
     case "visibility_confirmed":
     case "visibility_declined":

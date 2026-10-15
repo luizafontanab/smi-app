@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
+import { allRows } from "@/lib/db/all-rows";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Industries" };
@@ -11,19 +12,27 @@ export default async function IndustriesPage(props: PageProps<"/console/industri
   const sp = await props.searchParams;
   const db = serviceDb();
 
-  // One industry per member (members.industry_id), and content carries its own
-  // — so the usage count that matters here is the member count, the one the
-  // delete FK will block on.
-  const [inds, members] = await Promise.all([
+  // A member is in any number of industries (member_industries) and has one
+  // primary (members.industry_id); content carries its own. Both member counts
+  // are shown — either one blocks a delete.
+  const [inds, links, primaries] = await Promise.all([
     must(db.from("industries").select("id, name, slug").order("sort_order"), "console/industries list"),
-    must(db.from("members").select("industry_id").not("industry_id", "is", null), "console/industries member counts"),
+    allRows((from, to) =>
+      must(
+        db.from("member_industries").select("industry_id").order("member_id").order("industry_id").range(from, to),
+        "console/industries member counts",
+      ).then((data) => ({ data })),
+    ),
+    must(db.from("members").select("industry_id").not("industry_id", "is", null), "console/industries primary counts"),
   ]);
 
-  const counts = new Map<number, number>();
-  for (const row of members ?? []) {
-    if (row.industry_id == null) continue;
-    counts.set(row.industry_id, (counts.get(row.industry_id) ?? 0) + 1);
-  }
+  const tally = (rows: { industry_id: number | null }[]) => {
+    const out = new Map<number, number>();
+    for (const row of rows) if (row.industry_id != null) out.set(row.industry_id, (out.get(row.industry_id) ?? 0) + 1);
+    return out;
+  };
+  const counts = tally(links);
+  const primaryCounts = tally(primaries ?? []);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -34,8 +43,8 @@ export default async function IndustriesPage(props: PageProps<"/console/industri
         </Link>
       </div>
       <p className="mt-2 text-sm text-graphite">
-        The industry strip and <code className="text-xs">/industry/…</code> pages. One per member, one per story, video
-        or event.{" "}
+        The industry strip and <code className="text-xs">/industry/…</code> pages. A member can be in several, with one
+        primary; a story, video or event has one.{" "}
         <Link href="/console/categories" className="underline hover:text-ink">News categories</Link> are a separate list.
       </p>
 
@@ -47,13 +56,16 @@ export default async function IndustriesPage(props: PageProps<"/console/industri
         <ul className="divide-y">
           {(inds ?? []).map((i) => {
             const count = counts.get(i.id) ?? 0;
+            const primary = primaryCounts.get(i.id) ?? 0;
             return (
               <li key={i.id} className="flex flex-wrap items-baseline gap-x-3 px-5 py-3">
                 <Link href={`/console/industries/${i.id}`} className="font-medium text-ink hover:text-graphite">
                   {i.name}
                 </Link>
                 <code className="text-xs text-graphite">{i.slug}</code>
-                <span className="ml-auto text-xs text-graphite">{count} member{count === 1 ? "" : "s"}</span>
+                <span className="ml-auto text-xs text-graphite">
+                  {count} member{count === 1 ? "" : "s"} · {primary} primary
+                </span>
               </li>
             );
           })}

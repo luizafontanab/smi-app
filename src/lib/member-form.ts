@@ -2,6 +2,7 @@ import type { Database, Json } from "@/lib/db/types";
 import { activationBlocked, BILLING_MODES, MEMBER_STATUSES, slugify, type MemberStatus } from "@/lib/membership";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { mergeSocial } from "@/lib/social";
+import { industryIdsFromForm, resolveIndustryPick } from "@/lib/member-services";
 import { EMAIL_RE, parseCoordinate, parsePhone } from "@/lib/validate";
 import { optionalYoutubeUrl } from "@/lib/youtube";
 
@@ -31,11 +32,16 @@ export type MemberFormExisting = {
   social: Json;
 };
 
-export type CompanyPageResult = { error: string } | { values: MemberUpdate };
+/**
+ * `industryIds` is the member's full industry set, already reconciled with the
+ * primary in `values.industry_id` (resolveIndustryPick). It is not a members
+ * column — the caller writes it to `member_industries`, or into a revision.
+ */
+export type CompanyPageResult = { error: string } | { values: MemberUpdate; industryIds: number[] };
 
 export type MemberFormResult =
   | { error: string }
-  | { values: MemberUpdate; activatingDraft: boolean };
+  | { values: MemberUpdate; industryIds: number[]; activatingDraft: boolean };
 
 const text = (formData: FormData, key: string) => String(formData.get(key) ?? "").trim();
 const nullable = (formData: FormData, key: string) => text(formData, key) || null;
@@ -77,6 +83,9 @@ export function companyPageValuesFromForm(
   const lng = coordinate(formData, "lng", 180);
   if (lng && typeof lng === "object") return lng;
 
+  const industries = resolveIndustryPick(industryIdsFromForm(formData), Number(formData.get("industry_id")) || null);
+  if ("error" in industries) return industries;
+
   const phone = parsePhone(text(formData, "phone"));
   if (phone && typeof phone === "object") return phone;
 
@@ -94,7 +103,7 @@ export function companyPageValuesFromForm(
   const values: MemberUpdate = {
     name,
     slug,
-    industry_id: Number(formData.get("industry_id")) || null,
+    industry_id: industries.primaryId,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     address: nullable(formData, "address"),
     phone,
@@ -108,7 +117,7 @@ export function companyPageValuesFromForm(
     ...(uploaded.hero_path ? { hero_path: uploaded.hero_path } : checked(formData, "remove_hero") ? { hero_path: null } : {}),
   };
 
-  return { values };
+  return { values, industryIds: industries.industryIds };
 }
 
 /**
@@ -150,7 +159,7 @@ export function memberValuesFromForm(
     is_bundle_account: checked(formData, "is_bundle_account"),
   };
 
-  return { values, activatingDraft: existing.status === "draft" && status === "active" };
+  return { values, industryIds: shared.industryIds, activatingDraft: existing.status === "draft" && status === "active" };
 }
 
 /** Field name for a social input, so the page and the parser cannot drift. */

@@ -3,10 +3,11 @@
  *
  * The bug: picking a membership type on /member left every Services and
  * Industry option on offer, so a reader could stack filters into a guaranteed
- * empty result. There is no curated type → service mapping to narrow by — the
- * only one in the repo (`scripts/lib/industry-map.ts`) is a dev-only guess
- * awaiting Jas — so this narrows by *facets* instead: an option stays on offer
- * only if at least one member matching the other filters actually has it.
+ * empty result. There is no curated type → service mapping to narrow by —
+ * the only taxonomy mapping in the repo (`scripts/lib/industry-map.ts`) is a
+ * one-off industry backfill, not a live rule — so this narrows by *facets*
+ * instead: an option stays on offer only if at least one member matching the
+ * other filters actually has it.
  * That needs nothing from anyone and can never promise a match that isn't there.
  *
  * Each axis is faceted against the *other* axes only. Faceting services
@@ -19,7 +20,8 @@
  */
 
 export type FacetMember = {
-  industry: string | null;
+  /** Every industry the member is in (member_industries), not just the primary. */
+  industries: ReadonlySet<string>;
   services: ReadonlySet<string>;
   types: ReadonlySet<string>;
 };
@@ -44,7 +46,7 @@ type Axis = keyof FacetSelection;
  * out, which is what makes each facet independent of its own selection.
  */
 function matches(m: FacetMember, sel: FacetSelection, skip: Axis): boolean {
-  if (skip !== "industries" && sel.industries.length && !(m.industry && sel.industries.includes(m.industry))) return false;
+  if (skip !== "industries" && sel.industries.length && !sel.industries.some((i) => m.industries.has(i))) return false;
   if (skip !== "services" && sel.services.length && !sel.services.some((s) => m.services.has(s))) return false;
   if (skip !== "membershipTypes" && sel.membershipTypes.length && !sel.membershipTypes.some((t) => m.types.has(t))) return false;
   return true;
@@ -53,7 +55,7 @@ function matches(m: FacetMember, sel: FacetSelection, skip: Axis): boolean {
 export function computeFacets(members: readonly FacetMember[], sel: FacetSelection): Facets {
   const facets: Facets = { industries: new Set(), services: new Set(), membershipTypes: new Set() };
   for (const m of members) {
-    if (m.industry && matches(m, sel, "industries")) facets.industries.add(m.industry);
+    if (matches(m, sel, "industries")) m.industries.forEach((i) => facets.industries.add(i));
     if (matches(m, sel, "services")) m.services.forEach((s) => facets.services.add(s));
     if (matches(m, sel, "membershipTypes")) m.types.forEach((t) => facets.membershipTypes.add(t));
   }
