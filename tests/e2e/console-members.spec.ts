@@ -164,7 +164,8 @@ test.describe("console contact editing", () => {
   async function openEditor(page: Page, email: string): Promise<Locator> {
     await page.goto(`/console/crm?q=${encodeURIComponent(email)}`);
     await page.locator("tr", { hasText: email }).getByRole("link", { name: "Edit" }).click();
-    await page.waitForURL(/\?contact=/, { timeout: 20_000 });
+    // the Edit link keeps the search and page (?q=…&page=…&contact=…)
+    await page.waitForURL(/[?&]contact=/, { timeout: 20_000 });
     const editor = page.locator("form", { hasText: `Editing ${email}` });
     await expect(editor).toBeVisible();
     return editor;

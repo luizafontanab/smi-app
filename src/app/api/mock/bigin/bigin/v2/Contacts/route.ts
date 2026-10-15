@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { applyWrite, guard, org, success, type MockContact } from "../../../store";
+import { applyWrite, guard, invalidAccount, org, success, unknownAccount, type MockContact } from "../../../store";
 
 /** Fake Bigin `GET /bigin/v2/Contacts` — newest-modified first, page/per_page paging. */
 export async function GET(request: NextRequest) {
@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
     if (typeof data.Last_Name !== "string" || !data.Last_Name) {
       return { code: "MANDATORY_NOT_FOUND", details: { api_name: "Last_Name" }, message: "required field not found", status: "error" };
     }
+    const gone = unknownAccount(data);
+    if (gone) return invalidAccount(gone);
     const id = String(store.nextId++);
     const blank: MockContact = {
       id, Email: null, First_Name: null, Last_Name: "", Full_Name: "", Account_Name: null,

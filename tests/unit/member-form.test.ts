@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { companyPageValuesFromForm, memberValuesFromForm, type MemberFormExisting } from "@/lib/member-form";
+import { companyPageValuesFromForm, memberValuesFromForm, WEBSITE_INVALID, type MemberFormExisting } from "@/lib/member-form";
 
 const existing: MemberFormExisting = {
   slug: "acme-fabrication",
@@ -79,6 +79,21 @@ describe("memberValuesFromForm", () => {
   it("stores empty text fields as null, not empty strings", () => {
     const { values } = ok(memberValuesFromForm(form({ address: "  ", phone: "" }), existing));
     expect(values).toMatchObject({ address: null, phone: null, website: null, video_url: null });
+  });
+
+  // Review 16 Oct: "www.foo.co.uk" was stored as typed, and /go redirected to
+  // it as a relative path — every company line for the member went home.
+  it("stores the website as a real link", () => {
+    expect(ok(memberValuesFromForm(form({ website: " www.acme.co.uk " }), existing)).values.website).toBe("https://www.acme.co.uk");
+    expect(ok(memberValuesFromForm(form({ website: "http://acme.example/en" }), existing)).values.website).toBe("http://acme.example/en");
+    expect(ok(memberValuesFromForm(form({ website: "   " }), existing)).values.website).toBeNull();
+  });
+
+  // Follow-up 16 Oct: junk was silently saved as null, wiping the website
+  // without a word. Both editors share this parser, so both now say why.
+  it.each(["javascript:alert(1)", "see our LinkedIn", "n/a", "localhost"])("refuses a website that can't be a link (%s) rather than dropping it", (website) => {
+    expect(memberValuesFromForm(form({ website }), existing)).toEqual({ error: WEBSITE_INVALID });
+    expect(companyPageValuesFromForm(form({ website }), existing)).toEqual({ error: WEBSITE_INVALID });
   });
 
   it("normalises paid_at to ISO and blank dates to null", () => {

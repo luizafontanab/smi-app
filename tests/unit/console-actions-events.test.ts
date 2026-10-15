@@ -3,7 +3,7 @@ import {
   consoleUploadEventImage, decideEvent, decideRevision, moveEvent, resetLayout, saveEvent, saveLayout, setEventStatus,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
 import type { CurrentUser } from "@/lib/auth";
@@ -20,12 +20,15 @@ const { requireConsole, uploadImage, enqueue } = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/media", () => ({ uploadImage, removeMedia: vi.fn(async () => {}) }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
 
 afterEach(() => {
   resetDbServerMocks();
   vi.mocked(revalidatePath).mockClear();
   uploadImage.mockReset().mockResolvedValue(null);
   enqueue.mockReset().mockResolvedValue(undefined);
+  logError.mockReset();
 });
 
 function form(fields: Record<string, string>) {
@@ -225,7 +228,7 @@ describe("decideRevision", () => {
   it("approving a revision with no service_ids leaves the member's services alone", async () => {
     const servicesBuilder = queryBuilder(dbOk(null));
     db({
-      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "x" } })),
+      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "https://x.example" } })),
       members: () => queryBuilder(dbOk(null)),
       member_services: () => servicesBuilder,
       approvals: () => queryBuilder(dbOk(null)),
@@ -282,7 +285,7 @@ describe("decideRevision", () => {
   it("approving a revision with no membership_type_ids leaves the member's types alone", async () => {
     const typesBuilder = queryBuilder(dbOk(null));
     db({
-      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "x" } })),
+      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "https://x.example" } })),
       members: () => queryBuilder(dbOk(null)),
       member_membership_types: () => typesBuilder,
       approvals: () => queryBuilder(dbOk(null)),
@@ -300,7 +303,7 @@ describe("decideRevision", () => {
     db({
       member_revisions: () => queryBuilder(dbOk({
         id: "r1", member_id: "m1", status: "awaiting_approval",
-        payload: { website: "x", membership_type_ids: [1, 2, 3, 4, 5, 6, 7] },
+        payload: { website: "https://x.example", membership_type_ids: [1, 2, 3, 4, 5, 6, 7] },
       })),
       members: () => membersBuilder,
       member_membership_types: () => typesBuilder,
@@ -322,7 +325,7 @@ describe("decideRevision", () => {
       member_revisions: () => queryBuilder(dbOk({
         id: "r1", member_id: "m1", status: "awaiting_approval",
         // a tampered or stale payload whose set omits its own primary
-        payload: { website: "x", industry_id: 8, industry_ids: [2, 7] },
+        payload: { website: "https://x.example", industry_id: 8, industry_ids: [2, 7] },
       })),
       members: () => membersBuilder,
       member_industries: () => industriesBuilder,
@@ -347,7 +350,7 @@ describe("decideRevision", () => {
   it("approving a revision with no industry_ids leaves the member's industries alone", async () => {
     const industriesBuilder = queryBuilder(dbOk(null));
     db({
-      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "x" } })),
+      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "https://x.example" } })),
       members: () => queryBuilder(dbOk(null)),
       member_industries: () => industriesBuilder,
       approvals: () => queryBuilder(dbOk(null)),
@@ -373,6 +376,74 @@ describe("decideRevision", () => {
 
     expect(industriesBuilder.delete).toHaveBeenCalled();
     expect(industriesBuilder.insert).not.toHaveBeenCalled();
+  });
+
+  // Review finding 16 Oct: the payload is member-written and can be inserted
+  // straight through PostgREST (the policy only checks member_id), so approving
+  // it wholesale let a member set their own status, billing or paid_at.
+  it("approving applies only what the member's profile form can change, and logs the rest", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({
+        id: "r1", member_id: "m1", status: "awaiting_approval",
+        payload: {
+          name: "Acme Ltd", website: "https://acme.test",
+          status: "active", billing_mode: "invoice", paid_at: "2026-10-01T00:00:00Z",
+          is_bundle_account: true, archived_at: null, comped_until: "2099-01-01", stripe_customer_id: "cus_x",
+        },
+      })),
+      members: () => membersBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+
+    const [payload] = (membersBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(payload).toEqual({ name: "Acme Ltd", website: "https://acme.test" });
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({
+      area: "action:decideRevision",
+      context: expect.objectContaining({
+        ignored: expect.arrayContaining([expect.objectContaining({ key: "status" }), expect.objectContaining({ key: "paid_at" })]),
+      }),
+    }));
+  });
+
+  it("refuses another member's logo — only a file uploaded under the member's own folder", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({
+        id: "r1", member_id: "m1", status: "awaiting_approval",
+        payload: { logo_path: "members/m2/abc.png", hero_path: "members/m1/k3j2.webp" },
+      })),
+      members: () => membersBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+    const [payload] = (membersBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(payload).toEqual({ hero_path: "members/m1/k3j2.webp" });
+  });
+
+  it("a revision of nothing but non-editable fields writes nothing to the member row", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
+    db({
+      member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { status: "active" } })),
+      members: () => membersBuilder,
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+    await decideRevision(form({ id: "r1", decision: "approve" }));
+    expect(membersBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("a failed member update says so and leaves the revision pending", async () => {
+    const revisionsBuilder = queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "https://x.example" } }));
+    db({
+      member_revisions: () => revisionsBuilder,
+      members: sequence(dbOk({ slug: "acme" }), dbError("boom")),
+      approvals: () => queryBuilder(dbOk(null)),
+    });
+    await expect(decideRevision(form({ id: "r1", decision: "approve" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/members\/m1\?error=/);
+    expect(revisionsBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("rejecting notifies the member with the reason and never touches the member row", async () => {

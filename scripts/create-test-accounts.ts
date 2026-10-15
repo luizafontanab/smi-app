@@ -11,6 +11,10 @@
  *   pnpm accounts:test:prod         # production
  *   pnpm accounts:test:prod -- --password 'something-else'
  *
+ * A hosted target is refused without --remote, whatever the shell's env points
+ * at; accounts:test:prod passes it. Without that, a shell with production's env
+ * still sourced turns `pnpm accounts:test` into an admin login on the live site.
+ *
  * The password is an argument with a default rather than a constant in the
  * source, so the repository does not ship a working credential. It is still a
  * known, shared password: these are disposable test accounts, and they must be
@@ -22,6 +26,7 @@ import { createClient } from "@supabase/supabase-js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertScriptTarget } from "./lib/target-guard";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +43,9 @@ if (!process.env.SUPABASE_SECRET_KEY) {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 if (!SECRET_KEY) throw new Error("SUPABASE_SECRET_KEY not set");
+// Local unless --remote, which only accounts:test:prod passes — the same rule the
+// seeds and the industry backfill follow (scripts/lib/target-guard.ts).
+assertScriptTarget(SUPABASE_URL, "the test-account script");
 const db = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
 
 const argIndex = process.argv.indexOf("--password");

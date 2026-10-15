@@ -5,6 +5,7 @@ import { mergeSocial } from "@/lib/social";
 import { industryIdsFromForm, resolveIndustryPick } from "@/lib/member-services";
 import { EMAIL_RE, parseCoordinate, parsePhone } from "@/lib/validate";
 import { optionalYoutubeUrl } from "@/lib/youtube";
+import { websiteUrl } from "@/lib/website-url";
 
 /**
  * FormData → the payload to write to `members`, for both editors of the same
@@ -42,6 +43,9 @@ export type CompanyPageResult = { error: string } | { values: MemberUpdate; indu
 export type MemberFormResult =
   | { error: string }
   | { values: MemberUpdate; industryIds: number[]; activatingDraft: boolean };
+
+/** Said for a Website field that holds something, but not a web address. */
+export const WEBSITE_INVALID = "Website isn't a valid web address — use something like www.example.co.uk.";
 
 const text = (formData: FormData, key: string) => String(formData.get(key) ?? "").trim();
 const nullable = (formData: FormData, key: string) => text(formData, key) || null;
@@ -89,6 +93,13 @@ export function companyPageValuesFromForm(
   const phone = parsePhone(text(formData, "phone"));
   if (phone && typeof phone === "object") return phone;
 
+  // Stored as a real link: "www.foo.co.uk" gains https:// (lib/website-url).
+  // Something typed that can't be one is refused rather than saved as nothing,
+  // which used to wipe the member's website without a word; blank stays blank.
+  const typedWebsite = text(formData, "website");
+  const website = websiteUrl(typedWebsite);
+  if (typedWebsite && !website) return { error: WEBSITE_INVALID };
+
   // YouTube only, like every other video field (USE-CASES gap 23, GAPS A8.5):
   // anything else never played — it just vanished from the page.
   const video = optionalYoutubeUrl(formData.get("video_url"));
@@ -107,7 +118,7 @@ export function companyPageValuesFromForm(
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     address: nullable(formData, "address"),
     phone,
-    website: nullable(formData, "website"),
+    website,
     video_url: video.url,
     contact_email,
     lat,

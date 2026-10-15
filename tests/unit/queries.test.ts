@@ -27,6 +27,22 @@ function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
   return from;
 }
 
+/**
+ * memberDirectory / memberPins read through the members_in_taxonomies RPC
+ * (migration 20261016000040), not `.from("members")`. Routes that one call to
+ * `builder` and fails loudly on any other RPC or table, like fromByTable.
+ */
+function directoryDb(builder: ReturnType<typeof queryBuilder>) {
+  const rpc = vi.fn((fn: unknown) => {
+    if (fn !== "members_in_taxonomies") throw new Error(`mockDb: unexpected rpc "${String(fn)}"`);
+    return builder;
+  });
+  const client = asDb(mockDb({ from: fromByTable({}), rpc }));
+  vi.mocked(publicDb).mockReturnValue(client);
+  vi.mocked(serviceDb).mockReturnValue(client);
+  return rpc;
+}
+
 describe("publishedStories", () => {
   it("returns the rows and total count as-is", async () => {
     db({ stories: () => queryBuilder(dbOk([{ id: "s1" }], 42)) });
@@ -416,81 +432,50 @@ describe("memberDirectory", () => {
 
   it("applies an OR filter across name and description for a real term", async () => {
     const membersBuilder = queryBuilder(dbOk([], 0));
-    db({ members: () => membersBuilder });
+    directoryDb(membersBuilder);
 
     await memberDirectory({ q: "fabrication" });
 
     expect(membersBuilder.or).toHaveBeenCalledWith("name.ilike.%fabrication%,description.ilike.%fabrication%");
   });
 
-  // A member is in several industries (member_industries, 20261012000001), so
-  // the filter goes through the join table, not the primary in industry_id.
-  it("filters industries through member_industries, not the member's primary industry_id", async () => {
+  // Review 16 Oct: the filters used to be resolved to member ids in JS — a
+  // join-row read capped at PostgREST's 1000 max rows, then every id sent back
+  // in the GET URL as `.in("id", …)`. Now the database matches the slugs.
+  it("hands the taxonomy filters to the database as slugs, never as a member-id list", async () => {
     const membersBuilder = queryBuilder(dbOk([], 0));
-    const linksBuilder = queryBuilder(dbOk([{ member_id: "m1" }, { member_id: "m2" }, { member_id: "m1" }]));
-    db({
-      members: () => membersBuilder,
-      industries: () => queryBuilder(dbOk([{ id: 3 }])),
-      member_industries: () => linksBuilder,
-    });
+    const rpc = directoryDb(membersBuilder);
+
+    await memberDirectory({ industries: ["welding-joining", "bending"], services: ["automation-robotics"], membershipTypes: ["equipment-supplier"] });
+
+    expect(rpc).toHaveBeenCalledWith(
+      "members_in_taxonomies",
+      { p_industries: ["welding-joining", "bending"], p_services: ["automation-robotics"], p_membership_types: ["equipment-supplier"] },
+      { count: "exact" },
+    );
+    expect(membersBuilder.in).not.toHaveBeenCalled();
+    expect(membersBuilder.eq).toHaveBeenCalledWith("status", "active");
+  });
+
+  it("leaves an axis with nothing selected out of the call, so it doesn't filter", async () => {
+    const rpc = directoryDb(queryBuilder(dbOk([], 0)));
+
+    await memberDirectory({ industries: [], services: ["automation-robotics"] });
+
+    expect(rpc).toHaveBeenCalledWith(
+      "members_in_taxonomies",
+      { p_industries: undefined, p_services: ["automation-robotics"], p_membership_types: undefined },
+      { count: "exact" },
+    );
+  });
+
+  it("keeps the primary-industry embed qualified on the RPC rows", async () => {
+    const membersBuilder = queryBuilder(dbOk([], 0));
+    directoryDb(membersBuilder);
 
     await memberDirectory({ industries: ["welding-joining"] });
 
-    expect(linksBuilder.in).toHaveBeenCalledWith("industry_id", [3]);
-    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m1", "m2"]);
-    expect(membersBuilder.in).not.toHaveBeenCalledWith("industry_id", expect.anything());
-  });
-
-  it("intersects industries with services, like the other axes", async () => {
-    const membersBuilder = queryBuilder(dbOk([], 0));
-    db({
-      members: () => membersBuilder,
-      industries: () => queryBuilder(dbOk([{ id: 3 }])),
-      member_industries: () => queryBuilder(dbOk([{ member_id: "m1" }, { member_id: "m2" }])),
-      services: () => queryBuilder(dbOk([{ id: 7 }])),
-      member_services: () => queryBuilder(dbOk([{ member_id: "m2" }, { member_id: "m3" }])),
-    });
-
-    await memberDirectory({ industries: ["welding-joining"], services: ["automation-robotics"] });
-
-    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m2"]);
-  });
-
-  it("filters to nothing when an industry slug resolves to no industry", async () => {
-    const membersBuilder = queryBuilder(dbOk([], 0));
-    db({ members: () => membersBuilder, industries: () => queryBuilder(dbOk([])) });
-
-    await memberDirectory({ industries: ["welding"] });
-
-    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["00000000-0000-0000-0000-000000000000"]);
-  });
-
-  it("filters services through member_services, not membership_types", async () => {
-    const membersBuilder = queryBuilder(dbOk([], 0));
-    db({
-      members: () => membersBuilder,
-      services: () => queryBuilder(dbOk([{ id: 7 }])),
-      member_services: () => queryBuilder(dbOk([{ member_id: "m1" }])),
-    });
-
-    await memberDirectory({ services: ["automation-robotics"] });
-
-    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m1"]);
-  });
-
-  it("intersects services and membership types so both narrow the result", async () => {
-    const membersBuilder = queryBuilder(dbOk([], 0));
-    db({
-      members: () => membersBuilder,
-      services: () => queryBuilder(dbOk([{ id: 7 }])),
-      member_services: () => queryBuilder(dbOk([{ member_id: "m1" }, { member_id: "m2" }])),
-      membership_types: () => queryBuilder(dbOk([{ id: 2 }])),
-      member_membership_types: () => queryBuilder(dbOk([{ member_id: "m2" }, { member_id: "m3" }])),
-    });
-
-    await memberDirectory({ services: ["automation-robotics"], membershipTypes: ["equipment-supplier"] });
-
-    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m2"]);
+    expect(membersBuilder.select).toHaveBeenCalledWith(expect.stringContaining("industry:industries!members_industry_id_fkey(slug, name)"));
   });
 
   it("fetches the whole set (no SQL range) and slices offset/limit in JS after the seeded shuffle", async () => {
@@ -498,13 +483,13 @@ describe("memberDirectory", () => {
 
     // No limit: the whole filtered set comes back (homepage logo wall).
     const whole = queryBuilder(dbOk(rows, rows.length));
-    db({ members: () => whole });
+    directoryDb(whole);
     expect((await memberDirectory({})).members).toHaveLength(10);
     expect(whole.range).not.toHaveBeenCalled();
 
     // Pagination happens in JS — no .range even with a limit.
     const paged = queryBuilder(dbOk(rows, rows.length));
-    db({ members: () => paged });
+    directoryDb(paged);
     const page1 = await memberDirectory({ limit: 4, offset: 0 });
     expect(paged.range).not.toHaveBeenCalled();
     expect(page1.members).toHaveLength(4);
@@ -514,7 +499,7 @@ describe("memberDirectory", () => {
   it("orders by a day-stable seeded shuffle, so pages tile the set without repeats or gaps", async () => {
     const rows = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}`, name: `Member ${i}` }));
     const pageOf = async (offset: number) => {
-      db({ members: () => queryBuilder(dbOk(rows, rows.length)) });
+      directoryDb(queryBuilder(dbOk(rows, rows.length)));
       return (await memberDirectory({ limit: 4, offset })).members.map((m) => m.id as string);
     };
 
@@ -890,7 +875,7 @@ describe("featuredMembers", () => {
 
 describe("memberPins", () => {
   it("returns the pins with a total", async () => {
-    db({ members: () => queryBuilder(dbOk([{ slug: "acme", name: "Acme", lat: 52.4, lng: -1.7 }], 1)) });
+    directoryDb(queryBuilder(dbOk([{ slug: "acme", name: "Acme", lat: 52.4, lng: -1.7 }], 1)));
     expect(await memberPins()).toEqual({
       members: [{ slug: "acme", name: "Acme", lat: 52.4, lng: -1.7 }],
       total: 1,
@@ -905,21 +890,21 @@ describe("memberPins", () => {
   });
 
   it("is empty rather than null when the read fails", async () => {
-    db({ members: () => queryBuilder(dbOk(null, null)) });
+    directoryDb(queryBuilder(dbOk(null, null)));
     expect(await memberPins()).toEqual({ members: [], total: 0 });
   });
 
-  it("filters industries through member_industries, the same as the directory beside it", async () => {
+  it("filters through the same database-side match as the directory beside it", async () => {
     const membersBuilder = queryBuilder(dbOk([], 0));
-    db({
-      members: () => membersBuilder,
-      industries: () => queryBuilder(dbOk([{ id: 3 }])),
-      member_industries: () => queryBuilder(dbOk([{ member_id: "m1" }])),
-    });
+    const rpc = directoryDb(membersBuilder);
 
     await memberPins({ industries: ["welding-joining"] });
 
-    expect(membersBuilder.in).toHaveBeenCalledWith("id", ["m1"]);
-    expect(membersBuilder.in).not.toHaveBeenCalledWith("industry_id", expect.anything());
+    expect(rpc).toHaveBeenCalledWith(
+      "members_in_taxonomies",
+      { p_industries: ["welding-joining"], p_services: undefined, p_membership_types: undefined },
+      { count: "exact" },
+    );
+    expect(membersBuilder.in).not.toHaveBeenCalled();
   });
 });

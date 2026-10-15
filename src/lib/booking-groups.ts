@@ -60,6 +60,15 @@ export function bundleGroup(parts: Run[], today: string): BookingGroup {
   return groups.includes("booked") ? "booked" : "past";
 }
 
+/**
+ * Whether a bundle has a part on the site today. Not "any part has started":
+ * a part that has already ended, or one still held for payment, isn't live,
+ * and the Bundles page used to badge such a bundle "live" all the same.
+ */
+export function bundleLive(parts: Run[], today: string): boolean {
+  return parts.some((p) => bookingPhase(p, today) === "live");
+}
+
 export function groupBy<T>(items: T[], group: (item: T) => BookingGroup): Record<BookingGroup, T[]> {
   const out: Record<BookingGroup, T[]> = { booked: [], pending: [], past: [] };
   for (const item of items) out[group(item)].push(item);

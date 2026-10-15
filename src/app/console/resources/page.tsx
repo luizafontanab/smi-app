@@ -4,6 +4,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { Card, SectionTitle } from "@/components/console/ui";
 import { deleteResource, saveResource } from "../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Member Resources" };
@@ -33,7 +34,7 @@ export default async function ConsoleResourcesPage(props: PageProps<"/console/re
           </div>
           <div>
             <label htmlFor="file" className="text-sm font-medium">File</label>
-            <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,application/pdf" required className="mt-1 w-full text-sm" />
+            <UploadField kind="image-or-pdf" id="file" name="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,application/pdf" required className="mt-1 w-full text-sm" />
             <p className="mt-1 text-xs text-graphite">PDF or image only — no SVG or zip.</p>
           </div>
           <div className="sm:col-span-2">

@@ -4,8 +4,9 @@ import {
   saveSiteVariant, clearMyVariantOverride, saveHomeSections, setErrorStatus,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
+import { UPLOAD_EXPIRED } from "@/lib/upload-limits";
 import { revalidatePath } from "next/cache";
 import type { CurrentUser } from "@/lib/auth";
 import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
@@ -38,10 +39,11 @@ function form(fields: Record<string, string>) {
   return fd;
 }
 
-function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
+function db(map: Record<string, () => ReturnType<typeof queryBuilder>>, rpc?: (...args: unknown[]) => unknown) {
   const from = fromByTable(map, () => queryBuilder(dbOk(null)));
-  vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from })));
-  return from;
+  const raw = mockDb({ from, rpc });
+  vi.mocked(serviceDb).mockReturnValue(asDb(raw));
+  return Object.assign(from, { rpc: raw.rpc });
 }
 
 describe("consoleUploadImage", () => {
@@ -61,6 +63,25 @@ describe("consoleUploadImage", () => {
     await expect(consoleUploadImage(form({}))).rejects.toThrow(/NEXT_REDIRECT/);
     expect(uploadImage).not.toHaveBeenCalled();
   });
+
+  // Direct uploads (lib/staged-upload): the editor posts a staged path. The
+  // console claims only from its own staging prefix — not a member's.
+  it("claims a file staged under the console prefix, and refuses one staged by a member", async () => {
+    const NAME = "3d6f0a1b-2c3d-4e5f-8a9b-0c1d2e3f4a5b.png";
+    const bucket = {
+      info: vi.fn(async () => dbOk({ size: 3, contentType: "image/png", metadata: { name: "x.png" } })),
+      download: vi.fn(async () => dbOk(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }))),
+      remove: vi.fn(async () => dbOk([])),
+    };
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ storage: { from: vi.fn(() => bucket) } })));
+    uploadImage.mockResolvedValue("stories/console/a.png");
+
+    expect(await consoleUploadImage(form({ file: `members/m1/${NAME}` }))).toEqual({ error: UPLOAD_EXPIRED });
+    expect(bucket.info).not.toHaveBeenCalled();
+
+    expect(await consoleUploadImage(form({ file: `console/${NAME}` }))).toEqual({ url: expect.stringContaining("stories/console/a.png") });
+    expect(uploadImage.mock.calls[0][0]).toBeInstanceOf(File);
+  });
 });
 
 // Jas 13/10 item 12.
@@ -70,15 +91,23 @@ describe("saveStory — tagging several members", () => {
 
   it("writes the subject member and every tagged member to story_members, primary first", async () => {
     const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
-    const tagsBuilder = queryBuilder(dbOk(null));
-    db({ stories: () => storiesBuilder, story_members: () => tagsBuilder });
+    const from = db({ stories: () => storiesBuilder });
     const f = form({ id: "s1", title: "Southern Manufacturing", member_id: A });
     f.append("tagged_member_ids", B);
     f.append("tagged_member_ids", A);
 
     await expect(saveStory(f)).rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?saved=1");
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ member_id: A }));
-    expect(tagsBuilder.insert).toHaveBeenCalledWith([{ story_id: "s1", member_id: A }, { story_id: "s1", member_id: B }]);
+    // one transaction (replace_story_members), never a bare delete + insert
+    expect(from.rpc).toHaveBeenCalledWith("replace_story_members", { p_story_id: "s1", p_member_ids: [A, B] });
+    expect(from).not.toHaveBeenCalledWith("story_members");
+  });
+
+  it("a failed retag says so on the editor instead of throwing to the error page", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    db({ stories: () => storiesBuilder }, async () => dbError("insert or update on table \"story_members\" violates foreign key constraint"));
+    await expect(saveStory(form({ id: "s1", title: "T", member_id: A })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/s1\?error=.*tagged%20members/);
   });
 
   it("refuses tagged members without a subject member, before writing anything", async () => {
@@ -152,6 +181,28 @@ describe("saveStory", () => {
     await expect(saveStory(form({ title: "t" })))
       .rejects.toThrow("NEXT_REDIRECT:/console/stories/new?error=Image%20too%20large%20(8MB%20max)");
     expect(from).not.toHaveBeenCalled();
+  });
+
+  it("checks the story exists before uploading, so a stale id leaves no orphaned cover", async () => {
+    db({ stories: () => queryBuilder(dbOk(null)) });
+    uploadImage.mockResolvedValue("new.jpg");
+    await expect(saveStory(form({ id: "gone", title: "T" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\?error=/);
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
+
+  it("removes the new cover when the update fails, and says so rather than ?saved=1", async () => {
+    db({ stories: sequence(dbOk({ cover_path: "old.jpg", member_draft: false }), dbError("boom")) });
+    uploadImage.mockResolvedValue("new.jpg");
+    await expect(saveStory(form({ id: "s1", title: "T" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/s1\?error=/);
+    expect(removeMedia).toHaveBeenCalledWith("new.jpg");
+    expect(removeMedia).not.toHaveBeenCalledWith("old.jpg");
+  });
+
+  it("removes the new cover when creating the story fails", async () => {
+    db({ stories: () => queryBuilder(dbError("boom")) });
+    uploadImage.mockResolvedValue("new.jpg");
+    await expect(saveStory(form({ title: "T" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/new\?error=/);
+    expect(removeMedia).toHaveBeenCalledWith("new.jpg");
   });
 
   it("writes the industry, and clears it when the select is left blank", async () => {
@@ -363,7 +414,26 @@ describe("moveStory", () => {
   });
 });
 
+describe("moveStory — a failed write is reported, not swallowed", () => {
+  it("publishing: no social push or member emails for a story that didn't publish", async () => {
+    db({ stories: sequence(dbOk({ id: "s1", status: "draft", member_id: "m1", member_draft: false }), dbError("boom")) });
+    expect(await moveStory({ id: "s1", to: "published" })).toEqual({ ok: false, error: expect.stringContaining("couldn't be published") });
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("any other move", async () => {
+    db({ stories: sequence(dbOk({ id: "s1", status: "draft", member_id: null, member_draft: false }), dbError("boom")) });
+    expect(await moveStory({ id: "s1", to: "awaiting_approval" })).toEqual({ ok: false, error: expect.stringContaining("couldn't be moved") });
+  });
+});
+
 describe("setStoryStatus", () => {
+  it("a refused move comes back as ?error=, not as if the card moved", async () => {
+    db({ stories: () => queryBuilder(dbOk({ id: "s1", status: "published", member_id: null, member_draft: false })) });
+    await expect(setStoryStatus(form({ id: "s1", status: "awaiting_approval" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\?error=Can't%20move%20a%20published%20story/);
+  });
+
   it("does nothing without both an id and a status", async () => {
     await expect(setStoryStatus(form({ id: "s1" }))).resolves.toBeUndefined();
   });

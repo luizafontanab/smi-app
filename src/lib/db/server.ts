@@ -8,6 +8,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "./types";
+import { MEDIA_PREFIX } from "../media-prefix";
 
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 /** Browser-safe; grants the `anon` Postgres role, so RLS decides what it sees. */
@@ -105,5 +106,5 @@ export async function sessionDb() {
 
 export function mediaUrl(path: string | null | undefined): string | null {
   if (!path) return null;
-  return `${URL_}/storage/v1/object/public/media/${path}`;
+  return `${MEDIA_PREFIX}${path}`;
 }

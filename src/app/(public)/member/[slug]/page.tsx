@@ -12,6 +12,7 @@ import { memberBySlug, publishedStories } from "@/lib/queries";
 import { resolveRedirect } from "@/lib/redirects";
 import { socialLinks } from "@/lib/social";
 import { memberVideoList } from "@/lib/member-videos";
+import { websiteUrl } from "@/lib/website-url";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
@@ -125,7 +126,8 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           )}
         </div>
         <div className="flex gap-2 text-sm">
-          {member.website && <a href={`/go/${member.id}?kind=website`} target="_blank" rel="noopener" className="rounded bg-ink px-4 py-2 text-white">Website</a>}
+          {/* only a website /go can actually send the reader to (lib/website-url) */}
+          {websiteUrl(member.website) && <a href={`/go/${member.id}?kind=website`} target="_blank" rel="noopener" className="rounded bg-ink px-4 py-2 text-white">Website</a>}
           {member.phone && <a href={`/go/${member.id}?kind=phone`} className="rounded border px-4 py-2">Call</a>}
         </div>
       </header>

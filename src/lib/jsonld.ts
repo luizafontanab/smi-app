@@ -1,4 +1,5 @@
 import { siteUrl } from "./site-url";
+import { websiteUrl } from "./website-url";
 
 /**
  * schema.org structured-data builders. Every public content page is fully
@@ -130,8 +131,10 @@ export function localBusinessLd(member: {
     // The SMI profile is the canonical page we control; the member's own site
     // and socials are sameAs references.
     url: abs(`/member/${member.slug}`),
-    sameAs: [member.website, ...(member.socialUrls ?? [])].filter(Boolean).length
-      ? [member.website, ...(member.socialUrls ?? [])].filter(Boolean)
+    // The website as a real absolute URL (lib/website-url): a stored
+    // "www.foo.co.uk" is not one, and junk is left out rather than published.
+    sameAs: [websiteUrl(member.website), ...(member.socialUrls ?? [])].filter(Boolean).length
+      ? [websiteUrl(member.website), ...(member.socialUrls ?? [])].filter(Boolean)
       : undefined,
     image: member.logoUrl ?? undefined,
     knowsAbout: member.industryName ?? undefined,

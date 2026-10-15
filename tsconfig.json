@@ -36,9 +36,7 @@
     ".next/dev/types/**/*.ts",
     ".next-visual/types/**/*.ts",
     ".next-visual/dev/types/**/*.ts",
-    "**/*.mts",
-    ".next/crmcheck/types/**/*.ts",
-    ".next/crmcheck/dev/types/**/*.ts"
+    "**/*.mts"
   ],
   "exclude": [
     "node_modules"

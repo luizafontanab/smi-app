@@ -1,11 +1,14 @@
 import { expect, test as base } from "@playwright/test";
+import { LOCAL_HOSTS, isRemoteSupabaseRequest } from "./target";
 
 /**
  * Shared fixture for the smoke suite. Its job is the suite's one promise:
  * sign in, look, change nothing.
  *
  * Every request the browser makes to this machine (the app, the local Supabase
- * stack) is checked; any to a hosted Supabase project fails the test outright.
+ * stack) is checked; any to a Supabase project anywhere else — a *.supabase.co
+ * host, or Supabase's API paths on any other host, so a custom domain can't
+ * slip past — fails the test outright.
  * GET/HEAD/OPTIONS pass. Anything
  * else — a server action, a form post, a beacon, a direct Supabase write — is
  * aborted and recorded, and the test fails afterwards with the list. So a page
@@ -24,8 +27,6 @@ export const MEMBER_STATE = "tests/smoke/.auth/member.json";
 const PASSWORD = "local-dev-password";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const HOSTED_SUPABASE = /\.supabase\.(co|in)$/;
-const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 /**
  * Same cookies, same reasons, as tests/visual/lib/auth.ts:
@@ -50,7 +51,7 @@ const FAILURE_HEADINGS = [
 type Guard = {
   /** Non-safe requests that were aborted. */
   blocked: string[];
-  /** Requests to a hosted Supabase project — means the app isn't on the local stack. */
+  /** Requests to a non-local Supabase project — means the app isn't on the local stack. */
   hosted: string[];
   /** Uncaught exceptions in the page. */
   pageErrors: string[];
@@ -82,7 +83,7 @@ export const test = base.extend<Fixtures>({
         const url = new URL(req.url());
         const label = `${req.method()} ${url.origin === origin ? "" : url.origin}${url.pathname}${url.search}`;
 
-        if (HOSTED_SUPABASE.test(url.hostname)) {
+        if (isRemoteSupabaseRequest(url)) {
           guard.hosted.push(label);
           return route.abort("blockedbyclient");
         }
@@ -109,7 +110,7 @@ export const test = base.extend<Fixtures>({
 
       await provide(guard);
 
-      expect(guard.hosted, "requests reached a hosted Supabase project — the app is not on the local stack").toEqual([]);
+      expect(guard.hosted, "requests reached a non-local Supabase project — the app is not on the local stack").toEqual([]);
       expect(guard.blocked, "the page tried to write (a /api/client-errors POST means it threw)").toEqual([]);
       expect(guard.pageErrors, "uncaught exceptions in the page").toEqual([]);
     },

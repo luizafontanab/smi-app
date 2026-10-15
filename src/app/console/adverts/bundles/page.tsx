@@ -3,7 +3,7 @@ import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { formatPounds } from "@/lib/advert-payments";
-import { bundleGroup, groupBy, pendingReason, runGroup } from "@/lib/booking-groups";
+import { bundleGroup, bundleLive, groupBy, pendingReason, runGroup } from "@/lib/booking-groups";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Badge } from "@/components/console/ui";
 import { BookingCard, EmptyRow, HEAD_ROW, TABLE } from "@/components/console/BookingSections";
@@ -81,7 +81,7 @@ export default async function BundlesPage(props: PageProps<"/console/adverts/bun
           <table className={TABLE}>
             {head}
             <tbody>
-              {groups.booked.map((b) => row(b, b.parts.some((p) => p.starts_on <= today) ? <Badge tone="green">live</Badge> : <span className="text-graphite">upcoming</span>))}
+              {groups.booked.map((b) => row(b, bundleLive(b.parts, today) ? <Badge tone="green">live</Badge> : <span className="text-graphite">upcoming</span>))}
               {!groups.booked.length && <EmptyRow colSpan={7}>Nothing booked right now.</EmptyRow>}
             </tbody>
           </table>

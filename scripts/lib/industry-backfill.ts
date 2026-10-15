@@ -11,11 +11,13 @@
  *    primary.
  *  - Videos and events: their member's primary.
  *
- * A full, deterministic recompute: it clears what is there and rewrites it, so
- * a partial run is repaired by running again. That also makes it destructive
- * once people curate industries by hand, which is why runIndustryBackfill
- * refuses a target that already has member_industries rows unless told to
- * overwrite.
+ * A full, deterministic recompute: it replaces what is there, in one
+ * transaction (apply_industry_backfill, migration 20261016000030), so a run
+ * that fails part-way changes nothing and is simply run again. That also makes
+ * it destructive once people curate industries by hand, which is why
+ * runIndustryBackfill refuses a target that already has ANY industry
+ * assignment — a member_industries row, or industry_id on a member, story,
+ * video or event — unless told to overwrite.
  *
  * Shared by scripts/backfill-industries.ts (production, after the migration)
  * and both seeds.
@@ -113,17 +115,6 @@ export function planIndustryBackfill(input: BackfillInput): BackfillPlan {
   };
 }
 
-const groupBy = <K, V>(rows: V[], key: (v: V) => K) => {
-  const out = new Map<K, V[]>();
-  for (const r of rows) {
-    const k = key(r);
-    const list = out.get(k);
-    if (list) list.push(r);
-    else out.set(k, [r]);
-  }
-  return out;
-};
-
 /** Every row a select matches, in id order, failing loudly rather than truncating. */
 const readAll = <T>(db: SupabaseClient, table: string, columns: string, orderBy: string[]) =>
   allRows<T>(async (from, to) => {
@@ -168,41 +159,43 @@ export async function loadBackfillInput(db: SupabaseClient): Promise<BackfillInp
   };
 }
 
-const chunk = <T>(arr: T[], size: number): T[][] => {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-};
-
 /**
- * Writes a plan: clears every industry assignment, then rewrites links,
- * primaries and content. Updates are grouped by industry — ten statements per
- * table rather than one per row — with the id lists chunked to keep the
- * request URL well under PostgREST's limits.
+ * Writes a plan in one call to apply_industry_backfill, which replaces
+ * member_industries and sets every listed row's industry_id inside a single
+ * transaction. It used to be ~20 separate PostgREST calls, clear-everything
+ * first; a failure between them left the target half-written or empty, and
+ * the retry then tripped the overwrite guard on the remains.
+ *
+ * The report stays behind: the function takes only what it writes.
  */
 export async function applyIndustryBackfill(db: SupabaseClient, plan: BackfillPlan): Promise<void> {
-  const check = (table: string, error: { message: string } | null) => {
+  const { links, members, stories, videos, events } = plan;
+  const { error } = await db.rpc("apply_industry_backfill", { plan: { links, members, stories, videos, events } });
+  if (error) throw new Error(`apply_industry_backfill: ${error.message}`);
+}
+
+/** The tables that carry a single industry_id, besides member_industries' many. */
+const ASSIGNMENT_TABLES = ["members", "stories", "videos", "events"] as const;
+
+/**
+ * How many industry assignments the target already holds, per table — zero
+ * everywhere on a target fresh from migration 20261012000001. member_industries
+ * alone is not enough to go on: a console edit can set a story's or event's
+ * industry while no member has links yet, and the backfill rewrites those too.
+ */
+export async function existingAssignments(db: SupabaseClient): Promise<Record<string, number>> {
+  const counted = await Promise.all([
+    db.from("member_industries").select("member_id", { count: "exact", head: true }).then((r) => ["member_industries", r] as const),
+    ...ASSIGNMENT_TABLES.map((table) =>
+      db.from(table).select("id", { count: "exact", head: true }).not("industry_id", "is", null).then((r) => [table, r] as const),
+    ),
+  ]);
+  const out: Record<string, number> = {};
+  for (const [table, { count, error }] of counted) {
     if (error) throw new Error(`${table}: ${error.message}`);
-  };
-
-  // PostgREST refuses an unfiltered delete/update; these filters match every row.
-  check("member_industries", (await db.from("member_industries").delete().not("member_id", "is", null)).error);
-  for (const table of ["members", "stories", "videos", "events"] as const) {
-    check(table, (await db.from(table).update({ industry_id: null }).not("industry_id", "is", null)).error);
+    if (count) out[table] = count;
   }
-
-  for (const batch of chunk(plan.links, 500)) {
-    check("member_industries", (await db.from("member_industries").insert(batch)).error);
-  }
-
-  for (const table of ["members", "stories", "videos", "events"] as const) {
-    for (const [industry_id, rows] of groupBy(plan[table], (r) => r.industry_id)) {
-      if (industry_id == null) continue; // already cleared above
-      for (const ids of chunk(rows.map((r) => r.id), 100)) {
-        check(table, (await db.from(table).update({ industry_id }).in("id", ids)).error);
-      }
-    }
-  }
+  return out;
 }
 
 /** Per-industry counts for the log: members (all links / primary), stories, videos, events. */
@@ -222,8 +215,9 @@ export function summarise(plan: BackfillPlan, industries: BackfillInput["industr
 
 /**
  * Load → plan → (apply), with the overwrite guard. Returns the plan so callers
- * can print the report. `overwrite` is required once member_industries has any
- * rows: after launch those are curated, and a re-run would wipe them.
+ * can print the report. `overwrite` is required once the target holds any
+ * industry assignment (existingAssignments): after launch those are curated,
+ * and a re-run would wipe them.
  */
 export async function runIndustryBackfill(
   db: SupabaseClient,
@@ -231,13 +225,15 @@ export async function runIndustryBackfill(
 ): Promise<BackfillPlan> {
   const log = opts.log ?? console.log;
   const tag = opts.dryRun ? "[dry-run] " : "";
-  const { count, error } = await db.from("member_industries").select("member_id", { count: "exact", head: true });
-  if (error) throw new Error(`member_industries: ${error.message}`);
-  if (count && !opts.overwrite && !opts.dryRun) {
-    throw new Error(
-      `member_industries already holds ${count} rows. The backfill clears and recomputes every industry ` +
-        `assignment, which would discard any picked by hand since. Re-run with --overwrite if that is intended.`,
-    );
+  if (!opts.overwrite && !opts.dryRun) {
+    const existing = Object.entries(await existingAssignments(db));
+    if (existing.length) {
+      throw new Error(
+        `The target already has industry assignments (${existing.map(([t, n]) => `${t}: ${n}`).join(", ")}). ` +
+          `The backfill recomputes every one of them, which would discard any picked by hand since. ` +
+          `Re-run with --overwrite if that is intended.`,
+      );
+    }
   }
 
   const input = await loadBackfillInput(db);

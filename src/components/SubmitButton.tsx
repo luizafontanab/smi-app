@@ -20,8 +20,8 @@ export function SubmitButton({
   formNoValidate?: boolean;
 }) {
   const { pending, data } = useFormStatus();
-  // An editor image still uploading isn't in the form's data yet — saving now
-  // would drop it, so the button waits with the editor.
+  // An upload still in flight (an editor image, a direct-upload file field)
+  // isn't in the form's data yet — saving now would drop it, so the button waits.
   const uploading = useUploadsPending();
   // With two submit buttons, only the one that was pressed says it's working;
   // both are disabled either way. Convention: the secondary button posts an
@@ -30,7 +30,7 @@ export function SubmitButton({
   const mine = name ? data?.get(name) === value : !data || data.get("intent") == null;
   return (
     <button type="submit" name={name} value={value} formNoValidate={formNoValidate} disabled={pending || uploading} className={className}>
-      {pending && mine ? pendingLabel : uploading ? "Waiting for image…" : children}
+      {pending && mine ? pendingLabel : uploading ? "Waiting for upload…" : children}
     </button>
   );
 }

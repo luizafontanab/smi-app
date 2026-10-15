@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { newsletterChoiceOf } from "@/lib/contacts";
 import { serviceDb } from "@/lib/db/server";
-import { must, mustList } from "@/lib/db/must";
+import { must } from "@/lib/db/must";
+import { pagedList } from "../paged-list";
 import { UUID_RE } from "@/lib/validate";
 import { memberActivityTimeline } from "@/lib/activity";
 import { ilikeTerm } from "@/lib/queries";
@@ -10,6 +11,7 @@ import { Pagination } from "@/components/Pagination";
 import { BiginCompanyPicker } from "@/components/console/BiginCompanyPicker";
 import { firstImportDone, getCrmSync, readLastRun, type LastRun } from "@/lib/adapters/crm";
 import { addContact, previewBiginPull, runBiginSync, saveContact, searchBiginCompanies } from "../actions";
+import { firstImportPreviewFresh } from "./first-import";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
@@ -21,20 +23,24 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
 
   const q = typeof sp.q === "string" ? sp.q : "";
   const term = ilikeTerm(q);
-  const page = Math.max(1, Number(sp.page) || 1);
+  const requestedPage = Math.max(1, Number(sp.page) || 1);
   const contactId = typeof sp.contact === "string" ? sp.contact : null;
 
-  let contactsQuery = db
-    .from("contacts")
-    .select("id, email, name, company, member_id, subscribed, unsubscribed_at, member:members(name), last_synced_at, bigin_id, bigin_company_name, crm_dirty_at", { count: "exact" })
-    .order("created_at", { ascending: false });
-  if (term) contactsQuery = contactsQuery.or(`name.ilike.%${term}%,email.ilike.%${term}%,company.ilike.%${term}%`);
-  contactsQuery = contactsQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  // Rebuilt per attempt: pagedList re-runs it as the last page when ?page= is
+  // past the end, rather than letting PostgREST's 416 throw.
+  const contactsQuery = (from: number, to: number) => {
+    let query = db
+      .from("contacts")
+      .select("id, email, name, company, member_id, subscribed, unsubscribed_at, member:members(name), last_synced_at, bigin_id, bigin_company_name, crm_dirty_at", { count: "exact" })
+      .order("created_at", { ascending: false });
+    if (term) query = query.or(`name.ilike.%${term}%,email.ilike.%${term}%,company.ilike.%${term}%`);
+    return query.range(from, to);
+  };
 
   const crm = getCrmSync();
-  const [members, { data: contacts, count }, editing, imported, lastRun] = await Promise.all([
+  const [members, { data: contacts, count, page }, editing, imported, lastRun] = await Promise.all([
     must(db.from("members").select("id, name").order("name"), "console/crm members"),
-    mustList(contactsQuery, "console/crm contacts"),
+    pagedList(contactsQuery, requestedPage, PAGE_SIZE, "console/crm contacts"),
     // ?contact= is raw user input against a uuid column — a junk value would
     // reach Postgres as 22P02 and, now that must() throws, take the whole page
     // down. Treat an unparseable id as "no contact selected", as before.
@@ -229,11 +235,15 @@ function BiginPanel({ live, imported, lastRun }: { live: boolean; imported: bool
           {lastRun.preview ? "Preview" : "Last sync"} {fmt(lastRun.at)}: {describeRun(lastRun)}
         </p>
       )}
+      {!imported && lastRun?.preview && !firstImportPreviewFresh(lastRun) && (
+        <p className="mt-1 text-xs text-graphite">That preview is over an hour old — preview again to run the first import.</p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         <form action={previewBiginPull}>
           <button className="rounded border px-4 py-1.5">{imported ? "Preview changes" : "Preview import"}</button>
         </form>
-        {(imported || lastRun?.preview) && (
+        {/* runBiginSync enforces the same rule — this just doesn't offer what it would refuse. */}
+        {(imported || firstImportPreviewFresh(lastRun)) && (
           <form action={runBiginSync}>
             <button className="rounded bg-ink px-4 py-1.5 text-white">{imported ? "Sync with Bigin now" : "Run first import"}</button>
           </form>

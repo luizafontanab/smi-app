@@ -24,20 +24,29 @@ import { canMoveVideo } from "@/lib/video-board";
 import { FEATURED_SLOTS, penniesFromPounds } from "@/lib/pricing";
 import { BANNER_SPOTS_KEY } from "@/lib/banner-spots";
 import { raiseInvoice } from "@/lib/invoicing";
-import { holdsForPayment, invoiceAdvertising, settleInvoice } from "@/lib/advert-payments";
-import { editorImageUpload } from "@/lib/editor-upload";
+import { holdsForPayment, invoiceAdvertising, settleInvoice, voidBundleInvoiceIfAbandoned, voidInvoices } from "@/lib/advert-payments";
+import { editorImageUpload, uploadFailureMessage } from "@/lib/editor-upload";
 import type { UploadResult } from "@/lib/upload-limits";
 import { removeMedia, uploadDocument, uploadImage } from "@/lib/media";
+import { CONSOLE_UPLOADS, hasSubmittedFile, submittedFile } from "@/lib/staged-upload";
 import { memberValuesFromForm } from "@/lib/member-form";
+import { logError } from "@/lib/log";
+import { parseRevisionPayload } from "./member-revision";
+import { firstImportPreviewFresh } from "./crm/first-import";
+import {
+  billItem, invoiceFailedMessage, invoiceOnRecord, paidDiffersMessage, priceError, releaseHold, repricePlan, voidForReprice,
+  type BillTarget, type Reprice,
+} from "./item-billing";
 import { resolveCoordinates } from "@/lib/member-geocode";
 import { membershipTypeIdsFromForm, membershipTypesError, replaceMemberIndustries, replaceMemberMembershipTypes, replaceMemberServices } from "@/lib/member-services";
 import { recordRename } from "@/lib/redirects";
 import { activationBlocked, MEMBER_STATUSES, type MemberStatus } from "@/lib/membership";
-import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
+import { sanitizeRichText } from "@/lib/sanitize";
 import { siteUrl } from "@/lib/site-url";
 import { isVariant, SITE_VARIANT_KEY, VARIANT_COOKIE } from "@/lib/variant";
 import { HOME_SECTION_IDS, HOME_SECTIONS_KEY, LOCKED_VISIBLE, moveHomeSection, resolveHomeSections, type HomeSectionId } from "@/lib/home-sections";
 import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
+import { advertLinkFromForm } from "@/lib/advert-link";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -45,7 +54,19 @@ const slugify = (s: string) =>
 /** Editor image upload — returns { url } for insertion as <img src>, or { error } to show. */
 export async function consoleUploadImage(formData: FormData): Promise<UploadResult> {
   await requireConsole();
-  return editorImageUpload(formData.get("file"), "stories/console");
+  return editorImageUpload(formData, CONSOLE_UPLOADS, "stories/console");
+}
+
+/**
+ * A database error, for the person at the console: a plain sentence on the
+ * page, and Postgres's own wording (constraint and column names) in the error
+ * log, where a developer reads it. Messages Jas can act on — a clash, a
+ * duplicate slug — are mapped to their own sentence at the call site first.
+ * Not exported: this is a "use server" module.
+ */
+function dbProblem(area: string, error: { message: string; code?: string }, sentence = "That couldn't be saved — please try again. If it keeps happening, it's in the error log."): string {
+  logError({ source: "db", area, error: error.message, context: { code: error.code ?? null } });
+  return sentence;
 }
 
 /* ---------- stories ---------- */
@@ -77,11 +98,20 @@ export async function saveStory(formData: FormData) {
     redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(posts.error)}`);
   }
 
+  // The existence check runs before the upload, so a stale or member-owned id
+  // doesn't leave an orphaned cover in storage.
+  let prevCover: string | null = null;
+  if (id) {
+    const { data: prev } = await db.from("stories").select("cover_path, member_draft").eq("id", id).single();
+    if (!prev || isMemberDraft(prev)) redirect(`/console/stories?error=${encodeURIComponent("That story isn't available to edit.")}`);
+    prevCover = prev.cover_path;
+  }
+
   let cover_path: string | null = null;
   try {
-    cover_path = await uploadImage(formData.get("cover") as File | null, "stories");
+    cover_path = await uploadImage(await submittedFile(formData, "cover", CONSOLE_UPLOADS), "stories");
   } catch (e) {
-    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
+    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveStory"))}`);
   }
 
   const values = {
@@ -102,21 +132,35 @@ export async function saveStory(formData: FormData) {
 
   let storyId = id;
   if (id) {
-    const { data: prev } = await db.from("stories").select("cover_path, member_draft").eq("id", id).single();
-    if (!prev || isMemberDraft(prev)) redirect(`/console/stories?error=${encodeURIComponent("That story isn't available to edit.")}`);
-    await db.from("stories").update(values).eq("id", id);
-    if (cover_path && prev.cover_path && prev.cover_path !== cover_path) await removeMedia(prev.cover_path);
+    const { error } = await db.from("stories").update(values).eq("id", id);
+    if (error) {
+      // Nothing points at the new cover yet — don't leave it in storage.
+      if (cover_path) await removeMedia(cover_path);
+      redirect(`/console/stories/${id}?error=${encodeURIComponent("The story couldn't be saved — try again.")}`);
+    }
+    if (cover_path && prevCover && prevCover !== cover_path) await removeMedia(prevCover);
   } else {
-    const { data } = await db.from("stories").insert({
+    const { data, error } = await db.from("stories").insert({
       ...values,
       slug: `${slugify(title)}-${Date.now().toString(36)}`,
       status: "draft",
       source: "admin",
       submitted_by: user.userId,
     }).select("id").single();
-    storyId = data!.id;
+    if (error || !data) {
+      if (cover_path) await removeMedia(cover_path);
+      redirect(`/console/stories/new?error=${encodeURIComponent("The story couldn't be saved — try again.")}`);
+    }
+    storyId = data.id;
   }
-  await replaceStoryMembers(db, storyId, tagged.ids);
+  // One transaction (replace_story_members): if it fails the story keeps the
+  // members it had, so say so rather than throwing to the error page.
+  try {
+    await replaceStoryMembers(db, storyId, tagged.ids);
+  } catch {
+    revalidatePath("/console/stories");
+    redirect(`/console/stories/${storyId}?error=${encodeURIComponent("The story saved, but its tagged members couldn't be updated — they're as they were. Save again to retry.")}`);
+  }
   const catIds = formData.getAll("categories").map(Number).filter(Boolean);
   if (catIds.length) {
     await db.from("story_categories").delete().eq("story_id", storyId);
@@ -207,7 +251,10 @@ export async function moveStory(input: { id: string; to: string }): Promise<{ ok
     return { ok: false, error: `Can't move a ${story.status} story straight to ${input.to}.` };
   }
   if (input.to === "published") {
-    await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", input.id);
+    // Checked: an unchecked failure here still queued the social push and the
+    // "your story is live" emails for a story that never published.
+    const { error } = await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", input.id);
+    if (error) return { ok: false, error: "The story couldn't be published — try again." };
     await enqueue("social_push", { story_id: input.id }, new Date(Date.now() + 30 * 60_000));
     await enqueueStoryLive(db, { id: input.id, member_id: story.member_id }, enqueue);
     if (story.status === "awaiting_approval") {
@@ -219,22 +266,28 @@ export async function moveStory(input: { id: string; to: string }): Promise<{ ok
     // Leaving published clears published_at, same reasoning as moveVideo: a
     // re-publish stamps a fresh date, and a draft carrying a publication date is
     // a claim the row cannot support.
-    await db.from("stories").update({
+    const { error } = await db.from("stories").update({
       status: input.to,
       ...(story.status === "published" ? { published_at: null } : {}),
     }).eq("id", input.id);
+    if (error) return { ok: false, error: "The story couldn't be moved — try again." };
   }
   revalidatePath("/console");
   revalidatePath("/console/stories");
   return { ok: true };
 }
 
-/** Keyboard/no-JS fallback for the story board — same shape as setDevTaskStatus. */
+/**
+ * Keyboard/no-JS fallback for the story board — same shape as setDevTaskStatus,
+ * except a refused or failed move comes back as ?error= (the board shows it)
+ * rather than a redirect that reads as if the card moved.
+ */
 export async function setStoryStatus(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const to = String(formData.get("status") ?? "");
   if (!id || !to) return;
-  await moveStory({ id, to });
+  const res = await moveStory({ id, to });
+  if (!res.ok) redirect(`/console/stories?error=${encodeURIComponent(res.error ?? "That move isn't allowed.")}`);
   redirect("/console/stories");
 }
 
@@ -243,7 +296,7 @@ export async function setStoryStatus(formData: FormData) {
 /** Editor image upload for the description field — returns { url } for insertion as <img src>, or { error } to show. */
 export async function consoleUploadVideoImage(formData: FormData): Promise<UploadResult> {
   await requireConsole();
-  return editorImageUpload(formData.get("file"), "videos/console");
+  return editorImageUpload(formData, CONSOLE_UPLOADS, "videos/console");
 }
 
 export async function saveVideo(formData: FormData) {
@@ -262,9 +315,9 @@ export async function saveVideo(formData: FormData) {
 
   let thumbnail_path: string | null = null;
   try {
-    thumbnail_path = await uploadImage(formData.get("thumbnail") as File | null, "videos");
+    thumbnail_path = await uploadImage(await submittedFile(formData, "thumbnail", CONSOLE_UPLOADS), "videos");
   } catch (e) {
-    redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Thumbnail upload failed.")}`);
+    redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveVideo"))}`);
   }
 
   const values = {
@@ -458,7 +511,7 @@ export async function returnToDraft(formData: FormData) {
 /** Editor image upload for the description field — returns { url } for insertion as <img src>, or { error } to show. */
 export async function consoleUploadEventImage(formData: FormData): Promise<UploadResult> {
   await requireConsole();
-  return editorImageUpload(formData.get("file"), "events/console");
+  return editorImageUpload(formData, CONSOLE_UPLOADS, "events/console");
 }
 
 export async function saveEvent(formData: FormData) {
@@ -474,9 +527,9 @@ export async function saveEvent(formData: FormData) {
 
   let cover_path: string | null = null;
   try {
-    cover_path = await uploadImage(formData.get("cover") as File | null, "events");
+    cover_path = await uploadImage(await submittedFile(formData, "cover", CONSOLE_UPLOADS), "events");
   } catch (e) {
-    redirect(`/console/events/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
+    redirect(`/console/events/${id || "new"}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveEvent"))}`);
   }
 
   const type = String(formData.get("type") ?? "");
@@ -611,33 +664,23 @@ export async function decideRevision(formData: FormData) {
     // to be handled exactly as saveMember handles it, or their inbound links
     // die quietly. Read the slug they have *now*, before the update below.
     const { data: current } = await db.from("members").select("slug").eq("id", rev.member_id).single();
-    type MemberUpdate = import("@/lib/db/types").Database["public"]["Tables"]["members"]["Update"];
-    const payload = { ...(rev.payload as MemberUpdate) };
-    // revisions are member-authored and POST-reachable — never apply unsanitised markup
-    if (typeof payload.description === "string") payload.description = renderableHtml(payload.description);
-    // `service_ids` is not a members column — services are the join table
-    // `member_services`. It rides in the payload because that is the only
-    // channel a member's profile edit has, and is applied separately below.
-    // Read it out *before* the deletes so the value survives.
-    const raw = payload as Record<string, unknown>;
-    const serviceIds = Array.isArray(raw.service_ids) ? raw.service_ids.map(Number).filter(Boolean) : null;
-    delete raw.service_ids;
-    // Membership types ride the same way since members pick their own (A8.1).
-    const membershipTypeIds = Array.isArray(raw.membership_type_ids)
-      ? raw.membership_type_ids.map(Number).filter(Boolean)
-      : null;
-    delete raw.membership_type_ids;
-    // And industries, since a member can be in several (20261012000001). The
-    // primary rides as the industry_id column; the set as `industry_ids`.
-    const industryIds = Array.isArray(raw.industry_ids) ? raw.industry_ids.map(Number).filter(Boolean) : null;
-    delete raw.industry_ids;
-    // revisions written before a column was dropped may still carry its key;
-    // applying one would fail on the missing column. 20260902000003 removed
-    // testimonials, 20260909000002 renamed category_id to industry_id — both
-    // migrations scrub the stored rows, this covers anything written between a
-    // deploy and its migration.
-    delete raw.testimonials;
-    delete raw.category_id;
+    // Only what the member's own profile form can produce, each value re-checked
+    // (member-revision.ts) — the payload is member-written and reachable by a
+    // direct PostgREST insert, so applying it wholesale let a member set their
+    // own status, billing or paid_at by having Jas click Approve. Services,
+    // membership types and industries ride it as id lists (they're join tables,
+    // not columns); null means the revision predates that picker, so the
+    // member's existing set is left alone rather than wiped.
+    const { values: payload, serviceIds, membershipTypeIds, industryIds, ignored } = parseRevisionPayload(rev.payload, rev.member_id);
+    if (ignored.length) {
+      logError({
+        source: "server",
+        area: "action:decideRevision",
+        error: "Member revision carried fields that were not applied",
+        userId: user.userId,
+        context: { revision_id: id, member_id: rev.member_id, ignored },
+      });
+    }
 
     // A slug clash would violate the unique index and fail the whole approval,
     // so drop the rename rather than lose the rest of the member's edit — Jas
@@ -654,7 +697,10 @@ export async function decideRevision(formData: FormData) {
     const typesError = membershipTypeIds ? membershipTypesError(membershipTypeIds) : null;
     if (typesError) return memberFail(rev.member_id, `This edit asks for too many membership types. ${typesError}`);
 
-    await db.from("members").update(payload).eq("id", rev.member_id);
+    if (Object.keys(payload).length) {
+      const { error: updateError } = await db.from("members").update(payload).eq("id", rev.member_id);
+      if (updateError) return memberFail(rev.member_id, "Their changes couldn't be applied — nothing was changed. Try approving again.");
+    }
     // null, not [], for a revision written before services existed on the form:
     // that member's existing services must not be wiped by approving it.
     if (serviceIds) await replaceMemberServices(db, rev.member_id, serviceIds);
@@ -682,6 +728,8 @@ export async function decideRevision(formData: FormData) {
     // to keep resolving.
     if (renamed && newSlug && current) await recordRename(`/member/${current.slug}`, `/member/${newSlug}`);
     await db.from("member_revisions").update({ status: "published", decided_at: new Date().toISOString() }).eq("id", id);
+    // The edit is live: the public page (under its new address, if renamed) and the directory.
+    revalidateMemberSurfaces(rev.member_id, (renamed ? newSlug : current?.slug) ?? null);
     await enqueue("notify_member", { member_id: rev.member_id, kind: "page_changes_live", revision_id: id });
   } else {
     await db.from("member_revisions").update({ status: "rejected", rejected_reason: reason, decided_at: new Date().toISOString() }).eq("id", id);
@@ -747,7 +795,13 @@ export async function saveMachine(formData: FormData) {
   const video = optionalYoutubeUrl(formData.get("video_url"));
   if ("error" in video) redirect(`/console/machines/${id || "new"}?error=${encodeURIComponent(video.error)}`);
   const db = serviceDb();
-  const image = await uploadImage(formData.get("image") as File | null, "machines");
+  let image: string | null = null;
+  try {
+    image = await uploadImage(await submittedFile(formData, "image", CONSOLE_UPLOADS), "machines");
+  } catch (e) {
+    // Was an unhandled throw into the error boundary; now said on the form.
+    redirect(`/console/machines/${id || "new"}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveMachine"))}`);
+  }
   const values = {
     name,
     member_id: memberId,
@@ -809,6 +863,54 @@ export async function saveMachinePlacement(formData: FormData) {
 }
 
 /**
+ * The invoice side of editing something already sold (item-billing.ts), in
+ * two halves around the save. Before: read what's on record and decide —
+ * refusing outright (with nothing written) when the change needs Jas's
+ * decision, and voiding an unpaid invoice whose terms the save will change,
+ * so its pay link stops working before the new terms land. After: bill the
+ * item as saved. Returns the message to show instead of plain "Saved", or
+ * null. Not exported — this is a "use server" module.
+ */
+async function rebillBeforeSave(target: BillTarget, next: { memberId: string | null; pricePennies: number | null }, back: string): Promise<Reprice> {
+  const onRecord = await invoiceOnRecord(target);
+  if (!onRecord.ok) redirect(`${back}?error=${encodeURIComponent(onRecord.error)}`);
+  const plan = repricePlan(onRecord.invoice, next);
+  if (plan.action === "refuse") redirect(`${back}?error=${encodeURIComponent(plan.error)}`);
+  return plan;
+}
+
+async function voidBeforeSave(target: BillTarget, plan: Reprice, back: string) {
+  if (plan.action !== "replace") return;
+  const voided = await voidForReprice(target);
+  if (!voided.ok) redirect(`${back}?error=${encodeURIComponent(voided.error)}`);
+}
+
+async function rebillAfterSave(
+  target: BillTarget,
+  plan: Reprice,
+  pricePennies: number | null,
+  opts: { mayRelease: boolean } = { mayRelease: true },
+): Promise<string | null> {
+  if (plan.action === "paid_differs") return paidDiffersMessage(plan.invoice, pricePennies);
+  if (pricePennies) {
+    // A price newly on the item is billed and, if it hasn't started, held —
+    // like booking it priced. A replaced invoice keeps the hold as it was.
+    const billed = await billItem(target, { hold: plan.action !== "replace" });
+    return billed.ok ? null : invoiceFailedMessage(billed.error);
+  }
+  // No price now: nothing is owed, so nothing stays held for it.
+  if (opts.mayRelease) {
+    const released = await releaseHold(target);
+    if (!released.ok) return `Saved, but it's still marked as waiting for payment — ${released.error}`;
+  }
+  return null;
+}
+
+/** Where a save lands: `?saved=1`, or the message the billing step left. */
+const savedOr = (back: string, message: string | null) =>
+  message ? `${back}?error=${encodeURIComponent(message)}` : `${back}?saved=1`;
+
+/**
  * Featured Member: a placements row directly (no featured_machines lookup —
  * unlike saveMachinePlacement, there is no separate "is this published" gate
  * here, since the member picker only lists active members).
@@ -831,7 +933,17 @@ export async function saveFeaturedMemberPlacement(formData: FormData) {
   const endsOn = String(formData.get("ends_on"));
   const back = id ? `/console/adverts/featured-member/${id}` : "/console/adverts/featured-member";
   const price = penniesFromPounds(formData.get("price_pounds"));
-  if (price === "invalid") redirect(`${back}?error=${encodeURIComponent("Enter the price in pounds, e.g. 400 — or leave it blank.")}`);
+  if (price === "invalid") redirect(`${back}?error=${encodeURIComponent(priceError("400"))}`);
+  // As the takeover editor: a slot deleted under an open edit page is said so,
+  // not "saved" — the update below would match nothing and report no error.
+  let plan: Reprice = { action: "keep" };
+  if (id) {
+    const { data: slot } = await db.from("placements").select("id").eq("id", id).eq("kind", "featured_member").maybeSingle();
+    if (!slot) redirect(`/console/adverts/featured-member?error=${encodeURIComponent("That Featured Member slot no longer exists.")}`);
+    // A paid slot can't change hands; an unpaid one that changes member or
+    // price gets a fresh invoice (item-billing repricePlan).
+    plan = await rebillBeforeSave({ placement_id: id }, { memberId, pricePennies: price }, back);
+  }
 
   let overlapping = db
     .from("placements")
@@ -850,24 +962,33 @@ export async function saveFeaturedMemberPlacement(formData: FormData) {
     )}`);
   }
 
-  // An edit records a changed price but raises nothing: the slot's invoice
-  // was raised when it was booked, and re-invoicing on every save would bill
-  // twice. A held slot stays held until that invoice is paid.
+  // Last check passed: the old member's (or old price's) unpaid invoice stops
+  // being payable before the slot changes, so its pay link can't release the
+  // new terms.
+  if (id) await voidBeforeSave({ placement_id: id }, plan, back);
+
   const values = { member_id: memberId, starts_on: startsOn, ends_on: endsOn, price_pennies: price };
   const { data: saved, error } = id
     ? await db.from("placements").update(values).eq("id", id).eq("kind", "featured_member").select("id").maybeSingle()
     : await db.from("placements").insert({ kind: "featured_member", ...values, awaiting_payment: holdsForPayment(price) }).select("id").single();
-  if (error) redirect(`${back}?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`${back}?error=${encodeURIComponent(dbProblem("action:saveFeaturedMemberPlacement", error))}`);
+  if (id && !saved) redirect(`/console/adverts/featured-member?error=${encodeURIComponent("That Featured Member slot no longer exists.")}`);
+
+  // A new slot: its invoice (with the pay link, when it's held for it). A
+  // failure is said on the slot's own page, where Raise invoice is.
+  let message: string | null = null;
   if (!id && saved && price) {
-    await invoiceAdvertising(memberId, price, { placement_id: saved.id, description: `Featured Member slot (${startsOn} to ${endsOn})` });
+    const invoice = await invoiceAdvertising(memberId, price, { placement_id: saved.id, description: `Featured Member slot (${startsOn} to ${endsOn})` });
+    if (invoice && !invoice.ok) message = invoiceFailedMessage(invoice.error);
   }
+  if (id) message = await rebillAfterSave({ placement_id: id }, plan, price);
 
   revalidatePath("/console/adverts");
   revalidatePath("/console/adverts/featured-member");
   if (id) revalidatePath(back);
   revalidatePath("/console");
   revalidatePath("/");
-  redirect(`${back}?saved=1`);
+  redirect(savedOr(message && !id && saved ? `/console/adverts/featured-member/${saved.id}` : back, message));
 }
 
 /* ---------- adverts ---------- */
@@ -888,7 +1009,7 @@ export async function saveBooking(formData: FormData) {
   const now = new Date().toISOString();
   const price = penniesFromPounds(formData.get("price_pounds"));
   if (price === "invalid") {
-    redirect(`/console/adverts?error=${encodeURIComponent("Enter the price in pounds, e.g. 650 or 650.00 — or leave it blank.")}`);
+    redirect(`/console/adverts?error=${encodeURIComponent(priceError("650 or 650.00"))}`);
   }
   const startsOn = String(formData.get("starts_on"));
   const endsOn = String(formData.get("ends_on"));
@@ -913,17 +1034,23 @@ export async function saveBooking(formData: FormData) {
     redirect(`/console/adverts?error=${encodeURIComponent(
       error.message.includes("advert_bookings_no_overlap")
         ? "That advert already has a run covering those dates."
-        : error.message,
+        : dbProblem("action:saveBooking", error),
     )}`);
   }
   // Invoice off the price agreed for this run (fix-list 77 — it used to come
   // off a rate-card product), with a pay link when the run is held for it.
   // Blank means unpriced: Jas invoices by hand.
   if (price && created?.advert?.member_id) {
-    await invoiceAdvertising(created.advert.member_id, price, {
+    const invoice = await invoiceAdvertising(created.advert.member_id, price, {
       advert_booking_id: created.id,
       description: runDescription(created.advert.name, startsOn, endsOn),
     });
+    // The run is written (and held, if priced) either way; without its
+    // invoice it has no pay link, so say so where Raise invoice is.
+    if (invoice && !invoice.ok) {
+      revalidatePath("/console/adverts");
+      redirect(`/console/adverts/${created.id}?error=${encodeURIComponent(invoiceFailedMessage(invoice.error))}`);
+    }
   }
   revalidatePath("/console/adverts");
   // A booking that worked used to look exactly like one that was rejected —
@@ -951,10 +1078,11 @@ export async function endBooking(formData: FormData) {
   const id = String(formData.get("id"));
   const { data: booking } = await db
     .from("advert_bookings")
-    .select("id, ends_on, advert:adverts(member_id)")
+    .select("id, status, ends_on, bundle_id, advert:adverts(member_id)")
     .eq("id", id)
     .single();
-  if (!booking) return;
+  // a run still held for payment can be called off too (6 Oct)
+  if (!booking || !["awaiting_payment", "scheduled", "live"].includes(booking.status)) return;
 
   const now = new Date().toISOString();
   const { data: ended } = await db
@@ -970,20 +1098,43 @@ export async function endBooking(formData: FormData) {
       updated_at: now,
     })
     .eq("id", id)
-    // a run still held for payment can be called off too (6 Oct)
-    .in("status", ["awaiting_payment", "scheduled", "live"])
+    // Conditional on the status just read, so what the run was before is
+    // known for certain below — and a double submit can't re-end it.
+    .eq("status", booking.status)
     .select("id");
 
-  // Calling off a held run cancels the bill for it. Only its own invoice — a
-  // bundle part's invoice covers the rest of the bundle, and a paid invoice is
-  // the record of money taken (refunds are Stripe-side, by hand).
-  if (ended?.length) {
-    await db.from("invoices").update({ status: "void" }).eq("advert_booking_id", id).eq("status", "issued");
+  // Calling off a HELD run cancels its bill: nothing ran, nothing is owed. A
+  // scheduled or live run's invoice stands — with payments off that's the
+  // bill Jas collects by hand for a run that did go out, and with payments on
+  // a scheduled run's invoice is already paid. voidInvoices() also expires an
+  // open Stripe checkout, so a pay page left open stops taking money.
+  let problem: string | null = null;
+  if (ended?.length && booking.status === "awaiting_payment") {
+    const voided = await voidInvoices({ advert_booking_id: id });
+    if (!voided.ok) {
+      logError({ source: "db", area: "action:endBooking", error: voided.error, context: { booking_id: id } });
+      problem = "The run is called off, but its invoice couldn't be cancelled — the member can still pay it. Cancel the invoice by hand, or try again.";
+    }
+    else if (voided.paying.length) problem = "The run is called off, but the member was paying its invoice at that moment — check whether the payment went through before telling them anything.";
+  }
+  // A bundle has one invoice for all its parts: it stops being payable once
+  // the last held part is called off, never before (voidBundleInvoiceIfAbandoned).
+  if (ended?.length && booking.status === "awaiting_payment" && booking.bundle_id) {
+    const bundle = await voidBundleInvoiceIfAbandoned(booking.bundle_id);
+    if (!bundle.ok) {
+      logError({ source: "db", area: "action:endBooking", error: bundle.error, context: { bundle_id: booking.bundle_id } });
+      problem = "The run is called off, but the bundle's invoice couldn't be checked — look at the bundle before anything else.";
+    }
+    else if (bundle.paying) problem = "The run is called off, but the member was paying the bundle's invoice at that moment — check whether the payment went through.";
   }
   if (ended?.length && booking.advert?.member_id) {
     await enqueue("notify_member", { member_id: booking.advert.member_id, kind: "advert_ended", booking_id: id });
   }
   revalidatePath("/console/adverts");
+  revalidatePath(`/console/adverts/${id}`);
+  if (booking.bundle_id) revalidatePath(`/console/adverts/bundles/${booking.bundle_id}`);
+  revalidatePath("/");
+  if (problem) redirect(`/console/adverts/${id}?error=${encodeURIComponent(problem)}`);
 }
 
 /* ---------- bundles ---------- */
@@ -1003,7 +1154,7 @@ export async function saveBundle(formData: FormData) {
   }
   const price_pennies = penniesFromPounds(formData.get("price_pounds"));
   if (price_pennies === "invalid") {
-    redirect(`${back}?error=${encodeURIComponent("Enter the price in pounds, e.g. 1200 — or leave it blank.")}`);
+    redirect(`${back}?error=${encodeURIComponent(priceError("1200"))}`);
   }
   const values = {
     member_id,
@@ -1012,14 +1163,23 @@ export async function saveBundle(formData: FormData) {
     notes: String(formData.get("notes") ?? "").trim() || null,
   };
   if (id) {
+    // The bundle's one invoice follows its price and member, as a slot's does
+    // (item-billing): a price added after parts were booked is billed now —
+    // parts that haven't started are held for it — and an unpaid invoice at
+    // the old terms is replaced rather than left payable.
+    const plan = await rebillBeforeSave({ bundle_id: id }, { memberId: member_id, pricePennies: price_pennies }, back);
+    await voidBeforeSave({ bundle_id: id }, plan, back);
     const { error } = await db.from("bundles").update(values).eq("id", id);
-    if (error) redirect(`${back}?error=${encodeURIComponent(error.message)}`);
+    if (error) redirect(`${back}?error=${encodeURIComponent(dbProblem("action:saveBundle", error))}`);
+    const message = await rebillAfterSave({ bundle_id: id }, plan, price_pennies);
+    revalidatePath("/console/adverts");
     revalidatePath("/console/adverts/bundles");
     revalidatePath(back);
-    redirect(`${back}?saved=1`);
+    revalidatePath("/");
+    redirect(savedOr(back, message));
   }
   const { data, error } = await db.from("bundles").insert(values).select("id").single();
-  if (error || !data) redirect(`${back}?error=${encodeURIComponent(error?.message ?? "The bundle could not be created.")}`);
+  if (error || !data) redirect(`${back}?error=${encodeURIComponent(error ? dbProblem("action:saveBundle", error) : "The bundle could not be created.")}`);
   revalidatePath("/console/adverts/bundles");
   redirect(`/console/adverts/bundles/${data.id}`);
 }
@@ -1043,20 +1203,15 @@ export async function saveBundleBooking(formData: FormData) {
   }
 
   const { data: bundle } = await db.from("bundles").select("member_id, name, price_pennies").eq("id", bundleId).single();
-  // Invoice once per bundle, at whichever booking is the first — not once per
-  // "add more parts later" call, or a bundle with 3 add-part sessions would
-  // raise 3 full-price invoices.
-  const { count: existingParts } = await db.from("advert_bookings").select("id", { count: "exact", head: true }).eq("bundle_id", bundleId);
-  // Held while the bundle's one invoice is unpaid: the first batch raises it
-  // below; a later batch joins the hold only if that invoice is still open.
+  // Held while the bundle is priced and not yet paid for — a paid bundle's
+  // later parts run on that payment. The invoice itself is raised (or found)
+  // after the insert: ensureInvoice() is idempotent and the database allows
+  // one issued invoice per bundle, so two batches booked at once — or a bundle
+  // priced after its first parts — still end up with exactly one invoice.
   let held = false;
   if (holdsForPayment(bundle?.price_pennies)) {
-    if (!existingParts) {
-      held = true;
-    } else {
-      const { data: open } = await db.from("invoices").select("id").eq("bundle_id", bundleId).eq("status", "issued").limit(1);
-      held = Boolean(open?.length);
-    }
+    const { data: paid } = await db.from("invoices").select("id").eq("bundle_id", bundleId).eq("status", "paid").limit(1);
+    held = !paid?.length;
   }
   const now = new Date().toISOString();
   const { error } = await db.from("advert_bookings").insert(advertIds.map((advert_id) => ({
@@ -1075,17 +1230,17 @@ export async function saveBundleBooking(formData: FormData) {
     redirect(`/console/adverts/bundles/${bundleId}?error=${encodeURIComponent(
       error.message.includes("advert_bookings_no_overlap")
         ? "One of these pieces already has a run covering those dates — the whole batch was not booked."
-        : error.message,
+        : dbProblem("action:saveBundleBooking", error),
     )}`);
   }
-  if (!existingParts && bundle?.member_id && bundle.price_pennies) {
-    await invoiceAdvertising(bundle.member_id, bundle.price_pennies, {
-      bundle_id: bundleId,
-      description: `Advertising bundle: ${bundle.name}`,
-    });
-  }
+  // Raises the bundle's invoice the first time it has parts and a price, and
+  // returns the existing one every time after — never a second.
+  const billed = await billItem({ bundle_id: bundleId }, { hold: true });
   revalidatePath("/console/adverts");
+  revalidatePath("/console/adverts/bundles");
   revalidatePath(`/console/adverts/bundles/${bundleId}`);
+  revalidatePath("/");
+  if (!billed.ok) redirect(`/console/adverts/bundles/${bundleId}?error=${encodeURIComponent(invoiceFailedMessage(billed.error))}`);
 }
 
 /** Approve a member-submitted run, or send it back with a reason they can read. */
@@ -1111,17 +1266,27 @@ export async function decideAdvertBooking(formData: FormData) {
   // form prefills it; a POST without the field keeps whatever is stored.
   const price = formData.has("price_pounds") ? penniesFromPounds(formData.get("price_pounds")) : booking.price_pennies;
   if (price === "invalid") {
-    redirect(`/console/adverts/${id}?error=${encodeURIComponent("Enter the price in pounds, e.g. 650 or 650.00 — or leave it blank.")}`);
+    redirect(`/console/adverts/${id}?error=${encodeURIComponent(priceError("650 or 650.00"))}`);
   }
 
   const now = new Date().toISOString();
   const memberId = booking.advert?.member_id;
   const held = holdsForPayment(price);
+  // Every write below is conditional on the run still awaiting approval, and
+  // reads back what it changed. The guard above is only a read: a
+  // double-clicked Approve (or two tabs) passed it twice and raised two
+  // payable invoices and two pay-link emails. Now the second click changes
+  // nothing and stops — no invoice, no email, no second audit row.
+  let decided: { id: string }[] | null = null;
+  let invoiceError: string | null = null;
   if (decision === "approve") {
-    const { error } = await db.from("advert_bookings")
+    const { data, error } = await db.from("advert_bookings")
       // Priced → held until paid (6 Oct); the approval itself is stamped either way.
       .update({ status: held ? "awaiting_payment" : "scheduled", price_pennies: price, approved_by: user.userId, approved_at: now, review_reason: null, updated_at: now })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("status", "awaiting_approval")
+      .select("id");
+    decided = data;
     // The overlap exclusion constraint is the likely rejection here: another
     // booking on the same advert already covers these dates. Without this
     // check the code below would write an "approved" audit row and tell the
@@ -1131,23 +1296,29 @@ export async function decideAdvertBooking(formData: FormData) {
       redirect(`/console/adverts/${id}?error=${encodeURIComponent(
         error.message.includes("advert_bookings_no_overlap")
           ? "That advert already has a run covering those dates."
-          : error.message,
+          : dbProblem("action:decideAdvertBooking", error),
       )}`);
     }
+    if (!decided?.length) return;
     if (memberId && price) {
       // A held run's member gets "approved — payment due" with the pay link
       // from here, instead of "approved and scheduled", which it isn't yet.
-      await invoiceAdvertising(memberId, price, {
+      const invoice = await invoiceAdvertising(memberId, price, {
         advert_booking_id: id,
         description: runDescription(booking.advert?.name, booking.starts_on, booking.ends_on),
       });
+      if (invoice && !invoice.ok) invoiceError = invoiceFailedMessage(invoice.error);
     }
     if (memberId && !held) await enqueue("notify_member", { member_id: memberId, kind: "advert_scheduled", booking_id: id });
   } else {
-    const { error } = await db.from("advert_bookings")
+    const { data, error } = await db.from("advert_bookings")
       .update({ status: "review_required", review_reason: reason, updated_at: now })
-      .eq("id", id);
-    if (error) redirect(`/console/adverts/${id}?error=${encodeURIComponent(error.message)}`);
+      .eq("id", id)
+      .eq("status", "awaiting_approval")
+      .select("id");
+    if (error) redirect(`/console/adverts/${id}?error=${encodeURIComponent(dbProblem("action:decideAdvertBooking", error))}`);
+    decided = data;
+    if (!decided?.length) return;
     if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_changes_needed", booking_id: id, reason });
   }
   await db.from("approvals").insert({
@@ -1159,6 +1330,10 @@ export async function decideAdvertBooking(formData: FormData) {
   });
   revalidatePath("/console");
   revalidatePath("/console/adverts");
+  revalidatePath(`/console/adverts/${id}`);
+  revalidatePath("/");
+  // Approved either way; without its invoice the held run has no pay link.
+  if (invoiceError) redirect(`/console/adverts/${id}?error=${encodeURIComponent(invoiceError)}`);
 }
 
 /**
@@ -1177,8 +1352,10 @@ export async function renewBooking(formData: FormData) {
   if (!prev) return;
   const { data: created, error } = await db.from("advert_bookings").insert({
     advert_id: prev.advert_id,
-    // the last run's price as a starting point; approval can change it
-    price_pennies: prev.price_pennies,
+    // the last run's price as a starting point; approval can change it. Not
+    // for a bundle part: the bundle is invoiced once, as a whole, so a part's
+    // own price would bill it twice (20261016000033 un-priced the existing ones).
+    price_pennies: prev.bundle_id ? null : prev.price_pennies,
     bundle_id: prev.bundle_id,
     notes: prev.notes,
     // dates are the point of a renewal, so they are filled in on the draft
@@ -1192,9 +1369,85 @@ export async function renewBooking(formData: FormData) {
   // Previously silent: an admin picking an invalid date range (e.g. ends_on
   // before starts_on) got no feedback and the page just re-rendered as if
   // nothing had been clicked.
-  if (error) redirect(`/console/adverts/${id}?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`/console/adverts/${id}?error=${encodeURIComponent(dbProblem("action:renewBooking", error, "The renewal couldn't be created — check the dates (the end can't be before the start) and try again."))}`);
   revalidatePath("/console/adverts");
   if (created) redirect(`/console/adverts/${created.id}`);
+}
+
+/**
+ * Book the draft renewBooking left. The renewal is a draft so Jas can check it
+ * first, but nothing ever moved one on: the booking page offered no action for
+ * a draft, so a console rebook stopped there for good. This is the "book it"
+ * that follows, with the outcome saveBooking gives a run booked from scratch —
+ * an admin booking is its own approval, so it lands scheduled (held for
+ * payment when priced) with the approval stamped, and is invoiced off the
+ * price confirmed here.
+ *
+ * A bundle part takes no price of its own (renewBooking, 20261016000033): it is
+ * billed through its bundle exactly as saveBundleBooking bills a batch — held
+ * while the bundle is priced and unpaid, and run on the bundle's payment once
+ * that is in.
+ *
+ * Only an admin's draft: a member's own is theirs to send. Conditional on it
+ * still being a draft, so a double click books it once and invoices it once.
+ */
+export async function bookDraftRun(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const back = `/console/adverts/${id}`;
+  const { data: booking } = await db
+    .from("advert_bookings")
+    .select("id, status, source, starts_on, ends_on, bundle_id, advert:adverts(member_id, name)")
+    .eq("id", id)
+    .maybeSingle();
+  if (!booking || booking.status !== "draft" || booking.source !== "admin") return;
+  const price = booking.bundle_id ? null : penniesFromPounds(formData.get("price_pounds"));
+  if (price === "invalid") redirect(`${back}?error=${encodeURIComponent(priceError("650 or 650.00"))}`);
+
+  let held = holdsForPayment(price);
+  if (booking.bundle_id) {
+    const { data: bundle } = await db.from("bundles").select("price_pennies").eq("id", booking.bundle_id).maybeSingle();
+    if (holdsForPayment(bundle?.price_pennies)) {
+      const { data: paid } = await db.from("invoices").select("id").eq("bundle_id", booking.bundle_id).eq("status", "paid").limit(1);
+      held = !paid?.length;
+    }
+  }
+
+  const now = new Date().toISOString();
+  const { data: booked, error } = await db.from("advert_bookings")
+    .update({ status: held ? "awaiting_payment" : "scheduled", price_pennies: price, submitted_at: now, approved_by: user.userId, approved_at: now, updated_at: now })
+    .eq("id", id)
+    .eq("status", "draft")
+    .select("id");
+  // A draft reserves no dates, so this is where the overlap constraint can
+  // first refuse it: the artwork was booked for those dates in the meantime.
+  if (error) {
+    redirect(`${back}?error=${encodeURIComponent(
+      error.message.includes("advert_bookings_no_overlap")
+        ? "That advert already has a run covering those dates."
+        : dbProblem("action:bookDraftRun", error),
+    )}`);
+  }
+  if (!booked?.length) return;
+
+  let message: string | null = null;
+  if (booking.bundle_id) {
+    const billed = await billItem({ bundle_id: booking.bundle_id }, { hold: true });
+    if (!billed.ok) message = invoiceFailedMessage(billed.error);
+  } else if (price && booking.advert?.member_id) {
+    const invoice = await invoiceAdvertising(booking.advert.member_id, price, {
+      advert_booking_id: id,
+      description: runDescription(booking.advert.name, booking.starts_on, booking.ends_on),
+    });
+    if (invoice && !invoice.ok) message = invoiceFailedMessage(invoice.error);
+  }
+  revalidatePath("/console");
+  revalidatePath("/console/adverts");
+  revalidatePath(back);
+  if (booking.bundle_id) revalidatePath(`/console/adverts/bundles/${booking.bundle_id}`);
+  revalidatePath("/");
+  redirect(savedOr(back, message));
 }
 
 /** The artwork itself — name, format, link and the two images. */
@@ -1206,23 +1459,26 @@ export async function saveAdvertArtwork(formData: FormData) {
   const member_id = String(formData.get("member_id") ?? "");
   const format = String(formData.get("format") ?? "");
   if (!name || !member_id || !format) return;
+  // Before the upload, so a bad link doesn't leave orphaned artwork behind.
+  const link = advertLinkFromForm(formData);
+  if ("error" in link) redirect(`/console/adverts/artwork/${id || "new"}?error=${encodeURIComponent(link.error)}`);
 
   let desktop_path: string | null = null;
   let mobile_path: string | null = null;
   try {
     // "panels" not "adverts": the public bucket path is in the URL, and
     // /adverts/ is an ad-blocker filename heuristic — see visit/[id]/route.ts.
-    desktop_path = await uploadImage(formData.get("desktop") as File | null, "panels");
-    mobile_path = await uploadImage(formData.get("mobile") as File | null, "panels");
+    desktop_path = await uploadImage(await submittedFile(formData, "desktop", CONSOLE_UPLOADS), "panels");
+    mobile_path = await uploadImage(await submittedFile(formData, "mobile", CONSOLE_UPLOADS), "panels");
   } catch (e) {
-    redirect(`/console/adverts/artwork/${id || "new"}?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
+    redirect(`/console/adverts/artwork/${id || "new"}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveAdvertArtwork"))}`);
   }
 
   const values = {
     name,
     member_id,
     format,
-    link_url: String(formData.get("link_url") ?? "").trim() || null,
+    link_url: link.url,
     updated_at: new Date().toISOString(),
     ...(desktop_path ? { desktop_path } : {}),
     ...(mobile_path ? { mobile_path } : {}),
@@ -1233,6 +1489,9 @@ export async function saveAdvertArtwork(formData: FormData) {
   } else {
     // both images are NOT NULL, so a new advert cannot be created without them
     if (!desktop_path || !mobile_path) {
+      // the one that did upload has nothing to belong to
+      await removeMedia(desktop_path);
+      await removeMedia(mobile_path);
       redirect(`/console/adverts/artwork/new?error=${encodeURIComponent("Both a desktop and a mobile image are required.")}`);
     }
     await db.from("adverts").insert({ ...values, desktop_path, mobile_path });
@@ -1257,10 +1516,10 @@ export async function proposeArtworkSwap(formData: FormData) {
   let desktop_path: string | null = null;
   let mobile_path: string | null = null;
   try {
-    desktop_path = await uploadImage(formData.get("desktop") as File | null, "panels");
-    mobile_path = await uploadImage(formData.get("mobile") as File | null, "panels");
+    desktop_path = await uploadImage(await submittedFile(formData, "desktop", CONSOLE_UPLOADS), "panels");
+    mobile_path = await uploadImage(await submittedFile(formData, "mobile", CONSOLE_UPLOADS), "panels");
   } catch (e) {
-    redirect(`${back}?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
+    redirect(`${back}?error=${encodeURIComponent(uploadFailureMessage(e, "action:proposeArtworkSwap"))}`);
   }
   if (!desktop_path || !mobile_path) {
     redirect(`${back}?error=${encodeURIComponent("Both a desktop and a mobile image are required.")}`);
@@ -1311,17 +1570,17 @@ export async function decideArtworkSwap(formData: FormData) {
     const { error: artworkError } = await db.from("adverts")
       .update({ desktop_path: proposal.desktop_path, mobile_path: proposal.mobile_path, updated_at: now })
       .eq("id", proposal.advert_id);
-    if (artworkError) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(artworkError.message)}`);
+    if (artworkError) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(dbProblem("action:decideArtworkSwap", artworkError))}`);
     const { error } = await db.from("advert_artwork_proposals")
       .update({ status: "approved", decided_by: user.userId, decided_at: now, updated_at: now })
       .eq("id", id);
-    if (error) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(error.message)}`);
+    if (error) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(dbProblem("action:decideArtworkSwap", error))}`);
     if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_artwork_approved", advert_id: proposal.advert_id });
   } else {
     const { error } = await db.from("advert_artwork_proposals")
       .update({ status: "rejected", review_reason: reason, decided_by: user.userId, decided_at: now, updated_at: now })
       .eq("id", id);
-    if (error) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(error.message)}`);
+    if (error) redirect(`/console/adverts/artwork/${proposal.advert_id}?error=${encodeURIComponent(dbProblem("action:decideArtworkSwap", error))}`);
     if (memberId) await enqueue("notify_member", { member_id: memberId, kind: "advert_artwork_rejected", advert_id: proposal.advert_id, reason });
   }
   await db.from("approvals").insert({
@@ -1349,7 +1608,7 @@ export async function saveBannerSpots(formData: FormData) {
     redirect(`/console/adverts/banners?error=${encodeURIComponent("Banner spots must be a whole number, 1 or more.")}`);
   }
   const { error } = await serviceDb().from("settings").upsert({ key: BANNER_SPOTS_KEY, value: { count } });
-  if (error) redirect(`/console/adverts/banners?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`/console/adverts/banners?error=${encodeURIComponent(dbProblem("action:saveBannerSpots", error))}`);
   revalidatePath("/console/adverts");
   revalidatePath("/console/adverts/banners");
   redirect("/console/adverts/banners?saved=1");
@@ -1414,68 +1673,119 @@ async function saveArtworkRun(kind: ArtworkRunKind, formData: FormData) {
   const member_id = String(formData.get("member_id") ?? "");
   const starts_on = String(formData.get("starts_on") ?? "");
   const ends_on = String(formData.get("ends_on") ?? "");
-  const link_url = String(formData.get("link_url") ?? "").trim() || null;
+  const link = advertLinkFromForm(formData);
+  if ("error" in link) return fail(back, link.error);
+  const link_url = link.url;
   if (!id && !member_id) return fail(back, `Pick the member the ${kind.noun} belongs to.`);
   if (!starts_on || !ends_on) return fail(back, "A start and an end date are both required.");
   const price = penniesFromPounds(formData.get("price_pounds"));
-  if (price === "invalid") return fail(back, "Enter the price in pounds, e.g. 100 — or leave it blank.");
+  if (price === "invalid") return fail(back, priceError("100"));
+
+  // Everything that can refuse the save is checked before anything is
+  // uploaded, so a refusal leaves no orphaned image in storage.
+  let existing: { id: string; advert_id: string; bundle_id: string | null } | null = null;
+  let member: { name: string } | null = null;
+  let plan: Reprice = { action: "keep" };
+  if (id) {
+    const { data: booking } = await db
+      .from("advert_bookings")
+      .select("id, advert_id, bundle_id, price_pennies, advert:adverts(format, member_id)")
+      .eq("id", id)
+      .maybeSingle();
+    if (!booking || !kind.formats.includes(booking.advert?.format ?? "")) {
+      return fail(kind.base, `That ${kind.label} booking no longer exists.`);
+    }
+    existing = booking;
+    // The run's invoice follows its price (item-billing). A bundle part with
+    // no price of its own is billed through the bundle and left alone here.
+    if (!booking.bundle_id || booking.price_pennies || price) {
+      plan = await rebillBeforeSave({ advert_booking_id: id }, { memberId: booking.advert?.member_id ?? null, pricePennies: price }, back);
+      if (plan.action === "replace") {
+        // The overlap constraint is the one refusal the date update can still
+        // meet — asked first, so it can't strike after the invoice is voided.
+        const { count: clash } = await db.from("advert_bookings").select("id", { count: "exact", head: true })
+          .eq("advert_id", booking.advert_id).neq("id", id).in("status", ["awaiting_payment", "scheduled", "live"])
+          .lte("starts_on", ends_on).gte("ends_on", starts_on);
+        if (clash) return fail(back, `That ${kind.noun} already has a run covering those dates.`);
+      }
+    }
+  } else {
+    // A new run needs both image slots filled; refuse an empty file input
+    // here, before uploading the one that was chosen.
+    const chosen = kind.images.filter((img) => hasSubmittedFile(formData, img.field));
+    if (!chosen.some((img) => img.desktop) || !chosen.some((img) => img.mobile)) return fail(back, kind.missingImages);
+    const { data } = await db.from("members").select("name").eq("id", member_id).maybeSingle();
+    if (!data) return fail(back, "That member no longer exists.");
+    member = data;
+  }
 
   let desktop_path: string | null = null;
   let mobile_path: string | null = null;
   const uploaded: string[] = [];
+  // Any refusal from here on: drop what this request uploaded, then say why.
+  const failClean = async (to: string, message: string): Promise<never> => {
+    for (const path of uploaded) await removeMedia(path);
+    return fail(to, message);
+  };
   try {
     for (const img of kind.images) {
       // "panels" not "adverts" — same ad-blocker reasoning as saveAdvertArtwork.
-      const path = await uploadImage(formData.get(img.field) as File | null, "panels");
+      const path = await uploadImage(await submittedFile(formData, img.field, CONSOLE_UPLOADS), "panels");
       if (!path) continue;
       uploaded.push(path);
       if (img.desktop) desktop_path = path;
       if (img.mobile) mobile_path = path;
     }
   } catch (e) {
-    return fail(back, e instanceof Error ? e.message : "Upload failed.");
+    return failClean(back, uploadFailureMessage(e, "action:saveArtworkRun"));
   }
   const now = new Date().toISOString();
 
-  if (id) {
-    const { data: booking } = await db
-      .from("advert_bookings")
-      .select("id, advert_id, advert:adverts(format)")
-      .eq("id", id)
-      .maybeSingle();
-    if (!booking || !kind.formats.includes(booking.advert?.format ?? "")) {
-      return fail(kind.base, `That ${kind.label} booking no longer exists.`);
+  if (existing) {
+    if (plan.action === "replace") {
+      const voided = await voidForReprice({ advert_booking_id: id });
+      if (!voided.ok) return failClean(back, voided.error);
     }
-    const { error: advertError } = await db
-      .from("adverts")
-      .update({ link_url, updated_at: now, ...(desktop_path ? { desktop_path } : {}), ...(mobile_path ? { mobile_path } : {}) })
-      .eq("id", booking.advert_id);
-    if (advertError) return fail(back, advertError.message);
+    // Dates first: they're what can be refused (advert_bookings_no_overlap,
+    // ends before starts). Updating the artwork first put new images and a new
+    // link live on a save that then reported an error.
     const { error } = await db
       .from("advert_bookings")
       .update({ starts_on, ends_on, price_pennies: price, updated_at: now })
       .eq("id", id);
-    if (error) return fail(back, error.message);
+    // An overlap is Jas's to fix (fail() words it); anything else goes to the log.
+    if (error) return failClean(back, error.message.includes("advert_bookings_no_overlap") ? error.message : dbProblem("action:saveArtworkRun", error));
+    // The images and link live on the `adverts` row, which every run of this
+    // advert shares — a renewal is a new run on the same advert — so this
+    // changes them for its other runs too.
+    const { error: advertError } = await db
+      .from("adverts")
+      .update({ link_url, updated_at: now, ...(desktop_path ? { desktop_path } : {}), ...(mobile_path ? { mobile_path } : {}) })
+      .eq("id", existing.advert_id);
+    if (advertError) {
+      return failClean(back, dbProblem("action:saveArtworkRun", advertError, `The dates and price were saved, but the ${kind.noun} and link weren't — save again to retry.`));
+    }
+    // A bundle part's hold belongs to its bundle, so clearing a price of its
+    // own never releases it.
+    const message = !existing.bundle_id || plan.action !== "keep" || price
+      ? await rebillAfterSave({ advert_booking_id: id }, plan, price, { mayRelease: !existing.bundle_id })
+      : null;
     revalidatePath("/console/adverts");
     revalidatePath(kind.base);
     revalidatePath(back);
     revalidatePath("/");
-    redirect(`${back}?saved=1`);
+    redirect(savedOr(back, message));
   }
 
-  if (!desktop_path || !mobile_path) {
-    for (const path of uploaded) await removeMedia(path);
-    return fail(back, kind.missingImages);
-  }
-  const { data: member } = await db.from("members").select("name").eq("id", member_id).maybeSingle();
-  if (!member) return fail(back, "That member no longer exists.");
+  if (!desktop_path || !mobile_path) return failClean(back, kind.missingImages);
+  if (!member) return failClean(back, "That member no longer exists.");
   const name = `${member.name} ${kind.label}`;
   const { data: advert, error: advertError } = await db
     .from("adverts")
     .insert({ member_id, name, format: kind.formats[0], desktop_path, mobile_path, link_url })
     .select("id")
     .single();
-  if (advertError || !advert) return fail(back, advertError?.message ?? `The ${kind.noun} could not be saved.`);
+  if (advertError || !advert) return failClean(back, advertError ? dbProblem("action:saveArtworkRun", advertError) : `The ${kind.noun} could not be saved.`);
   // Admin-booked, so approved on the spot — same reasoning as saveBooking,
   // and held for payment the same way when priced.
   const { data: booking, error } = await db.from("advert_bookings").insert({
@@ -1493,19 +1803,21 @@ async function saveArtworkRun(kind: ArtworkRunKind, formData: FormData) {
   if (error || !booking) {
     // Don't leave orphan artwork behind a run that was never booked.
     await db.from("adverts").delete().eq("id", advert.id);
-    for (const path of uploaded) await removeMedia(path);
-    return fail(back, error?.message ?? "The run could not be booked.");
+    return failClean(back, error?.message.includes("advert_bookings_no_overlap") ? error.message : error ? dbProblem("action:saveArtworkRun", error, "The run could not be booked — try again.") : "The run could not be booked.");
   }
+  let message: string | null = null;
   if (price) {
-    await invoiceAdvertising(member_id, price, {
+    const invoice = await invoiceAdvertising(member_id, price, {
       advert_booking_id: booking.id,
       description: runDescription(name, starts_on, ends_on),
     });
+    if (invoice && !invoice.ok) message = invoiceFailedMessage(invoice.error);
   }
   revalidatePath("/console/adverts");
   revalidatePath(kind.base);
   revalidatePath("/");
-  redirect(`${back}?saved=1`);
+  // A failed invoice is said on the run's own page, where Raise invoice is.
+  redirect(message ? savedOr(`${kind.base}/${booking.id}`, message) : `${back}?saved=1`);
 }
 
 export async function saveSupplierLogo(formData: FormData) {
@@ -1533,10 +1845,56 @@ export async function markInvoicePaid(formData: FormData) {
   const sep = back.includes("?") ? "&" : "?";
   if (!UUID_RE.test(id)) redirect(`${back}${sep}error=${encodeURIComponent("That invoice could not be found.")}`);
   if (formData.get("confirm") !== "1") redirect(`${back}${sep}error=${encodeURIComponent("Tick the box to confirm the payment arrived.")}`);
-  const result = await settleInvoice(id);
-  if (!result.settled) redirect(`${back}${sep}error=${encodeURIComponent("That invoice is already paid or void.")}`);
+  // settleInvoice throws on a database error (so the webhook can be retried);
+  // here there is nobody to retry but Jas, so it's said on the page instead.
+  let result: Awaited<ReturnType<typeof settleInvoice>>;
+  try {
+    result = await settleInvoice(id);
+  } catch (e) {
+    console.error("[markInvoicePaid]", e);
+    redirect(`${back}${sep}error=${encodeURIComponent("The payment couldn't be recorded — nothing was changed. Try again in a moment.")}`);
+  }
+  if (!result.settled) {
+    const why = {
+      paid: "That invoice is already paid — nothing more to record.",
+      void: "That invoice was cancelled, so it can't be marked paid. If they paid anyway, raise a new invoice and mark that paid.",
+      missing: "That invoice could not be found.",
+      amount_mismatch: "That invoice's amount doesn't match the payment, so it wasn't marked paid.",
+    }[result.reason];
+    redirect(`${back}${sep}error=${encodeURIComponent(why)}`);
+  }
   revalidatePath(back.split("?")[0]);
   redirect(`${back}${sep}saved=1`);
+}
+
+/**
+ * "Raise invoice" (InvoicePanel) for a priced run, bundle or placement with no
+ * invoice — the recovery for a booking whose invoice failed, and for one
+ * priced while payments were off. Billed exactly as booking it priced would
+ * have been (item-billing billItem): idempotent, so a double click raises one
+ * invoice and sends one pay link; held for payment if it hasn't started and
+ * payments are live; left on the site if it's already running.
+ */
+export async function raiseItemInvoice(formData: FormData) {
+  await requireConsole();
+  const kind = String(formData.get("kind") ?? "");
+  const id = String(formData.get("id") ?? "");
+  const requested = safeInternalPath(String(formData.get("return_to") ?? ""));
+  const back = requested?.startsWith("/console/") ? requested.split("?")[0] : "/console/adverts";
+  const target: BillTarget | null = !UUID_RE.test(id)
+    ? null
+    : kind === "booking" ? { advert_booking_id: id }
+      : kind === "bundle" ? { bundle_id: id }
+        : kind === "placement" ? { placement_id: id }
+          : null;
+  if (!target) redirect(`${back}?error=${encodeURIComponent("That booking could not be found.")}`);
+  const billed = await billItem(target, { hold: true });
+  if (!billed.ok) redirect(`${back}?error=${encodeURIComponent(`The invoice couldn't be raised: ${billed.error}`)}`);
+  if (!billed.invoice) redirect(`${back}?error=${encodeURIComponent("There's nothing to invoice — it has no price, or it isn't approved yet.")}`);
+  revalidatePath(back);
+  revalidatePath("/console/adverts");
+  revalidatePath("/");
+  redirect(`${back}?saved=1`);
 }
 
 /** Turn a member's expression of interest into a draft run for Jas to fill in. */
@@ -1544,7 +1902,10 @@ export async function startAdvertFromInterest(formData: FormData) {
   await requireConsole();
   const db = serviceDb();
   const id = String(formData.get("id"));
-  const amountPounds = Number(formData.get("amount_pounds") ?? 0);
+  // Same parser and limits as every other price field: Number() read "1e5" as
+  // £100,000 and rounded a third decimal place silently.
+  const amount = penniesFromPounds(formData.get("amount_pounds"));
+  if (amount === "invalid") redirect(`/console/adverts/interest?error=${encodeURIComponent(priceError("250"))}`);
   const { data: request } = await db
     .from("visibility_requests")
     .select("id, member_id, product")
@@ -1559,8 +1920,12 @@ export async function startAdvertFromInterest(formData: FormData) {
     // (just a free-text product column) — Jas quotes the amount at confirm time.
     // Payable online from the member's billing page; nothing is held, since
     // there is no run yet to hold.
-    if (amountPounds > 0) {
-      await raiseInvoice(request.member_id, Math.round(amountPounds * 100), "VIS", { description: `Visibility: ${request.product}` });
+    if (amount) {
+      const invoice = await raiseInvoice(request.member_id, amount, "VIS", { description: `Visibility: ${request.product}` });
+      if (!invoice) {
+        revalidatePath("/console/adverts/interest");
+        redirect(`/console/adverts/interest?error=${encodeURIComponent("Confirmed, but the invoice couldn't be raised — raise it by hand from the member's billing.")}`);
+      }
     }
   }
   revalidatePath("/console/adverts/interest");
@@ -1574,9 +1939,9 @@ export async function saveMediaPack(formData: FormData) {
   await requireConsole();
   let path: string | null = null;
   try {
-    path = await uploadDocument(formData.get("pack") as File | null, "media-pack");
+    path = await uploadDocument(await submittedFile(formData, "pack", CONSOLE_UPLOADS), "media-pack");
   } catch (e) {
-    redirect(`/console/advertising?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
+    redirect(`/console/advertising?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveMediaPack"))}`);
   }
   if (!path) return;
   await serviceDb().from("settings").upsert({ key: "media_pack", value: { path, updated_at: new Date().toISOString() } });
@@ -1605,13 +1970,13 @@ export async function saveAdvertFormats(formData: FormData) {
   try {
     value = await Promise.all(
       fields.map(async (f): Promise<AdFormat> => {
-        const uploaded = await uploadImage(formData.get(`example_${f.key}`) as File | null, "advert-formats");
+        const uploaded = await uploadImage(await submittedFile(formData, `example_${f.key}`, CONSOLE_UPLOADS), "advert-formats");
         const example_path = uploaded ?? currentByKey.get(f.key)?.example_path;
         return { ...f, ...(example_path ? { example_path } : {}) };
       }),
     );
   } catch (e) {
-    redirect(`/console/advertising?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
+    redirect(`/console/advertising?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveAdvertFormats"))}`);
   }
   await db.from("settings").upsert({ key: "advert_formats", value });
   // As above — the A–F cards are the public advertising page's own copy.
@@ -1632,7 +1997,7 @@ export async function saveSiteVariant(formData: FormData) {
   const value = formData.get("variant");
   if (!isVariant(value)) redirect(`/console/pages?error=${encodeURIComponent("Choose Forge or Grid.")}`);
   const { error } = await serviceDb().from("settings").upsert({ key: SITE_VARIANT_KEY, value });
-  if (error) redirect(`/console/pages?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`/console/pages?error=${encodeURIComponent(dbProblem("action:saveSiteVariant", error))}`);
   // Every public route renders per request already; this drops any client
   // router cache still holding the old design.
   revalidatePath("/", "layout");
@@ -1658,7 +2023,7 @@ export async function saveHomeSections(formData: FormData) {
   const hidden = HOME_SECTION_IDS.filter((id) => !LOCKED_VISIBLE.has(id) && formData.get(`show_${id}`) !== "on");
   const value = resolveHomeSections({ order, hidden });
   const { error } = await serviceDb().from("settings").upsert({ key: HOME_SECTIONS_KEY, value });
-  if (error) redirect(`/console/pages?error=${encodeURIComponent(error.message)}`);
+  if (error) redirect(`/console/pages?error=${encodeURIComponent(dbProblem("action:saveHomeSections", error))}`);
   revalidatePath("/");
   redirect("/console/pages?saved=sections#home-sections");
 }
@@ -1735,8 +2100,10 @@ export async function saveTakeoverPlacement(formData: FormData) {
   const back = id ? `/console/adverts/takeover/${id}` : "/console/adverts/takeover";
   const member_id = String(formData.get("member_id"));
   const hex = String(formData.get("hex") ?? "").trim();
+  const starts_on = String(formData.get("starts_on"));
+  const ends_on = String(formData.get("ends_on"));
   const price = penniesFromPounds(formData.get("price_pounds"));
-  if (price === "invalid") redirect(`${back}?error=${encodeURIComponent("Enter the price in pounds, e.g. 1500 — or leave it blank.")}`);
+  if (price === "invalid") redirect(`${back}?error=${encodeURIComponent(priceError("1500"))}`);
   if (!/^#[0-9a-f]{6}$/i.test(hex)) {
     redirect(`${back}?error=${encodeURIComponent("Enter a 6-digit hex colour, e.g. #ac5800.")}`);
   }
@@ -1746,21 +2113,34 @@ export async function saveTakeoverPlacement(formData: FormData) {
     redirect(`${back}?error=${encodeURIComponent("That colour is too close to white to read — it needs at least 3:1 contrast (WCAG AA, large text/UI).")}`);
   }
 
-  let banner_path: string | null = null;
-  try {
-    banner_path = await uploadImage(formData.get("banner") as File | null, "takeovers");
-  } catch (e) {
-    redirect(`${back}?error=${encodeURIComponent(e instanceof Error ? e.message : "Banner upload failed.")}`);
-  }
-
   // An edit keeps the banner it already has unless a new one is uploaded.
   // config is jsonb and activeTakeover() needs both keys, so it is rewritten
-  // whole rather than patched.
+  // whole rather than patched. Checked before the upload, so a stale id
+  // leaves no orphaned banner in storage.
   let existing: { config: unknown } | null = null;
+  let plan: Reprice = { action: "keep" };
   if (id) {
     const { data } = await db.from("placements").select("config").eq("id", id).eq("kind", "takeover").maybeSingle();
     if (!data) redirect(`/console/adverts/takeover?error=${encodeURIComponent("That takeover no longer exists.")}`);
     existing = data;
+    // As Featured Member: a paid takeover can't change hands; an unpaid one
+    // that changes advertiser or price gets a fresh invoice.
+    plan = await rebillBeforeSave({ placement_id: id }, { memberId: member_id, pricePennies: price }, back);
+    if (plan.action === "replace") {
+      // The one refusal the save can still meet is the overlap constraint —
+      // asked here first, so it can't strike after the old invoice is voided.
+      // The constraint itself (placements_takeover_no_overlap) stays the guard.
+      const { count: clash } = await db.from("placements").select("id", { count: "exact", head: true })
+        .eq("kind", "takeover").neq("id", id).lte("starts_on", ends_on).gte("ends_on", starts_on);
+      if (clash) redirect(`${back}?error=${encodeURIComponent("Another takeover already covers those dates — only one can run at a time.")}`);
+    }
+  }
+
+  let banner_path: string | null = null;
+  try {
+    banner_path = await uploadImage(await submittedFile(formData, "banner", CONSOLE_UPLOADS), "takeovers");
+  } catch (e) {
+    redirect(`${back}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveTakeoverPlacement"))}`);
   }
   const previousBanner = (existing?.config as { banner_path?: unknown } | null)?.banner_path;
   const banner = banner_path ?? (typeof previousBanner === "string" ? previousBanner : null);
@@ -1768,37 +2148,94 @@ export async function saveTakeoverPlacement(formData: FormData) {
     redirect(`${back}?error=${encodeURIComponent("A banner image is required.")}`);
   }
 
-  const values = {
-    member_id,
-    config: { hex, banner_path: banner },
-    starts_on: String(formData.get("starts_on")),
-    ends_on: String(formData.get("ends_on")),
-    price_pennies: price,
-  };
-  // As Featured Member: an edit records the price, only a new booking invoices.
+  if (id && plan.action === "replace") {
+    const voided = await voidForReprice({ placement_id: id });
+    if (!voided.ok) {
+      if (banner_path) await removeMedia(banner_path);
+      redirect(`${back}?error=${encodeURIComponent(voided.error)}`);
+    }
+  }
+
+  const values = { member_id, config: { hex, banner_path: banner }, starts_on, ends_on, price_pennies: price };
   const { data: saved, error } = id
     ? await db.from("placements").update(values).eq("id", id).eq("kind", "takeover").select("id").maybeSingle()
     : await db.from("placements").insert({ kind: "takeover", ...values, awaiting_payment: holdsForPayment(price) }).select("id").single();
-  if (error) {
+  if (error || (id && !saved)) {
+    // Nothing points at a just-uploaded banner yet — don't leave it in storage.
+    if (banner_path) await removeMedia(banner_path);
+    if (!error) redirect(`/console/adverts/takeover?error=${encodeURIComponent("That takeover no longer exists.")}`);
     redirect(`${back}?error=${encodeURIComponent(
       error.message.includes("placements_takeover_no_overlap")
         ? "Another takeover already covers those dates — only one can run at a time."
-        : error.message,
+        : dbProblem("action:saveTakeoverPlacement", error),
     )}`);
   }
+  let message: string | null = null;
   if (!id && saved && price) {
-    await invoiceAdvertising(member_id, price, {
+    const invoice = await invoiceAdvertising(member_id, price, {
       placement_id: saved.id,
-      description: `Homepage takeover (${values.starts_on} to ${values.ends_on})`,
+      description: `Homepage takeover (${starts_on} to ${ends_on})`,
     });
+    if (invoice && !invoice.ok) message = invoiceFailedMessage(invoice.error);
   }
+  if (id) message = await rebillAfterSave({ placement_id: id }, plan, price);
   // The old banner file is left in storage on a replace: removeMedia on a path
   // another row might share is not worth the risk for one image.
   revalidatePath("/console/adverts");
   revalidatePath("/console/adverts/takeover");
   if (id) revalidatePath(back);
   revalidatePath("/");
-  redirect(`${back}?saved=1`);
+  redirect(savedOr(message && !id && saved ? `/console/adverts/takeover/${saved.id}` : back, message));
+}
+
+/**
+ * Call off a Featured Member slot or takeover that hasn't been paid for and
+ * hasn't run (review finding, 16 Oct). There was no way to: a held takeover
+ * kept its dates reserved against every other advertiser, and a held slot
+ * kept counting towards the cap, until somebody paid.
+ *
+ * Deleted rather than marked: placements have no status, and every reader
+ * (the cap count, the takeover overlap constraint, the homepage) would need
+ * teaching to skip a "cancelled" row. The invoice survives as the record —
+ * invoices.placement_id is `on delete set null` — after it's voided here, which
+ * also expires any open Stripe checkout so a pay page left open stops taking
+ * money. Refused once paid (refunds are by hand, in Stripe) or once it has
+ * started running unheld (that's a bill for something that went out).
+ * Requires the confirm box, per the console's delete convention.
+ */
+export async function cancelPlacement(formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const db = serviceDb();
+  const { data: p } = UUID_RE.test(id)
+    ? await db.from("placements").select("id, kind, starts_on, awaiting_payment").eq("id", id).in("kind", ["featured_member", "takeover"]).maybeSingle()
+    : { data: null };
+  if (!p) redirect(`/console/adverts?error=${encodeURIComponent("That booking no longer exists.")}`);
+  const list = p.kind === "takeover" ? "/console/adverts/takeover" : "/console/adverts/featured-member";
+  const back = `${list}/${id}`;
+  const fail = (message: string): never => redirect(`${back}?error=${encodeURIComponent(message)}`);
+  if (formData.get("confirm") !== "1") return fail("Tick the box to confirm — cancelling deletes the booking.");
+  const today = new Date().toISOString().slice(0, 10);
+  if (!p.awaiting_payment && p.starts_on <= today) return fail("This one has already started running, so it can't be cancelled here — change its end date instead.");
+
+  const onRecord = await invoiceOnRecord({ placement_id: id });
+  if (!onRecord.ok) return fail(onRecord.error);
+  if (onRecord.invoice?.status === "paid") return fail(`${onRecord.invoice.number} is already paid, so this can't be cancelled here — a refund is made in Stripe, by hand.`);
+  const voided = await voidInvoices({ placement_id: id });
+  if (!voided.ok) {
+    logError({ source: "db", area: "action:cancelPlacement", error: voided.error, context: { placement_id: id } });
+    return fail("Its invoice couldn't be cancelled just now, so nothing was changed. Try again.");
+  }
+  if (voided.paying.length) return fail("The member is paying its invoice right now, so nothing was cancelled. Look again in a few minutes.");
+
+  const { error } = await db.from("placements").delete().eq("id", id);
+  if (error) return fail(dbProblem("action:cancelPlacement", error, "Its invoice is cancelled, but the booking itself couldn't be deleted — try Cancel again."));
+  revalidatePath("/console/adverts");
+  revalidatePath(list);
+  revalidatePath(back);
+  revalidatePath("/console");
+  revalidatePath("/");
+  redirect(`${list}?cancelled=1`);
 }
 
 export async function declineInterest(formData: FormData) {
@@ -1985,7 +2422,7 @@ export async function saveContact(formData: FormData) {
     ...biginCompany,
     ...optIn,
   }).eq("id", id);
-  if (error) return contactsFail(error.code === "23505" ? `${email} is already on another contact.` : error.message);
+  if (error) return contactsFail(error.code === "23505" ? `${email} is already on another contact.` : dbProblem("action:saveContact", error));
 
   // never throws — a failed push is queued for retry and shows as "Push pending"
   const { syncContactToCrm } = await import("@/lib/adapters/crm");
@@ -2054,10 +2491,16 @@ export async function previewBiginPull() {
  */
 export async function runBiginSync() {
   await requireConsole();
-  const { getCrmSync } = await import("@/lib/adapters/crm");
+  const { getCrmSync, firstImportDone, readLastRun } = await import("@/lib/adapters/crm");
+  // The preview requirement is enforced here, not just by which button the
+  // page shows: before the first import, only a recent preview lets it run.
+  const [imported, lastRun] = await Promise.all([firstImportDone(), readLastRun()]);
+  if (!imported && !firstImportPreviewFresh(lastRun)) {
+    contactsFail("Preview the import first — it runs only within an hour of a preview, so the numbers you saw are the ones that land.");
+  }
   let message: string | null = null;
   try {
-    await getCrmSync().sync({ allowFirstImport: true });
+    await getCrmSync().sync({ allowFirstImport: !imported });
   } catch (e) {
     message = e instanceof Error ? e.message : String(e);
   }
@@ -2098,13 +2541,13 @@ export async function saveMember(formData: FormData) {
   let uploadError: string | null = null;
   try {
     const [logo_path, hero_path] = await Promise.all([
-      uploadImage(formData.get("logo") as File | null, `members/${id}`),
-      uploadImage(formData.get("hero") as File | null, `members/${id}`),
+      submittedFile(formData, "logo", CONSOLE_UPLOADS).then((file) => uploadImage(file, `members/${id}`)),
+      submittedFile(formData, "hero", CONSOLE_UPLOADS).then((file) => uploadImage(file, `members/${id}`)),
     ]);
     uploaded = { logo_path, hero_path };
   } catch (e) {
     uploaded = { logo_path: null, hero_path: null };
-    uploadError = e instanceof Error ? e.message : "Image upload failed.";
+    uploadError = uploadFailureMessage(e, "action:saveMember");
   }
   if (uploadError) return memberFail(id, uploadError);
 
@@ -2137,7 +2580,7 @@ export async function saveMember(formData: FormData) {
 
   const { error } = await db.from("members").update(values).eq("id", id);
   if (error) {
-    return memberFail(id, error.code === "23505" ? "That web address is already taken — choose another." : error.message);
+    return memberFail(id, error.code === "23505" ? "That web address is already taken — choose another." : dbProblem("action:saveMember", error));
   }
 
   // Membership types (GAPS A8.1) live in a join table, not a members column —
@@ -2320,7 +2763,7 @@ export async function archiveMember(formData: FormData) {
   if (!member) return;
 
   const { error } = await db.from("members").update({ archived_at: new Date().toISOString() }).eq("id", id);
-  if (error) return memberFail(id, error.message);
+  if (error) return memberFail(id, dbProblem("action:archiveMember", error));
   revalidateMemberSurfaces(id, member.slug);
   redirect(`/console/members/${id}?saved=1`);
 }
@@ -2335,7 +2778,7 @@ export async function unarchiveMember(formData: FormData) {
   if (!member) return;
 
   const { error } = await db.from("members").update({ archived_at: null }).eq("id", id);
-  if (error) return memberFail(id, error.message);
+  if (error) return memberFail(id, dbProblem("action:unarchiveMember", error));
   revalidateMemberSurfaces(id, member.slug);
   redirect(`/console/members/${id}?saved=1`);
 }
@@ -2412,7 +2855,7 @@ export async function deleteMember(formData: FormData) {
       id,
       error.code === "23503"
         ? "Something else still references this member — archive them instead."
-        : error.message,
+        : dbProblem("action:deleteMember", error),
     );
   }
 
@@ -2597,13 +3040,13 @@ export async function saveContentPage(formData: FormData) {
 
   if (isNew) {
     const { error } = await db.from("static_pages").insert({ slug, title, body, collapsible });
-    if (error) return fail(error.message);
+    if (error) return fail(dbProblem("action:saveContentPage", error));
   } else {
     const { error } = await db
       .from("static_pages")
       .update({ slug, title, body, collapsible, updated_at: new Date().toISOString() })
       .eq("slug", originalSlug);
-    if (error) return fail(error.message);
+    if (error) return fail(dbProblem("action:saveContentPage", error));
     if (slug !== originalSlug) {
       // Same contract as the member rename: keep the old URL working, and let
       // recordRename clear the reverse row so renaming back cannot build a loop.
@@ -2642,7 +3085,7 @@ export async function saveCategory(formData: FormData) {
     if (error) {
       redirect(
         `/console/categories/new?error=${encodeURIComponent(
-          error.code === "23505" ? "That slug is already used by another category." : error.message
+          error.code === "23505" ? "That slug is already used by another category." : dbProblem("action:saveCategory", error)
         )}`
       );
     }
@@ -2660,7 +3103,7 @@ export async function deleteCategory(formData: FormData) {
   }
   const { error } = await serviceDb().from("categories").delete().eq("id", id);
   if (error) {
-    redirect(`/console/categories/${id}?error=${encodeURIComponent(error.message)}`);
+    redirect(`/console/categories/${id}?error=${encodeURIComponent(dbProblem("action:deleteCategory", error))}`);
   }
   revalidatePath("/console/categories");
   revalidatePath("/news");
@@ -2685,7 +3128,7 @@ export async function saveIndustry(formData: FormData) {
     if (error) {
       redirect(
         `/console/industries/new?error=${encodeURIComponent(
-          error.code === "23505" ? "That slug is already used by another industry." : error.message
+          error.code === "23505" ? "That slug is already used by another industry." : dbProblem("action:saveIndustry", error)
         )}`
       );
     }
@@ -2709,7 +3152,7 @@ export async function deleteIndustry(formData: FormData) {
       `/console/industries/${id}?error=${encodeURIComponent(
         error.code === "23503"
           ? "This industry is still assigned to a member, story, video or event — reassign them first."
-          : error.message
+          : dbProblem("action:deleteIndustry", error)
       )}`
     );
   }
@@ -2738,7 +3181,7 @@ export async function savePromoCode(formData: FormData) {
   const { error } = await serviceDb().from("promo_codes").insert({ code, months, max_uses: maxUses, expires_at: expiresAt });
   if (error) {
     redirect(`/console/promo-codes?error=${encodeURIComponent(
-      error.code === "23505" ? "That code already exists." : error.message
+      error.code === "23505" ? "That code already exists." : dbProblem("action:savePromoCode", error)
     )}`);
   }
   revalidatePath("/console/promo-codes");
@@ -2759,22 +3202,25 @@ export async function saveResource(formData: FormData) {
   await requireConsole();
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
-  const file = formData.get("file") as File | null;
-  if (!file || file.size === 0) redirect(`/console/resources?error=${encodeURIComponent("Choose a file to upload.")}`);
-  const isPdf = file.type === "application/pdf";
+  if (!hasSubmittedFile(formData, "file")) redirect(`/console/resources?error=${encodeURIComponent("Choose a file to upload.")}`);
 
   let path: string | null = null;
+  let isPdf = false;
   try {
+    // The file itself, or the one staged for it (lib/staged-upload) — its
+    // type, like a posted file's, picks which of the two checks it gets.
+    const file = await submittedFile(formData, "file", CONSOLE_UPLOADS);
+    isPdf = file?.type === "application/pdf";
     path = isPdf ? await uploadDocument(file, "resources") : await uploadImage(file, "resources");
   } catch (e) {
-    redirect(`/console/resources?error=${encodeURIComponent(e instanceof Error ? e.message : "Upload failed.")}`);
+    redirect(`/console/resources?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveResource"))}`);
   }
   if (!path) redirect(`/console/resources?error=${encodeURIComponent("Upload failed.")}`);
 
   const { error } = await serviceDb().from("resources").insert({ title, path, kind: isPdf ? "document" : "image" });
   if (error) {
     await removeMedia(path);
-    redirect(`/console/resources?error=${encodeURIComponent(error.message)}`);
+    redirect(`/console/resources?error=${encodeURIComponent(dbProblem("action:saveResource", error))}`);
   }
   revalidatePath("/console/resources");
   revalidatePath("/dashboard/resources");
@@ -3006,7 +3452,7 @@ export async function saveEmailTemplate(formData: FormData) {
     updated_at: new Date().toISOString(),
     updated_by: user.userId,
   });
-  if (error) templateFail(kind, error.message);
+  if (error) templateFail(kind, dbProblem("action:saveEmailTemplate", error));
 
   revalidatePath("/console/email-templates");
   revalidatePath(`/console/email-templates/${kind}`);
@@ -3026,7 +3472,7 @@ export async function resetEmailTemplate(formData: FormData) {
   // Deleting the row IS the reset: with nothing stored, every field falls back
   // to the copy in src/lib/email/defaults.ts.
   const { error } = await serviceDb().from("email_templates").delete().eq("kind", kind);
-  if (error) templateFail(kind, error.message);
+  if (error) templateFail(kind, dbProblem("action:resetEmailTemplate", error));
 
   revalidatePath("/console/email-templates");
   revalidatePath(`/console/email-templates/${kind}`);

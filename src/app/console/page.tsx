@@ -7,7 +7,7 @@ import { FEATURED_SLOTS, MEMBERSHIP_MONTHLY_PENNIES, pounds, revenueByStream } f
 import { monthGrid, monthKey, parseMonth } from "@/lib/calendar";
 import { inboxKindLabel } from "@/lib/console-notification-links";
 import { OverviewCalendar, type OverviewItem } from "./OverviewCalendar";
-import { decideRevision, markInboxRead } from "./actions";
+import { markInboxRead } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,10 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
   const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
+  // This calendar month (UTC, like `today`) for the revenue figure — the month
+  // it is now, not the calendar's `?month=`.
+  const thisMonthStart = `${today.slice(0, 7)}-01T00:00:00.000Z`;
+  const nextMonthStart = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1)).toISOString();
 
   const [
     members,
@@ -56,18 +60,24 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     calVideos,
     calIssues,
     calEvents,
+    paidInvoices,
+    unpaidInvoices,
+    payingMembers,
   ] = await Promise.all([
     // Count-only reads go through mustList (the head:true ones keep their
     // `.count`); row reads go through must and come back as plain arrays. The
     // one exception is the sessions RPC, left raw on purpose — this page already
     // degrades it to "unknown" rather than failing.
     mustList(db.from("members").select("*", { count: "exact", head: true }).eq("status", "active"), "console/overview active members"),
-    must(db.from("advert_bookings").select("advert:adverts(format, member_id), price_pennies").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today), "console/overview live bookings"),
-    must(db.from("stories").select("id, title, member:members!stories_member_id_fkey(name)").eq("status", "awaiting_approval"), "console/overview pending stories"),
+    must(db.from("advert_bookings").select("advert:adverts(format, member_id)").in("status", RENDERABLE_BOOKING_STATUSES).lte("starts_on", today).gte("ends_on", today), "console/overview live bookings"),
+    // Same order as the Story Engine board (most recently touched first —
+    // editStory stamps updated_at on submit), so the queue reads the same in
+    // both places; unordered, Postgres returned whatever order it liked.
+    must(db.from("stories").select("id, title, member:members!stories_member_id_fkey(name)").eq("status", "awaiting_approval").order("updated_at", { ascending: false }), "console/overview pending stories"),
     must(db.from("events").select("id, title, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending events"),
     must(db.from("advert_bookings").select("id, advert:adverts(name)").eq("status", "awaiting_approval"), "console/overview pending adverts"),
     must(db.from("advert_artwork_proposals").select("id, advert:adverts(name)").eq("status", "pending"), "console/overview pending artwork swaps"),
-    must(db.from("member_revisions").select("id, member:members(name)").eq("status", "awaiting_approval"), "console/overview pending revisions"),
+    must(db.from("member_revisions").select("id, member_id, member:members(name)").eq("status", "awaiting_approval").order("created_at"), "console/overview pending revisions"),
     must(db.from("advert_bookings").select("id, ends_on, advert:adverts(name)").eq("status", "live").gte("ends_on", today).lte("ends_on", weekOut), "console/overview expiring bookings"),
     must(db.from("members").select("id, name").eq("status", "grace"), "console/overview grace members"),
     must(db.from("members").select("id, name, draft_submitted_at").eq("status", "draft"), "console/overview draft members"),
@@ -111,6 +121,12 @@ export default async function CommandCentre(props: PageProps<"/console">) {
       .in("status", ["draft", "awaiting_approval", "published"])
       .gte("starts_on", startDate)
       .lt("starts_on", endDate), "console/overview calendar events"),
+    // Revenue reads what was billed, not what is booked (lib/pricing revenueByStream).
+    must(db.from("invoices").select("number, amount_pennies, placement:placements(kind)").eq("status", "paid").gte("paid_at", thisMonthStart).lt("paid_at", nextMonthStart), "console/overview invoices paid this month"),
+    must(db.from("invoices").select("number, amount_pennies, placement:placements(kind)").eq("status", "issued"), "console/overview unpaid invoices"),
+    // A comped member is active but pays nothing until comped_until has passed
+    // (lib/membership applyPaymentResult "comped"), so isn't membership revenue.
+    mustList(db.from("members").select("*", { count: "exact", head: true }).eq("status", "active").or(`comped_until.is.null,comped_until.lt.${today}`), "console/overview paying members"),
   ]);
 
   const live = liveBookings ?? [];
@@ -119,12 +135,15 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   const advertisers = new Set(live.map((b) => b.advert?.member_id).filter(Boolean)).size;
   const slotsSold = featuredSold.count ?? 0;
 
+  const asRevenue = (rows: typeof paidInvoices) =>
+    rows.map((i) => ({ number: i.number, amountPennies: i.amount_pennies, placementKind: i.placement?.kind ?? null }));
   const revenue = revenueByStream({
-    activeMembers: members.count ?? 0,
-    liveBookings: live.map((b) => ({ format: b.advert?.format ?? null, pricePennies: b.price_pennies ?? null })),
-    featuredSold: slotsSold,
+    activeMembers: payingMembers.count ?? 0,
+    paidThisMonth: asRevenue(paidInvoices),
+    unpaid: asRevenue(unpaidInvoices),
   });
   const maxStream = Math.max(revenue.membership, revenue.advertising, revenue.featured);
+  const comped = Math.max(0, (members.count ?? 0) - (payingMembers.count ?? 0));
 
   // Rendered as "—" until the site_sessions migration is applied.
   const sessionCount = Number(sessions.data);
@@ -235,8 +254,8 @@ export default async function CommandCentre(props: PageProps<"/console">) {
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <SectionTitle>Revenue this month</SectionTitle>
             <p className="text-xs text-graphite">
-              estimated from live bookings &amp; standard rates
-              {revenue.unpriced > 0 && ` · ${revenue.unpriced} unpriced (not counted)`}
+              memberships at {pounds(MEMBERSHIP_MONTHLY_PENNIES)}/mo · advertising as paid this month
+              {revenue.outstanding > 0 && ` · ${pounds(revenue.outstanding)} invoiced, awaiting payment`}
             </p>
           </div>
           <p className="mt-3 text-4xl font-bold text-ink">
@@ -244,9 +263,9 @@ export default async function CommandCentre(props: PageProps<"/console">) {
             <span className="text-base font-normal text-graphite"> / month</span>
           </p>
           <div className="mt-5 space-y-4">
-            <RevenueBar label="Memberships" pennies={revenue.membership} max={maxStream} sub={`${members.count ?? 0} members × ${pounds(MEMBERSHIP_MONTHLY_PENNIES)}/mo`} />
-            <RevenueBar label="Advertising" pennies={revenue.advertising} max={maxStream} sub={`${live.length} live bookings`} />
-            <RevenueBar label="Featured member slots" pennies={revenue.featured} max={maxStream} sub={`${slotsSold} slot${slotsSold === 1 ? "" : "s"} sold`} />
+            <RevenueBar label="Memberships" pennies={revenue.membership} max={maxStream} sub={`${payingMembers.count ?? 0} paying members × ${pounds(MEMBERSHIP_MONTHLY_PENNIES)}/mo${comped > 0 ? ` · ${comped} comped, not counted` : ""}`} />
+            <RevenueBar label="Advertising" pennies={revenue.advertising} max={maxStream} sub={`paid this month · ${live.length} live bookings`} />
+            <RevenueBar label="Featured member slots" pennies={revenue.featured} max={maxStream} sub={`paid this month · ${slotsSold} slot${slotsSold === 1 ? "" : "s"} sold`} />
           </div>
           <div className="mt-5 border-t border-black/5 pt-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
@@ -363,14 +382,14 @@ export default async function CommandCentre(props: PageProps<"/console">) {
 
         {pendingRevisions?.length ? (
           <Card id="approvals" className="mt-6">
-            <SectionTitle>Quick approvals</SectionTitle>
+            <SectionTitle>Page edits to review</SectionTitle>
             {pendingRevisions?.map((r) => (
               <div key={r.id} className="mt-2 flex items-center justify-between gap-3 rounded border p-3 text-sm">
                 <span>Page edit from <b>{r.member?.name}</b></span>
-                <span className="flex gap-2">
-                  <form action={decideRevision}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="decision" value="approve" /><button className="rounded bg-success px-3 py-1 text-white">Approve</button></form>
-                  <form action={decideRevision}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="decision" value="reject" /><button className="rounded border px-3 py-1">Reject</button></form>
-                </span>
+                {/* Not approved from here: Approve publishes the member's own
+                    edit, so it's decided on their page, where the field-by-field
+                    changes are shown (and a Reject carries a reason). */}
+                <Link href={`/console/members/${r.member_id}#changes`} className="rounded bg-ink px-3 py-1 text-white">Review changes</Link>
               </div>
             ))}
           </Card>

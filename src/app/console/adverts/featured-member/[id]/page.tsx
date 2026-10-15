@@ -8,6 +8,7 @@ import { FEATURED_SLOTS } from "@/lib/pricing";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { SubmitButton } from "@/components/SubmitButton";
 import { InvoicePanel } from "@/components/console/InvoicePanel";
+import { CancelPlacementForm } from "@/components/console/CancelPlacementForm";
 import { saveFeaturedMemberPlacement } from "../../../actions";
 
 export const dynamic = "force-dynamic";
@@ -23,12 +24,15 @@ export default async function FeaturedMemberSlotPage(props: PageProps<"/console/
   if (!UUID_RE.test(id)) notFound();
   const db = serviceDb();
 
-  const [slot, members] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  const [slot, members, paid] = await Promise.all([
     must(
       db.from("placements").select("id, member_id, starts_on, ends_on, price_pennies, awaiting_payment, member:members(name)").eq("id", id).eq("kind", "featured_member").maybeSingle(),
       "console/featured-member slot",
     ),
     must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/featured-member members"),
+    // a paid booking isn't cancelled from here (refunds are by hand)
+    must(db.from("invoices").select("id").eq("placement_id", id).eq("status", "paid").limit(1), "console/featured-member paid invoice"),
   ]);
   if (!slot) notFound();
   // The picker lists active members only. A slot whose member has since lapsed
@@ -64,10 +68,18 @@ export default async function FeaturedMemberSlotPage(props: PageProps<"/console/
         <label className="block text-sm sm:max-w-[12rem]">Price (£)
           <input name="price_pounds" inputMode="decimal" placeholder="optional" defaultValue={slot.price_pennies != null ? (slot.price_pennies / 100).toFixed(2) : ""} className="mt-1 block w-full rounded border px-3 py-2" />
         </label>
-        <p className="text-xs text-graphite">Changing the price records it; it doesn&apos;t raise or change an invoice.</p>
+        <p className="text-xs text-graphite">A price added here is invoiced when you save, and held for payment if it hasn&apos;t started. A new price or member on an unpaid invoice replaces it; a paid one isn&apos;t re-billed.</p>
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
-      <InvoicePanel target={{ placement_id: slot.id }} returnTo={`/console/adverts/featured-member/${slot.id}`} />
+      <InvoicePanel
+        target={{ placement_id: slot.id }}
+        returnTo={`/console/adverts/featured-member/${slot.id}`}
+        raise={{ kind: "placement", id: slot.id, pricePennies: slot.price_pennies, billable: true }}
+      />
+      {/* Only while nothing has run and nothing is paid — cancelPlacement checks both again. */}
+      {!paid?.length && (slot.awaiting_payment || slot.starts_on > today) && (
+        <CancelPlacementForm id={slot.id} noun="slot" held={slot.awaiting_payment} />
+      )}
     </div>
   );
 }

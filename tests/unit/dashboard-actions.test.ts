@@ -7,19 +7,23 @@ import {
   withdrawEvent, withdrawMachine, withdrawStory, withdrawVideo,
 } from "@/app/dashboard/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
 import type { CurrentUser } from "@/lib/auth";
+import { IMAGE_TOO_LARGE, UPLOAD_EXPIRED, UploadRejectedError } from "@/lib/upload-limits";
+import { STORY_CHANGED_ERROR } from "@/lib/member-story";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireMember, uploadImage, removeMedia, notifyAdminFunnel, notifyConsole, geocodeAddress } = vi.hoisted(() => ({
+const { requireMember, uploadImage, removeMedia, removeMediaIfUnused, notifyAdminFunnel, notifyConsole, geocodeAddress, logError } = vi.hoisted(() => ({
   requireMember: vi.fn(async (): Promise<CurrentUser & { memberId: string }> => ({
     userId: "u1", email: "member@acme.example", role: "member", memberId: "mem1", displayName: "Acme",
   })),
   uploadImage: vi.fn<(file: File | null, prefix: string) => Promise<string | null>>(async () => null),
   removeMedia: vi.fn<(path: string | null | undefined) => Promise<void>>(async () => {}),
+  removeMediaIfUnused: vi.fn<(paths: readonly (string | null | undefined)[]) => Promise<void>>(async () => {}),
+  logError: vi.fn(),
   notifyAdminFunnel: vi.fn(async () => {}),
   // Every member submission now raises a console notification (fix-list 71).
   // Mocked rather than exercised here: what it writes is notify-admin's own
@@ -29,7 +33,8 @@ const { requireMember, uploadImage, removeMedia, notifyAdminFunnel, notifyConsol
   geocodeAddress: vi.fn<(address: string) => Promise<{ lat: number; lng: number } | null>>(async () => null),
 }));
 vi.mock("@/lib/auth", () => ({ requireMember }));
-vi.mock("@/lib/media", () => ({ uploadImage, removeMedia }));
+vi.mock("@/lib/media", () => ({ uploadImage, removeMedia, removeMediaIfUnused }));
+vi.mock("@/lib/log", () => ({ logError }));
 vi.mock("@/lib/notify-admin", () => ({ notifyAdminFunnel, notifyConsole }));
 vi.mock("@/lib/adapters/geocode", () => ({ geocodeAddress }));
 
@@ -57,6 +62,8 @@ afterEach(() => {
   });
   uploadImage.mockReset().mockResolvedValue(null);
   removeMedia.mockReset().mockResolvedValue(undefined);
+  removeMediaIfUnused.mockReset().mockResolvedValue(undefined);
+  logError.mockReset();
   notifyAdminFunnel.mockReset().mockResolvedValue(undefined);
   notifyConsole.mockReset().mockResolvedValue(undefined);
   geocodeAddress.mockReset().mockResolvedValue(null);
@@ -73,6 +80,26 @@ function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
   vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from })));
   return from;
 }
+
+const callsOf = (method: unknown) => (method as { mock: { calls: unknown[][] } }).mock.calls;
+
+/**
+ * A `stories` table that answers reads with `row` and, once anything has been
+ * written, answers with `write` — the rows a conditional update/delete hands
+ * back (`.select()` after the write). An empty array is the stale case: the
+ * row was no longer in the state the write was conditional on.
+ */
+function storyTable(row: Record<string, unknown> | null, write: DbResult = dbOk([{ id: "s1", cover_path: null, body: "" }])) {
+  const builder: ReturnType<typeof queryBuilder> = queryBuilder<unknown>((): DbResult =>
+    callsOf(builder.update).length || callsOf(builder.delete).length ? write : dbOk(row));
+  return builder;
+}
+
+/** A member-written story row, the only kind a member may change. */
+const memberStory = (over: Record<string, unknown> = {}) => ({
+  id: "s1", status: "awaiting_approval", member_id: "mem1", member_draft: false, source: "member",
+  cover_path: "stories/existing.jpg", updated_at: "2026-10-15T09:00:00.123456+00:00", ...over,
+});
 
 describe("member upload actions", () => {
   it("upload the file under the member's own namespace and return its public URL", async () => {
@@ -92,15 +119,107 @@ describe("member upload actions", () => {
   // generic error in production and the editor turned into nothing at all.
   // The reason now comes back as a value the editor can show.
   it("return the refusal reason instead of throwing", async () => {
-    uploadImage.mockRejectedValue(new Error("Image too large (8MB max)"));
+    uploadImage.mockRejectedValue(new UploadRejectedError(IMAGE_TOO_LARGE));
     expect(await memberUploadImage(form({}))).toEqual({ error: "Image too large (8MB max)" });
     expect(await memberUploadVideoImage(form({}))).toEqual({ error: "Image too large (8MB max)" });
     expect(await memberUploadEventImage(form({}))).toEqual({ error: "Image too large (8MB max)" });
   });
 
+  // Review finding 16 Oct: the editor showed storage/Postgres error text verbatim.
+  it("never hand a storage error's own text to the browser — it is logged, and a plain line shown", async () => {
+    const leak = new Error('new row violates row-level security policy for table "objects" (bucket media)');
+    uploadImage.mockRejectedValue(leak);
+    const result = await memberUploadImage(form({}));
+    expect(result).toEqual({ error: expect.stringMatching(/didn't go through/) });
+    expect(JSON.stringify(result)).not.toMatch(/row-level|bucket|objects/);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ error: leak }));
+  });
+
   it("say so when no file arrived, rather than inserting a broken image", async () => {
     uploadImage.mockResolvedValue(null);
     expect(await memberUploadImage(form({}))).toEqual({ error: expect.stringMatching(/no image/i) });
+  });
+});
+
+/**
+ * Direct uploads (lib/staged-upload): a form posts the path its file was
+ * staged at instead of the bytes. Whose path it may be comes from the session
+ * — here mem1 — never from the request.
+ */
+describe("staged uploads", () => {
+  const NAME = "3d6f0a1b-2c3d-4e5f-8a9b-0c1d2e3f4a5b.png";
+  const own = `members/mem1/${NAME}`;
+  const theirs = `members/mem2/${NAME}`;
+
+  /** A staging bucket holding one small PNG, at whatever path is asked for. */
+  function stagingHolds(tables: Record<string, () => ReturnType<typeof queryBuilder>> = {}) {
+    const bucket = {
+      info: vi.fn(async () => dbOk({ size: 3, contentType: "image/png", metadata: { name: "plant.png" } })),
+      download: vi.fn(async () => dbOk(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }))),
+      remove: vi.fn(async () => dbOk([])),
+    };
+    const from = fromByTable(tables, () => queryBuilder(dbOk(null)));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from, storage: { from: vi.fn(() => bucket) } })));
+    return { bucket, from };
+  }
+
+  it("the editor's image action claims the member's own staged file and stores it as before", async () => {
+    const { bucket } = stagingHolds();
+    uploadImage.mockResolvedValue("stories/mem1/abc.png");
+
+    expect(await memberUploadImage(form({ file: own }))).toEqual({ url: expect.stringContaining("stories/mem1/abc.png") });
+    const [file, prefix] = uploadImage.mock.calls[0];
+    expect(file).toBeInstanceOf(File);
+    expect(file?.name).toBe("plant.png");
+    expect(prefix).toBe("stories/mem1");
+    expect(bucket.remove).toHaveBeenCalledWith([own]);
+  });
+
+  it("…and refuses another member's, without reading it", async () => {
+    const { bucket } = stagingHolds();
+    expect(await memberUploadImage(form({ file: theirs }))).toEqual({ error: UPLOAD_EXPIRED });
+    expect(await memberUploadVideoImage(form({ file: theirs }))).toEqual({ error: UPLOAD_EXPIRED });
+    expect(await memberUploadEventImage(form({ file: theirs }))).toEqual({ error: UPLOAD_EXPIRED });
+    expect(bucket.info).not.toHaveBeenCalled();
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
+
+  it("a story cover staged by someone else is refused on the form, and nothing is saved", async () => {
+    const { from } = stagingHolds();
+    await expect(submitStory(form({ title: "Mine", cover: theirs })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/story/new?error=${encodeURIComponent(UPLOAD_EXPIRED)}`);
+    expect(from).not.toHaveBeenCalledWith("stories");
+  });
+
+  it("a story cover staged by this member goes through uploadImage", async () => {
+    stagingHolds({ stories: () => queryBuilder(dbOk({ id: "s1" })) });
+    uploadImage.mockResolvedValue("stories/cover.png");
+    await expect(submitStory(form({ title: "Mine", cover: own }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
+    expect(uploadImage.mock.calls[0][0]).toBeInstanceOf(File);
+  });
+
+  // These three used to throw into the error boundary on any upload failure;
+  // an expired staged file is a new way to fail, so each now says it on the form.
+  it.each([
+    ["submitVideo", () => submitVideo(form({ title: "t", url: "https://youtube.com/watch?v=dQw4w9WgXcQ", thumbnail: theirs })), "/dashboard/video/new"],
+    ["submitEvent", () => submitEvent(form({ title: "t", starts_on: "2026-09-01", cover: theirs })), "/dashboard/event/new"],
+    ["submitMachine", () => submitMachine(form({ name: "Press", image: theirs })), "/dashboard/equipment/new"],
+  ])("%s says an upload problem on its form rather than crashing", async (_name, run, page) => {
+    stagingHolds();
+    await expect(run()).rejects.toThrow(`NEXT_REDIRECT:${page}?error=${encodeURIComponent(UPLOAD_EXPIRED)}`);
+  });
+
+  it("the company page stores a staged logo under the member's prefix, and refuses a cover staged by someone else", async () => {
+    const memberRow = () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: {}, address: null, lat: null, lng: null }));
+    stagingHolds({ members: memberRow });
+    await expect(submitProfileEdit(form({ logo: own, hero: theirs })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/profile?error=${encodeURIComponent(UPLOAD_EXPIRED)}`);
+
+    uploadImage.mockClear();
+    stagingHolds({ members: memberRow });
+    await submitProfileEdit(form({ logo: own })).catch(() => {}); // the rest of the save is tested elsewhere
+    const logo = uploadImage.mock.calls.find(([file]) => file instanceof File);
+    expect(logo?.[1]).toBe("members/mem1");
   });
 });
 
@@ -112,7 +231,7 @@ describe("submitStory", () => {
   });
 
   it("redirects with the upload error and never inserts, when the cover fails validation", async () => {
-    uploadImage.mockRejectedValue(new Error("Image too large (8MB max)"));
+    uploadImage.mockRejectedValue(new UploadRejectedError(IMAGE_TOO_LARGE));
     const from = db({});
 
     await expect(submitStory(form({ title: "My story" })))
@@ -291,7 +410,11 @@ describe("submitProfileEdit", () => {
 
   it("an active member's industries ride the revision as industry_ids, primary included", async () => {
     const revisionsBuilder = queryBuilder(dbOk(null));
-    const from = db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })), member_revisions: () => revisionsBuilder });
+    const from = db({
+      members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })),
+      member_revisions: () => revisionsBuilder,
+      industries: () => queryBuilder(dbOk([{ id: 2 }, { id: 7 }, { id: 9 }])),
+    });
 
     // primary 9 not ticked — picking it as primary is enough
     await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "9" }, [2, 7]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
@@ -305,7 +428,7 @@ describe("submitProfileEdit", () => {
   it("a draft member's industries apply straight away, a single tick becoming the primary", async () => {
     const membersBuilder = queryBuilder(dbOk({ slug: "acme", status: "draft", draft_submitted_at: "2026-01-01T00:00:00.000Z", social: null, address: "", lat: null, lng: null }));
     const industriesBuilder = queryBuilder(dbOk(null));
-    db({ members: () => membersBuilder, member_industries: () => industriesBuilder });
+    db({ members: () => membersBuilder, member_industries: () => industriesBuilder, industries: () => queryBuilder(dbOk([{ id: 4 }])) });
 
     await expect(submitProfileEdit(withIndustries({ name: "Acme" }, [4]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
 
@@ -320,6 +443,36 @@ describe("submitProfileEdit", () => {
       .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/profile\?error=Choose%20which/);
     expect(from).not.toHaveBeenCalledWith("member_revisions");
     expect(from).not.toHaveBeenCalledWith("member_industries");
+  });
+
+  // Review finding 16 Oct: no cap, and an unknown id reached the foreign key
+  // and threw the member onto the error page.
+  const activeMember = () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null }));
+
+  it("refuses more industries than the cap before writing anything", async () => {
+    const from = db({ members: activeMember, member_industries: () => queryBuilder(dbOk([{ industry_id: 1 }])) });
+    await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "1" }, [1, 2, 3, 4])))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/profile?error=Choose%20up%20to%203%20industries.");
+    expect(from).not.toHaveBeenCalledWith("member_revisions");
+  });
+
+  it("lets a member keep a set past the cap that they already hold", async () => {
+    const revisionsBuilder = queryBuilder(dbOk(null));
+    db({
+      members: activeMember,
+      member_revisions: () => revisionsBuilder,
+      member_industries: () => queryBuilder(dbOk([1, 2, 3, 4].map((industry_id) => ({ industry_id })))),
+      industries: () => queryBuilder(dbOk([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }])),
+    });
+    await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "1" }, [1, 2, 3, 4]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
+    expect(revisionsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ industry_ids: [1, 2, 3, 4] }) }));
+  });
+
+  it("refuses an industry id that doesn't exist with a form error, not a thrown foreign key", async () => {
+    const from = db({ members: activeMember, industries: () => queryBuilder(dbOk([{ id: 2 }])) });
+    await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "2" }, [2, 999])))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/profile\?error=One%20of%20the%20industries/);
+    expect(from).not.toHaveBeenCalledWith("member_revisions");
   });
 
   // GAPS A1.12: a live page's edit notifies the console like every other submission.
@@ -398,24 +551,37 @@ describe("cancelMembership", () => {
 
 describe("withdrawStory / editStory", () => {
   it("withdrawStory does nothing for a story that isn't the member's own", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "awaiting_approval", member_id: "someone-else" }));
+    const storiesBuilder = storyTable(memberStory({ member_id: "someone-else" }));
     db({ stories: () => storiesBuilder });
 
     await expect(withdrawStory(form({ id: "s1" }))).resolves.toBeUndefined();
     expect(storiesBuilder.update).not.toHaveBeenCalled();
   });
 
-  it("withdrawStory does nothing once a story is past the editable states", async () => {
-    db({ stories: () => queryBuilder(dbOk({ id: "s1", status: "published", member_id: "mem1" })) });
-    await expect(withdrawStory(form({ id: "s1" }))).resolves.toBeUndefined();
+  it("withdrawStory tells the member when their story is already past the editable states", async () => {
+    const storiesBuilder = storyTable(memberStory({ status: "published" }));
+    db({ stories: () => storiesBuilder });
+    await expect(withdrawStory(form({ id: "s1" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
   });
 
-  it("withdrawStory marks an owned, pending story withdrawn", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "rejected", member_id: "mem1" }));
+  it("withdrawStory marks an owned, pending story withdrawn — conditional on the status it just read", async () => {
+    const storiesBuilder = storyTable(memberStory({ status: "rejected" }));
     db({ stories: () => storiesBuilder });
 
     await expect(withdrawStory(form({ id: "s1" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard");
     expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "withdrawn" });
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("status", "rejected");
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("member_id", "mem1");
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("source", "member");
+  });
+
+  // Review finding 16 Oct: the desk published it between the read and the write.
+  it("withdrawStory reports the change, not success, when the conditional write matched nothing", async () => {
+    db({ stories: () => storyTable(memberStory(), dbOk([])) });
+    await expect(withdrawStory(form({ id: "s1" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
   });
 
   it("editStory does nothing for a story that isn't owned and pending", async () => {
@@ -426,7 +592,7 @@ describe("withdrawStory / editStory", () => {
 
   it("editStory resubmits, clearing the prior rejection reason", async () => {
     // cover_path already on file — a resubmit isn't forced to re-upload one
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "rejected", member_id: "mem1", cover_path: "stories/mem1/existing.jpg" }));
+    const storiesBuilder = storyTable(memberStory({ status: "rejected" }));
     db({ stories: () => storiesBuilder });
 
     await expect(editStory(form({ id: "s1", title: "Fixed title" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
@@ -437,11 +603,75 @@ describe("withdrawStory / editStory", () => {
   });
 
   it("editStory requires a cover on a legacy story that has neither an existing one nor a new upload", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "rejected", member_id: "mem1", cover_path: null }));
+    const storiesBuilder = storyTable(memberStory({ status: "rejected", cover_path: null }));
     db({ stories: () => storiesBuilder });
 
     await expect(editStory(form({ id: "s1", title: "Fixed title" })))
       .rejects.toThrow("NEXT_REDIRECT:/dashboard/story/s1/edit?error=A%20cover%20image%20is%20required.");
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  // Review finding 16 Oct: a form left open while Jas published could
+  // "Save & resubmit" and pull the live story back into the queue.
+  it("editStory refuses a story that went live since the form was opened, and says so", async () => {
+    const storiesBuilder = storyTable(memberStory({ status: "published" }));
+    db({ stories: () => storiesBuilder });
+    await expect(editStory(form({ id: "s1", title: "Late edit" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("editStory refuses a story the desk edited since the form was opened (version mismatch), before uploading anything", async () => {
+    const storiesBuilder = storyTable(memberStory({ updated_at: "2026-10-15T11:30:00.5+00:00" }));
+    db({ stories: () => storiesBuilder });
+    await expect(editStory(form({ id: "s1", title: "Mine", version: "2026-10-15T09:00:00.123456+00:00" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
+
+  it("editStory's write is conditional on the state and version it read", async () => {
+    const row = memberStory();
+    const storiesBuilder = storyTable(row);
+    db({ stories: () => storiesBuilder });
+    await expect(editStory(form({ id: "s1", title: "Mine", version: row.updated_at }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("status", "awaiting_approval");
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("member_draft", false);
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("updated_at", row.updated_at);
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("member_id", "mem1");
+  });
+
+  it("editStory reports the change and drops the cover it uploaded when the conditional write matched nothing", async () => {
+    uploadImage.mockResolvedValue("stories/new-cover.jpg");
+    const from = db({ stories: () => storyTable(memberStory(), dbOk([])) });
+    await expect(editStory(form({ id: "s1", title: "Mine", category: "3" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
+    expect(removeMedia).toHaveBeenCalledWith("stories/new-cover.jpg");
+    expect(notifyConsole).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("story_categories");
+  });
+
+  it("editStory frees the cover a new upload replaced, through the in-use check", async () => {
+    uploadImage.mockResolvedValue("stories/new-cover.jpg");
+    db({ stories: () => storyTable(memberStory()) });
+    await expect(editStory(form({ id: "s1", title: "Mine" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
+    expect(removeMediaIfUnused).toHaveBeenCalledWith(["stories/existing.jpg"]);
+    expect(removeMedia).not.toHaveBeenCalledWith("stories/existing.jpg");
+  });
+
+  it("editStory keeps the cover when no new one was uploaded", async () => {
+    uploadImage.mockResolvedValue(null);
+    db({ stories: () => storyTable(memberStory()) });
+    await expect(editStory(form({ id: "s1", title: "Mine" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
+    expect(removeMediaIfUnused).not.toHaveBeenCalled();
+  });
+
+  // USER DECISION 16 Oct: "the desk's work stays the desk's".
+  it.each(["awaiting_approval", "rejected"])("a story the desk wrote about the member (%s) is neither editable nor withdrawable by them", async (status) => {
+    const storiesBuilder = storyTable(memberStory({ status, source: "admin" }));
+    db({ stories: () => storiesBuilder });
+    await expect(editStory(form({ id: "s1", title: "Hijack" }))).resolves.toBeUndefined();
+    await expect(withdrawStory(form({ id: "s1" }))).resolves.toBeUndefined();
     expect(storiesBuilder.update).not.toHaveBeenCalled();
   });
 });
@@ -465,10 +695,10 @@ describe("member story drafts", () => {
 
   it("a member's own story features them: their row goes into story_members", async () => {
     const storiesBuilder = queryBuilder(dbOk({ id: "s1" }));
-    const tagsBuilder = queryBuilder(dbOk(null));
-    db({ stories: () => storiesBuilder, story_members: () => tagsBuilder });
+    const raw = mockDb({ from: fromByTable({ stories: () => storiesBuilder }, () => queryBuilder(dbOk(null))) });
+    vi.mocked(serviceDb).mockReturnValue(asDb(raw));
     await expect(submitStory(form({ title: "Mine", intent: "draft" }))).rejects.toThrow(/NEXT_REDIRECT/);
-    expect(tagsBuilder.insert).toHaveBeenCalledWith([{ story_id: "s1", member_id: "mem1" }]);
+    expect(raw.rpc).toHaveBeenCalledWith("replace_story_members", { p_story_id: "s1", p_member_ids: ["mem1"] });
   });
 
   it("Save draft still needs a title, and says so (the button skips native validation)", async () => {
@@ -486,8 +716,10 @@ describe("member story drafts", () => {
     expect(storiesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_draft: false }));
   });
 
+  const draft = (over: Record<string, unknown> = {}) => memberStory({ status: "draft", member_draft: true, cover_path: null, ...over });
+
   it("editing a draft with Save draft keeps it a draft", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: true, cover_path: null }));
+    const storiesBuilder = storyTable(draft());
     db({ stories: () => storiesBuilder });
 
     await expect(editStory(form({ id: "s1", title: "Still drafting", intent: "draft" })))
@@ -497,7 +729,7 @@ describe("member story drafts", () => {
   });
 
   it("submitting a draft needs a cover by then", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: true, cover_path: null }));
+    const storiesBuilder = storyTable(draft());
     db({ stories: () => storiesBuilder });
     await expect(editStory(form({ id: "s1", title: "Done" })))
       .rejects.toThrow("NEXT_REDIRECT:/dashboard/story/s1/edit?error=A%20cover%20image%20is%20required.");
@@ -505,7 +737,7 @@ describe("member story drafts", () => {
   });
 
   it("submitting a draft hands it to the editor as a fresh submission", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: true, cover_path: "stories/c.jpg" }));
+    const storiesBuilder = storyTable(draft({ cover_path: "stories/c.jpg" }));
     db({ stories: () => storiesBuilder });
     await expect(editStory(form({ id: "s1", title: "Done" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_draft: false }));
@@ -513,35 +745,64 @@ describe("member story drafts", () => {
   });
 
   it("Save draft can't pull an already-submitted story back out of the editor's queue", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "awaiting_approval", member_id: "mem1", member_draft: false, cover_path: "stories/c.jpg" }));
+    const storiesBuilder = storyTable(memberStory({ cover_path: "stories/c.jpg" }));
     db({ stories: () => storiesBuilder });
     await expect(editStory(form({ id: "s1", title: "x", intent: "draft" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_draft: false }));
   });
 
   it("an admin's draft that names the member is not the member's to edit", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: false, cover_path: "c.jpg" }));
+    const storiesBuilder = storyTable(memberStory({ status: "draft", source: "admin", cover_path: "c.jpg" }));
     db({ stories: () => storiesBuilder });
     await expect(editStory(form({ id: "s1", title: "Hijack", intent: "draft" }))).resolves.toBeUndefined();
     expect(storiesBuilder.update).not.toHaveBeenCalled();
   });
 
-  it("deleteStoryDraft deletes only the member's own draft, and its cover", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "draft", member_id: "mem1", member_draft: true, cover_path: "stories/c.jpg" }));
+  it("deleteStoryDraft deletes only the member's own draft — conditionally — and its cover and body images, if unused", async () => {
+    const body = `<p>x</p><img src="https://cdn.test/storage/v1/object/public/media/stories/mem1/abc.jpg">` +
+      `<img src="https://cdn.test/storage/v1/object/public/media/stories/other/zzz.jpg">`;
+    const storiesBuilder = storyTable(draft(), dbOk([{ cover_path: "stories/c.jpg", body }]));
     db({ stories: () => storiesBuilder });
     await expect(deleteStoryDraft(form({ id: "s1" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard/submissions?deleted=draft");
     expect(storiesBuilder.delete).toHaveBeenCalled();
-    expect(removeMedia).toHaveBeenCalledWith("stories/c.jpg");
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("member_draft", true);
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("member_id", "mem1");
+    // only this member's own uploads are offered — never another member's image
+    expect(removeMediaIfUnused).toHaveBeenCalledWith(["stories/c.jpg", "stories/mem1/abc.jpg"]);
+    expect(removeMedia).not.toHaveBeenCalled();
+  });
+
+  // Review finding 16 Oct: the delete's error was never read, so a failed
+  // delete still removed the cover of a draft that still existed.
+  it("deleteStoryDraft removes no media when the delete fails", async () => {
+    db({ stories: () => storyTable(draft(), dbError("connection reset")) });
+    await expect(deleteStoryDraft(form({ id: "s1" }))).rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/story\/s1\/edit\?error=/);
+    expect(removeMediaIfUnused).not.toHaveBeenCalled();
+    expect(removeMedia).not.toHaveBeenCalled();
+  });
+
+  it("deleteStoryDraft says so, and removes nothing, when the draft was submitted in the meantime", async () => {
+    db({ stories: () => storyTable(draft(), dbOk([])) });
+    await expect(deleteStoryDraft(form({ id: "s1" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
+    expect(removeMediaIfUnused).not.toHaveBeenCalled();
   });
 
   it.each([
-    ["a submitted story", { status: "awaiting_approval", member_id: "mem1", member_draft: false }],
     ["someone else's draft", { status: "draft", member_id: "other", member_draft: true }],
-    ["an admin's draft naming the member", { status: "draft", member_id: "mem1", member_draft: false }],
-  ])("deleteStoryDraft refuses %s", async (_label, row) => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, ...row }));
+    ["an admin's draft naming the member", { status: "draft", member_id: "mem1", member_draft: false, source: "admin" }],
+  ])("deleteStoryDraft refuses %s, silently", async (_label, row) => {
+    const storiesBuilder = storyTable(memberStory(row));
     db({ stories: () => storiesBuilder });
     await expect(deleteStoryDraft(form({ id: "s1" }))).resolves.toBeUndefined();
+    expect(storiesBuilder.delete).not.toHaveBeenCalled();
+  });
+
+  it("deleteStoryDraft on the member's own story that is no longer a draft says it changed", async () => {
+    const storiesBuilder = storyTable(memberStory());
+    db({ stories: () => storiesBuilder });
+    await expect(deleteStoryDraft(form({ id: "s1" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
     expect(storiesBuilder.delete).not.toHaveBeenCalled();
   });
 });
@@ -557,7 +818,7 @@ describe("previewStoryBody", () => {
   it("closes with the member's own website line, as the published page will", async () => {
     db({ members: () => queryBuilder(dbOk({ id: "mem1", name: "Acme", website: "https://acme.example", status: "active", archived_at: null })) });
     expect(await previewStoryBody("<p>Hi</p>")).toBe(
-      `<p>Hi</p><p data-company-link=""><a href="/go/mem1?kind=website" target="_blank" rel="noopener">Acme</a></p>`,
+      `<p>Hi</p><p data-company-link=""><a href="/go/mem1?kind=website" target="_blank" rel="noopener" aria-label="Acme">Acme</a></p>`,
     );
   });
 
@@ -763,13 +1024,29 @@ describe("submitAdvert", () => {
     await expect(submitAdvert(advertForm())).rejects.toThrow(/Both%20a%20desktop%20and%20a%20mobile%20image%20are%20required/);
   });
 
-  it("cleans up uploaded artwork and reports the error when the advert insert fails", async () => {
+  it("cleans up uploaded artwork when the advert insert fails, logging the database's text rather than showing it", async () => {
     uploadImage.mockResolvedValueOnce("panels/mem1/d.jpg").mockResolvedValueOnce("panels/mem1/m.jpg");
     db({ adverts: () => queryBuilder(dbError("write failed")) });
 
-    await expect(submitAdvert(advertForm())).rejects.toThrow(/write%20failed/);
+    const thrown = await submitAdvert(advertForm()).catch((e: Error) => e);
+    expect(String(thrown)).toMatch(/NEXT_REDIRECT:\/dashboard\/advertising\/buy\?error=That%20didn/);
+    expect(String(thrown)).not.toMatch(/write%20failed/);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:submitAdvert" }));
     expect(removeMedia).toHaveBeenCalledWith("panels/mem1/d.jpg");
     expect(removeMedia).toHaveBeenCalledWith("panels/mem1/m.jpg");
+  });
+
+  it("logs, and doesn't show, a booking rejection that isn't about the dates", async () => {
+    uploadImage.mockResolvedValueOnce("panels/mem1/d.jpg").mockResolvedValueOnce("panels/mem1/m.jpg");
+    db({
+      adverts: () => queryBuilder(dbOk({ id: "ad1" })),
+      advert_bookings: () => queryBuilder(dbError("conflicting key value violates exclusion constraint \"advert_bookings_no_overlap\"")),
+    });
+
+    const thrown = await submitAdvert(advertForm()).catch((e: Error) => e);
+    expect(String(thrown)).toMatch(/error=That%20didn/);
+    expect(String(thrown)).not.toMatch(/exclusion|no_overlap/);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:submitAdvert" }));
   });
 
   it("cleans up the advert row and artwork, with a friendlier message, when the booking's dates are invalid", async () => {
@@ -794,9 +1071,36 @@ describe("submitAdvert", () => {
 
     expect(bookingsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ advert_id: "ad1", status: "awaiting_approval" }));
   });
+
+  // 16 Oct: /visit redirects readers straight to the stored link, and the
+  // member's form stored whatever was typed.
+  it("refuses a click-through link that isn't a web address, before uploading anything", async () => {
+    const from = db({});
+    await expect(submitAdvert(advertForm({ link_url: "javascript:alert(1)" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/advertising/buy?error=${encodeURIComponent("The click-through link must be a web address, e.g. https://www.example.co.uk.")}`);
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("stores a typed link as an absolute https address", async () => {
+    uploadImage.mockResolvedValueOnce("panels/mem1/d.jpg").mockResolvedValueOnce("panels/mem1/m.jpg");
+    const advertsBuilder = queryBuilder(dbOk({ id: "ad1" }));
+    db({ adverts: () => advertsBuilder, advert_bookings: () => queryBuilder(dbOk(null)) });
+    await expect(submitAdvert(advertForm({ link_url: "www.acme.co.uk" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=advert");
+    expect(advertsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ link_url: "https://www.acme.co.uk" }));
+  });
 });
 
 describe("resubmitAdvert", () => {
+  it("refuses a click-through link that isn't a web address, before uploading anything", async () => {
+    const bookings = queryBuilder(dbOk({ id: "b1", status: "draft", advert_id: "ad1", advert: { id: "ad1", member_id: "mem1" } }));
+    const from = db({ advert_bookings: () => bookings });
+    await expect(resubmitAdvert(form({ id: "b1", link_url: "data:text/html,hi" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/advert/b1?error=${encodeURIComponent("The click-through link must be a web address, e.g. https://www.example.co.uk.")}`);
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("adverts");
+  });
+
   it("does nothing for a booking that isn't the caller's own", async () => {
     db({ advert_bookings: () => queryBuilder(dbOk({ id: "b1", status: "draft", advert: { id: "ad1", member_id: "someone-else" } })) });
 
@@ -821,21 +1125,88 @@ describe("resubmitAdvert", () => {
 });
 
 describe("renewAdvertBooking", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const inDays = (n: number) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const ended = { id: "b1", status: "ended", advert_id: "ad1", price_pennies: 65000, starts_on: "2026-01-01", ends_on: "2026-01-31", advert: { member_id: "mem1" } };
+
   it("does nothing for a run that isn't the caller's own advert", async () => {
-    db({ advert_bookings: () => queryBuilder(dbOk({ id: "b1", advert_id: "ad1", price_pennies: null, advert: { member_id: "someone-else" } })) });
+    db({ advert_bookings: () => queryBuilder(dbOk({ ...ended, advert: { member_id: "someone-else" } })) });
 
     await expect(renewAdvertBooking(form({ id: "b1" }))).resolves.toBeUndefined();
   });
 
-  it("books a fresh run linked back to the one it renews", async () => {
-    const bookingsBuilder = queryBuilder(dbOk({ id: "b1", advert_id: "ad1", price_pennies: 65000, advert: { member_id: "mem1" } }));
+  it("books a fresh run linked back to the one it renews, and links the console to the new booking", async () => {
+    let call = 0;
+    // 1: the ownership read, 2: the insert returning the new booking
+    const bookingsBuilder = queryBuilder(() => (call++ === 0 ? dbOk(ended) : dbOk({ id: "b2" })));
     db({ advert_bookings: () => bookingsBuilder });
 
-    await expect(renewAdvertBooking(form({ id: "b1", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
+    await expect(renewAdvertBooking(form({ id: "b1", starts_on: inDays(7), ends_on: inDays(37) })))
       .rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=advert");
 
     // last run's price carries over for the admin to confirm on approval (fix-list 77)
     expect(bookingsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ advert_id: "ad1", renewed_from: "b1", price_pennies: 65000 }));
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({ payload: { booking_id: "b2" } }));
+  });
+
+  // 16 Oct: a double-submitted form wrote two identical requests
+  // (migration 20261016000061 now refuses the second).
+  it("says the run was already asked for, rather than failing, on a second submit", async () => {
+    let call = 0;
+    const bookingsBuilder = queryBuilder(() => (call++ === 0
+      ? dbOk(ended)
+      : dbError('duplicate key value violates unique constraint "advert_bookings_one_pending_member_renewal"', { code: "23505" })));
+    db({ advert_bookings: () => bookingsBuilder });
+
+    await expect(renewAdvertBooking(form({ id: "b1", starts_on: inDays(7), ends_on: inDays(37) })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/advert/b1?error=${encodeURIComponent("You've already asked to book this run again — that request is waiting for a decision.")}`);
+    expect(notifyConsole).not.toHaveBeenCalled();
+  });
+
+  // Review finding 16 Oct: any status was renewable — a live run, one awaiting
+  // payment, one still in draft — each queueing a duplicate request.
+  it.each(["draft", "awaiting_approval", "review_required", "awaiting_payment"])("refuses a %s run, which isn't finished", async (status) => {
+    const bookingsBuilder = queryBuilder(dbOk({ ...ended, status }));
+    db({ advert_bookings: () => bookingsBuilder });
+    await expect(renewAdvertBooking(form({ id: "b1", starts_on: inDays(7), ends_on: inDays(37) })))
+      .rejects.toThrow("NEXT_REDIRECT:/dashboard/advert/b1?error=Only%20a%20run%20that%20has%20finished%20can%20be%20booked%20again.");
+    expect(bookingsBuilder.insert).not.toHaveBeenCalled();
+  });
+
+  it("refuses a live run whose term isn't over", async () => {
+    const bookingsBuilder = queryBuilder(dbOk({ ...ended, status: "live", starts_on: inDays(-3), ends_on: inDays(10) }));
+    db({ advert_bookings: () => bookingsBuilder });
+    await expect(renewAdvertBooking(form({ id: "b1", starts_on: inDays(11), ends_on: inDays(40) }))).rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/advert\/b1\?error=Only/);
+    expect(bookingsBuilder.insert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing dates", "", ""],
+    ["an impossible date", "2026-02-30", "2026-03-30"],
+    ["a start in the past", "2020-01-01", "2020-02-01"],
+    ["an end before the start", inDays(20), inDays(10)],
+  ])("refuses %s before inserting anything", async (_label, starts_on, ends_on) => {
+    const bookingsBuilder = queryBuilder(dbOk(ended));
+    db({ advert_bookings: () => bookingsBuilder });
+    await expect(renewAdvertBooking(form({ id: "b1", starts_on, ends_on }))).rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/advert\/b1\?error=/);
+    expect(bookingsBuilder.insert).not.toHaveBeenCalled();
+    expect(notifyConsole).not.toHaveBeenCalled();
+  });
+
+  it("a run starting today is fine", async () => {
+    let call = 0;
+    db({ advert_bookings: () => queryBuilder(() => (call++ === 0 ? dbOk(ended) : dbOk({ id: "b2" }))) });
+    await expect(renewAdvertBooking(form({ id: "b1", starts_on: today, ends_on: today }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=advert");
+  });
+
+  it("tells the member, and notifies nobody, when the insert fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let call = 0;
+    db({ advert_bookings: () => queryBuilder(() => (call++ === 0 ? dbOk(ended) : dbError("violates foreign key"))) });
+    await expect(renewAdvertBooking(form({ id: "b1", starts_on: inDays(7), ends_on: inDays(37) })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/advert\/b1\?error=The%20new%20run/);
+    expect(notifyConsole).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });
 
@@ -855,6 +1226,19 @@ describe("proposeOwnArtworkSwap", () => {
 
     await expect(proposeOwnArtworkSwap(form({ advert_id: "ad1", booking_id: "b1" })))
       .rejects.toThrow(/already%20have%20a%20swap%20awaiting%20a%20decision/);
+  });
+
+  it("logs, and doesn't show, any other rejection of the swap", async () => {
+    uploadImage.mockResolvedValueOnce("panels/mem1/d.jpg").mockResolvedValueOnce("panels/mem1/m.jpg");
+    db({
+      adverts: () => queryBuilder(dbOk({ id: "ad1", member_id: "mem1" })),
+      advert_artwork_proposals: () => queryBuilder(dbError("permission denied for table advert_artwork_proposals")),
+    });
+
+    const thrown = await proposeOwnArtworkSwap(form({ advert_id: "ad1", booking_id: "b1" })).catch((e: Error) => e);
+    expect(String(thrown)).toMatch(/NEXT_REDIRECT:\/dashboard\/advert\/b1\?error=That%20didn/);
+    expect(String(thrown)).not.toMatch(/permission/);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:proposeOwnArtworkSwap" }));
   });
 
   it("submits the proposal pending review", async () => {

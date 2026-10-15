@@ -8,6 +8,7 @@ import { YoutubePreview } from "@/components/YoutubePreview";
 import { youtubeId } from "@/lib/youtube";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import type { UploadResult } from "@/lib/upload-limits";
+import { UploadField } from "@/components/UploadField";
 
 type Props = {
   action: (formData: FormData) => Promise<void>;
@@ -67,8 +68,7 @@ export function VideoForm({ action, uploadImage, industries, member, initial, wi
         </div>
         <div>
           <label htmlFor="thumbnail" className="text-sm font-medium">Thumbnail</label>
-          <input id="thumbnail"
-            type="file"
+          <UploadField id="thumbnail"
             name="thumbnail"
             accept="image/jpeg,image/png,image/webp"
             className="mt-1 w-full text-sm"

@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { BookingCard } from "@/components/console/BookingSections";
 import { ArtworkRunCards } from "@/components/console/ArtworkRunCards";
 import { saveBannerRun, saveBannerSpots } from "../../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -131,11 +132,11 @@ export default async function BannersPage(props: PageProps<"/console/adverts/ban
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="desktop" className="text-sm font-medium">Desktop image (1280×170)</label>
-              <input id="desktop" name="desktop" type="file" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
+              <UploadField id="desktop" name="desktop" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
             </div>
             <div>
               <label htmlFor="mobile" className="text-sm font-medium">Mobile image (370×280)</label>
-              <input id="mobile" name="mobile" type="file" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
+              <UploadField id="mobile" name="mobile" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
             </div>
           </div>
           <div>

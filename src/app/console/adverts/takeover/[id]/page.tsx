@@ -9,7 +9,9 @@ import { TakeoverColorPicker } from "@/components/console/TakeoverColorPicker";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { SubmitButton } from "@/components/SubmitButton";
 import { InvoicePanel } from "@/components/console/InvoicePanel";
+import { CancelPlacementForm } from "@/components/console/CancelPlacementForm";
 import { saveTakeoverPlacement } from "../../../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +26,15 @@ export default async function TakeoverEditPage(props: PageProps<"/console/advert
   if (!UUID_RE.test(id)) notFound();
   const db = serviceDb();
 
-  const [takeover, members] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  const [takeover, members, paid] = await Promise.all([
     must(
       db.from("placements").select("id, member_id, config, starts_on, ends_on, price_pennies, awaiting_payment, member:members(name)").eq("id", id).eq("kind", "takeover").maybeSingle(),
       "console/takeover edit",
     ),
     must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/takeover members"),
+    // a paid booking isn't cancelled from here (refunds are by hand)
+    must(db.from("invoices").select("id").eq("placement_id", id).eq("status", "paid").limit(1), "console/takeover paid invoice"),
   ]);
   if (!takeover) notFound();
   const config = takeover.config as { hex?: string; banner_path?: string };
@@ -62,7 +67,7 @@ export default async function TakeoverEditPage(props: PageProps<"/console/advert
         <div>
           <label htmlFor="banner" className="text-sm font-medium">Top banner</label>
           {banner && <Image src={banner} alt="Current takeover banner" width={1280} height={170} className="mt-1 h-auto w-full rounded border" unoptimized />}
-          <input id="banner" name="banner" type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
+          <UploadField id="banner" name="banner" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
           <p className="mt-1 text-xs text-graphite">Leave empty to keep the current banner.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -72,10 +77,18 @@ export default async function TakeoverEditPage(props: PageProps<"/console/advert
         <label className="block text-sm sm:max-w-[12rem]">Price (£)
           <input name="price_pounds" inputMode="decimal" placeholder="optional" defaultValue={takeover.price_pennies != null ? (takeover.price_pennies / 100).toFixed(2) : ""} className="mt-1 block w-full rounded border px-3 py-2" />
         </label>
-        <p className="text-xs text-graphite">Changing the price records it; it doesn&apos;t raise or change an invoice.</p>
+        <p className="text-xs text-graphite">A price added here is invoiced when you save, and held for payment if it hasn&apos;t started. A new price or member on an unpaid invoice replaces it; a paid one isn&apos;t re-billed.</p>
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
-      <InvoicePanel target={{ placement_id: takeover.id }} returnTo={`/console/adverts/takeover/${takeover.id}`} />
+      <InvoicePanel
+        target={{ placement_id: takeover.id }}
+        returnTo={`/console/adverts/takeover/${takeover.id}`}
+        raise={{ kind: "placement", id: takeover.id, pricePennies: takeover.price_pennies, billable: true }}
+      />
+      {/* Only while nothing has run and nothing is paid — cancelPlacement checks both again. */}
+      {!paid?.length && (takeover.awaiting_payment || takeover.starts_on > today) && (
+        <CancelPlacementForm id={takeover.id} noun="takeover" held={takeover.awaiting_payment} />
+      )}
     </div>
   );
 }

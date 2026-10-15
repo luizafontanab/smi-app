@@ -17,7 +17,9 @@ import { createClient } from "@supabase/supabase-js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { allRows } from "../src/lib/db/all-rows";
 import { listAllObjects } from "./lib/storage-list";
+import { storyMemberShortfall } from "./lib/story-member-check";
 import { isLocalSupabaseUrl } from "./lib/target-guard";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -66,7 +68,7 @@ async function main() {
   console.log(`— against  ${EXTRACT_DIR}/seed\n`);
 
   const members = seed("members.seed.json");
-  const stories = seed<{ member_wp_ids?: number[]; wp_member_id: number | null; cover_path: string | null }>(
+  const stories = seed<{ slug: string; member_wp_ids?: number[]; wp_member_id: number | null; cover_path: string | null }>(
     "stories.seed.json",
   );
   const videos = seed<{ thumbnail_path: string | null }>("videos.seed.json");
@@ -186,15 +188,50 @@ async function main() {
   }
 
   console.log("\nRelationships");
-  const expectedLinks = stories.reduce((n, s) => n + (s.member_wp_ids?.length ?? 0), 0);
-  // Imported stories only: once the app is live, admins tag members on new
-  // stories too (Jas 13/10 item 12), and those links aren't the export's.
-  const { count: importLinks, error: linkErr } = await db
-    .from("story_members")
-    .select("story_id, story:stories!inner(source)", { count: "exact", head: true })
-    .eq("story.source", "import");
-  if (linkErr) throw new Error(`story_members: ${linkErr.message}`);
-  check("story_members (imported stories)", importLinks ?? 0, expectedLinks);
+  // Per imported story: every member the export tagged is still tagged, and
+  // the primary is among the tags. A subset, not an exact count — admins
+  // re-tag stories once the app is live (Jas 13/10 item 12) and 20261015000003
+  // adds a missing primary, so extra tags are expected (scripts/lib/story-member-check.ts).
+  {
+    const page = <T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>, what: string) =>
+      allRows<T>(async (from, to) => {
+        const { data, error } = await build(from, to);
+        if (error) throw new Error(`${what}: ${error.message}`);
+        return { data };
+      });
+    const [liveMembers, liveStories, links] = await Promise.all([
+      page<{ id: string; slug: string }>((f, t) => db.from("members").select("id, slug").order("id").range(f, t), "members"),
+      page<{ id: string; slug: string; member_id: string | null }>(
+        (f, t) => db.from("stories").select("id, slug, member_id").eq("source", "import").order("id").range(f, t),
+        "stories",
+      ),
+      page<{ story_id: string; member_id: string }>(
+        (f, t) => db.from("story_members").select("story_id, member_id").order("story_id").order("member_id").range(f, t),
+        "story_members",
+      ),
+    ]);
+    const idBySlug = new Map(liveMembers.map((m) => [m.slug, m.id]));
+    const memberIdByWp = new Map(
+      (members as { wp_member_id: number; slug: string }[]).flatMap((m) => (idBySlug.has(m.slug) ? [[m.wp_member_id, idBySlug.get(m.slug)!] as const] : [])),
+    );
+    const r = storyMemberShortfall(stories, liveStories, links, memberIdByWp);
+    const line = (ok: boolean, label: string, n: number, detail: string[]) => {
+      if (!ok) allOk = false;
+      console.log(
+        `  ${ok ? "✓" : "✗"} ${label.padEnd(30)} ${String(n).padStart(6)}` +
+          (detail.length ? `  (${detail.slice(0, 5).join(", ")}${detail.length > 5 ? ", …" : ""})` : ""),
+      );
+    };
+    console.log(`  – imported stories checked        ${String(r.checked).padStart(6)}`);
+    line(!r.untagged.length, "export tags missing", r.untagged.length, r.untagged.map((u) => `${u.slug}: wp ${u.missingWpIds.join("/")}`));
+    line(!r.primaryMissing.length, "primary not among tags", r.primaryMissing.length, r.primaryMissing);
+    // A local run seeds a subset of members, so absent ones are expected there.
+    if (isLocalSupabaseUrl(SUPABASE_URL)) {
+      console.log(`  – tagged members not in DB        ${String(r.absentMembers.length).padStart(6)}   expected locally (member subset)`);
+    } else {
+      line(!r.absentMembers.length, "tagged members not in DB", r.absentMembers.length, r.absentMembers.map((wp) => `wp ${wp}`));
+    }
+  }
   check(
     "stories with member_id",
     await count("stories", "member_id"),

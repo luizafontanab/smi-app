@@ -1308,6 +1308,8 @@ export type Database = {
           advert_booking_id: string | null
           amount_pennies: number
           bundle_id: string | null
+          checkout_expires_at: string | null
+          checkout_session_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -1324,6 +1326,8 @@ export type Database = {
           advert_booking_id?: string | null
           amount_pennies: number
           bundle_id?: string | null
+          checkout_expires_at?: string | null
+          checkout_session_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -1340,6 +1344,8 @@ export type Database = {
           advert_booking_id?: string | null
           amount_pennies?: number
           bundle_id?: string | null
+          checkout_expires_at?: string | null
+          checkout_session_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -2571,6 +2577,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_industry_backfill: { Args: { plan: Json }; Returns: undefined }
       bump_consent_stats: { Args: { p_consented: boolean }; Returns: undefined }
       bump_newsletter_metric: {
         Args: { p_broadcast_id: string; p_metric: string }
@@ -2601,6 +2608,7 @@ export type Database = {
           status: string
         }[]
       }
+      media_paths_in_use: { Args: { p_paths: string[] }; Returns: string[] }
       member_event_months: {
         Args: { p_member: string; p_since: string }
         Returns: {
@@ -2609,6 +2617,75 @@ export type Database = {
           month: string
           n: number
         }[]
+      }
+      member_story_view_count: {
+        Args: { p_member: string; p_since?: string }
+        Returns: number
+      }
+      member_story_view_months: {
+        Args: { p_member: string; p_since: string }
+        Returns: {
+          month: string
+          n: number
+        }[]
+      }
+      members_in_taxonomies: {
+        Args: {
+          p_industries?: string[]
+          p_membership_types?: string[]
+          p_services?: string[]
+        }
+        Returns: {
+          address: string | null
+          archived_at: string | null
+          billing_mode: string
+          brand_hex: string | null
+          cancel_requested_at: string | null
+          comped_until: string | null
+          contact_email: string | null
+          created_at: string
+          description: string | null
+          draft_submitted_at: string | null
+          grace_until: string | null
+          hero_path: string | null
+          id: string
+          industry_id: number | null
+          is_bundle_account: boolean
+          joined_at: string | null
+          lat: number | null
+          lng: number | null
+          logo_path: string | null
+          name: string
+          onboarding_seen: boolean
+          paid_at: string | null
+          phone: string | null
+          search_tsv: unknown
+          slug: string
+          social: Json
+          status: Database["public"]["Enums"]["member_status"]
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          video_url: string | null
+          website: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "members"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      normalise_contact_emails: {
+        Args: never
+        Returns: {
+          address: string
+          contact_ids: string[]
+          emails: string[]
+        }[]
+      }
+      replace_story_members: {
+        Args: { p_member_ids: string[]; p_story_id: string }
+        Returns: undefined
       }
       run_daily_rollup: { Args: never; Returns: undefined }
       search_members: {
@@ -2620,7 +2697,20 @@ export type Database = {
           slug: string
         }[]
       }
+      settle_invoice: {
+        Args: {
+          p_invoice_id: string
+          p_paid_amount?: number
+          p_paid_currency?: string
+          p_session_id?: string
+        }
+        Returns: Json
+      }
       site_sessions_last_year: { Args: never; Returns: number }
+      staged_uploads_older_than: {
+        Args: { p_before: string; p_limit?: number }
+        Returns: string[]
+      }
       story_summary: {
         Args: { "": Database["public"]["Tables"]["stories"]["Row"] }
         Returns: {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
-import { canPreviewStory, ownerMayPreview, previewBackHref, type PreviewableStory } from "@/lib/story-preview";
+import { canPreviewStory, ownerMayPreview, previewBackHref, redirectsToLiveStory, type PreviewableStory } from "@/lib/story-preview";
 
 // /preview/story/[id] reads with the service role, so this function is the
 // whole permission check (Jas 13/10 items 10/15). Exhaustive on purpose.
@@ -56,5 +56,26 @@ describe("previewBackHref", () => {
   it("sends an admin to the console editor and a member to theirs", () => {
     expect(previewBackHref(admin, "s1")).toBe("/console/stories/s1");
     expect(previewBackHref(owner, "s1")).toBe("/dashboard/story/s1/edit");
+  });
+});
+
+// Review finding 16 Oct: the permission check ran before the published →
+// /news redirect, and no published story passes it — so the owner of a story
+// approved while their preview tab was open got a 404.
+describe("redirectsToLiveStory", () => {
+  const live = story({ status: "published" });
+
+  it("sends the member it is about, and admins, to the live page", () => {
+    expect(redirectsToLiveStory(owner, live)).toBe(true);
+    expect(redirectsToLiveStory(admin, live)).toBe(true);
+    expect(redirectsToLiveStory(owner, story({ status: "published", source: "admin" }))).toBe(true);
+  });
+
+  it("nobody else, and never an unpublished story", () => {
+    expect(redirectsToLiveStory(other, live)).toBe(false);
+    expect(redirectsToLiveStory(null, live)).toBe(false);
+    expect(redirectsToLiveStory({ ...owner, memberId: null }, story({ status: "published", member_id: null }))).toBe(false);
+    expect(redirectsToLiveStory(owner, story())).toBe(false);
+    expect(redirectsToLiveStory(admin, story({ status: "scheduled" }))).toBe(false);
   });
 });

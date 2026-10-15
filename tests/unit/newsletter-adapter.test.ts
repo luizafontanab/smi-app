@@ -225,13 +225,18 @@ describe("ResendNewsletterSender", () => {
       ),
     })));
     const fetchSpy = vi.spyOn(globalThis, "fetch")
+      // Anything not answered below fails the test rather than reaching Resend.
+      .mockImplementation(async (input) => { throw new Error(`unexpected fetch: ${String(input)}`); })
       .mockResolvedValueOnce(new Response("{}", { status: 200 })) // sub@ created
-      .mockResolvedValueOnce(new Response("{}", { status: 409 })); // unsub@ already exists
+      .mockResolvedValueOnce(new Response("{}", { status: 409 })) // unsub@ already exists
+      .mockResolvedValueOnce(new Response(JSON.stringify({ object: "list", has_more: false, data: [] }), { status: 200 })); // the segment listing the prune reads
 
     const result = await getNewsletterSender().syncContacts();
 
     expect(result).toEqual({ pushed: 2, failed: 0 });
-    const bodies = fetchSpy.mock.calls.map(([, init]) => JSON.parse(init?.body as string));
+    const bodies = fetchSpy.mock.calls
+      .filter(([, init]) => init?.method === "POST")
+      .map(([, init]) => JSON.parse(init?.body as string));
     expect(bodies[0]).toMatchObject({ email: "sub@example.com", unsubscribed: false });
     expect(bodies[1]).toMatchObject({ email: "unsub@example.com", unsubscribed: true });
   });

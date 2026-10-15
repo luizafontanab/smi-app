@@ -4,7 +4,9 @@ import { applyPaymentResult, applyPaymentFailure, applySubscriptionEnded } from 
 import { mockBaseUrl } from "@/lib/adapters/mock-base-url";
 import { serviceDb } from "@/lib/db/server";
 import { ADVERT_INVOICE_KIND } from "@/lib/adapters/advert-checkout";
-import { settleInvoice } from "@/lib/advert-payments";
+import { formatPounds, settleInvoice } from "@/lib/advert-payments";
+import { logError } from "@/lib/log";
+import { notifyConsole } from "@/lib/notify-admin";
 
 /**
  * Stripe events → membership state (GAPS B1.3/B1.4).
@@ -13,29 +15,41 @@ import { settleInvoice } from "@/lib/advert-payments";
  * every other adapter in this repo (no vendor SDKs). Stripe's scheme: the
  * `Stripe-Signature` header carries `t=<unix ts>,v1=<hex hmac>[,v0=...]`; the
  * signed payload is `${t}.${rawBody}`, keyed with the webhook signing secret.
+ *
+ * The header can carry SEVERAL v1 signatures: while a signing secret is being
+ * rolled, Stripe signs with the old and the new one for up to 24 hours. Any
+ * one matching is enough — keeping only the last one, as this used to, would
+ * reject every event signed first with the secret this deployment still has.
  */
 
 const TOLERANCE_MS = 5 * 60_000;
 
 function verify(secret: string, header: string | null, body: string): boolean {
   if (!header) return false;
-  const parts = Object.fromEntries(
-    header.split(",").map((kv) => {
-      const [k, v] = kv.split("=");
-      return [k, v] as const;
-    }),
-  );
-  const timestamp = parts.t;
-  const signature = parts.v1;
-  if (!timestamp || !signature) return false;
+  let timestamp: string | null = null;
+  const signatures: string[] = [];
+  for (const kv of header.split(",")) {
+    const at = kv.indexOf("=");
+    if (at < 0) continue;
+    const key = kv.slice(0, at).trim();
+    const value = kv.slice(at + 1).trim();
+    if (key === "t") timestamp = value;
+    else if (key === "v1" && value) signatures.push(value);
+  }
+  if (!timestamp || !signatures.length) return false;
 
   const sentAt = Number(timestamp) * 1000;
   if (!Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > TOLERANCE_MS) return false;
 
-  const expected = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
-  const candidate = Buffer.from(signature, "hex");
-  const expectedBuf = Buffer.from(expected, "hex");
-  return candidate.length === expectedBuf.length && timingSafeEqual(candidate, expectedBuf);
+  const expected = Buffer.from(createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex"), "hex");
+  // Every candidate is compared, match or not, so how long this takes says
+  // nothing about which one (if any) matched.
+  let ok = false;
+  for (const signature of signatures) {
+    const candidate = Buffer.from(signature, "hex");
+    if (candidate.length === expected.length && timingSafeEqual(candidate, expected)) ok = true;
+  }
+  return ok;
 }
 
 type StripeEvent = {
@@ -45,6 +59,8 @@ type StripeEvent = {
       id?: string;
       client_reference_id?: string;
       payment_status?: string;
+      amount_total?: number | null;
+      currency?: string | null;
       metadata?: { member_id?: string; kind?: string; invoice_id?: string };
       subscription?: string;
       customer?: string;
@@ -106,20 +122,57 @@ export async function POST(request: NextRequest) {
   if (object?.metadata?.kind === ADVERT_INVOICE_KIND) {
     const invoiceId = object.metadata.invoice_id;
     // A card settles inside checkout.session.completed; a delayed method
-    // (bank debit) completes the session unpaid and settles later.
+    // (bank debit) completes the session unpaid and settles later. Anything
+    // else for an advert session — async_payment_failed, expired — settles
+    // nothing and is acknowledged: the invoice stays issued and payable.
     const paid =
       (event.type === "checkout.session.completed" && object.payment_status === "paid") ||
       event.type === "checkout.session.async_payment_succeeded";
-    let settled = false;
-    if (invoiceId && paid) {
-      settled = (await settleInvoice(invoiceId, { sessionId: object.id })).settled;
-      // Not settled is normal on a replay (already paid). It is NOT normal if
-      // the invoice was voided while the member had Checkout open — money
-      // taken for nothing owed. Logged so the error log surfaces it; the
-      // refund is a by-hand Stripe dashboard job.
-      if (!settled) console.error(`[stripe-webhook] advert payment ${object.id} for invoice ${invoiceId} settled nothing — already paid, or voided (check for a refund).`);
+    if (!invoiceId || !paid) return NextResponse.json({ ok: true, advert_invoice: invoiceId ?? null, settled: false });
+
+    // A database error throws out of settleInvoice() and this route answers
+    // 500, so Stripe retries — the alternative, a 200 for a payment nobody
+    // recorded, is how a paid run used to end up voided as 'unpaid'.
+    let result;
+    try {
+      result = await settleInvoice(invoiceId, {
+        sessionId: object.id,
+        // Defence in depth: the session's amount came from the invoice row,
+        // but a payment that doesn't match it must never release the run.
+        paid: { amountPennies: object.amount_total ?? null, currency: object.currency ?? null },
+      });
+    } catch (e) {
+      logError({ source: "webhook", area: "stripe-webhook:advert-settle", error: e, context: { invoice_id: invoiceId, session_id: object.id ?? null } });
+      return NextResponse.json({ error: "could not record the payment" }, { status: 500 });
     }
-    return NextResponse.json({ ok: true, advert_invoice: invoiceId ?? null, settled });
+    if (result.settled) return NextResponse.json({ ok: true, advert_invoice: invoiceId, settled: true });
+
+    // Settled nothing. Harmless only when this same session already paid it
+    // (a replay, or the return page beat us here). Anything else is money
+    // taken for nothing owed — paid twice, paid after it was voided, or not
+    // what the invoice says — and needs a human and probably a refund.
+    if (result.reason === "paid" && result.paidSessionId === object.id) {
+      return NextResponse.json({ ok: true, advert_invoice: invoiceId, settled: false, replay: true });
+    }
+    const amount = typeof object.amount_total === "number" ? `${formatPounds(object.amount_total)} ${(object.currency ?? "").toUpperCase()}`.trim() : "an unknown amount";
+    const why =
+      result.reason === "paid" ? `the invoice was already paid${result.paidSessionId ? ` by another checkout session (${result.paidSessionId})` : " (marked paid by hand)"}`
+      : result.reason === "void" ? "the invoice had been cancelled (void) before the payment arrived"
+      : result.reason === "amount_mismatch" ? "the amount paid doesn't match the invoice — nothing was released"
+      : "no such invoice exists";
+    logError({
+      source: "webhook",
+      area: `stripe-webhook:advert-unowed:${result.reason}`,
+      error: new Error(`advert payment ${object.id} for invoice ${invoiceId} settled nothing: ${why}`),
+      context: { invoice_id: invoiceId, session_id: object.id ?? null, reason: result.reason, amount_total: object.amount_total ?? null, currency: object.currency ?? null },
+    });
+    await notifyConsole({
+      kind: "payment_taken",
+      memberId: result.memberId ?? object.metadata.member_id ?? null,
+      payload: result.memberId || object.metadata.member_id ? { member_id: (result.memberId ?? object.metadata.member_id)! } : {},
+      message: `Check for a refund: a card payment of ${amount} (Stripe checkout ${object.id}) came in for an advertising invoice, but ${why}. Nothing was released — look it up in the Stripe dashboard.`,
+    });
+    return NextResponse.json({ ok: true, advert_invoice: invoiceId, settled: false, alerted: result.reason });
   }
 
   let memberId = event.data?.object?.client_reference_id ?? event.data?.object?.metadata?.member_id ?? null;
@@ -131,7 +184,10 @@ export async function POST(request: NextRequest) {
 
   switch (event.type) {
     case "checkout.session.completed": {
-      await applyPaymentResult(memberId, { kind: "paid" });
+      // Keyed on the session so a Stripe retry of this event can't record the
+      // join fee — invoice, PDF, receipt — a second time (membership.ts).
+      const sessionId = event.data?.object?.id;
+      await applyPaymentResult(memberId, { kind: "paid" }, sessionId?.startsWith("cs_") ? { sessionId } : {});
       // B1.5: remembered so a later cancel action has something of ours to
       // act on — neither column was ever written before this.
       const subscriptionId = event.data?.object?.subscription;

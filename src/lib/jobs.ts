@@ -4,6 +4,7 @@ import { notifyConsole } from "./notify-admin";
 import { siteUrl } from "./site-url";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "./social-caps";
 import { enqueueStoryLive, taggedMembers } from "./story-members";
+import { isMemberLinkable } from "./member-visibility";
 
 /**
  * Postgres-backed job queue (TECH-DECISIONS #13).
@@ -28,7 +29,8 @@ export type JobKind =
   | "stats_summary"          // daily sweep: fires per member on their chosen stats cadence
   | "lead_alert"             // daily sweep: fires per member on their chosen leads cadence
   | "dev_error_digest"       // daily: the last 24h of recorded errors, emailed to DEV_ALERT_EMAIL (docs/logging.md)
-  | "log_retention";         // daily: drops log rows older than 90 days
+  | "log_retention"          // daily: drops log rows older than 90 days
+  | "upload_staging_sweep";  // hourly: removes direct uploads staged but never saved (lib/staged-upload)
 
 /**
  * In development only, a job that is due now runs as soon as the response is
@@ -64,6 +66,15 @@ function runDueJobInlineInDev(jobId: string, dueAt: Date) {
   void import("next/server")
     .then(({ after }) => after(() => runJobById(jobId)))
     .catch(() => {});
+}
+
+/**
+ * For a job queued by something other than enqueue() — settle_invoice()
+ * (20261016000003) inserts the receipt in the same transaction as the payment
+ * — so it gets the same immediate run in development that enqueue() gives.
+ */
+export function runQueuedJobSoon(jobId: string) {
+  runDueJobInlineInDev(jobId, new Date());
 }
 
 export async function enqueue(kind: JobKind, payload: Record<string, unknown> = {}, dueAt?: Date) {
@@ -136,6 +147,7 @@ export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   await ensurePeriodic("lead_alert", 24 * 60 * 60);
   await ensurePeriodic("dev_error_digest", 24 * 60 * 60);
   await ensurePeriodic("log_retention", 24 * 60 * 60);
+  await ensurePeriodic("upload_staging_sweep", 60 * 60);
 
   const { data: due } = await db
     .from("jobs")
@@ -261,7 +273,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       if (payload.video_id) {
         const { data: video } = await db
           .from("videos")
-          .select("id, title, slug, thumbnail_path, member:members(name, social)")
+          .select("id, title, slug, thumbnail_path, member:members(name, social, status, archived_at)")
           .eq("id", String(payload.video_id))
           .single();
         if (!video) return;
@@ -279,14 +291,15 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         await getSocialPublisher().publish({
           text: `${video.title}\n\nhttps://sheetmetalindustries.com/video/${video.slug}`,
           imagePath: video.thumbnail_path,
-          tagHandles: (video.member?.social ?? {}) as Record<string, string>,
+          // Same rule as a story's tags below: no tag for a member without a public page.
+          tagHandles: (isMemberLinkable(video.member) ? video.member.social ?? {} : {}) as Record<string, string>,
         });
         break;
       }
       const { data: story } = await db
         .from("stories")
         // FK named: story_members makes a bare `members` embed ambiguous here.
-        .select("id, title, slug, excerpt, cover_path, member_id, member:members!stories_member_id_fkey(name, social)")
+        .select("id, title, slug, excerpt, cover_path, member_id, member:members!stories_member_id_fkey(name, social, status, archived_at)")
         .eq("id", String(payload.story_id))
         .single();
       if (!story) return;
@@ -303,15 +316,19 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         return;
       }
       // Every other member the story features is tagged too (Jas 13/10 item
-      // 12). Same rule as the primary's tag — ask-jas 14 (archived members in
-      // social posts) is still open, and its answer should apply to both alike.
-      const extras = (await taggedMembers(db, story.id, story.member_id)).filter((m) => m.id !== story.member_id);
+      // 12). Same rule for the primary and the extras: only a member with a
+      // public page (isMemberLinkable — not archived, active or grace) is
+      // tagged. ask-jas 14 (archived members in social posts) is still open;
+      // until Jas answers, the safe default is not to put a company that has
+      // left — or been archived — into a public post. Applies alike to both.
+      const extras = (await taggedMembers(db, story.id, story.member_id))
+        .filter((m) => m.id !== story.member_id && isMemberLinkable(m));
       const { getSocialPublisher } = await import("./adapters/social");
       await getSocialPublisher().publish({
         text: `${story.title}\n\nhttps://sheetmetalindustries.com/news/${story.slug}`,
         imagePath: story.cover_path,
         // @-tag from the CRM-stored handle — never hand-typed
-        tagHandles: (story.member?.social ?? {}) as Record<string, string>,
+        tagHandles: (isMemberLinkable(story.member) ? story.member.social ?? {} : {}) as Record<string, string>,
         extraTagHandles: extras.map((m) => (m.social ?? {}) as Record<string, string>),
       });
       break;
@@ -457,6 +474,16 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       if (eventsErr) throw new Error(`log retention (events) failed: ${eventsErr.message}`);
       const { error: occErr } = await db.from("error_occurrences").delete().lt("occurred_at", cutoff);
       if (occErr) throw new Error(`log retention (occurrences) failed: ${occErr.message}`);
+      break;
+    }
+    case "upload_staging_sweep": {
+      // A file chosen in a form that was then abandoned sits in the private
+      // staging bucket until this; past STAGED_UPLOAD_MAX_AGE_HOURS nothing
+      // can claim it any more. Hourly where the runner ticks every minute;
+      // in production it rides the once-a-day cron (HUMAN-TODO §13.1), so an
+      // abandoned file can sit for up to two days — private, and never served.
+      const { sweepStagedUploads } = await import("./staged-upload");
+      await sweepStagedUploads();
       break;
     }
     case "comp_expiry": {
@@ -610,9 +637,22 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       // has passed was never shown and now never will be: end it as 'unpaid'
       // and void its invoice so the member's pay link stops asking for money
       // for dates already gone. A bundle's one invoice is voided only once no
-      // part of it is still held. Placements have no status to end — their
-      // held rows simply never surface (src/lib/queries.ts) — so only their
-      // invoices are voided. No member email: they chose not to pay.
+      // part of it is still owed for (voidBundleInvoiceIfAbandoned). Placements
+      // have no status to end — their held rows simply never surface
+      // (src/lib/queries.ts) — so only their invoices are voided. No member
+      // email: they chose not to pay.
+      //
+      // Voiding goes through voidInvoices(), which expires an open Checkout
+      // Session first, and a failure throws so the sweep retries. The order is
+      // what makes the retry work: a run's invoice is voided BEFORE the run is
+      // ended (an ended run is no longer found here), and a bundle is checked
+      // by state — any bundle still holding an issued invoice with a part
+      // ended 'unpaid' — not only the ones this pass ended.
+      const { voidInvoices, voidBundleInvoiceIfAbandoned } = await import("./advert-payments");
+      const voided = <T extends { ok: true } | { ok: false; error: string }>(what: string, r: T) => {
+        if (!r.ok) throw new Error(`advert_lifecycle: could not void the invoice for ${what}: ${(r as { error: string }).error}`);
+        return r as Extract<T, { ok: true }>;
+      };
       const { data: lapsed } = await db
         .from("advert_bookings")
         .select("id, bundle_id, ends_on")
@@ -620,30 +660,54 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         .lt("ends_on", today);
       const lapsedBundles = new Set<string>();
       for (const b of lapsed ?? []) {
+        // A session that completed while this ran means the member is paying:
+        // leave the run held for the webhook to release, not ended as unpaid.
+        if (voided(`booking ${b.id}`, await voidInvoices({ advert_booking_id: b.id })).paying.length) continue;
         const { data: done } = await db.from("advert_bookings")
           .update({ status: "ended", ended_at: now, ended_reason: "unpaid", ended_notified_for: b.ends_on, updated_at: now })
           .eq("id", b.id)
           .eq("status", "awaiting_payment")
           .select("id");
-        if (!done?.length) continue;
-        await db.from("invoices").update({ status: "void" }).eq("advert_booking_id", b.id).eq("status", "issued");
-        if (b.bundle_id) lapsedBundles.add(b.bundle_id);
+        if (done?.length && b.bundle_id) lapsedBundles.add(b.bundle_id);
+      }
+      const { data: openBundleInvoices, error: bundleErr } = await db
+        .from("invoices")
+        .select("bundle_id")
+        .eq("status", "issued")
+        .not("bundle_id", "is", null);
+      if (bundleErr) throw new Error(`advert_lifecycle: could not read open bundle invoices: ${bundleErr.message}`);
+      const openBundles = [...new Set((openBundleInvoices ?? []).map((i) => i.bundle_id).filter((id): id is string => Boolean(id)))];
+      if (openBundles.length) {
+        const { data: unpaidParts, error: partsErr } = await db
+          .from("advert_bookings")
+          .select("bundle_id")
+          .in("bundle_id", openBundles)
+          .eq("ended_reason", "unpaid");
+        if (partsErr) throw new Error(`advert_lifecycle: could not read lapsed bundle parts: ${partsErr.message}`);
+        for (const p of unpaidParts ?? []) if (p.bundle_id) lapsedBundles.add(p.bundle_id);
       }
       for (const bundleId of lapsedBundles) {
-        const { count: stillHeld } = await db.from("advert_bookings")
-          .select("id", { count: "exact", head: true })
-          .eq("bundle_id", bundleId)
-          .eq("status", "awaiting_payment");
-        if (!stillHeld) await db.from("invoices").update({ status: "void" }).eq("bundle_id", bundleId).eq("status", "issued");
+        voided(`bundle ${bundleId}`, await voidBundleInvoiceIfAbandoned(bundleId));
       }
       const { data: lapsedPlacements } = await db
         .from("placements")
         .select("id")
         .eq("awaiting_payment", true)
         .lt("ends_on", today);
+      // The hold flag stays set on a lapsed placement for good, so this list
+      // only grows: look up which of them still have an issued invoice first,
+      // rather than one void call per old placement every night.
       const placementIds = (lapsedPlacements ?? []).map((p) => p.id);
       if (placementIds.length) {
-        await db.from("invoices").update({ status: "void" }).in("placement_id", placementIds).eq("status", "issued");
+        const { data: stillOpen, error: openErr } = await db
+          .from("invoices")
+          .select("placement_id")
+          .in("placement_id", placementIds)
+          .eq("status", "issued");
+        if (openErr) throw new Error(`advert_lifecycle: could not read lapsed placements' invoices: ${openErr.message}`);
+        for (const placementId of new Set((stillOpen ?? []).map((i) => i.placement_id).filter((id): id is string => Boolean(id)))) {
+          voided(`placement ${placementId}`, await voidInvoices({ placement_id: placementId }));
+        }
       }
 
       // 2. finished. Includes scheduled runs whose whole term elapsed inside a

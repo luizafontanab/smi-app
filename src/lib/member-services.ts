@@ -68,6 +68,33 @@ export async function replaceMemberMembershipTypes(db: Db, memberId: string, ids
   if (insertError) throw insertError;
 }
 
+/**
+ * How many industries a member may file themselves under: the set drives the
+ * directory filter and every /industry/* member list, so an uncapped set is a
+ * way onto all ten pages at once. Three is a working default pending Jas's
+ * call (ask-jas, 16 Oct) — a member's own profile save enforces it; the
+ * console does not, since the industry backfill assigns from the member's
+ * content without a cap and Jas curates from there.
+ */
+export const MAX_MEMBER_INDUSTRIES = 3;
+
+/**
+ * A readable refusal for the member's profile form, or null. Past the cap is
+ * allowed only for a set the member already has — the backfill can give
+ * someone four, and asking them to drop one before any unrelated save would be
+ * a rule they never broke. They can keep or trim such a set, never grow it.
+ */
+export function memberIndustriesError(ids: number[], current: readonly number[] = []): string | null {
+  const unique = [...new Set(ids)];
+  if (unique.length <= MAX_MEMBER_INDUSTRIES) return null;
+  const held = new Set(current);
+  if (unique.every((id) => held.has(id))) return null;
+  return `Choose up to ${MAX_MEMBER_INDUSTRIES} industries.`;
+}
+
+/** Said when a posted industry id isn't in `industries` — a stale form, or a crafted one. */
+export const UNKNOWN_INDUSTRY_ERROR = "One of the industries you chose isn't available any more — reload the page and choose again.";
+
 /** The `industries` checkboxes every form posts, de-duplicated. */
 export function industryIdsFromForm(formData: FormData): number[] {
   return [...new Set(formData.getAll("industries").map(Number).filter(Boolean))];

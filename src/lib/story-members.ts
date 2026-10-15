@@ -29,15 +29,16 @@ export function resolveStoryMembers(
   return { ids: [primaryId, ...extras] };
 }
 
-/** Replace a story's tagged members with exactly `ids` (delete-then-insert, as replaceMemberIndustries). */
+/**
+ * Replace a story's tagged members with exactly `ids`, in one transaction
+ * (migration 20261016000010). Two PostgREST calls — delete, then insert — left
+ * the story with nobody tagged when the insert failed, which drops it from
+ * every profile and timeline (they read through story_members!inner). Throws
+ * the database error; the previous set is untouched when it does.
+ */
 export async function replaceStoryMembers(db: Db, storyId: string, ids: readonly string[]) {
-  const { error } = await db.from("story_members").delete().eq("story_id", storyId);
+  const { error } = await db.rpc("replace_story_members", { p_story_id: storyId, p_member_ids: [...new Set(ids)] });
   if (error) throw error;
-  if (!ids.length) return;
-  const { error: insertError } = await db
-    .from("story_members")
-    .insert([...new Set(ids)].map((member_id) => ({ story_id: storyId, member_id })));
-  if (insertError) throw insertError;
 }
 
 export type TaggedMember = {

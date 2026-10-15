@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   deleteCategory, deleteContentPage, deleteIndustry, deleteMedia, markAllInboxRead, markInboxRead, renameMedia,
-  replyToInboxMessage, saveCategory,
+  replyToInboxMessage, saveCategory, saveResource,
   markProspect, saveContentPage, saveIndustry, saveSocialChannels,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
@@ -11,15 +11,17 @@ import type { CurrentUser } from "@/lib/auth";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireConsole, removeMedia, recordRename } = vi.hoisted(() => ({
+const { requireConsole, removeMedia, recordRename, uploadImage, uploadDocument } = vi.hoisted(() => ({
   requireConsole: vi.fn(async (): Promise<CurrentUser> => ({
     userId: "admin1", email: "jas@smi.local", role: "admin", memberId: null, displayName: "Jas",
   })),
   removeMedia: vi.fn<(path: string | null | undefined) => Promise<void>>(async () => {}),
   recordRename: vi.fn(async () => {}),
+  uploadImage: vi.fn<(file: File | null, prefix: string) => Promise<string | null>>(async () => null),
+  uploadDocument: vi.fn<(file: File | null, prefix: string) => Promise<string | null>>(async () => null),
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
-vi.mock("@/lib/media", () => ({ removeMedia, uploadImage: vi.fn(async () => null), uploadDocument: vi.fn(async () => null) }));
+vi.mock("@/lib/media", () => ({ removeMedia, uploadImage, uploadDocument }));
 vi.mock("@/lib/redirects", () => ({ recordRename }));
 
 // The reply goes out through the same adapter as every other outgoing mail;
@@ -32,6 +34,38 @@ afterEach(() => {
   removeMedia.mockReset().mockResolvedValue(undefined);
   recordRename.mockReset().mockResolvedValue(undefined);
   send.mockReset().mockResolvedValue(undefined);
+  uploadImage.mockReset().mockResolvedValue(null);
+  uploadDocument.mockReset().mockResolvedValue(null);
+});
+
+/* ---------- member resources: an image or a PDF, staged or posted ---------- */
+
+describe("saveResource", () => {
+  const NAME = "3d6f0a1b-2c3d-4e5f-8a9b-0c1d2e3f4a5b.pdf";
+
+  it("takes a staged PDF — a size the old request could never carry — through uploadDocument", async () => {
+    const bucket = {
+      info: vi.fn(async () => dbOk({ size: 15 * 1024 * 1024, contentType: "application/pdf", metadata: { name: "Rate card.pdf" } })),
+      download: vi.fn(async () => dbOk(new Blob(["%PDF-1.7"], { type: "application/pdf" }))),
+      remove: vi.fn(async () => dbOk([])),
+    };
+    const resources = queryBuilder(dbOk(null));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ resources: () => resources }), storage: { from: vi.fn(() => bucket) } })));
+    uploadDocument.mockResolvedValue("resources/abc.pdf");
+
+    await expect(saveResource(form({ title: "Rate card", file: `console/${NAME}` }))).rejects.toThrow("NEXT_REDIRECT:/console/resources?saved=1");
+    const [file, prefix] = uploadDocument.mock.calls[0];
+    expect(file?.type).toBe("application/pdf");
+    expect(file?.name).toBe("Rate card.pdf");
+    expect(prefix).toBe("resources");
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(resources.insert).toHaveBeenCalledWith({ title: "Rate card", path: "resources/abc.pdf", kind: "document" });
+  });
+
+  it("asks for a file when none came, staged or posted", async () => {
+    await expect(saveResource(form({ title: "Rate card" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/resources\?error=Choose%20a%20file/);
+    expect(uploadDocument).not.toHaveBeenCalled();
+  });
 });
 
 function form(fields: Record<string, string>) {

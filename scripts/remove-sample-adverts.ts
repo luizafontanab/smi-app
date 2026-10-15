@@ -13,6 +13,10 @@
  *   pnpm remove-sample-adverts:prod         # prod  (dry run)
  *   pnpm remove-sample-adverts:prod -- --delete
  *
+ * A hosted target is refused without --remote, whatever the shell's env points
+ * at; remove-sample-adverts:prod passes it. So a shell with production's env
+ * still sourced cannot turn the "local" --delete into a delete on the live site.
+ *
  * What counts as a sample: an advert whose artwork is under `panels/`, the
  * only place seedAdverts() writes. Nothing else writes there.
  *
@@ -33,6 +37,7 @@ import { createClient } from "@supabase/supabase-js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertScriptTarget } from "./lib/target-guard";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,6 +54,9 @@ if (!process.env.SUPABASE_SECRET_KEY) {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 if (!SECRET_KEY) throw new Error("SUPABASE_SECRET_KEY not set");
+// Local unless --remote, which only remove-sample-adverts:prod passes — the same rule the
+// seeds and the industry backfill follow (scripts/lib/target-guard.ts).
+assertScriptTarget(SUPABASE_URL, "the sample-advert removal");
 const db = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
 
 const DELETE = process.argv.includes("--delete");

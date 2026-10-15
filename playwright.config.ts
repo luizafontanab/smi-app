@@ -2,6 +2,10 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/e2e",
+  // Refuses to start unless both the env files and the running dev server
+  // point at the local Supabase stack — these specs write through the server,
+  // and a .env.local aimed at a hosted project would aim them there too.
+  globalSetup: "./tests/e2e/global-setup.ts",
   timeout: 30_000,
   // Local failures should stay loud (a retried flake hides a real race);
   // in CI one retry absorbs the Docker stack's latency spikes.

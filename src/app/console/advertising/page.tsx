@@ -5,6 +5,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { AD_FORMAT_KEYS, DEFAULT_AD_FORMATS, type AdFormat } from "@/lib/advert-formats";
 import { saveAdvertFormats, saveMediaPack } from "../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,10 @@ export default async function AdvertisingContentPage(props: PageProps<"/console/
           </p>
         )}
         <form action={saveMediaPack} className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-          <input type="file" name="pack" accept="application/pdf" required className="text-sm" />
+          {/* Wrapped so the field's upload status sits under it, not as an extra item in this row. */}
+          <div>
+            <UploadField kind="pdf" name="pack" aria-label="Media pack PDF" accept="application/pdf" required className="text-sm" />
+          </div>
           <button className="rounded bg-ink px-4 py-2 text-white">Upload</button>
         </form>
       </section>
@@ -76,7 +80,7 @@ export default async function AdvertisingContentPage(props: PageProps<"/console/
             const example = mediaUrl(f?.example_path ?? null);
             return (
               <div key={key} className="rounded-lg border p-3">
-                <p className="text-xs font-bold uppercase text-brand">Format {key}</p>
+                <p className="text-xs font-bold uppercase text-brand-text">Format {key}</p>
                 <input
                   name={`name_${key}`}
                   defaultValue={f?.name ?? ""}
@@ -104,10 +108,13 @@ export default async function AdvertisingContentPage(props: PageProps<"/console/
                     unoptimized
                   />
                 )}
-                <label className="mt-2 block text-xs text-graphite">
+                {/* Labelled by id, not by wrapping: the field's upload status
+                    and errors follow it, and inside the label they would
+                    become part of the input's accessible name. */}
+                <label htmlFor={`example_${key}`} className="mt-2 block text-xs text-graphite">
                   Example image shown on the public card{example ? " — leave empty to keep the current one" : ""}
-                  <input type="file" name={`example_${key}`} accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="mt-1 block text-sm" />
                 </label>
+                <UploadField id={`example_${key}`} name={`example_${key}`} accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="mt-1 block text-sm" />
               </div>
             );
           })}

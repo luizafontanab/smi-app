@@ -6,6 +6,7 @@ import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { editMachine, memberUploadImage, withdrawMachine } from "../../../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edit your equipment listing" };
@@ -50,7 +51,7 @@ export default async function EditMemberMachine(props: PageProps<"/dashboard/equ
               // eslint-disable-next-line @next/next/no-img-element
               <img src={mediaUrl(machine.image_path) ?? undefined} alt="" className="mt-1 h-16 rounded border" />
             )}
-            <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
+            <UploadField id="image" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
             <p className="mt-1 text-xs text-graphite">Landscape, JPG/PNG, max 8MB. Leave empty to keep the current photo.</p>
           </div>
         </div>

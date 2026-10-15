@@ -1,6 +1,6 @@
 ---
 name: docs-bookkeeping
-description: Route a finished change to the right doc in docs/ and tick it in that doc's format — GAPS, HUMAN-TODO, GO-LIVE, ask-jas, fix-list. Use when work lands, when something turns out to be blocked, or when a new question for the client appears.
+description: Route a finished change to the right doc in docs/ and close it in that doc's format (collapse into Closed/Done lines; only fix-list ticks) — GAPS, HUMAN-TODO, GO-LIVE, ask-jas, fix-list. Use when work lands, when something turns out to be blocked, or when a new question for the client appears.
 ---
 
 # Keeping the docs honest
@@ -12,9 +12,10 @@ exactly its own kind of thing — a blocked item filed in `GAPS.md` instead of
 Every substantive commit here edits at least one of these, and some commits do nothing else
 (`fa4a848`, `d93014e` — "Tick HUMAN-TODO 9.1 and 10.1 — prod migrations applied").
 
-## Tick as you go, not at the end
+## Close items as you go, not at the end
 
-`AGENTS.md` asks for items to be ticked **as they land**. Do it that way, per item, not as a
+`AGENTS.md` asks for items to be ticked off **as they land** (collapsed, in every list but
+fix-list — see below). Do it that way, per item, not as a
 documentation sweep once the whole pass is finished:
 
 - **Finish an item → update its doc entry before starting the next one.** On a multi-item
@@ -47,24 +48,32 @@ Two items frequently come out of one change: a fix-list item whose production ha
 migration pushed gets ticked in `fix-list.md` **and** added to `HUMAN-TODO.md`. That pairing
 is the norm, not a special case.
 
+## Only fix-list.md keeps ticks
+
+`GAPS.md`, `HUMAN-TODO.md` and `GO-LIVE.md` **never contain `[x]`** (since 5 Oct 2026 — each
+file's preamble says so). A finished item is *collapsed*: its open entry is removed and its ID
+moves into the one-line **Closed:** (GAPS) or **Done:** (HUMAN-TODO, GO-LIVE) index at the end
+of its section, with the essentials in a few words. The full write-up lives in git history —
+the preambles name the commit to `git show` for older notes. Only `fix-list.md` ticks in place.
+
 ## GAPS.md — never renumber, never delete
 
 Numbers are referenced from commit messages, migrations and the other docs, so they're
-permanent. Tick in place and append a **`**Fixed:**`** paragraph saying what was actually
-built *and what it cost* — the trade-off is the part worth writing:
+permanent and never reused. When an item closes, remove its open entry and add it to the
+section's **Closed:** line, saying in a clause what was actually built *and what it cost* —
+the trade-off is the part worth keeping:
 
 ```markdown
-- [x] **A1.3 — No category CRUD (A22).** `categories` is read in three console pages and
-  written nowhere. → `src/app/console/actions.ts:29`
-  **Fixed:** new `/console/categories` list+form, `saveCategory`/`deleteCategory` following
-  the `saveContentPage` shape. `kind` is locked after creation (changing it under a category
-  already referenced by stories would be a broken edit). *(Working tree, uncommitted.)*
+**Closed:** A1.1 console cover upload · A1.3 category CRUD: `/console/categories` list+form;
+`kind` locked after creation (changing it under a referenced category would be a broken edit)
 ```
 
-- `→` always precedes the `path:line` pointer(s), on the item line.
-- Other labels are in use where `**Fixed:**` would be a lie: `**Deliberately held:**`,
-  `**Deferred (31 Aug 2026)** —`, `**Correction:**`, `**Stale — this was already fully
-  built.**`, `**Found and fixed en route:**`, `**Hardened 1 Sep:**`. Pick the honest one.
+- Open items keep the `- [ ] **ID — Title.** …` form; `→` always precedes the `path:line`
+  pointer(s), on the item line.
+- A partly-closed item stays open with the residual named (`**A1.5 (residual) — …**`), and
+  the closed half goes on the Closed line.
+- Other labels are in use on open items where "closed" would be a lie: `**Deliberately held:**`,
+  `**Deferred (31 Aug 2026)** —`, `**Correction:**`, `**Hardened 1 Sep:**`. Pick the honest one.
 - To retract a claim, **strike it through in place** (`~~…~~`) and write the correction
   after it. Don't delete — the retraction is the record.
 
@@ -80,9 +89,8 @@ That instruction is in its own preamble. Everything here is written, merged and 
 - Sections are `## N · Title — what it blocks`, appended in order, always **before**
   `## Not in this list`. A dated work-pass gets its own section (`## 10 · Fix-list pass
   (3 Sep) — production follow-through`).
-- Completed items become `[x]` with a dated note appended: `— done 6 Sep 2026 with 9.1
-  (one \`pnpm db:push:prod\`)`.
-- Both `[x]` and `[ x ]` appear in the file. Read either as done; write `[x]`.
+- Completed items are collapsed, not ticked: remove the entry and add its ID to the section's
+  **Done:** line with a dated clause — `9.2 pushed 6 Sep with 9.1 (one \`pnpm db:push:prod\`)`.
 - File it the moment the work goes inert — that's the point at which you know *why* it's
   blocked, which is most of the entry.
 
@@ -95,6 +103,8 @@ the business. Each item carries both halves:
 - [ ] **1.1 — Validate the Industries list and every member's industry.**
       **Check:** … **If wrong:** …
 ```
+
+Checked items collapse into the section's **Done:** line, as in HUMAN-TODO.
 
 ## ask-jas.md — open questions, no checkboxes
 

@@ -1,3 +1,4 @@
+import { allRows } from "../db/all-rows";
 import { serviceDb } from "../db/server";
 import { mediaUrl } from "../db/server";
 import { siteUrl } from "../site-url";
@@ -43,23 +44,31 @@ export interface NewsletterSender {
   syncContacts(): Promise<{ pushed: number; failed: number }>;
 }
 
+/**
+ * Every contacts row a query matches. Paged, because PostgREST stops at
+ * max_rows (1000) without saying so and the list is ~2,700; and loud, because
+ * syncContacts removes from the Resend segment every address these don't
+ * return — a short or failed read must never pass for "these people left".
+ */
+const readContacts = <T>(what: string, query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) =>
+  allRows<T>(async (from, to) => {
+    const { data, error } = await query(from, to);
+    if (error) throw new Error(`newsletter: reading ${what}: ${error.message}`);
+    return { data };
+  });
+
 /** Contacts we are allowed to mail: subscribed and never unsubscribed. */
-async function subscribedContacts() {
-  const { data } = await serviceDb()
-    .from("contacts")
-    .select("email, name")
-    .eq("subscribed", true)
-    .is("unsubscribed_at", null);
-  return data ?? [];
+function subscribedContacts() {
+  return readContacts<{ email: string; name: string | null }>("subscribed contacts", (from, to) =>
+    serviceDb().from("contacts").select("email, name").eq("subscribed", true).is("unsubscribed_at", null).order("id").range(from, to),
+  );
 }
 
 /** Everyone we must NOT mail, so their opt-out is mirrored at the provider too. */
-async function unsubscribedContacts() {
-  const { data } = await serviceDb()
-    .from("contacts")
-    .select("email")
-    .not("unsubscribed_at", "is", null);
-  return data ?? [];
+function unsubscribedContacts() {
+  return readContacts<{ email: string }>("unsubscribed contacts", (from, to) =>
+    serviceDb().from("contacts").select("email").not("unsubscribed_at", "is", null).order("id").range(from, to),
+  );
 }
 
 /**
@@ -217,11 +226,12 @@ class ResendNewsletterSender implements NewsletterSender {
     path: string,
     body: unknown,
     headers?: Record<string, string>,
+    method: "GET" | "POST" | "PATCH" | "DELETE" = "POST",
   ): Promise<{ ok: boolean; status: number; body: string; retryAfterMs?: number }> {
     const res = await fetch(`https://api.resend.com${path}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body),
+      method,
+      headers: { Authorization: `Bearer ${this.apiKey}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const retryAfterHeader = res.headers.get("retry-after");
     const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
@@ -241,31 +251,106 @@ class ResendNewsletterSender implements NewsletterSender {
    *
    * Contacts are upserted; unsubscribes are pushed as `unsubscribed: true`
    * rather than deleted, so Resend keeps suppressing them.
+   *
+   * Then the segment is pruned: every address in it that is neither of those
+   * any more is taken out (DELETE /contacts/{email}/segments/{id}). Without
+   * this an address that left `contacts` stayed in the segment, subscribed,
+   * for good — and broadcasts go to the segment. That is every contact whose
+   * email changed (a Bigin pull or a console edit; the row now holds the new
+   * address and the old one is never pushed again), every deleted contact, and
+   * everyone moved to "not subscribed", which isn't an unsubscribe and so was
+   * never pushed as one. Removal from the segment only: the Resend contact,
+   * and any opt-out it carries, stay.
+   *
+   * The same listing says whether Resend has each address as unsubscribed.
+   * One we have as unsubscribed that Resend still has as subscribed gets
+   * PATCH /contacts/{email} { unsubscribed: true }: the push above treats a
+   * 409 as done, and Resend doesn't document whether a create for an existing
+   * contact updates it — so without this an unsubscribe made here might never
+   * reach Resend, and the next broadcast would go to them.
+   *
+   * Removals count as pushes, so the job's numbers stay `{ pushed, failed }`.
    */
   async syncContacts(): Promise<{ pushed: number; failed: number }> {
     const [subscribed, unsubscribed] = await Promise.all([subscribedContacts(), unsubscribedContacts()]);
     let pushed = 0;
     let failed = 0;
+    // Provider backpressure, not a bad contact — let jobs.ts's rateLimitPauseMs
+    // recognise this and back off, instead of counting every throttled contact
+    // toward the job's max_attempts.
+    const throttled = (res: { status: number; body: string; retryAfterMs?: number }, what: string) => {
+      if (res.status === 429) throw new EmailSendError(`Resend rate-limited ${what}: ${res.body.slice(0, 200)}`, 429, res.retryAfterMs);
+    };
 
     const push = async (email: string, isUnsubscribed: boolean) => {
       const res = await this.api("/contacts", {
         email,
         unsubscribed: isUnsubscribed,
-        segments: [this.segmentId],
+        // Resend's create-contact takes segments as objects carrying the id,
+        // not bare ids (resend.com/docs/api-reference/contacts/create-contact).
+        segments: [{ id: this.segmentId }],
       });
       // A duplicate is the expected steady state, not a failure.
       if (res.ok || res.status === 409) { pushed++; return; }
-      // Provider backpressure, not a bad contact — let jobs.ts's
-      // rateLimitPauseMs recognise this and back off, instead of counting
-      // every throttled contact toward the job's max_attempts.
-      if (res.status === 429) throw new EmailSendError(`Resend rate-limited /contacts: ${res.body.slice(0, 200)}`, 429, res.retryAfterMs);
+      throttled(res, "/contacts");
       failed++;
     };
 
     for (const contact of subscribed) await push(contact.email, false);
     for (const contact of unsubscribed) await push(contact.email, true);
 
+    const norm = (email: string) => email.trim().toLowerCase();
+    const mailable = new Set(subscribed.map((c) => norm(c.email)));
+    const optedOut = new Set(unsubscribed.map((c) => norm(c.email)));
+    const members = await this.segmentMembers();
+    if (members === null) return { pushed, failed: failed + 1 }; // couldn't list it — nothing pruned, and the job says so
+    for (const { email, unsubscribed: offAtResend } of members) {
+      if (mailable.has(norm(email))) continue;
+      if (optedOut.has(norm(email))) {
+        if (offAtResend !== false) continue; // already suppressed there
+        const res = await this.api(`/contacts/${encodeURIComponent(email)}`, { unsubscribed: true }, undefined, "PATCH");
+        if (res.ok) { pushed++; continue; }
+        throttled(res, "unsubscribe update");
+        failed++;
+        continue;
+      }
+      const res = await this.api(`/contacts/${encodeURIComponent(email)}/segments/${encodeURIComponent(this.segmentId)}`, undefined, undefined, "DELETE");
+      // 404: already gone from the segment (or from Resend) — the state we wanted
+      if (res.ok || res.status === 404) { pushed++; continue; }
+      throttled(res, "segment removal");
+      failed++;
+    }
     return { pushed, failed };
+  }
+
+  /**
+   * Everyone in the segment (GET /segments/{id}/contacts, 100 a page, `after`
+   * the last id) with Resend's own unsubscribed flag, or null when a page
+   * can't be read — the prune must never run off a partial list.
+   */
+  private async segmentMembers(): Promise<{ email: string; unsubscribed?: boolean }[] | null> {
+    const members: { email: string; unsubscribed?: boolean }[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < 1000; page++) {
+      const query: string = `limit=100${after ? `&after=${encodeURIComponent(after)}` : ""}`;
+      const res = await this.api(`/segments/${encodeURIComponent(this.segmentId)}/contacts?${query}`, undefined, undefined, "GET");
+      if (res.status === 429) throw new EmailSendError(`Resend rate-limited the segment listing: ${res.body.slice(0, 200)}`, 429, res.retryAfterMs);
+      if (!res.ok) {
+        console.error(`[newsletter] listing segment ${this.segmentId} failed (${res.status}): ${res.body.slice(0, 200)}`);
+        return null;
+      }
+      let parsed: { data?: { id?: string; email?: string; unsubscribed?: boolean }[]; has_more?: boolean };
+      try {
+        parsed = JSON.parse(res.body);
+      } catch {
+        return null;
+      }
+      const rows = parsed.data ?? [];
+      for (const r of rows) if (r.email) members.push({ email: r.email, unsubscribed: r.unsubscribed });
+      if (!parsed.has_more || !rows.length || !rows[rows.length - 1].id) return members;
+      after = rows[rows.length - 1].id!;
+    }
+    return null; // 100k addresses without an end — something is wrong; prune nothing
   }
 
   async sendIssue(issueId: string, idempotencyKey?: string): Promise<SendResult> {

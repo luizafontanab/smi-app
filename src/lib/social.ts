@@ -260,9 +260,38 @@ export const STORY_POST_CHANNELS = ["linkedin", "facebook", "x"] as const satisf
 export type StoryPostChannel = (typeof STORY_POST_CHANNELS)[number];
 
 /**
+ * The networks' own link-out and sign-in bounces. They sit on the right host,
+ * so the host check passes them — but they forward wherever their parameter
+ * says (facebook.com/l.php?u=…, linkedin.com/redir/redirect?url=…), which
+ * would let "SMI's LinkedIn post" button send a reader anywhere. Review, 16 Oct.
+ *   · hosts: Facebook's l./lm. link shims (l.instagram.com is the same shim,
+ *     listed for when Instagram joins STORY_POST_CHANNELS);
+ *   · paths: link shims, external-link warnings, share/intent dialogs, and
+ *     sign-in/OAuth pages that take a return URL.
+ * Real post shapes — /posts/…, /feed/update/…, /share/p/…, /status/…,
+ * /i/web/status/… — are none of these.
+ */
+const REDIRECTOR_HOSTS = ["l.facebook.com", "lm.facebook.com", "l.instagram.com"];
+const REDIRECTOR_PATHS =
+  /^\/(?:l\.php|flx\/|dialog\/|sharer|share\.php|login|logout|checkpoint|redir\/|safety\/go|slink|authwall|uas\/|signup|i\/redirect|i\/flow\/|intent\/|share\/?$)/i;
+
+/** A query parameter carrying a whole URL is how any redirector, listed or not, takes its target. */
+const carriesUrl = (url: URL) =>
+  [...url.searchParams.values()].some((v) => /^(?:https?:)?\/\//i.test(v.trim()));
+
+/**
  * A pasted post URL → the value to store, or null when it isn't one: https
- * only, on that network's own host (any subdomain). Stricter than socialHref,
- * which also builds URLs from bare handles — a post link must be pasted whole.
+ * only, on that network's own host (any subdomain), and not one of the
+ * network's redirectors. Stricter than socialHref, which also builds URLs from
+ * bare handles — a post link must be pasted whole.
+ *
+ * The redirector check is app-level only; stories_social_posts_check
+ * (20261015000002) still checks just scheme and host. Deliberately: every
+ * stored value is re-validated through here before it is rendered
+ * (storyPostLinks), so a redirector written behind the app's back is never
+ * linked — and the only writer is the console's saveStory, through this. A
+ * redirector blocklist in a CHECK would need a constraint drop/recreate each
+ * time a network adds a path.
  */
 export function storyPostUrl(key: StoryPostChannel, raw: string): string | null {
   const value = raw.trim();
@@ -273,7 +302,9 @@ export function storyPostUrl(key: StoryPostChannel, raw: string): string | null 
     const url = new URL(value);
     const host = url.hostname.toLowerCase();
     const onHost = channel.domains.some((d) => host === d || host.endsWith(`.${d}`));
-    return url.protocol === "https:" && onHost ? url.toString() : null;
+    if (url.protocol !== "https:" || !onHost) return null;
+    if (REDIRECTOR_HOSTS.includes(host) || REDIRECTOR_PATHS.test(url.pathname) || carriesUrl(url)) return null;
+    return url.toString();
   } catch {
     return null;
   }

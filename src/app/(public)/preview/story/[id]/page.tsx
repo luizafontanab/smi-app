@@ -5,7 +5,7 @@ import { currentUser } from "@/lib/auth";
 import { mediaUrl } from "@/lib/db/server";
 import { storyForPreview } from "@/lib/queries";
 import { loadStoryPageData } from "@/lib/story-page";
-import { canPreviewStory, previewBackHref } from "@/lib/story-preview";
+import { canPreviewStory, previewBackHref, redirectsToLiveStory } from "@/lib/story-preview";
 import { STORY_STATUS_LABELS, isMemberDraft, type ListStatus } from "@/lib/story-board";
 import { UUID_RE } from "@/lib/validate";
 import { StoryPageView } from "@/components/story/StoryPageView";
@@ -42,9 +42,12 @@ export default async function StoryPreviewPage(props: PageProps<"/preview/story/
   if (!user) redirect(`/login?next=${encodeURIComponent(`/preview/story/${id}`)}`);
 
   const story = await storyForPreview(id);
+  // Published since the link was opened: its owner or an admin goes to the
+  // live page. Checked before the permission test, which no published story
+  // passes — that order used to 404 the owner of a freshly approved story.
+  if (story && redirectsToLiveStory(user, story)) redirect(`/news/${story.slug}`);
   // Not found and not allowed look the same, so an id can't be probed.
   if (!story || !canPreviewStory(user, story)) notFound();
-  if (story.status === "published") redirect(`/news/${story.slug}`);
 
   const data = await loadStoryPageData(story, { preview: true });
   const cats = (story.categories ?? []).map((c) => c.category).filter(Boolean) as { slug: string; name: string }[];

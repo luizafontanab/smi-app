@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { serviceDb } from "./db/server";
+import { websiteUrl } from "./website-url";
 
 /**
  * Advert selection — the neutrality-critical path.
@@ -278,8 +279,17 @@ export function advertHref(ad: LiveAdvert): string {
   return `/visit/${ad.advertId}`;
 }
 
+/**
+ * Where /visit/[id] sends the reader. The stored link_url goes through
+ * websiteUrl() here, not only on save: rows saved before the console validated
+ * it can hold "www.acme.co.uk" — a RELATIVE redirect, to /visit/www.acme.co.uk —
+ * or a non-http scheme, and the member dashboard's advert form still stores it
+ * as typed. A link that can't be made a web address counts as no link at all,
+ * so the click lands on the member page or home rather than nowhere.
+ */
 export function resolveAdvertTarget(linkUrl: string | null, memberSlug: string | null): string {
-  if (linkUrl) return linkUrl;
+  const href = websiteUrl(linkUrl);
+  if (href) return href;
   if (memberSlug) return `/member/${memberSlug}`;
   return "/";
 }

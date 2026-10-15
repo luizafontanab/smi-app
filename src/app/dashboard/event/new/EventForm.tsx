@@ -7,6 +7,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import type { UploadResult } from "@/lib/upload-limits";
+import { UploadField } from "@/components/UploadField";
 
 type Props = {
   action: (formData: FormData) => Promise<void>;
@@ -103,8 +104,7 @@ export function EventForm({ action, uploadImage, member, industries, initial, wi
         </div>
         <div>
           <label htmlFor="cover" className="text-sm font-medium">Cover image (optional)</label>
-          <input id="cover"
-            type="file"
+          <UploadField id="cover"
             name="cover"
             accept="image/jpeg,image/png,image/webp"
             className="mt-1 w-full text-sm"

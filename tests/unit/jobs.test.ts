@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { enqueue, runDueJobs, runJobById, type JobKind } from "@/lib/jobs";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { SendResult } from "@/lib/adapters/newsletter";
 
@@ -209,6 +209,7 @@ describe("runDueJobs", () => {
         "publish_scheduled",
         "rollup_daily",
         "stats_summary",
+        "upload_staging_sweep",
       ].sort(),
     );
   });
@@ -313,6 +314,46 @@ describe("runJob kinds", () => {
       tagHandles: { x: "acme" },
       extraTagHandles: [{ x: "blmgroup" }], // the primary isn't repeated as an extra
     }));
+  });
+
+  // Review finding 12 (ask-jas 14 still open): no tag for a member without a
+  // public page — archived, or lapsed — primary or extra alike.
+  it("social_push (story) — tags no member who isn't linkable, primary or extra", async () => {
+    const j = job("social_push", { payload: { story_id: "s1" } });
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 0)), queryBuilder(dbOk(null))], {
+      stories: () => queryBuilder(dbOk({
+        id: "s1", title: "Southern Manufacturing", slug: "southern", excerpt: "", cover_path: null, member_id: "m1",
+        member: { name: "Acme", social: { x: "acme" }, status: "lapsed", archived_at: null },
+      })),
+      story_members: () => queryBuilder(dbOk([
+        { member: { id: "m1", slug: "acme", name: "Acme", logo_path: null, social: { x: "acme" }, status: "lapsed", archived_at: null } },
+        { member: { id: "m2", slug: "blm", name: "BLM", logo_path: null, social: { x: "blmgroup" }, status: "active", archived_at: "2026-10-01T00:00:00Z" } },
+        { member: { id: "m3", slug: "cut", name: "Cutters", logo_path: null, social: { x: "cutters" }, status: "grace", archived_at: null } },
+      ])),
+      settings: () => queryBuilder(dbOk({ value: { per_day: 3 } })),
+    });
+
+    await runJobById(j.id);
+
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+      tagHandles: {},
+      extraTagHandles: [{ x: "cutters" }],
+    }));
+  });
+
+  it("social_push (video) — doesn't tag an archived member", async () => {
+    const j = job("social_push", { payload: { video_id: "v1" } });
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 0)), queryBuilder(dbOk(null))], {
+      videos: () => queryBuilder(dbOk({
+        id: "v1", title: "Laser demo", slug: "laser-demo", thumbnail_path: null,
+        member: { name: "Acme", social: { x: "acme" }, status: "active", archived_at: "2026-10-01T00:00:00Z" },
+      })),
+      settings: () => queryBuilder(dbOk({ value: { per_day: 3 } })),
+    });
+
+    await runJobById(j.id);
+
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ tagHandles: {} }));
   });
 
   it("publish_scheduled — tells each co-featured member their story is live", async () => {
@@ -602,6 +643,35 @@ describe("runJob kinds", () => {
     expect(occBuilder.lt).toHaveBeenCalledWith("occurred_at", cutoff);
   });
 
+  // Direct uploads (lib/staged-upload): a file staged for a form nobody saved.
+  it("upload_staging_sweep — removes staged uploads older than the age limit, in batches, through the storage API", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-16T12:00:00.000Z"));
+    const j = job("upload_staging_sweep");
+    const fullBatch = Array.from({ length: 100 }, (_, i) => `members/m1/${i}.jpg`);
+    const rpc = vi.fn()
+      .mockResolvedValueOnce(dbOk(fullBatch))
+      .mockResolvedValueOnce(dbOk(["console/last.pdf"]));
+    const remove = vi.fn(async (names: string[]) => dbOk(names.map((name) => ({ name }))));
+    const jobsCalls = [queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))];
+    let i = 0;
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: (table: string) => (table === "jobs" ? jobsCalls[Math.min(i++, jobsCalls.length - 1)] : queryBuilder(dbOk(null))),
+      rpc,
+      storage: { from: vi.fn(() => ({ remove })) },
+    })));
+
+    await runJobById(j.id);
+    vi.useRealTimers();
+
+    const before = new Date(Date.parse("2026-10-16T12:00:00.000Z") - 24 * 3_600_000).toISOString();
+    expect(rpc).toHaveBeenCalledWith("staged_uploads_older_than", { p_before: before, p_limit: 100 });
+    expect(rpc).toHaveBeenCalledTimes(2); // a short second batch means the bucket is clear
+    expect(remove.mock.calls.map(([names]) => names)).toEqual([fullBatch, ["console/last.pdf"]]);
+    // ran to completion, not retried
+    expect(jobsCalls[2].update).toHaveBeenCalledWith(expect.objectContaining({ status: "done" }));
+  });
+
   it("lead_alert — skips a weekly-cadence member on a non-Monday", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-04T00:00:00.000Z")); // Wednesday
@@ -664,7 +734,10 @@ describe("runJob kinds", () => {
       if (call === 3) return dbOk([{ id: "b1" }]); // phase 1b: the conditional end
       return dbOk([]);
     });
-    const invoicesBuilder = queryBuilder(dbOk(null));
+    // voidInvoices: read the issued invoice, then the conditional void
+    const invoicesBuilder = queryBuilder((): DbResult => (callsOf(invoicesBuilder.update).length
+      ? dbOk([{ id: "inv1" }])
+      : dbOk([{ id: "inv1", checkout_session_id: null }])));
     const jobsTail = queryBuilder(dbOk(null));
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
       advert_bookings: () => bookingsBuilder,
@@ -675,10 +748,142 @@ describe("runJob kinds", () => {
     await runJobById(j.id);
 
     expect(bookingsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "ended", ended_reason: "unpaid" }));
-    expect(invoicesBuilder.update).toHaveBeenCalledWith({ status: "void" });
+    expect(invoicesBuilder.update).toHaveBeenCalledWith({ status: "void", checkout_session_id: null, checkout_expires_at: null });
     expect(invoicesBuilder.eq).toHaveBeenCalledWith("advert_booking_id", "b1");
     const kinds = callsOf(jobsTail.insert).map(([row]) => (row as { kind: string }).kind);
     expect(kinds).not.toContain("notify_member");
+  });
+
+  // Review finding 2: voiding goes through voidInvoices(), which expires the
+  // Checkout Session first — a pay page left open must stop taking money.
+  it("advert_lifecycle — expires a lapsed hold's open Checkout Session before voiding its invoice", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_1");
+    const j = job("advert_lifecycle");
+    let call = 0;
+    const bookingsBuilder = queryBuilder(() => {
+      call++;
+      if (call === 2) return dbOk([{ id: "b1", bundle_id: null, ends_on: "2026-01-01" }]);
+      if (call === 3) return dbOk([{ id: "b1" }]);
+      return dbOk([]);
+    });
+    const invoicesBuilder = queryBuilder((): DbResult => (callsOf(invoicesBuilder.update).length
+      ? dbOk([{ id: "inv1" }])
+      : dbOk([{ id: "inv1", checkout_session_id: "cs_open" }])));
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
+      advert_bookings: () => bookingsBuilder,
+      invoices: () => invoicesBuilder,
+      placements: () => queryBuilder(dbOk([])),
+    });
+
+    await runJobById(j.id);
+
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe("https://api.stripe.com/v1/checkout/sessions/cs_open/expire");
+    expect(invoicesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "void" }));
+    vi.unstubAllEnvs();
+  });
+
+  // Review finding 6: the bundle's invoice is voided by the shared helper, which
+  // also refuses while any part is scheduled or live.
+  it("advert_lifecycle — voids a lapsed bundle's invoice only once no part is still owed for", async () => {
+    const j = job("advert_lifecycle");
+    let call = 0;
+    const bookingsBuilder = queryBuilder(() => {
+      call++;
+      if (call === 2) return dbOk([{ id: "b1", bundle_id: "bd1", ends_on: "2026-01-01" }]);
+      if (call === 3) return dbOk([{ id: "b1" }]);
+      if (call === 4) return dbOk(null, 1); // voidBundleInvoiceIfAbandoned: one part still scheduled
+      return dbOk([]);
+    });
+    const invoicesBuilder = queryBuilder(dbOk([]));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
+      advert_bookings: () => bookingsBuilder,
+      invoices: () => invoicesBuilder,
+      placements: () => queryBuilder(dbOk([])),
+    });
+
+    await runJobById(j.id);
+
+    expect(bookingsBuilder.in).toHaveBeenCalledWith("status", ["awaiting_payment", "scheduled", "live"]);
+    expect(invoicesBuilder.eq).not.toHaveBeenCalledWith("bundle_id", "bd1");
+    expect(invoicesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  // State-based, like the rest of the sweep: a bundle whose void failed last
+  // night (its parts already ended) is picked up again, not lost.
+  it("advert_lifecycle — re-checks a bundle still holding an issued invoice with a part ended unpaid", async () => {
+    const j = job("advert_lifecycle");
+    let call = 0;
+    const bookingsBuilder = queryBuilder((): DbResult => {
+      call++;
+      if (call === 3) return dbOk([{ bundle_id: "bd1" }]); // parts ended 'unpaid' in bundles with an open invoice
+      if (call === 4) return dbOk(null, 0); // voidBundleInvoiceIfAbandoned: nothing left in play
+      return dbOk([]); // nothing starting, nothing lapsing tonight, …
+    });
+    const invoicesBuilder = queryBuilder((): DbResult => {
+      if (callsOf(invoicesBuilder.update).length) return dbOk([{ id: "inv1" }]);
+      return callsOf(invoicesBuilder.select).length === 1 ? dbOk([{ bundle_id: "bd1" }]) : dbOk([{ id: "inv1", checkout_session_id: null }]);
+    });
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
+      advert_bookings: () => bookingsBuilder,
+      invoices: () => invoicesBuilder,
+      placements: () => queryBuilder(dbOk([])),
+    });
+
+    await runJobById(j.id);
+
+    expect(bookingsBuilder.eq).toHaveBeenCalledWith("ended_reason", "unpaid");
+    expect(invoicesBuilder.eq).toHaveBeenCalledWith("bundle_id", "bd1");
+    expect(invoicesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "void" }));
+  });
+
+  it("advert_lifecycle — leaves a lapsing run held when its checkout completed mid-sweep — the member is paying", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_1");
+    const j = job("advert_lifecycle");
+    let call = 0;
+    const bookingsBuilder = queryBuilder((): DbResult => {
+      call++;
+      if (call === 2) return dbOk([{ id: "b1", bundle_id: null, ends_on: "2026-01-01" }]);
+      return dbOk([]);
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input).endsWith("/expire")
+        ? new Response("not open", { status: 400 })
+        : new Response(JSON.stringify({ status: "complete", payment_status: "paid" })));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
+      advert_bookings: () => bookingsBuilder,
+      invoices: () => queryBuilder(dbOk([{ id: "inv1", checkout_session_id: "cs_paying" }])),
+      placements: () => queryBuilder(dbOk([])),
+    });
+
+    await runJobById(j.id);
+
+    expect(bookingsBuilder.update).not.toHaveBeenCalledWith(expect.objectContaining({ ended_reason: "unpaid" }));
+    vi.unstubAllEnvs();
+  });
+
+  it("advert_lifecycle — voids a lapsed placement's invoice, and fails the sweep when it can't", async () => {
+    const j = job("advert_lifecycle");
+    const placementInvoices = queryBuilder((): DbResult => {
+      const n = callsOf(placementInvoices.select).length;
+      if (n === 1) return dbOk([]); // open bundle invoices — none
+      if (n === 2) return dbOk([{ placement_id: "pl1" }]); // which lapsed placements still have one issued
+      return dbError("statement timeout"); // voidInvoices' own read
+    });
+    const jobsBuilder = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsBuilder], {
+      advert_bookings: () => queryBuilder(dbOk([])),
+      invoices: () => placementInvoices,
+      placements: () => queryBuilder(dbOk([{ id: "pl1" }])),
+    });
+
+    await runJobById(j.id);
+
+    expect(placementInvoices.eq).toHaveBeenCalledWith("placement_id", "pl1");
+    // the job is handed back for retry rather than marked done with the invoice still payable
+    expect(jobsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: "pending", last_error: expect.stringContaining("statement timeout"),
+    }));
   });
 
   it("advert_lifecycle — warns once, not twice, about a run ending soon", async () => {

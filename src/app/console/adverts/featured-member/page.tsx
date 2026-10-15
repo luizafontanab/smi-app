@@ -32,6 +32,7 @@ export default async function FeaturedMemberPage(props: PageProps<"/console/adve
         Homepage carousel slot, by the month. Up to {FEATURED_SLOTS.cap} can run at once — {liveCount} live today.
       </p>
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.cancelled === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Cancelled — the slot is gone and its invoice is cancelled.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <PlacementCards rows={slots ?? []} today={today} editBase="/console/adverts/featured-member" noun="slot" />

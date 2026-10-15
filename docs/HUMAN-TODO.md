@@ -16,6 +16,11 @@ before their notes were committed, so their Done entries carry the essentials.
 Numbers are permanent and never reused. Only `fix-list.md` keeps ticked `[x]`
 items; every other list collapses them.
 
+> **Pushing migrations to production: read §28 first.** `supabase db push` applies
+> every pending migration at once, so the separate "push X" items below (§7.6, §23.1,
+> §24.1, §25.1, §26.1, §27.1) all happen in the same push. §28 gives the one order
+> that's safe.
+
 > Creating external accounts, pushing code off-machine, deploying, **sending
 > real email** and calling paid APIs are all explicitly approval-gated in
 > [`BUILD-PLAN.md`](../../requirements/BUILD-PLAN.md). That is why these are
@@ -479,8 +484,9 @@ header and footer. Code-complete; these two need a person.
       (`supabase/migrations/20260917000001`); the "Banner — narrow (830×170
       desktop / 370×280 mobile)" option in the console's advert and spot
       pickers; a `banner_narrow` advert and a "Homepage banner (narrow)"
-      product in both seeds; and £650/month in `ADVERT_FORMAT_PENNIES`
-      (`src/lib/pricing.ts`). None of it was ripped out, because ~~a Postgres
+      product in both seeds; ~~and £650/month in `ADVERT_FORMAT_PENNIES`
+      (`src/lib/pricing.ts`)~~ (that constant went on 16 Oct, when the revenue
+      figure moved to paid invoices). None of it was ripped out, because ~~a Postgres
       enum value cannot be dropped cleanly~~ the format may yet find a home.
       **Correction (4 Oct):** `adverts.format` is a text column with a CHECK
       constraint (`20260917000001`), not an enum, so `banner_narrow` *can* be
@@ -783,8 +789,8 @@ steps decide who hears about them.
       code, not after.
 - [ ] **24.2 — Look at the new console screenshots before accepting them.** `pnpm visual`
       has new ids `console_adverts_banners`, `console_adverts_suppliers`,
-      `console_stories_list`, `console_featured_member_id` and `console_supplier_logo_id`
-      (no baselines, so they hard-fail until accepted), and every console baseline moves
+      `console_stories_list`, `console_featured_member_id`, `console_banner_run_id` and
+      `console_supplier_logo_id` (no baselines, so they hard-fail until accepted), and every console baseline moves
       with the nav (Adverts & Banners, + Supplier Logos). `console_adverts_spots` and
       `console_adverts_spots_new` are orphaned. `console_takeover_id` is skipped until a
       takeover is booked locally.
@@ -861,7 +867,7 @@ public yet. *(Committed in `4f14b9b`.)*
 
 ## 27 · Jas's Story Engine feedback (13 Oct) — production follow-through
 
-Fix-list 80–87. Four migrations, all additive and idempotent:
+Fix-list 80–93. Four migrations, all additive and idempotent:
 `20261015000001_story_member_drafts.sql` (`stories.member_draft`),
 `20261015000002_story_social_posts.sql` (`stories.social_posts`) and
 `20261015000003_story_members_tagging.sql` (backfills every story's primary
@@ -890,6 +896,127 @@ applied locally with `supabase migration up`; no reset. *(Committed in `4f14b9b`
       - The member box became tiles.
       - Every `.story-body` (profiles, events, videos, machines, static pages)
         gained a float-clearing `::after` for the new image alignment.
+
+## 28 · Code-review fixes (16 Oct) — production follow-through, and the one push order
+
+The 16 Oct review pass added migrations `20261016000001`–`20261016000070` on top of the
+ones §7.6, §23.1, §24.1, §25.1, §26.1 and §27.1 already ask for. **`supabase db push`
+applies every pending migration in one go** — there is no pushing just one — so
+those items can't be done separately: following §7.6 alone would also run §26.1's
+`delete from industries`, before its backfill and before the code that reads
+`member_industries`. Do them together, once, in this order.
+
+- [ ] **28.1 — Check what reads the production database first.** Any deployment still
+      running code older than this branch breaks the moment the push lands: member
+      profiles 404 and the directory empties (§26.1's ambiguous industries embed),
+      `/console/crm` and every contact write-through fail (§7.6), and the directory
+      filter calls `members_in_taxonomies`, which old code doesn't. So the deploy of
+      this code and the push have to happen together, or nothing may be reading
+      production in between. Confirm a Supabase backup from today exists (Dashboard
+      → Database → Backups) before going on.
+- [ ] **28.2 — Run the pre-checks against production** and resolve anything they
+      return. Each migration named below refuses to apply (or would change rows)
+      otherwise:
+      ```sql
+      -- 20261016000001: at most one issued invoice per booking / bundle / placement
+      select 'booking' k, advert_booking_id, string_agg(number, ', ') from invoices where status='issued' and advert_booking_id is not null group by 2 having count(*)>1
+      union all select 'bundle', bundle_id, string_agg(number, ', ') from invoices where status='issued' and bundle_id is not null group by 2 having count(*)>1
+      union all select 'placement', placement_id, string_agg(number, ', ') from invoices where status='issued' and placement_id is not null group by 2 having count(*)>1;
+      select number, id from invoices where num_nonnulls(advert_booking_id, bundle_id, placement_id) > 1;
+      -- 20261016000033: bundle parts it will un-price (expected: none)
+      select b.id, b.bundle_id, b.price_pennies from advert_bookings b
+       where b.bundle_id is not null and b.price_pennies is not null
+         and not exists (select 1 from invoices i where i.advert_booking_id = b.id);
+      -- 20261016000034: addresses it will lowercase, and pairs it leaves for a person
+      select count(*) from contacts where email <> lower(btrim(email));
+      select lower(btrim(email)) addr, array_agg(id), array_agg(email) from contacts group by 1 having count(*) > 1;
+      -- 20261016000061: at most one pending member renewal per run
+      select renewed_from, count(*) from advert_bookings
+       where renewed_from is not null and status = 'awaiting_approval' and source = 'member'
+       group by 1 having count(*) > 1;
+      ```
+      Void duplicate issued invoices by hand (keep the newest), withdraw or decide a
+      duplicate renewal, and merge colliding contact pairs by hand.
+- [ ] **28.3 — Deploy this code and push, together** (`pnpm db:push:prod`). Deploying
+      is approval-gated. Then **straight away**, §26.1's backfill:
+      `pnpm industries:backfill:prod -- --dry-run`, compare it with §26.1's expected
+      counts, then `pnpm industries:backfill:prod`. (That script now passes `--remote`
+      itself; the plain `industries:backfill` refuses a non-local target.) Until it
+      runs, nothing has an industry.
+- [ ] **28.4 — Finish the contact clean-up:** after merging any pairs from 28.2, run
+      `select * from normalise_contact_emails();` in the SQL editor. It lowercases
+      what it can, never merges, and warns about anything left.
+- [ ] **28.5 — Check the push:** `pnpm verify:prod`. Its story↔member check now
+      passes when a story has *extra* tags; a ✗ means a member the WordPress export
+      tagged is missing.
+- [ ] **28.6 — Set `UNSUBSCRIBE_SECRET`** in Vercel (Production and Preview), at
+      least 32 characters: `openssl rand -base64 32`. Without it the typed-address
+      form on `/unsubscribe` is off and points people at the newsletter's own link.
+      Rotating it invalidates confirmation links already sent (they last 72h).
+- [ ] **28.7 — Turn on Vercel Deployment Protection for Preview deployments.**
+      With `MOCK_INTEGRATIONS=1` a Preview serves mock Stripe/Bigin routes. They
+      now need a deployment-derived key header, but a protected Preview is the real
+      fix.
+- [ ] **28.8 — On the first live advert payment, check two things Stripe's docs
+      don't settle:** that re-opening the pay page reuses the open Checkout Session
+      (one session per invoice, not one per page load), and that a payment Stripe
+      takes for an invoice that was cancelled or already paid shows up in the
+      console inbox as "payment taken" — that one needs a refund by hand in Stripe.
+- [ ] **28.9 — Before the first live `newsletter_sync`, compare the Resend segment
+      with the subscribed contacts.** The sync now *removes* segment addresses that
+      aren't subscribed contacts (old addresses, deleted or "not subscribed"
+      contacts), and pushes all ~2,700 subscribers rather than the first 1,000. If
+      the segment holds people who signed up somewhere SMI doesn't know about,
+      import them as contacts first or they'll be removed. Also confirm what
+      Resend does when a contact that already exists is created again (the 409
+      case); unsubscribes no longer depend on it.
+- [ ] **28.10 — On the first live Bigin run (with §7.5):** check the error body Bigin
+      returns for a PUT to a deleted contact id (the adapter confirms with a GET
+      before unlinking, so a different shape fails safe), and that deleting a
+      race-created duplicate with `?wf_trigger=false` works with the granted scope.
+- [ ] **28.11 — Look at the changed screens, then accept them per route** (`pnpm
+      visual`, then `pnpm visual:accept <route-id>`). Expected changes:
+      - `/unsubscribe`: new copy and an "Email me a link" button.
+      - Every page with a rotating banner: a pause/play control beside the dots.
+      - Story bodies: small images no longer stretched to the column.
+      - Every upload field: a progress line under the file input while it
+        uploads, and "Waiting for upload…" on the save button.
+      - Console: the overview's page-edits card (now "Page edits to review", with a
+        link instead of Approve/Reject), the member page's list of proposed changes,
+        Raise invoice / Cancel cards and new price help text on the booking,
+        banner, supplier, bundle, Featured Member and takeover pages, the approve
+        button's label, and the stories page's error banner.
+
+- [ ] **28.12 — After the deploy, upload two big files on the live site.** Uploads
+      now go straight from the browser to Supabase Storage (a private
+      `upload-staging` bucket, migration `20261016000070`), because Vercel refuses
+      a function request over 4.5 MB. Until that migration is pushed, every upload
+      fails with "The upload didn't go through". Then, on the Vercel deployment,
+      save a phone photo over 4.5 MB as a story cover and a PDF over 4.5 MB in
+      Resources. Locally both work. What can't be tested locally is whether hosted
+      Supabase's gateway accepts the browser's direct upload (CORS and the
+      `apikey` header). If it refuses, every upload made with JavaScript on
+      fails with an error message — the old route isn't tried as a fallback —
+      so check this the same day.
+
+- [ ] **28.13 — Undo two requests counted in production's `consent_stats` on 15 Oct.**
+      While checking a keyboard-focus bug (GAPS A6.14), Claude ran the production
+      build locally with `next start -p 3200`. In production mode Next loads
+      `.env.production.local`, so that server talked to the **live** Supabase
+      project, not the local stack — a check made before starting it would
+      have caught this. It served `GET /member` twice before it was stopped.
+      Each render calls `requestContext()`, which bumps the cookie-consent
+      counter; nothing else on that page writes on a GET (the page-view
+      insert is dropped for a visitor without consent). To correct the count:
+      ```sql
+      update consent_stats set total_requests = total_requests - 2
+       where day = '2026-10-15';
+      ```
+      (`consented_requests` was not touched.) To stop it recurring: a local
+      `next start` against `.env.production.local` is always production. Either
+      keep that file out of the project folder except when you're about to run a
+      `:prod` script, or add a guard to `next start` — your call; it touches
+      the scripts in `package.json`.
 
 ## Not in this list
 

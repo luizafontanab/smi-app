@@ -95,6 +95,20 @@ describe.skipIf(!KEY)("/api/stripe/webhook", () => {
     expect(invoice?.status).toBe("paid");
   });
 
+  // Review finding 7: Stripe retries an event it didn't see a 2xx for, and the
+  // retry used to raise a second SMI-JOIN invoice (and receipt).
+  it("checkout.session.completed retried for the same session records the payment once", async () => {
+    const memberId = await makeMember(`Stripe Replay ${ts}`);
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const body = JSON.stringify({ type: "checkout.session.completed", data: { object: { id: `cs_test_replay_${ts}`, client_reference_id: memberId } } });
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+
+    const { data: invoices } = await db.from("invoices").select("number, stripe_session_id").eq("member_id", memberId);
+    expect(invoices).toHaveLength(1);
+    expect(invoices?.[0]).toMatchObject({ number: expect.stringMatching(/^SMI-JOIN-/), stripe_session_id: `cs_test_replay_${ts}` });
+  });
+
   it("invoice.payment_failed moves the member to grace with an inbox note", async () => {
     const memberId = await makeMember(`Stripe Failed ${ts}`);
     const { POST } = await import("@/app/api/stripe/webhook/route");

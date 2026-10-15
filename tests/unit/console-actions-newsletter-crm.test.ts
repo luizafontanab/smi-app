@@ -9,7 +9,7 @@ import type { CurrentUser } from "@/lib/auth";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireConsole, enqueue, syncContactToCrm, crm, saveLastRun } = vi.hoisted(() => ({
+const { requireConsole, enqueue, syncContactToCrm, crm, saveLastRun, firstImportDone, readLastRun } = vi.hoisted(() => ({
   requireConsole: vi.fn(async (): Promise<CurrentUser> => ({
     userId: "admin1", email: "jas@smi.local", role: "admin", memberId: null, displayName: "Jas",
   })),
@@ -21,16 +21,20 @@ const { requireConsole, enqueue, syncContactToCrm, crm, saveLastRun } = vi.hoist
     searchCompanies: vi.fn(async (): Promise<{ id: string; name: string }[]> => []),
   },
   saveLastRun: vi.fn(async () => {}),
+  firstImportDone: vi.fn(async () => true),
+  readLastRun: vi.fn(async (): Promise<unknown> => null),
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
-vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => crm), syncContactToCrm, saveLastRun }));
+vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => crm), syncContactToCrm, saveLastRun, firstImportDone, readLastRun }));
 
 afterEach(() => {
   resetDbServerMocks();
   enqueue.mockReset().mockResolvedValue(undefined);
   syncContactToCrm.mockReset().mockResolvedValue(undefined);
   saveLastRun.mockReset().mockResolvedValue(undefined);
+  firstImportDone.mockReset().mockResolvedValue(true);
+  readLastRun.mockReset().mockResolvedValue(null);
   crm.sync.mockReset().mockResolvedValue({});
   crm.pull.mockReset().mockResolvedValue(null);
   crm.searchCompanies.mockReset().mockResolvedValue([]);
@@ -255,9 +259,38 @@ describe("Bigin console actions", () => {
     expect(saveLastRun).toHaveBeenCalledWith(expect.objectContaining({ preview: true, pulled: { inserted: 3 } }));
   });
 
-  it("runBiginSync is the only path allowed to run the first import", async () => {
+  it("runBiginSync is the only path allowed to run the first import — straight after a preview", async () => {
+    firstImportDone.mockResolvedValueOnce(false);
+    readLastRun.mockResolvedValueOnce({ at: new Date(Date.now() - 5 * 60_000).toISOString(), preview: true, pulled: { inserted: 3 }, pushed: 0, pushFailed: 0, watch: "skipped" });
     await expect(runBiginSync()).rejects.toThrow("NEXT_REDIRECT:/console/crm?synced=1");
     expect(crm.sync).toHaveBeenCalledWith({ allowFirstImport: true });
+  });
+
+  // The preview rule used to exist only in which button the page showed; the
+  // action is POST-reachable and always passed allowFirstImport: true.
+  it("refuses the first import with no preview, without syncing", async () => {
+    firstImportDone.mockResolvedValueOnce(false);
+    await expect(runBiginSync()).rejects.toThrow(/NEXT_REDIRECT:\/console\/crm\?error=Preview%20the%20import%20first/);
+    expect(crm.sync).not.toHaveBeenCalled();
+  });
+
+  it("refuses the first import when the preview is over an hour old", async () => {
+    firstImportDone.mockResolvedValueOnce(false);
+    readLastRun.mockResolvedValueOnce({ at: new Date(Date.now() - 61 * 60_000).toISOString(), preview: true, pulled: { inserted: 3 }, pushed: 0, pushFailed: 0, watch: "skipped" });
+    await expect(runBiginSync()).rejects.toThrow(/error=Preview%20the%20import%20first/);
+    expect(crm.sync).not.toHaveBeenCalled();
+  });
+
+  it("refuses the first import when the last run was a real sync, not a preview", async () => {
+    firstImportDone.mockResolvedValueOnce(false);
+    readLastRun.mockResolvedValueOnce({ at: new Date().toISOString(), preview: false, pulled: null, pushed: 0, pushFailed: 0, watch: "skipped" });
+    await expect(runBiginSync()).rejects.toThrow(/error=Preview%20the%20import%20first/);
+    expect(crm.sync).not.toHaveBeenCalled();
+  });
+
+  it("once imported, a sync needs no preview and doesn't ask for the first import", async () => {
+    await expect(runBiginSync()).rejects.toThrow("NEXT_REDIRECT:/console/crm?synced=1");
+    expect(crm.sync).toHaveBeenCalledWith({ allowFirstImport: false });
   });
 
   it("runBiginSync reports a failure on the page instead of throwing it", async () => {

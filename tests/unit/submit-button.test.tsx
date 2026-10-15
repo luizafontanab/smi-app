@@ -16,14 +16,14 @@ describe("SubmitButton", () => {
   });
 
   // Jas 13/10 item 3: saving mid-upload would drop the image from the body.
-  it("waits, disabled, while an editor image is still uploading", async () => {
+  it("waits, disabled, while an upload (an editor image, a file field) is still in flight", async () => {
     render(
       <form>
         <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
       </form>,
     );
     act(() => beginUpload());
-    expect(screen.getByRole("button")).toHaveTextContent("Waiting for image…");
+    expect(screen.getByRole("button")).toHaveTextContent("Waiting for upload…");
     expect(screen.getByRole("button")).toBeDisabled();
     act(() => endUpload());
     expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();

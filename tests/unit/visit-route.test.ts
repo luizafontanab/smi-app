@@ -22,11 +22,15 @@ function ctx(id: string) {
   return { params: Promise.resolve({ id }) };
 }
 
+const BROWSER = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+/** A reader's click — a browser UA, since a request without one is treated as a bot (lib/bots). */
+const click = (url: string, headers: Record<string, string> = {}) => new Request(url, { headers: { "user-agent": BROWSER, ...headers } });
+
 describe("GET /visit/[id]", () => {
   it("sends a reader with an unknown advert id straight home", async () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => queryBuilder(dbOk(null)) })));
 
-    await expect(GET(new Request("https://smi.local/visit/bogus"), ctx("bogus"))).rejects.toThrow("NEXT_REDIRECT:/");
+    await expect(GET(click("https://smi.local/visit/bogus"), ctx("bogus"))).rejects.toThrow("NEXT_REDIRECT:/");
     expect(record).not.toHaveBeenCalled();
   });
 
@@ -35,7 +39,7 @@ describe("GET /visit/[id]", () => {
       from: () => queryBuilder(dbOk({ id: "ad1", link_url: "https://acme.example", member: { id: "m1", slug: "acme" } })),
     })));
 
-    const req = new Request("https://smi.local/visit/ad1", { headers: { referer: "https://smi.local/news" } });
+    const req = click("https://smi.local/visit/ad1", { referer: "https://smi.local/news" });
     await expect(GET(req, ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:https://acme.example");
 
     expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_click", advert_id: "ad1", member_id: "m1", path: "/news" })]);
@@ -46,7 +50,7 @@ describe("GET /visit/[id]", () => {
       from: () => queryBuilder(dbOk({ id: "ad1", link_url: null, member: null })),
     })));
 
-    await expect(GET(new Request("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:/");
+    await expect(GET(click("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:/");
 
     // The click is still worth counting even with nowhere better to send them.
     expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_click", advert_id: "ad1", member_id: null })]);
@@ -57,7 +61,48 @@ describe("GET /visit/[id]", () => {
       from: () => queryBuilder(dbOk({ id: "ad1", link_url: null, member: { id: "m1", slug: "acme" } })),
     })));
 
-    await expect(GET(new Request("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:/member/acme");
+    await expect(GET(click("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:/member/acme");
+  });
+
+  it("sends a scheme-less stored link to the advertiser's site, not to a relative /visit/ path", async () => {
+    // Saved before the console validated link_url, or by the member's own
+    // advert form, which stores it as typed.
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: () => queryBuilder(dbOk({ id: "ad1", link_url: "www.acme.co.uk", member: { id: "m1", slug: "acme" } })),
+    })));
+
+    await expect(GET(click("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow(/^NEXT_REDIRECT:https:\/\/www\.acme\.co\.uk$/);
+    expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_click", advert_id: "ad1", member_id: "m1" })]);
+  });
+
+  it("never redirects to a non-web link — the member page instead, and the click still counts", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: () => queryBuilder(dbOk({ id: "ad1", link_url: "javascript:alert(document.cookie)", member: { id: "m1", slug: "acme" } })),
+    })));
+
+    await expect(GET(click("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow(/^NEXT_REDIRECT:\/member\/acme$/);
+    expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_click", advert_id: "ad1", member_id: "m1" })]);
+  });
+
+  it("sends a junk link home when the advertiser's page is withdrawn too", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: () => queryBuilder(dbOk({ id: "ad1", link_url: "n/a", member: { id: "m1", slug: "acme", status: "lapsed", archived_at: null } })),
+    })));
+
+    await expect(GET(click("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow(/^NEXT_REDIRECT:\/$/);
+  });
+});
+
+describe("GET /visit/[id] from a crawler", () => {
+  it("still redirects, but counts no ad click", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: () => queryBuilder(dbOk({ id: "ad1", link_url: "https://acme.example", member: { id: "m1", slug: "acme" } })),
+    })));
+
+    const req = new Request("https://smi.local/visit/ad1", { headers: { "user-agent": "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)" } });
+    await expect(GET(req, ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:https://acme.example");
+    expect(record).not.toHaveBeenCalled();
+    expect(requestContext).not.toHaveBeenCalled();
   });
 });
 

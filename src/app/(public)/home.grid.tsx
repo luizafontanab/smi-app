@@ -42,8 +42,8 @@ import { excluding, type HomeData } from "./home.data";
  * took while it lived in the column beside the Featured members box.
  *
  * That leaves the banner_narrow FORMAT and the home_2_narrow slot registered —
- * in the enum, in advert_slots, in the console's pickers, in both seeds and in
- * ADVERT_FORMAT_PENNIES — and rendering nowhere. Deliberately not ripped out;
+ * in the enum, in advert_slots, in the console's pickers and in both seeds —
+ * and rendering nowhere. Deliberately not ripped out;
  * see docs/HUMAN-TODO.md §14.5 before selling anyone that size.
  *
  * The featured-member placement is back, as the sidebar box. Still REMOVED

@@ -13,9 +13,16 @@
  * --report     also print every member and story left without an industry, as
  *              tab-separated rows — the list Jas asked for ("I'll let you know
  *              later if any ends up without an industry")
- * --overwrite  run even though member_industries already has rows. The backfill
- *              recomputes everything from scratch, so this discards industries
- *              picked by hand since the last run.
+ * --overwrite  run even though the target already has industry assignments
+ *              (member_industries rows, or industry_id on a member, story,
+ *              video or event). The backfill recomputes everything from
+ *              scratch, so this discards industries picked by hand since.
+ * --remote     write to a hosted project. Refused without it, whatever the
+ *              shell's env points at; industries:backfill:prod passes it.
+ *
+ * The write is one transaction (apply_industry_backfill, migration
+ * 20261016000030): a run that fails part-way changes nothing, so it is simply
+ * run again — no --overwrite needed to recover from it.
  *
  * Reads member_services and story_categories from the target itself — no
  * WordPress export needed.
@@ -25,6 +32,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runIndustryBackfill } from "./lib/industry-backfill";
+import { assertScriptTarget } from "./lib/target-guard";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,6 +49,9 @@ if (!process.env.SUPABASE_SECRET_KEY) {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 if (!SECRET_KEY) throw new Error("SUPABASE_SECRET_KEY not set");
+// Local unless --remote, which only industries:backfill:prod passes — the same
+// rule the seeds follow (scripts/lib/target-guard.ts).
+assertScriptTarget(SUPABASE_URL, "the industry backfill");
 const db = createClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
 
 const DRY_RUN = process.argv.includes("--dry-run");

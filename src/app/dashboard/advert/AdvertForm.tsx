@@ -3,6 +3,7 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { RequiredMark } from "@/components/RequiredMark";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { UploadField } from "@/components/UploadField";
 
 export type AdvertDefaults = {
   name: string;
@@ -93,13 +94,13 @@ export function AdvertForm({ action, bookingId, defaults, submitLabel = "Submit 
           <div>
             <label htmlFor="desktop" className="text-sm font-medium">Desktop artwork{!defaults && <RequiredMark />}</label>
             <p className="text-xs text-graphite">{spec.desktop}</p>
-            <input id="desktop" name="desktop" type="file" accept="image/jpeg,image/png,image/webp" required={!defaults}
+            <UploadField id="desktop" name="desktop" accept="image/jpeg,image/png,image/webp" required={!defaults}
               onChange={(e) => preview(e.target.files?.[0], setDesktopUrl)} className="mt-1 w-full text-sm" />
           </div>
           <div>
             <label htmlFor="mobile" className="text-sm font-medium">Mobile artwork{!defaults && <RequiredMark />}</label>
             <p className="text-xs text-graphite">{spec.mobile}</p>
-            <input id="mobile" name="mobile" type="file" accept="image/jpeg,image/png,image/webp" required={!defaults}
+            <UploadField id="mobile" name="mobile" accept="image/jpeg,image/png,image/webp" required={!defaults}
               onChange={(e) => preview(e.target.files?.[0], setMobileUrl)} className="mt-1 w-full text-sm" />
           </div>
         </div>

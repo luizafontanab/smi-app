@@ -225,6 +225,12 @@ describe("localBusinessLd", () => {
     ]);
   });
 
+  // Review 16 Oct: members.website is stored as typed.
+  it("publishes the website in sameAs as an absolute URL, and leaves junk out", () => {
+    expect(localBusinessLd({ slug: "acme", name: "Acme", website: "www.acme.co.uk" }).sameAs).toEqual(["https://www.acme.co.uk"]);
+    expect(localBusinessLd({ slug: "acme", name: "Acme", website: "n/a" })).not.toHaveProperty("sameAs");
+  });
+
   it("omits sameAs when there is neither a website nor a social URL", () => {
     expect(localBusinessLd({ slug: "acme", name: "Acme" })).not.toHaveProperty("sameAs");
     expect(

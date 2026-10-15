@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import type { Role } from "@/lib/auth";
 import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
+import { must } from "./lib/must";
 import { assertSeedTarget } from "./lib/target-guard";
 import { INDUSTRY_ROWS } from "./lib/industries";
 import { runIndustryBackfill } from "./lib/industry-backfill";
@@ -206,7 +207,7 @@ async function main() {
   const mkUser = async (email: string, role: Role, member_id: string | null, display_name: string) => {
     const { data, error } = await db.auth.admin.createUser({ email, password: "local-dev-password", email_confirm: true });
     if (error) throw error;
-    await db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name });
+    await must("profiles", db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name }));
     return data.user.id;
   };
   const jasId = await mkUser("jas@smi.local", "admin", null, "Jas");
@@ -226,7 +227,7 @@ async function main() {
   for (let i = 0; i < 3; i++) {
     const m = activeMembers[i];
     await mkUser(`member${i + 1}@smi.local`, "member", m.id, m.name);
-    await db.from("members").update({ contact_email: `member${i + 1}@smi.local` }).eq("id", m.id);
+    await must("members", db.from("members").update({ contact_email: `member${i + 1}@smi.local` }).eq("id", m.id));
     memberLogins.push(m.id);
   }
 
@@ -296,11 +297,11 @@ async function main() {
     if (error) throw error;
     const mapped = wp_cats.map((c: number) => wpCatMap.get(c)).filter(Boolean);
     const catIds = mapped.length ? mapped : [faker.helpers.arrayElement(storyCatIds)];
-    await db.from("story_categories").insert(catIds.map((category_id: number) => ({ story_id: story!.id, category_id })));
+    await must("story_categories", db.from("story_categories").insert(catIds.map((category_id: number) => ({ story_id: story!.id, category_id }))));
     if (story_member_ids.length) {
-      await db
+      await must("story_members", db
         .from("story_members")
-        .insert(story_member_ids.map((member_id) => ({ story_id: story!.id, member_id })));
+        .insert(story_member_ids.map((member_id) => ({ story_id: story!.id, member_id }))));
     }
   }
   // a couple of pipeline states for the console demo
@@ -324,7 +325,7 @@ async function main() {
     if (error) throw error;
     // story_members holds every member a story features, the primary included
     // (migration 20261015000003). The migration's backfill ran before seeding.
-    if (p.member_id) await db.from("story_members").insert({ story_id: row!.id, member_id: p.member_id });
+    if (p.member_id) await must("story_members", db.from("story_members").insert({ story_id: row!.id, member_id: p.member_id }));
   }
 
   console.log("— banners, bookings");
@@ -342,14 +343,14 @@ async function main() {
     const m = activeMembers[i + 3];
     const dPath = await upload(`panels/panel-${i}-wide.svg`, svgBanner(m.name, 1280, 170, palette[i]), "image/svg+xml");
     const mPath = await upload(`panels/panel-${i}-narrow.svg`, svgBanner(m.name, 370, 280, palette[i]), "image/svg+xml");
-    const { data: ad } = await db.from("adverts").insert({ member_id: m.id, name: `${m.name} banner`, desktop_path: dPath, mobile_path: mPath, format: "banner" }).select("id").single();
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: i < 6 ? iso(monthsAhead) : iso(new Date(today.getTime() + 5 * 864e5)) }); // 2 expire within a week
+    const { data: ad } = await must("adverts", db.from("adverts").insert({ member_id: m.id, name: `${m.name} banner`, desktop_path: dPath, mobile_path: mPath, format: "banner" }).select("id").single());
+    await must("advert_bookings", db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: i < 6 ? iso(monthsAhead) : iso(new Date(today.getTime() + 5 * 864e5)) })); // 2 expire within a week
   }
   for (let i = 0; i < 5; i++) {
     const m = activeMembers[i + 12];
     const p = await upload(`panels/mark-${i}.svg`, svgBanner(m.name.split(" ")[0], 240, 120, palette[(i + 3) % 8]), "image/svg+xml");
-    const { data: ad } = await db.from("adverts").insert({ member_id: m.id, name: `${m.name} supplier logo`, desktop_path: p, mobile_path: p, format: "supplier_logo" }).select("id").single();
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+    const { data: ad } = await must("adverts", db.from("adverts").insert({ member_id: m.id, name: `${m.name} supplier logo`, desktop_path: p, mobile_path: p, format: "supplier_logo" }).select("id").single());
+    await must("advert_bookings", db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) }));
   }
 
   // One booked creative per new format, so the grid design's slots can be
@@ -358,8 +359,8 @@ async function main() {
     const [w, h] = fmt === "skyscraper" ? [300, 600] : fmt === "mpu" ? [300, 250] : [370, 280];
     const m = activeMembers[i + 17];
     const p = await upload(`panels/${fmt}-${i}.svg`, svgBanner(m.name, w, h, palette[(i + 5) % 8]), "image/svg+xml");
-    const { data: ad } = await db.from("adverts").insert({ member_id: m.id, name: `${m.name} ${fmt}`, desktop_path: p, mobile_path: p, format: fmt }).select("id").single();
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+    const { data: ad } = await must("adverts", db.from("adverts").insert({ member_id: m.id, name: `${m.name} ${fmt}`, desktop_path: p, mobile_path: p, format: fmt }).select("id").single());
+    await must("advert_bookings", db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) }));
   }
 
   // Two narrow banners, so home_2_narrow has more than one advert to rotate
@@ -372,8 +373,8 @@ async function main() {
       upload(`panels/narrow-${i}-wide.svg`, svgBanner(m.name, 830, 170, palette[(i + 2) % 8]), "image/svg+xml"),
       upload(`panels/narrow-${i}-mobile.svg`, svgBanner(m.name, 370, 280, palette[(i + 2) % 8]), "image/svg+xml"),
     ]);
-    const { data: ad } = await db.from("adverts").insert({ member_id: m.id, name: `${m.name} narrow banner`, desktop_path: dPath, mobile_path: mPath, format: "banner_narrow" }).select("id").single();
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+    const { data: ad } = await must("adverts", db.from("adverts").insert({ member_id: m.id, name: `${m.name} narrow banner`, desktop_path: dPath, mobile_path: mPath, format: "banner_narrow" }).select("id").single());
+    await must("advert_bookings", db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) }));
   }
 
   // Sample prices (fix-list 77): a run carries its own price now that the rate
@@ -385,7 +386,7 @@ async function main() {
   for (const [format, price_pennies] of Object.entries(SAMPLE_PRICES)) {
     const { data: ads } = await db.from("adverts").select("id").eq("format", format);
     const ids = (ads ?? []).map((a) => a.id);
-    if (ids.length) await db.from("advert_bookings").update({ price_pennies }).in("advert_id", ids).is("bundle_id", null);
+    if (ids.length) await must("advert_bookings", db.from("advert_bookings").update({ price_pennies }).in("advert_id", ids).is("bundle_id", null));
   }
 
   // One priced bundle (A2.3/A2.7): two formats for one member, sold together
@@ -393,35 +394,35 @@ async function main() {
   // path both have something real to show in local dev.
   console.log("— a sample bundle");
   const bundleMember = activeMembers[20];
-  const { data: bundle } = await db.from("bundles").insert({
+  const { data: bundle } = await must("bundles", db.from("bundles").insert({
     member_id: bundleMember.id, name: `${bundleMember.name} launch bundle`, price_pennies: 90000, notes: "Banner + supplier logo, sold together",
-  }).select("id").single();
+  }).select("id").single());
   const bBanner = await upload("panels/bundle-banner.svg", svgBanner(bundleMember.name, 1280, 170, palette[1]), "image/svg+xml");
   const bBannerMobile = await upload("panels/bundle-banner-mobile.svg", svgBanner(bundleMember.name, 370, 280, palette[1]), "image/svg+xml");
   const bLogo = await upload("panels/bundle-logo.svg", svgBanner(bundleMember.name.split(" ")[0], 240, 120, palette[1]), "image/svg+xml");
-  const { data: bBannerAd } = await db.from("adverts").insert({ member_id: bundleMember.id, name: `${bundleMember.name} bundle banner`, desktop_path: bBanner, mobile_path: bBannerMobile, format: "banner" }).select("id").single();
-  const { data: bLogoAd } = await db.from("adverts").insert({ member_id: bundleMember.id, name: `${bundleMember.name} bundle logo`, desktop_path: bLogo, mobile_path: bLogo, format: "supplier_logo" }).select("id").single();
-  await db.from("advert_bookings").insert([
+  const { data: bBannerAd } = await must("adverts", db.from("adverts").insert({ member_id: bundleMember.id, name: `${bundleMember.name} bundle banner`, desktop_path: bBanner, mobile_path: bBannerMobile, format: "banner" }).select("id").single());
+  const { data: bLogoAd } = await must("adverts", db.from("adverts").insert({ member_id: bundleMember.id, name: `${bundleMember.name} bundle logo`, desktop_path: bLogo, mobile_path: bLogo, format: "supplier_logo" }).select("id").single());
+  await must("advert_bookings", db.from("advert_bookings").insert([
     { advert_id: bBannerAd!.id, bundle_id: bundle!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) },
     { advert_id: bLogoAd!.id, bundle_id: bundle!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) },
-  ]);
+  ]));
 
   console.log("— placements: featured members, featured machine, grid blocks");
-  const { data: fm } = await db.from("featured_machines").insert({
+  const { data: fm } = await must("featured_machines", db.from("featured_machines").insert({
     member_id: activeMembers[5].id, name: "2026 Durma HD-F 3015 12kW Fibre Laser",
     description: faker.lorem.paragraph(), external_url: `https://www.${slugify(activeMembers[5].name)}.co.uk/machines/durma-hd-f`,
     image_path: await upload("machines/durma.svg", svgBanner("Featured Machine", 800, 500, "#334155"), "image/svg+xml"),
-  }).select("id").single();
+  }).select("id").single());
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  await db.from("placements").insert([
+  await must("placements", db.from("placements").insert([
     { kind: "featured_member", member_id: activeMembers[0].id, starts_on: iso(new Date(today.getFullYear(), today.getMonth(), 1)), ends_on: iso(monthEnd) },
     { kind: "featured_member", member_id: activeMembers[1].id, starts_on: iso(new Date(today.getFullYear(), today.getMonth(), 1)), ends_on: iso(monthEnd) },
     { kind: "featured_machine", featured_machine_id: fm!.id, member_id: activeMembers[5].id, starts_on: iso(new Date(today.getFullYear(), today.getMonth(), 1)), ends_on: iso(monthEnd) },
     { kind: "grid_block", member_id: activeMembers[2].id, grid_position: 4, starts_on: iso(new Date(today.getFullYear(), today.getMonth(), 1)), ends_on: iso(monthEnd) },
-  ]);
+  ]));
 
   console.log("— events, videos");
-  await db.from("events").insert([
+  await must("events", db.from("events").insert([
     // lat/lng are hardcoded literals (Belfry resort / Hanover fairground) so the
     // /event map has pins in local dev — real rows get coords geocoded on save,
     // and seeds must never call Nominatim (usage policy: one lookup per save).
@@ -431,9 +432,9 @@ async function main() {
     // past and published — the archive on /event and the "already taken place"
     // notice on /event/[slug] are otherwise unreachable from seed data
     { slug: "smi-golf-challenge-2025", title: "SMI Golf Challenge 2025", location: "Belfry, West Midlands", starts_on: iso(new Date(today.getTime() - 340 * 864e5)), status: "published", description: "<p>Last year's golf day.</p>" },
-  ]);
+  ]));
   const ytIds = ["fLcEcOuZTBs", "kXYiU_JCYtU", "hTWKbfoikeg", "9bZkp7q19f0", "dQw4w9WgXcQ", "L_jWHffIx5E"];
-  await db.from("videos").insert(ytIds.map((v, i) => {
+  await must("videos", db.from("videos").insert(ytIds.map((v, i) => {
     const title = `${faker.company.buzzPhrase()} — shop floor tour`;
     const videoMemberId = i < 3 ? activeMembers[i + 6].id : null;
     return {
@@ -446,21 +447,21 @@ async function main() {
       status: "published", source: i < 2 ? "manual" : "curated",
       published_at: faker.date.recent({ days: 60 }).toISOString(),
     };
-  }));
+  })));
 
   console.log("— newsletter issues");
   const { data: pubStories } = await db.from("stories").select("id").eq("status", "published").limit(16);
   for (let n = 0; n < 2; n++) {
-    const { data: issue } = await db.from("newsletter_issues").insert({
+    const { data: issue } = await must("newsletter_issues", db.from("newsletter_issues").insert({
       number: n + 47, subject: `SMI Monthly — ${["June", "July"][n]} 2026`, status: "sent",
       web_slug: `issue-${n + 47}`, sent_at: new Date(today.getFullYear(), today.getMonth() - (2 - n), 3).toISOString(),
       intro: faker.lorem.paragraph(),
-    }).select("id").single();
-    await db.from("newsletter_items").insert(pubStories!.slice(n * 8, n * 8 + 8).map((s, i) => ({ issue_id: issue!.id, story_id: s.id, position: i })));
+    }).select("id").single());
+    await must("newsletter_items", db.from("newsletter_items").insert(pubStories!.slice(n * 8, n * 8 + 8).map((s, i) => ({ issue_id: issue!.id, story_id: s.id, position: i }))));
   }
 
   console.log("— contacts (~120)");
-  await db.from("contacts").insert(Array.from({ length: 120 }, (_, i) => {
+  await must("contacts", db.from("contacts").insert(Array.from({ length: 120 }, (_, i) => {
     const unsub = i % 17 === 0;
     // every Bigin sync state the console CRM list distinguishes: linked, never
     // pushed (inBigin false), and a local edit still waiting to go (dirty)
@@ -479,7 +480,7 @@ async function main() {
       source: faker.helpers.arrayElement(["newsletter", "trade-show", "linkedin", "member"]),
       last_synced_at: inBigin ? new Date().toISOString() : null,
     };
-  }));
+  })));
 
   console.log("— analytics (~90 days) + engagement audit + rollups");
   const { data: allPub } = await db.from("stories").select("id, member_id").eq("status", "published");
@@ -514,22 +515,26 @@ async function main() {
       page: "member page", views: faker.number.int({ min: 1, max: 9 }),
     }))
   );
-  await db.from("engagement_audit").insert(audit);
+  await must("engagement_audit", db.from("engagement_audit").insert(audit));
 
   console.log("— invoices, prefs, static pages, settings");
-  await db.from("invoices").insert(memberLogins.flatMap((mid, i) =>
+  await must("invoices", db.from("invoices").insert(memberLogins.flatMap((mid, i) =>
     Array.from({ length: 3 }, (_, k) => ({
       member_id: mid, number: `SMI-${2026}-${(i + 1) * 100 + k}`, amount_pennies: 4000,
       issued_on: iso(new Date(today.getFullYear(), today.getMonth() - k, 1)), status: k === 0 ? "issued" : "paid",
+      // paid a week after issue. paid_at (20261006000002) is stamped by
+      // settle_invoice and read by /dashboard/pay/invoice/[id]; the app never
+      // writes a paid invoice without one, so the seed shouldn't either
+      paid_at: k === 0 ? null : new Date(today.getFullYear(), today.getMonth() - k, 8).toISOString(),
     }))
-  ));
-  await db.from("notification_prefs").insert(memberLogins.map((mid) => ({ member_id: mid })));
+  )));
+  await must("notification_prefs", db.from("notification_prefs").insert(memberLogins.map((mid) => ({ member_id: mid }))));
   // The join tests (unit + e2e) redeem these; without them the promo path only
   // works on a database an admin has hand-populated via /console/promo-codes.
-  await db.from("promo_codes").insert([
+  await must("promo_codes", db.from("promo_codes").insert([
     { code: "SMI-FREE-YEAR", months: 12, active: true },
     { code: "SMI-FREE-MONTH", months: 1, active: true },
-  ]);
+  ]));
   // PostgREST bulk inserts need uniform keys across rows, so default the
   // per-row `collapsible` flag explicitly rather than omitting it.
   const pageRow = (p: { slug: string; title: string; body: string; collapsible?: boolean }) =>
@@ -554,13 +559,13 @@ async function main() {
     { slug: "newsletter-archive", title: "Newsletter archive", body: "<p>Every issue we have sent.</p>" },
   ].map(pageRow));
   if (pagesError) throw new Error(`static_pages seed failed: ${pagesError.message}`);
-  await db.from("settings").insert([
+  await must("settings", db.from("settings").insert([
     { key: "grid", value: { blocks: 12, mix: { news: 6, video: 2, member_news: 2, featured_member: 1, featured_machine: 1 } } },
     { key: "social_caps", value: { per_day: 3, delay_minutes: 30 } },
     // The site-wide design (GAPS A8.2). Grid is also the code fallback; the row
     // makes the console's "live now" reflect a real choice.
     { key: "site_variant", value: "grid" },
-  ]);
+  ]));
   // Lead-gen marks (GAPS A8.3). Refs are copied from the LeadGenSource mock's
   // fixtures rather than imported from it: the adapter pulls in src/lib/db/server,
   // which is `server-only` and can't be imported from a script.
@@ -569,11 +574,11 @@ async function main() {
   // keyed on their member id, which is a uuid generated by this very seed run —
   // so a seeded member mark could easily point at a prospect outside that
   // member's window and render nothing at all. Better no row than a silent one.
-  await db.from("prospect_marks").insert([
+  await must("prospect_marks", db.from("prospect_marks").insert([
     { prospect_ref: "https://www.linkedin.com/company/pennine-press-brake-services", action: "call", member_id: null },
     { prospect_ref: "https://www.linkedin.com/company/calder-laser-cutting", action: "email", member_id: null },
     { prospect_ref: "https://www.linkedin.com/company/beresford-tooling", action: "sequence", member_id: null },
-  ]);
+  ]));
 
   /*
    * Console inbox (fix-list 71). Neither seed wrote a single `inbox_messages`
@@ -613,7 +618,7 @@ async function main() {
     member_id: r.memberId ?? null,
     payload: r.payload ?? {},
   });
-  await db.from("inbox_messages").insert([
+  await must("inbox_messages", db.from("inbox_messages").insert([
     inboxRow({
       category: "message", kind: "contact", hours: 2,
       name: "Gareth Pryce", email: "gareth@pryce-fabrication.co.uk",
@@ -664,7 +669,7 @@ async function main() {
       payload: { member_id: memberLogins[1] },
       message: "Paid £40/month by card (simulated). Next step: build their page.",
     }),
-  ]);
+  ]));
 
   // One edited email template, not twenty-nine. `email_templates` is an
   // override table: a kind with no row here renders the copy shipped in
@@ -673,20 +678,20 @@ async function main() {
   // default badge on every row and hide the distinction the list page is built
   // around. This single partial row — subject changed, body left null — is here
   // so both states are visible, and so the visual baseline covers both.
-  await db.from("email_templates").insert({
+  await must("email_templates", db.from("email_templates").insert({
     kind: "welcome",
     family: "member",
     subject: "Welcome to Sheet Metal Industries — you're in",
-  });
+  }));
 
   const { DEFAULT_LAYOUTS } = await import("../src/lib/blocks/defaults");
-  await db.from("page_layouts").insert(
+  await must("page_layouts", db.from("page_layouts").insert(
     Object.entries(DEFAULT_LAYOUTS).map(([page_type, layout]) => ({ page_type, entity_id: null, layout })),
-  );
-  await db.from("jobs").insert({ kind: "newsletter_draft_reminder", payload: { month: iso(today).slice(0, 7) }, due_at: new Date().toISOString() });
+  ));
+  await must("jobs", db.from("jobs").insert({ kind: "newsletter_draft_reminder", payload: { month: iso(today).slice(0, 7) }, due_at: new Date().toISOString() }));
 
   console.log("— dev board");
-  await db.from("dev_tasks").insert([
+  await must("dev_tasks", db.from("dev_tasks").insert([
     { title: "Fix double-submit on the join form", status: "not_started", assignee: "Luiza", priority: "high", sort_order: 0,
       kind: "bug", description: "Clicking Pay twice creates two Stripe sessions.",
       notes: "Page: /join/account — \"Join | SMI\"\nURL: https://smi.local/join/account\n\nEnvironment\n  Viewport 1440x900 · screen 2560x1440 · DPR 2 · theme forge\n  Locale en-GB · Europe/London\n  UA Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)\n\nRecent client errors: none.",
@@ -702,7 +707,7 @@ async function main() {
     { title: "Audit alt text across the member directory", status: "done", assignee: "Rishi", priority: "low", sort_order: 0 },
     { title: "Spike: image CDN options", status: "done", assignee: "Jas", priority: "low", sort_order: 1 },
     { title: "Old machine listing importer", status: "canceled", assignee: null, priority: "low", sort_order: 0 },
-  ]);
+  ], { defaultToNull: false }));
 
   // Industries for every member and piece of content, from the member_services
   // and story_categories written above — the same backfill real data gets.

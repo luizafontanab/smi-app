@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { proposeOwnArtworkSwap } from "../actions";
 import { RequiredMark } from "@/components/RequiredMark";
+import { UploadField } from "@/components/UploadField";
 
 /**
  * Swap-only — no name, format, link or dates. Those are fixed once a run is
@@ -24,14 +25,14 @@ export function ArtworkSwapForm({ advertId, bookingId }: { advertId: string; boo
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="swap-desktop" className="text-sm font-medium">New desktop artwork<RequiredMark /></label>
-          <input id="swap-desktop" name="desktop" type="file" accept="image/jpeg,image/png,image/webp" required
+          <UploadField id="swap-desktop" name="desktop" accept="image/jpeg,image/png,image/webp" required
             onChange={(e) => preview(e.target.files?.[0], setDesktopUrl)} className="mt-1 w-full text-sm" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {desktopUrl && <img src={desktopUrl} alt="" className="mt-2 w-full rounded border" />}
         </div>
         <div>
           <label htmlFor="swap-mobile" className="text-sm font-medium">New mobile artwork<RequiredMark /></label>
-          <input id="swap-mobile" name="mobile" type="file" accept="image/jpeg,image/png,image/webp" required
+          <UploadField id="swap-mobile" name="mobile" accept="image/jpeg,image/png,image/webp" required
             onChange={(e) => preview(e.target.files?.[0], setMobileUrl)} className="mt-1 w-full text-sm" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {mobileUrl && <img src={mobileUrl} alt="" className="mt-2 w-full max-w-[370px] rounded border" />}

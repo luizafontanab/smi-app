@@ -14,6 +14,8 @@ import {
   saveMember, setMemberStatus, unarchiveMember,
 } from "../../actions";
 import { DeleteMemberDialog } from "./DeleteMemberDialog";
+import { parseRevisionPayload, revisionChanges } from "../../member-revision";
+import { RevisionChanges } from "@/components/console/RevisionChanges";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +80,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
     ).eq("id", id).maybeSingle(), "console/members detail: member"),
     must(db.from("industries").select("id, name").order("sort_order"), "console/members detail: industries"),
     must(db.from("member_industries").select("industry_id").eq("member_id", id), "console/members detail: member industries"),
-    must(db.from("member_revisions").select("id, created_at").eq("member_id", id).eq("status", "awaiting_approval").limit(1), "console/members detail: revisions"),
+    must(db.from("member_revisions").select("id, created_at, payload").eq("member_id", id).eq("status", "awaiting_approval").order("created_at").limit(1), "console/members detail: revisions"),
     must(db.from("membership_types").select("id, name").order("sort_order"), "console/members detail: membership types"),
     must(db.from("member_membership_types").select("membership_type_id").eq("member_id", id), "console/members detail: member membership types"),
     // `services` has no sort_order column (20260909000001) — order by name.
@@ -106,6 +108,10 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   const hasPage = member.status === "active" || member.status === "grace";
   const isPublic = hasPage && !isArchived;
   const pendingRevision = revisions?.[0];
+  // What Approve will actually write (member-revision.ts): allowlisted fields
+  // only, compared against the page as it is now.
+  const revision = pendingRevision ? parseRevisionPayload(pendingRevision.payload, id) : null;
+  const revisionDiff = revision ? revisionChanges(revision.values, member) : [];
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -149,12 +155,24 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
       {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
 
       {pendingRevision && (
-        <Card className="mt-4 border-brand/40 bg-brand/5">
+        <Card id="changes" className="mt-4 border-brand/40 bg-brand/5">
           <SectionTitle>Changes awaiting approval</SectionTitle>
           <p className="mt-1 text-sm text-graphite">
-            This member submitted edits on {pendingRevision.created_at.slice(0, 10)}. Approving applies their whole
-            submission and will overwrite anything you change here — decide this first.
+            This member submitted edits on {pendingRevision.created_at.slice(0, 10)}. Approving applies the changes
+            below and will overwrite anything you change here — decide this first.
           </p>
+          {revision && (
+            <RevisionChanges
+              changes={revisionDiff}
+              parsed={revision}
+              mediaUrl={mediaUrl}
+              sets={{
+                services: { all: svcs ?? [], current: [...memberServiceIds] },
+                membershipTypes: { all: types ?? [], current: [...memberTypeIds] },
+                industries: { all: inds ?? [], current: [...memberIndustryIds] },
+              }}
+            />
+          )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <form action={decideRevision}>
               <input type="hidden" name="id" value={pendingRevision.id} />

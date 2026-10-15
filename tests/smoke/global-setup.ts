@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isLocalSupabaseUrl } from "../../scripts/lib/target-guard";
+import { serverTargetProblem } from "./target";
 
 const KEY = "NEXT_PUBLIC_SUPABASE_URL";
 const BASE_URL = "http://127.0.0.1:3100";
@@ -28,20 +29,31 @@ function supabaseUrl(): string | undefined {
 }
 
 /**
- * Refuse to run unless the app is pointed at the local Supabase stack.
+ * Refuse to run unless the app is pointed at the local Supabase stack. Shared
+ * by both Playwright suites: this one (playwright.smoke.config.ts) and the e2e
+ * suite (tests/e2e/global-setup.ts), which writes through the dev server on
+ * purpose and so needs it more.
  *
  * The smoke specs only read, but a page view still reaches the database
  * (sign-in sessions, the consent counter), and "only reads" is a promise the
  * request guard in fixtures.ts can check in the browser but not on the server.
  * So the target itself must be local — the same rule tests/setup.ts applies to
  * vitest and the seeds apply to themselves.
+ *
+ * Two checks, because they answer different questions. The env files say what
+ * a freshly started server would use. But both configs set
+ * `reuseExistingServer`, and a server already running on 3100 may have been
+ * started from another shell, with other env. So the running server is asked
+ * too, through the Supabase origin it reports in its own CSP header — see
+ * serverTargetProblem. A server that can't be verified that way is refused,
+ * not trusted.
  */
-export default async function globalSetup(): Promise<void> {
+export async function assertLocalTarget(suite: string): Promise<void> {
   const url = supabaseUrl();
-  if (!url) throw new Error(`smoke: ${KEY} is not set — cannot verify the target is the local Supabase stack.`);
+  if (!url) throw new Error(`${suite}: ${KEY} is not set — cannot verify the target is the local Supabase stack.`);
   if (!isLocalSupabaseUrl(url)) {
     throw new Error(
-      `smoke: refusing to run against a non-local Supabase (${new URL(url).hostname}). ` +
+      `${suite}: refusing to run against a non-local Supabase (${new URL(url).hostname}). ` +
         "Point .env.local at the local stack (supabase status) and restart the dev server.",
     );
   }
@@ -51,6 +63,13 @@ export default async function globalSetup(): Promise<void> {
   const res = await fetch(`${BASE_URL}/login`);
   const html = await res.text();
   if (res.status !== 200 || !html.includes('name="email"')) {
-    throw new Error(`smoke: ${BASE_URL}/login did not return the SMI login form (status ${res.status}) — is another app on port 3100?`);
+    throw new Error(`${suite}: ${BASE_URL}/login did not return the SMI login form (status ${res.status}) — is another app on port 3100?`);
   }
+
+  const problem = serverTargetProblem(res.headers.get("content-security-policy"), url);
+  if (problem) throw new Error(`${suite}: refusing to use the server on ${BASE_URL}: ${problem}.`);
+}
+
+export default async function globalSetup(): Promise<void> {
+  await assertLocalTarget("smoke");
 }

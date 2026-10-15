@@ -288,8 +288,11 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
     await page.click('button[title="Bold"]');
     await page.keyboard.type("Bold statement.");
     // a cover is mandatory for member stories (fix list item 32) — the input's
-    // `required` would otherwise block the submit below at the browser
-    await page.setInputFiles('input[name="cover"]', {
+    // `required` would otherwise block the submit below at the browser. The
+    // file input itself, by type: once hydrated, name="cover" is the hidden
+    // field carrying the staged upload's path (lib/staged-upload), and
+    // Playwright will silently "set" a file on that and move on.
+    await page.setInputFiles('input[type="file"]#cover', {
       name: "cover.jpg",
       mimeType: "image/jpeg",
       buffer: await sharp({ create: { width: 1200, height: 675, channels: 3, background: { r: 51, g: 65, b: 85 } } }).jpeg().toBuffer(),
@@ -302,6 +305,8 @@ test.describe("member self-post → approval → publish (M3/A2 — the core loo
     await expect(page.getByTestId("story-preview").locator("p", { hasText: "Body paragraph one." })).toBeVisible();
     await page.click("button:has-text('Write')");
 
+    // the cover goes straight to storage first; Submit is held until it lands
+    await expect(page.locator('input[type="hidden"][name="cover"]')).not.toHaveValue("", { timeout: 30_000 });
     await page.click("button:has-text('Submit for approval')");
     await page.waitForURL("**/dashboard?submitted=story");
 
@@ -453,9 +458,11 @@ test.describe("admin (A1/A4)", () => {
     // revenue by stream with bars
     await expect(page.locator("text=Revenue this month")).toBeVisible();
     for (const stream of ["Memberships", "Advertising", "Featured member slots"]) {
-      await expect(page.locator("section").filter({ hasText: "Revenue this month" }).locator(`text=${stream}`)).toBeVisible();
+      // exact: the caption above the bars says "memberships at £40/mo" too
+      await expect(page.locator("section").filter({ hasText: "Revenue this month" }).getByText(stream, { exact: true })).toBeVisible();
     }
-    await expect(page.locator(`text=of 4 sold`)).toBeVisible();
+    // the cap lives in lib/pricing FEATURED_SLOTS (8 since 64beb20; this read 4)
+    await expect(page.getByText(/^\d+ of \d+ sold · £[\d,.]+\/slot$/)).toBeVisible();
     // pipeline strip links to the story engine
     await expect(page.locator('a[href="/console/stories"]', { hasText: "Story pipeline" })).toBeVisible();
     // nav: current module order first, active state on the current page

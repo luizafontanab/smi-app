@@ -168,12 +168,13 @@ const nextConfig: NextConfig = {
     "/console/releases": ["./src/content/release-notes.md"],
   },
   /**
-   * Every upload in this app goes through a server action, and the default
-   * body limit is 1MB — so `uploadImage`'s 8MB cap and `uploadDocument`'s 20MB
-   * cap could never actually be reached: a larger file 500'd with "Body
-   * exceeded 1 MB limit" into the error boundary instead of the readable
-   * message the form is written to show. 22mb covers the document cap plus the
-   * multipart overhead the docs warn about.
+   * Since 16 Oct uploads go straight from the browser to Storage
+   * (lib/staged-upload) and the form posts only a path, because Vercel caps a
+   * function's request body at 4.5MB whatever this says. This limit still
+   * governs the no-JavaScript fallback, which posts the file itself: the
+   * default 1MB would refuse even small photos there with "Body exceeded 1 MB
+   * limit" into the error boundary. 22mb covers the 20MB document cap plus the
+   * multipart overhead — locally; on Vercel the fallback tops out at 4.5MB.
    */
   experimental: {
     serverActions: { bodySizeLimit: "22mb" },

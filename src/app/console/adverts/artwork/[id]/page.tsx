@@ -6,6 +6,7 @@ import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { ADVERT_FORMATS, advertFormatOptions } from "@/components/console/advert-formats";
 import { saveAdvertArtwork } from "../../../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -72,13 +73,13 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
             <span className="block text-sm font-medium">Desktop image</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {desktop && <img src={desktop} alt="" className="mt-2 h-16 w-auto rounded border" />}
-            <input type="file" name="desktop" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" required={isNew} />
+            <UploadField name="desktop" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" required={isNew} />
           </div>
           <div>
             <span className="block text-sm font-medium">Mobile image</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {mobile && <img src={mobile} alt="" className="mt-2 h-16 w-auto rounded border" />}
-            <input type="file" name="mobile" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" required={isNew} />
+            <UploadField name="mobile" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" required={isNew} />
           </div>
         </div>
         <p className="text-xs text-graphite">

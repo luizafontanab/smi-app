@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sendContactMessage, subscribeNewsletter } from "@/app/(public)/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
@@ -85,6 +85,48 @@ describe("subscribeNewsletter", () => {
     })));
     await subscribeNewsletter({ message: "" }, form({ email: "existing@example.com" }));
     expect(syncContactToCrm).toHaveBeenCalledWith("c1");
+  });
+
+  // GAPS B5.4: a known contact who was never on the list was told
+  // "Subscribed" and left with subscribed = false — out of every send.
+  it("opts in a known contact who wasn't on the list, conditional on them not having unsubscribed", async () => {
+    const contactsBuilder = queryBuilder(dbOk({ id: "c1", subscribed: false, unsubscribed_at: null }));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({ contacts: () => contactsBuilder, newsletter_signups: () => queryBuilder(dbOk(null)) }),
+    })));
+
+    const result = await subscribeNewsletter({ message: "" }, form({ email: "known@example.com" }));
+
+    expect(result).toEqual({ message: "Subscribed — see you next issue." });
+    expect(contactsBuilder.update).toHaveBeenCalledWith({ subscribed: true, unsubscribed_at: null });
+    expect(contactsBuilder.eq).toHaveBeenCalledWith("id", "c1");
+    expect(contactsBuilder.is).toHaveBeenCalledWith("unsubscribed_at", null);
+    expect(syncContactToCrm).toHaveBeenCalledWith("c1");
+  });
+
+  it("doesn't claim success when that opt-in fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let call = 0;
+    // 1: the lookup, 2: the update
+    const contactsBuilder = queryBuilder(() => (call++ === 0 ? dbOk({ id: "c1", subscribed: false, unsubscribed_at: null }) : dbError("timeout")));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({ contacts: () => contactsBuilder, newsletter_signups: () => queryBuilder(dbOk(null)) }),
+    })));
+
+    const result = await subscribeNewsletter({ message: "" }, form({ email: "known@example.com" }));
+
+    expect(result.message).not.toMatch(/Subscribed/);
+    expect(syncContactToCrm).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("leaves an already-subscribed contact's row alone", async () => {
+    const contactsBuilder = queryBuilder(dbOk({ id: "c1", subscribed: true, unsubscribed_at: null }));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({ contacts: () => contactsBuilder, newsletter_signups: () => queryBuilder(dbOk(null)) }),
+    })));
+    await subscribeNewsletter({ message: "" }, form({ email: "existing@example.com" }));
+    expect(contactsBuilder.update).not.toHaveBeenCalled();
   });
 
   it("does not duplicate the contact row for an already-subscribed address", async () => {

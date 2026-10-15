@@ -7,6 +7,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { BookingCard } from "@/components/console/BookingSections";
 import { ArtworkRunCards } from "@/components/console/ArtworkRunCards";
 import { saveSupplierLogo } from "../../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export default async function SupplierLogosPage(props: PageProps<"/console/adver
           </div>
           <div>
             <label htmlFor="logo" className="text-sm font-medium">Logo</label>
-            <input id="logo" name="logo" type="file" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
+            <UploadField id="logo" name="logo" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
             <p className="mt-1 text-xs text-graphite">Shown at 240×120 — a landscape logo on a transparent or white background reads best.</p>
           </div>
           <div>

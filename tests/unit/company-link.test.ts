@@ -35,6 +35,8 @@ describe("companyLinksFor", () => {
         { id: "m2", name: "AMOB UK", website: "https://amob.example" },
         { id: "m1", name: "BLM Group", website: "https://www.blmgroup.com" },
         { id: "m3", name: "No Site Ltd", website: null },
+        // not something a link can be made of — the click would only bounce back to their SMI page
+        { id: "m4", name: "Junk Site Ltd", website: "n/a" },
       ],
       "m1",
     );
@@ -48,12 +50,17 @@ describe("companyLinksFor", () => {
 describe("withCompanyLines", () => {
   const blm = { name: "BLM Group <UK>", href: "/go/m1?kind=website", website: "https://www.blmgroup.com", primary: true };
   const amob = { name: "AMOB UK", href: "/go/m2?kind=website", website: "https://amob.example/en", primary: false };
-  const line = (href: string, name: string) => `<p data-company-link=""><a href="${href}" target="_blank" rel="noopener">${name}</a></p>`;
+  const line = (href: string, name: string) => `<p data-company-link=""><a href="${href}" target="_blank" rel="noopener" aria-label="${name}">${name}</a></p>`;
 
   it("adds a line per member when the story doesn't close with one, escaped", () => {
     expect(withCompanyLines("<p>Body.</p>", [blm, amob])).toBe(
       `<p>Body.</p>${line("/go/m1?kind=website", "BLM Group &lt;UK&gt;")}${line("/go/m2?kind=website", "AMOB UK")}`,
     );
+  });
+
+  it("names the link in its own case for screen readers, escaped for the attribute", () => {
+    const out = withCompanyLines("<p>Body.</p>", [{ ...blm, name: `Smith & "Sons"` }]);
+    expect(out).toContain(`aria-label="Smith &amp; &quot;Sons&quot;"`);
   });
 
   it("an author's line to a member's site covers that member; the others still get theirs", () => {
@@ -63,10 +70,47 @@ describe("withCompanyLines", () => {
     expect(out).not.toContain("/go/m2?kind=website");
   });
 
-  it("an author's line that matches nobody is taken as the primary member's", () => {
-    const out = withCompanyLines(`<p>Body.</p><p><a href="https://old-blm-site.example/">BLM GROUP</a></p>`, [blm, amob]);
+  it("an author's line naming a member covers them even when its link has moved", () => {
+    // imported stories: the lead company's name, pointing at an old homepage
+    const out = withCompanyLines(`<p>Body.</p><p><a href="https://old-blm-site.example/">BLM GROUP (UK) LTD.</a></p>`, [blm, amob]);
+    expect(out).toContain(`<p data-company-link=""><a href="https://old-blm-site.example/">BLM GROUP (UK) LTD.</a></p>`);
     expect(out).not.toContain("/go/m1?kind=website");
     expect(out).toContain("/go/m2?kind=website");
+  });
+
+  it("matches a name through entities, '&'/'and' and wrapping tags", () => {
+    const apt = { name: "AP and T Group", href: "/go/m3?kind=website", website: "https://aptgroup.example", primary: true };
+    const out = withCompanyLines(`<p>Body.</p><p><strong><a href="https://elsewhere.example/">AP&amp;T Group</a></strong></p>`, [apt]);
+    expect(out).toContain(`<p data-company-link=""><strong>`);
+    expect(out).not.toContain("/go/m3?kind=website");
+  });
+
+  // Review 16 Oct: "Watch the video" → YouTube was taken as the primary
+  // member's line, so their backlink vanished and the video link was styled
+  // as the orange company line.
+  it("a closing link that is nobody's stays ordinary copy, and every member keeps their line", () => {
+    const video = `<p>Body.</p><p><a href="https://www.youtube.com/watch?v=abc">Watch the video</a></p>`;
+    const out = withCompanyLines(video, [blm, amob]);
+    expect(out.startsWith(video)).toBe(true);
+    expect(out).toBe(`${video}${line("/go/m1?kind=website", "BLM Group &lt;UK&gt;")}${line("/go/m2?kind=website", "AMOB UK")}`);
+  });
+
+  it("doesn't match on a merely similar name", () => {
+    const out = withCompanyLines(`<p>Body.</p><p><a href="https://x.example/">AMOB UK Lasers</a></p>`, [amob]);
+    expect(out).not.toContain(`<p data-company-link=""><a href="https://x.example/">`);
+    expect(out).toContain("/go/m2?kind=website");
+  });
+
+  it("recognises a member whose website was stored without a scheme", () => {
+    const bare = { ...amob, website: "www.amob.example" };
+    const out = withCompanyLines(`<p>Body.</p><p><a href="https://amob.example/contact">Get in touch</a></p>`, [bare]);
+    expect(out).toContain(`<p data-company-link=""><a href="https://amob.example/contact">`);
+    expect(out).not.toContain("/go/m2?kind=website");
+  });
+
+  it("leaves a story without featured members exactly as written", () => {
+    const html = `<p>Body.</p><p><a href="https://www.sigmanest.com/">SigmaNEST</a></p>`;
+    expect(withCompanyLines(html, [])).toBe(html);
   });
 
   it("adds nothing without members", () => {

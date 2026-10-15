@@ -260,7 +260,8 @@ function ctaFor(kind: string, payload: NotificationPayload, base: string): { hre
     case "advert_payment_received":
       return payload.booking_id
         ? { href: `${base}/dashboard/advert/${payload.booking_id}`, specific: true }
-        : { href: `${base}/dashboard/settings/billing`, specific: true };
+        // Billing is a list, not "this advert run" — the label must say so.
+        : { href: `${base}/dashboard/settings/billing`, specific: false };
 
     case "account_created": {
       const link = typeof payload.action_link === "string" ? payload.action_link.trim() : "";
@@ -544,4 +545,40 @@ export function validateEmailTemplate(kind: string, fields: Record<string, strin
   }
 
   return null;
+}
+
+/* ---------- confirming an unsubscribe typed in at /unsubscribe ---------- */
+
+/**
+ * The email /unsubscribe sends when someone types an address in (lib/unsubscribe).
+ * It goes to that address, so only whoever reads its inbox can act on it: the
+ * link opens a page with a confirm button, and the signature in it is what
+ * the confirmation checks.
+ *
+ * Deliberately not an editable template and not in the member shell: it goes
+ * to newsletter readers who usually have no member account (the shell's footer
+ * says they do), and its wording is part of a security flow — the link must
+ * always be there, and the copy must never invite anyone to forward it.
+ */
+export function renderUnsubscribeConfirmation(vars: { link: string; validForHours: number }): RenderedEmail {
+  const subject = "Confirm you want to stop the SMI newsletter";
+  const hours = `${vars.validForHours} hours`;
+  const text = [
+    "Someone — hopefully you — asked us to stop sending the Sheet Metal Industries newsletter to this address.",
+    `To confirm, open this link and press the button on the page (it works for ${hours}):`,
+    vars.link,
+    "If you didn't ask, ignore this email: nothing changes unless that button is pressed. Please don't forward it — anyone with the link can unsubscribe this address.",
+  ].join("\n\n");
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:24px 12px;background:#f4f5f6;font-family:Helvetica,Arial,sans-serif;color:#111418;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:6px;padding:28px;">
+    <h1 style="margin:0 0 18px;font-size:21px;line-height:1.3;">${escapeHtml(subject)}</h1>
+    <p style="font-size:16px;line-height:1.5;">Someone — hopefully you — asked us to stop sending the Sheet Metal Industries newsletter to this address.</p>
+    <p style="font-size:16px;line-height:1.5;">To confirm, open the link and press the button on the page. It works for ${escapeHtml(hours)}.</p>
+    ${ctaMarkup("Confirm unsubscribe", vars.link, escapeHtml)}
+    <p style="font-size:13px;line-height:1.5;color:#4b5563;">If you didn't ask, ignore this email: nothing changes unless that button is pressed. Please don't forward it — anyone with the link can unsubscribe this address.</p>
+  </div>
+</body></html>`;
+  return { subject, text, html };
 }

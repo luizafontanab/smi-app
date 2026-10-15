@@ -52,6 +52,10 @@
     difference is already in place: an archived co-featured member gets no "story
     featuring you is live" email, because their tile isn't on the page.*
 
+    *Note (16 Oct): we've switched the default while we wait for you. Members who
+    have left (archived or lapsed) are no longer tagged in story or video posts,
+    main member or co-featured. Say if you'd rather they still were.*
+
 15. **Sign off the lead-gen disclaimer wording (you asked to see the exact text).** Both
     lead panels, yours and the members', now show job titles prominently and carry this
     draft (GAPS A8.3/A8.4, from the 18 Sep call):
@@ -94,6 +98,52 @@
     they see changes because of it. The Policies page says nothing about this yet
     (and still describes Google Analytics, which the site doesn't use). Are you
     happy for the policy to say so, and do you want your usual wording or ours?
+
+20. **How many industries may a member pick?** A member can now choose their own
+    industries on their company page. We've capped it at **3** for now, so nobody
+    appears on every industry page; members who already have more (the import gave a
+    few of them four) keep them but can't add another. The console isn't capped. Is 3
+    right, and should the console have a cap too?
+
+21. **The orange company line at the end of a story.** Every story about a member ends
+    with that member's name, linking to their website. If the author's last paragraph
+    is a single link, we used to treat it as that line, even when it was something
+    else ("Watch the video"), and then the member got no link of their own. Now a
+    closing link only counts as the company line when it points at the member's
+    website or is the member's name; otherwise it stays as normal text and the
+    member's line is added underneath. Is that right, or should other closing links
+    be styled as company lines too?
+
+22. **"All-time story views" for a co-featured member.** A member's all-time figure
+    now counts every story they've been the main member of, plus every story that
+    features them today, published or not, so it no longer drops when a story is
+    taken down. One case can still make it go down: if a co-featured member is
+    untagged from a story, its views leave their total. Keeping credit for past tags
+    needs a small history table. Worth it, or fine as it is?
+
+23. **Changing a banner's artwork changes it for every run of that advert.** The image
+    and link belong to the advert, and each run (including renewals) uses the same
+    advert. So editing one run's logo or link changes its past and future runs too.
+    That's probably what you want for a logo; is it also right for the link?
+
+24. **Cancelling an unpaid Featured Member slot or takeover.** You can now cancel one
+    that hasn't been paid for: the invoice is cancelled and the slot freed. The
+    member isn't told. Should they get an email, and what should it say?
+
+25. **Changing a price after the invoice has gone out.** If the invoice is still
+    unpaid, the old one is cancelled and the member gets a new pay link at the new
+    price. If they've already paid, the new price is recorded but not billed: the
+    console says so, and the difference is settled by hand. Is that how you want it
+    to work?
+
+26. **"Revenue this month" now counts money that has arrived.** The console figure used
+    to add up the adverts running today, at list prices, and got bundles wrong. It
+    now counts advertising and Featured Member invoices **paid** this month, with
+    anything invoiced but not yet paid shown beside it, and memberships at £40 for
+    each paying member (members on a free period aren't counted). So a year-long run
+    paid in January shows in January only, and with online payment off, advertising
+    reads £0 until you mark invoices paid. Is "money in this month" the view you want,
+    or would you rather see what's been sold?
 
 ## Data validation
 

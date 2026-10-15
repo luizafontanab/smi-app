@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_FOCUS, type Focus } from "@/lib/focus";
 import { FocusPicker } from "./FocusPicker";
 import { RequiredMark } from "./RequiredMark";
+import { UploadStatus, useStagedUpload } from "./UploadField";
 
 /**
  * Cover image field: file input + crop picker, sharing one preview.
@@ -15,7 +16,9 @@ import { RequiredMark } from "./RequiredMark";
  * URL, so the crop is live on the first upload.
  *
  * The chosen file is also downscaled and re-encoded in the browser before it
- * ever leaves it — see compress(). uploadImage's 8MB cap stays as the backstop.
+ * ever leaves it — see compress() — and then sent straight to Storage like
+ * any other file field (UploadField's useStagedUpload). uploadImage's 8MB cap
+ * stays as the backstop.
  */
 
 /** Long edge, in px. Twice the widest slot the cover is ever rendered into. */
@@ -111,25 +114,32 @@ export function CoverField({
     onPreview?.(url);
   };
 
-  const onChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    if (!file) {
-      setPreview(null);
-      setNote(null);
-      return;
-    }
-    setPreview(URL.createObjectURL(file));
+  // The smaller file is what gets sent, so the upload is quicker too. Without
+  // JavaScript none of this runs and the original posts with the form.
+  const prepare = useCallback(async (file: File) => {
     setNote("Optimising…");
     const result = await compress(file);
     setNote(result.note);
-    if (result.file !== file && inputRef.current) {
-      // Swap the smaller file onto the input itself, so the server action and
-      // uploadImage need to know nothing about any of this. Assigning .files
-      // fires no change event, so this does not re-enter.
-      const dt = new DataTransfer();
-      dt.items.add(result.file);
-      inputRef.current.files = dt.files;
-    }
+    return result.file;
+  }, []);
+  // Refused or never arrived: the input has been emptied, so the preview of
+  // it goes too — a crop picker over a picture that won't be saved misleads.
+  const upload = useStagedUpload({
+    inputRef,
+    name: "cover",
+    kind: "image",
+    prepare,
+    onFailed: () => {
+      setPreview(null);
+      setNote(null);
+    },
+  });
+
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setPreview(file ? URL.createObjectURL(file) : null);
+    if (!file) setNote(null);
+    upload.choose(file);
   };
 
   const preview = chosen ?? cover;
@@ -143,12 +153,13 @@ export function CoverField({
         ref={inputRef}
         id="cover"
         type="file"
-        name="cover"
+        name={upload.enhanced ? undefined : "cover"}
         required={required && !cover}
         accept="image/jpeg,image/png,image/webp"
         onChange={onChange}
         className="mt-1 w-full text-sm"
       />
+      <UploadStatus name="cover" upload={upload} />
       <p className="mt-1 text-xs text-graphite">{hint}</p>
       {note && <p className="mt-1 text-xs text-graphite">{note}</p>}
       {preview && (

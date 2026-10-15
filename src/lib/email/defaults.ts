@@ -351,7 +351,7 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
       {
         token: "invoice_line",
         description: "The whole reference sentence. The paragraph disappears when there's no reference.",
-        sample: "Your reference is SMI-ADV-MG3K2Q.",
+        sample: "Your reference is SMI-ADV-MG3K2Q7F-4K9Z.",
       },
     ],
   }),
@@ -372,7 +372,7 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
       {
         token: "invoice_line",
         description: "The whole reference sentence. The paragraph disappears when there's no reference.",
-        sample: "Your reference is SMI-ADV-MG3K2Q.",
+        sample: "Your reference is SMI-ADV-MG3K2Q7F-4K9Z.",
       },
     ],
   }),

@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, Node, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Image as TiptapImage } from "@tiptap/extension-image";
+import { TextSelection } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import { Spinner } from "@/components/Spinner";
-import { beginUpload, endUpload } from "@/lib/upload-pending";
+import { stageUpload, uploadErrorMessage } from "@/lib/direct-upload";
+import { beginUpload, endUpload, useHoldSubmit } from "@/lib/upload-pending";
 import { imageUploadProblem, type UploadResult } from "@/lib/upload-limits";
 import { DEFAULT_FLOAT_SIZE, isImageAlign, isImageSize, type ImageAlign, type ImageSize } from "@/lib/image-layout";
+// Where a story image may come from — the same prefix lib/sanitize admits on
+// save and on render (sanitize-html itself stays out of this bundle).
+import { MEDIA_PREFIX } from "@/lib/media-prefix";
 
 /**
  * The advert break: a marker splitting the published article so a rotating slot
@@ -54,6 +60,40 @@ const StoryImage = TiptapImage.extend({
   },
 });
 
+/**
+ * Pasted or dropped HTML minus every image the sanitiser would drop — another
+ * site's <img src="https://…">, a data: URI out of Word. They used to appear
+ * in the editor and then vanish silently on save; taken out at the paste
+ * instead, so the author is told while they can still upload them.
+ */
+function withoutForeignImages(html: string): { html: string; removed: number } {
+  if (!/<img\b/i.test(html)) return { html, removed: 0 };
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const foreign = [...doc.querySelectorAll("img")].filter((img) => !(img.getAttribute("src") ?? "").startsWith(MEDIA_PREFIX));
+  // <picture> wrappers go with their image, or their <source>s are left behind
+  for (const img of foreign) (img.closest("picture") ?? img).remove();
+  return foreign.length ? { html: doc.body.innerHTML, removed: foreign.length } : { html, removed: 0 };
+}
+
+/**
+ * The files in a paste or drop that is only files — a screenshot, "Copy
+ * image" in a browser, a photo dragged in from the desktop. Empty when the
+ * clipboard also carries text: Word and most apps put a picture of the
+ * copied selection alongside it, and a text paste must stay a text paste.
+ * HTML holding nothing but images ("Copy image" puts the <img> there too)
+ * counts as no text.
+ */
+function filesOnly(data: DataTransfer | null): File[] {
+  const files = Array.from(data?.files ?? []);
+  if (!data || !files.length) return [];
+  const html = data.getData("text/html");
+  const text = html ? new DOMParser().parseFromString(html, "text/html").body.textContent ?? "" : data.getData("text/plain");
+  return text.trim() ? [] : files;
+}
+
+const FOREIGN_IMAGE_NOTICE = (n: number) =>
+  `${n === 1 ? "A pasted image was" : `${n} pasted images were`} left out — images can't be copied in from other pages or documents. Save the picture to your device and add it with the Image button.`;
+
 const ALIGN_LABELS: Record<ImageAlign, string> = { left: "Left", right: "Right", full: "Full width" };
 const SIZE_LABELS: Record<ImageSize, string> = { small: "Small", medium: "Medium", large: "Large" };
 
@@ -95,9 +135,14 @@ function ToolbarButton({ label, title, active, pressed, onRun, disabled }: {
 export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBreak = false, minHeightClass = "min-h-48", ariaLabel }: Props) {
   const [html, setHtml] = useState(initialHtml);
   const [uploading, setUploading] = useState(0);
+  /** Fraction sent of the latest image — shown while it is the only one in flight. */
+  const [progress, setProgress] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Paste and drop handlers are fixed when the editor is created; they reach
+  // the current insertImage (which closes over this render's editor) via this.
+  const insertRef = useRef<(file: File) => Promise<void>>(async () => {});
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -123,6 +168,35 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
         "aria-multiline": "true",
         "aria-label": ariaLabel,
       },
+      // Paste and drop both come through here (ProseMirror parseFromClipboard).
+      // Only where images exist at all: without the Image extension the schema
+      // already drops every <img>, and there is no Image button to point to.
+      ...(uploadImage
+        ? {
+            transformPastedHTML: (pasted: string) => {
+              const { html: kept, removed } = withoutForeignImages(pasted);
+              if (removed) setUploadError(FOREIGN_IMAGE_NOTICE(removed));
+              return kept;
+            },
+            // A pasted or dropped image file (no text with it) goes up the
+            // same way as one chosen with the Image button. Taken here, ahead
+            // of ProseMirror's own handling, because that parses the HTML
+            // first — and "Copy image" HTML is a foreign <img>, which would
+            // raise FOREIGN_IMAGE_NOTICE for a picture that is about to be
+            // uploaded after all.
+            handleDOMEvents: {
+              paste: (_view: EditorView, event: ClipboardEvent) => takeFiles(event, filesOnly(event.clipboardData)),
+              drop: (view: EditorView, event: DragEvent) => {
+                const files = filesOnly(event.dataTransfer);
+                if (!files.length) return false;
+                // Land where it was dropped, not wherever the cursor last was.
+                const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+                if (at) view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(at.pos))));
+                return takeFiles(event, files);
+              },
+            },
+          }
+        : {}),
     },
     onUpdate: ({ editor }) => setHtml(editor.isEmpty ? "" : editor.getHTML()),
   });
@@ -146,39 +220,46 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
       return;
     }
     setUploadError(null);
-    const fd = new FormData();
-    fd.set("file", file);
+    setProgress(null);
     setUploading((n) => n + 1);
     beginUpload();
     try {
+      // The bytes go straight to Storage (lib/direct-upload), past Vercel's
+      // 4.5MB request cap; the action gets the staged path, checks the bytes
+      // and stores the image as it always has.
+      const path = await stageUpload(file, "image", { onProgress: setProgress });
+      const fd = new FormData();
+      fd.set("file", path);
       const result = await uploadImage(fd);
       if ("url" in result) editor.chain().focus().setImage({ src: result.url }).run();
       else setUploadError(result.error);
-    } catch {
-      // Transport failure (dropped connection, body over the action size
-      // limit) — the action itself never throws for a refused file.
-      setUploadError("The image didn't upload — check your connection and try again.");
+    } catch (e) {
+      // stageUpload's own wording, or a transport failure of the action —
+      // which never throws for a refused file.
+      setUploadError(uploadErrorMessage(e, "image"));
     } finally {
       setUploading((n) => n - 1);
       endUpload();
     }
   };
+  useEffect(() => {
+    insertRef.current = insertImage;
+  });
+
+  /** Upload `files` in turn, if there are any; true (and the browser's own handling stopped) when this took the event. */
+  function takeFiles(event: Event, files: File[]): boolean {
+    if (!files.length) return false;
+    event.preventDefault();
+    void (async () => {
+      for (const file of files) await insertRef.current(file);
+    })();
+    return true;
+  }
 
   // While an image is in flight the hidden body field doesn't contain it yet,
-  // so a save now would silently drop the picture. Every form gets this guard,
-  // whatever its button is: block the submit at the form itself (target phase,
-  // before React's root listener sees it) and say why.
-  useEffect(() => {
-    const form = rootRef.current?.closest("form");
-    if (!form || uploading === 0) return;
-    const hold = (e: Event) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      setUploadError("Wait for the image to finish uploading, then save.");
-    };
-    form.addEventListener("submit", hold, true);
-    return () => form.removeEventListener("submit", hold, true);
-  }, [uploading]);
+  // so a save now would silently drop the picture.
+  const holdSave = useCallback(() => setUploadError("Wait for the image to finish uploading, then save."), []);
+  useHoldSubmit(rootRef, uploading > 0, holdSave);
 
   // Selecting an image is a selection change, not a doc change, so onUpdate
   // never re-renders for it — subscribe to exactly the bits the image row needs.
@@ -240,7 +321,7 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
               <ToolbarButton key={z} label={SIZE_LABELS[z]} title={floated ? `Image size: ${SIZE_LABELS[z].toLowerCase()}` : "Choose Left or Right to size the image"} active={floated && imageSel.size === z} pressed={floated && imageSel.size === z} disabled={!floated} onRun={() => setSize(z)} />
             ))}
           </div>
-          <span className="text-xs text-graphite">Text wraps beside left/right images on larger screens; on phones every image is full width.</span>
+          <span className="text-xs text-graphite">Text wraps beside left/right images on larger screens; on phones each image sits on its own line.</span>
         </div>
       )}
       <EditorContent editor={editor} />
@@ -252,6 +333,8 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
               <>
                 <Spinner />
                 Uploading image…
+                {/* Not announced: a screen reader re-reading every percent is noise. */}
+                {uploading === 1 && progress !== null && <span aria-hidden="true">{Math.round(progress * 100)}%</span>}
               </>
             )}
           </p>

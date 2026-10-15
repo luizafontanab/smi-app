@@ -19,7 +19,11 @@ type Props = {
   industries: { id: number; name: string }[];
   member: { name: string; slug: string; logoUrl: string | null };
   /** Present only in edit mode — pre-fills the form and switches the copy/actions. */
-  initial?: { id: string; title: string; excerpt: string; body: string; coverUrl: string | null; categoryId: number | null; industryId: number | null };
+  initial?: {
+    id: string; title: string; excerpt: string; body: string; coverUrl: string | null; categoryId: number | null; industryId: number | null;
+    /** The story's updated_at when this page rendered — editStory refuses the save if the desk has changed it since. */
+    version?: string;
+  };
   /** The story is the member's own unsubmitted draft — offers Save draft / Delete instead of Withdraw. */
   isDraft?: boolean;
   withdrawAction?: (formData: FormData) => Promise<void>;
@@ -50,6 +54,7 @@ export function StoryForm({ action, uploadImage, previewBody, categories, indust
     <form action={action} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
       <UnsavedChangesGuard />
       {initial && <input type="hidden" name="id" value={initial.id} />}
+      {initial?.version && <input type="hidden" name="version" value={initial.version} />}
       <div role="tablist" aria-label="Editor view" className="flex gap-1 border-b pb-3 text-sm">
         <button type="button" role="tab" id="write-tab" aria-selected={tab === "write"} aria-controls="write-panel" onClick={() => setTab("write")} className={`rounded px-3 py-1.5 ${tab === "write" ? "bg-ink font-semibold text-white" : "bg-shade"}`}>Write</button>
         <button type="button" role="tab" id="preview-tab" aria-selected={tab === "preview"} aria-controls="preview-panel" onClick={() => setTab("preview")} className={`rounded px-3 py-1.5 ${tab === "preview" ? "bg-ink font-semibold text-white" : "bg-shade"}`}>Preview</button>

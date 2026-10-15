@@ -93,12 +93,20 @@ describe("saveVideo", () => {
   });
 
   it("redirects with the thumbnail upload error and never touches the database", async () => {
-    uploadImage.mockRejectedValue(new Error("Images only"));
+    uploadImage.mockRejectedValue(new Error("Images only — JPEG, PNG, WebP, GIF or AVIF."));
     const from = db({});
 
     await expect(saveVideo(form({ id: "v1", title: "t", url: "https://youtu.be/x" })))
       .rejects.toThrow("NEXT_REDIRECT:/console/videos/v1?error=Images%20only");
     expect(from).not.toHaveBeenCalled();
+  });
+
+  // A storage failure's own text (bucket names, paths) stays in the error log.
+  it("a storage failure shows a plain line, not the provider's text", async () => {
+    uploadImage.mockRejectedValue(new Error('new row violates row-level security policy for table "objects"'));
+    db({});
+    await expect(saveVideo(form({ id: "v1", title: "t", url: "https://youtu.be/x" })))
+      .rejects.toThrow(/v1\?error=The%20upload%20didn't%20go%20through/);
   });
 });
 

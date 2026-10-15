@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/db/types";
 import { enqueueStoryLive, replaceStoryMembers, resolveStoryMembers, taggedMembers } from "@/lib/story-members";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 
@@ -27,25 +29,72 @@ describe("resolveStoryMembers", () => {
 });
 
 describe("replaceStoryMembers", () => {
-  it("replaces the story's rows with exactly the given set", async () => {
-    const builder = queryBuilder(dbOk(null));
-    const db = asDb(mockDb({ from: fromByTable({ story_members: () => builder }) }));
-    await replaceStoryMembers(db, "s1", [A, B, A]);
-    expect(builder.delete).toHaveBeenCalled();
-    expect(builder.eq).toHaveBeenCalledWith("story_id", "s1");
-    expect(builder.insert).toHaveBeenCalledWith([{ story_id: "s1", member_id: A }, { story_id: "s1", member_id: B }]);
+  // One rpc, one transaction (migration 20261016000010) — never a separate
+  // delete and insert, which left a story with nobody tagged when the insert
+  // failed. The atomicity itself is proved against Postgres below.
+  it("replaces the set in one call to replace_story_members, deduped, without touching the table directly", async () => {
+    const from = fromByTable({});
+    const raw = mockDb({ from });
+    await replaceStoryMembers(asDb(raw), "s1", [A, B, A]);
+    expect(raw.rpc).toHaveBeenCalledWith("replace_story_members", { p_story_id: "s1", p_member_ids: [A, B] });
+    expect(from).not.toHaveBeenCalled();
   });
 
-  it("an empty set just clears", async () => {
-    const builder = queryBuilder(dbOk(null));
-    const db = asDb(mockDb({ from: fromByTable({ story_members: () => builder }) }));
-    await replaceStoryMembers(db, "s1", []);
-    expect(builder.insert).not.toHaveBeenCalled();
+  it("an empty set still calls through, so the story is cleared", async () => {
+    const raw = mockDb({ from: fromByTable({}) });
+    await replaceStoryMembers(asDb(raw), "s1", []);
+    expect(raw.rpc).toHaveBeenCalledWith("replace_story_members", { p_story_id: "s1", p_member_ids: [] });
   });
 
-  it("throws rather than half-saving when the clear fails", async () => {
-    const db = asDb(mockDb({ from: fromByTable({ story_members: () => queryBuilder(dbError("boom")) }) }));
-    await expect(replaceStoryMembers(db, "s1", [A])).rejects.toBeTruthy();
+  it("throws the database error, so the caller can say the tags weren't saved", async () => {
+    const raw = mockDb({ from: fromByTable({}), rpc: async () => dbError("insert or update violates foreign key") });
+    await expect(replaceStoryMembers(asDb(raw), "s1", [A])).rejects.toMatchObject({ message: "insert or update violates foreign key" });
+  });
+});
+
+const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
+const KEY = process.env.SUPABASE_SECRET_KEY;
+
+// The guarantee the unit tests above can't show: a failed insert rolls the
+// delete back. Against the local stack.
+describe.skipIf(!KEY)("replace_story_members (Postgres)", () => {
+  const real = createClient<Database>(URL_, KEY!, { auth: { persistSession: false } });
+  const tag = Date.now().toString(36);
+  let storyId = "";
+  let memberId = "";
+
+  beforeAll(async () => {
+    const { data: m } = await real.from("members").insert({ slug: `tags-test-${tag}`, name: "Tags Test Ltd", status: "draft" }).select("id").single();
+    memberId = m!.id;
+    const { data: s } = await real.from("stories").insert({ slug: `tags-test-${tag}`, title: "Tags test", status: "draft", source: "admin", member_id: memberId }).select("id").single();
+    storyId = s!.id;
+  });
+
+  afterAll(async () => {
+    if (storyId) await real.from("stories").delete().eq("id", storyId);
+    if (memberId) await real.from("members").delete().eq("id", memberId);
+  });
+
+  const tagged = async () => (await real.from("story_members").select("member_id").eq("story_id", storyId)).data?.map((r) => r.member_id);
+
+  it("replaces the set", async () => {
+    await replaceStoryMembers(real, storyId, [memberId]);
+    expect(await tagged()).toEqual([memberId]);
+  });
+
+  it("a failed insert (a member that doesn't exist) leaves the previous set in place", async () => {
+    await replaceStoryMembers(real, storyId, [memberId]);
+    await expect(replaceStoryMembers(real, storyId, [memberId, "99999999-9999-9999-9999-999999999999"])).rejects.toBeTruthy();
+    expect(await tagged()).toEqual([memberId]);
+  });
+
+  it("anon can't call it — a member must never retag a story through /rest/v1/rpc", async () => {
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    if (!anonKey) return;
+    const anon = createClient<Database>(URL_, anonKey, { auth: { persistSession: false } });
+    const { error } = await anon.rpc("replace_story_members", { p_story_id: storyId, p_member_ids: [] });
+    expect(error?.code).toBe("42501");
+    expect(await tagged()).toEqual([memberId]);
   });
 });
 

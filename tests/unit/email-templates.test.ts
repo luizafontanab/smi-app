@@ -76,6 +76,20 @@ describe("payload interpolation", () => {
     expect(mail.text).not.toContain("/dashboard/advert/undefined");
   });
 
+  // Review finding 11: with no booking the button opened billing but still
+  // read "View this advert run".
+  it("labels an advert receipt's button for where it actually goes", () => {
+    const withBooking = renderNotification({ kind: "advert_payment_received", booking_id: "abc-123", amount: "£650.00" });
+    expect(withBooking.text).toContain("/dashboard/advert/abc-123");
+    expect(withBooking.text).toContain("View this advert run");
+
+    const bundle = renderNotification({ kind: "advert_payment_received", amount: "£650.00" });
+    expect(bundle.text).toContain("/dashboard/settings/billing");
+    expect(bundle.text).not.toContain("View this advert run");
+    expect(bundle.html).not.toContain("View this advert run");
+    expect(bundle.text).toContain("Open your member area");
+  });
+
   it("includes the amount and reference on a receipt", () => {
     const mail = renderNotification({ kind: "payment_receipt", amount: "£40.00", invoice_ref: "INV-2026-014" });
     expect(mail.text).toContain("£40.00");

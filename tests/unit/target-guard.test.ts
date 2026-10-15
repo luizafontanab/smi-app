@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isLocalSupabaseUrl } from "../../scripts/lib/target-guard";
 
@@ -44,5 +46,62 @@ describe("isLocalSupabaseUrl", () => {
     expect(isLocalSupabaseUrl("")).toBe(false);
     expect(isLocalSupabaseUrl("127.0.0.1:56321")).toBe(false); // no scheme
     expect(isLocalSupabaseUrl("not a url")).toBe(false);
+  });
+});
+
+/**
+ * The guard only protects a script that calls it. Every script under scripts/
+ * that builds a Supabase client loads .env.local only when the shell has no key
+ * of its own, so a shell with production's env still sourced points the plain
+ * "local" command at the live database. Pinned here, by reading the sources:
+ * each one is a guarded writer, a seed, or verifiably read-only — so a new
+ * script that writes without a guard fails this rather than reaching production.
+ */
+describe("scripts/ that open a Supabase client", () => {
+  const SCRIPTS = path.resolve(__dirname, "../../scripts");
+  const PKG = JSON.parse(readFileSync(path.resolve(__dirname, "../../package.json"), "utf8")) as { scripts: Record<string, string> };
+  const source = (file: string) => readFileSync(path.join(SCRIPTS, file), "utf8");
+
+  /** Writers behind assertScriptTarget, with the package script that runs each locally. */
+  const GUARDED: Record<string, string> = {
+    "backfill-industries.ts": "industries:backfill",
+    "create-test-accounts.ts": "accounts:test",
+    "remove-sample-adverts.ts": "remove-sample-adverts",
+    "audit-test-rows.ts": "audit:test-rows",
+  };
+  /** Behind assertSeedTarget, which has the same --remote rule. */
+  const SEEDS = ["seed.ts", "seed-real.ts"];
+  /** Reads only — checked below, not taken on trust. */
+  const READ_ONLY = ["verify-import.ts"];
+
+  const opensClient = (src: string) => /^(?!import).*\bcreateClient\(/m.test(src);
+  const clientScripts = readdirSync(SCRIPTS).filter((f) => /\.(ts|mjs)$/.test(f) && opensClient(source(f)));
+
+  it("are all accounted for — a new one must be guarded or added as read-only", () => {
+    expect(clientScripts.sort()).toEqual([...Object.keys(GUARDED), ...SEEDS, ...READ_ONLY].sort());
+  });
+
+  it.each(Object.keys(GUARDED))("%s calls assertScriptTarget before it builds the client", (file) => {
+    const src = source(file);
+    const guard = src.search(/^assertScriptTarget\(SUPABASE_URL, /m);
+    const client = src.search(/^const db = createClient\(/m);
+    expect(guard).toBeGreaterThan(-1);
+    expect(client).toBeGreaterThan(guard);
+  });
+
+  it.each(SEEDS)("%s calls assertSeedTarget before it builds the client", (file) => {
+    const src = source(file);
+    const guard = src.search(/^assertSeedTarget\(SUPABASE_URL\);/m);
+    expect(guard).toBeGreaterThan(-1);
+    expect(src.search(/^const db = createClient\(/m)).toBeGreaterThan(guard);
+  });
+
+  it.each(Object.entries(GUARDED))("%s: only %s:prod passes --remote", (file, name) => {
+    expect(PKG.scripts[`${name}:prod`]).toMatch(new RegExp(`^set -a && \\. \\./\\.env\\.production\\.local && set \\+a && tsx scripts/${file.replace(".", "\\.")} --remote$`));
+    expect(PKG.scripts[name]).toBe(`tsx scripts/${file}`);
+  });
+
+  it.each(READ_ONLY)("%s really is read-only — no write call against the database or storage", (file) => {
+    expect(source(file)).not.toMatch(/\.(insert|update|upsert|delete|rpc|upload|remove|move|copy)\(/);
   });
 });

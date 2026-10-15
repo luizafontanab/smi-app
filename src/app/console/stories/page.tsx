@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { serviceDb } from "@/lib/db/server";
-import { must, mustList } from "@/lib/db/must";
+import { must } from "@/lib/db/must";
+import { pagedList } from "../paged-list";
 import { requireConsole } from "@/lib/auth";
 import { saveSocialCaps, saveSocialChannels } from "../actions";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
@@ -34,13 +35,16 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
   // The board's "most recently touched 120" is the wrong window for a calendar —
   // a story scheduled months out can fall outside it. Query by date range instead.
   const { start, end } = monthGrid(month);
-  const listFrom = (listFilters.page - 1) * STORY_LIST_PAGE_SIZE;
   const [stories, capsSetting, channelsSetting, list] = await Promise.all([
     view === "list" ? Promise.resolve(null) : must(
       view === "calendar"
         ? db
             .from("stories")
             .select(SELECT)
+            // A member's own draft is never the desk's to see (lib/story-board
+            // isMemberDraft) — it can't be scheduled or published while it is
+            // one, but the filter states that rather than relying on it.
+            .eq("member_draft", false)
             .or(
               `and(status.eq.scheduled,scheduled_at.gte.${start.toISOString()},scheduled_at.lt.${end.toISOString()}),` +
               `and(status.eq.published,published_at.gte.${start.toISOString()},published_at.lt.${end.toISOString()})`,
@@ -57,12 +61,13 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
     must(db.from("settings").select("value").eq("key", "social_channels").maybeSingle(), "console/stories social channels"),
     // The list's own window: every status, paged by count — the board's
     // "120 most recently touched" would hide everything older.
+    // A page past the end (pagedList) shows the last page rather than failing.
     view === "list"
-      ? (() => {
+      ? pagedList((from, to) => {
           let q = db.from("stories").select(`${SELECT}, updated_at`, { count: "exact" }).eq("member_draft", false);
           if (listFilters.status !== "all") q = q.eq("status", listFilters.status);
-          return mustList(q.order("updated_at", { ascending: false }).range(listFrom, listFrom + STORY_LIST_PAGE_SIZE - 1), "console/stories list view");
-        })()
+          return q.order("updated_at", { ascending: false }).range(from, to);
+        }, listFilters.page, STORY_LIST_PAGE_SIZE, "console/stories list view")
       : Promise.resolve(null),
   ]);
   const caps: SocialCaps = { ...DEFAULT_SOCIAL_CAPS, ...(capsSetting?.value as Partial<SocialCaps> | null) };
@@ -74,6 +79,8 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
         <h1 className="text-2xl font-bold text-ink">Story Engine</h1>
         <Link href="/console/stories/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New story</Link>
       </div>
+      {/* A refused board move (setStoryStatus) or an editor that sent Jas back here. */}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <p className="mt-1 text-sm text-graphite">
         Nothing publishes without approval. The &quot;suggested&quot; column arrives with the Content OS (module 6).
       </p>
@@ -92,7 +99,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
       </div>
 
       {view === "list" ? (
-        <StoryList stories={(list?.data ?? []) as ListStory[]} total={list?.count ?? 0} filters={listFilters} />
+        <StoryList stories={(list?.data ?? []) as ListStory[]} total={list?.count ?? 0} filters={{ ...listFilters, page: list?.page ?? listFilters.page }} />
       ) : view === "calendar" ? (
         <CalendarView month={month} stories={(stories ?? []) as CalendarStory[]} />
       ) : (

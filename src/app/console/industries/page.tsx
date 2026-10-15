@@ -23,7 +23,14 @@ export default async function IndustriesPage(props: PageProps<"/console/industri
         "console/industries member counts",
       ).then((data) => ({ data })),
     ),
-    must(db.from("members").select("industry_id").not("industry_id", "is", null), "console/industries primary counts"),
+    // Paged like the links: unpaged, PostgREST's 1000-row cap would quietly
+    // undercount primaries — and a count shown as 0 reads as "safe to delete".
+    allRows((from, to) =>
+      must(
+        db.from("members").select("industry_id").not("industry_id", "is", null).order("id").range(from, to),
+        "console/industries primary counts",
+      ).then((data) => ({ data })),
+    ),
   ]);
 
   const tally = (rows: { industry_id: number | null }[]) => {
@@ -32,7 +39,7 @@ export default async function IndustriesPage(props: PageProps<"/console/industri
     return out;
   };
   const counts = tally(links);
-  const primaryCounts = tally(primaries ?? []);
+  const primaryCounts = tally(primaries);
 
   return (
     <div className="mx-auto max-w-3xl">

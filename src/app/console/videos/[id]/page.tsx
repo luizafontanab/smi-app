@@ -10,6 +10,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { SubmitButton } from "@/components/SubmitButton";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +75,7 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
             // eslint-disable-next-line @next/next/no-img-element
             <img src={thumbnail} alt="" className="mt-2 h-32 w-auto rounded object-cover" />
           )}
-          <input type="file" name="thumbnail" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
+          <UploadField name="thumbnail" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
           <p className="mt-1 text-xs text-graphite">
             Falls back to the YouTube thumbnail if left blank. Landscape, JPG/PNG/WebP, max 8MB.
           </p>

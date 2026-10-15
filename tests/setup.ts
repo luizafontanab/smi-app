@@ -78,3 +78,22 @@ if (
       `\`supabase status\` — or set ALLOW_REMOTE_INTEGRATION_TESTS=1 if you genuinely mean it.`,
   );
 }
+
+/*
+ * No test reaches the internet. The integration suites talk to the local stack
+ * (127.0.0.1); every vendor call is meant to be stubbed. That was only ever a
+ * convention, and a stub that answered one request too few fell through to the
+ * real fetch — the 16 Oct newsletter sync gained a third Resend call, and one
+ * test quietly started calling api.resend.com. A vi.spyOn(globalThis, "fetch")
+ * wraps this guard, so an unanswered call now fails loudly instead.
+ */
+const realFetch = globalThis.fetch;
+if (realFetch) {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input), "http://127.0.0.1");
+    if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+      throw new Error(`Test tried to reach the network: ${url.origin}${url.pathname} — stub fetch for this call.`);
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+}

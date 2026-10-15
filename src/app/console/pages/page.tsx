@@ -3,6 +3,7 @@ import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
+import { isMemberDraft } from "@/lib/story-board";
 import { getLayout } from "@/lib/blocks/layouts";
 import type { PageType } from "@/lib/blocks/schema";
 import { cookies } from "next/headers";
@@ -33,8 +34,15 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
   // already drops a non-uuid value (lib/blocks/layouts.ts) — do the same here so
   // a junk param stays "no entity selected" instead of reaching Postgres as
   // 22P02 and, now that must() throws, taking the page down.
-  const entity = entityParam && UUID_RE.test(entityParam) ? entityParam : undefined;
+  let entity = entityParam && UUID_RE.test(entityParam) ? entityParam : undefined;
   const db = serviceDb();
+  // A member's unsubmitted draft is theirs until they submit it (lib/story-board
+  // isMemberDraft): the console never shows its title or gives it a layout of
+  // its own, so ?entity= naming one is "no story selected", same as junk.
+  if (entity && type === "story") {
+    const story = await must(db.from("stories").select("member_draft").eq("id", entity).maybeSingle(), "console/pages story draft check");
+    if (story && isMemberDraft(story)) entity = undefined;
+  }
 
   const [siteDefault, cookieStore, sections] = await Promise.all([defaultVariant(), cookies(), homeSectionsSetting()]);
   const myChoice = cookieStore.get(VARIANT_COOKIE)?.value;

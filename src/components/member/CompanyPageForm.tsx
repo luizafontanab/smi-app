@@ -6,6 +6,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { ServicesPicker } from "@/components/member/ServicesPicker";
 import { MAX_MEMBERSHIP_TYPES } from "@/lib/member-services";
 import type { UploadResult } from "@/lib/upload-limits";
+import { UploadField } from "@/components/UploadField";
 
 const field = "mt-1 w-full rounded border px-3 py-2";
 const label = "text-sm font-medium";
@@ -177,7 +178,7 @@ export function CompanyPageForm({
         <div>
           <label htmlFor="logo" className={label}>Company logo</label>
           {logoUrl && <Image src={logoUrl} alt="" width={64} height={64} className="mt-1 rounded border" unoptimized />}
-          <input id="logo" type="file" name="logo" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
+          <UploadField id="logo" name="logo" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
           <p className="mt-1 text-xs text-graphite">Square works best, min 200×200px. Leave empty to keep the current one.</p>
           {logoUrl && (
             <label className="mt-1 flex items-center gap-2 text-xs text-graphite">
@@ -188,7 +189,7 @@ export function CompanyPageForm({
         <div>
           <label htmlFor="hero" className={label}>Cover photo</label>
           {heroUrl && <Image src={heroUrl} alt="" width={128} height={64} className="mt-1 rounded border object-cover" unoptimized />}
-          <input id="hero" type="file" name="hero" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
+          <UploadField id="hero" name="hero" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
           <p className="mt-1 text-xs text-graphite">Landscape, around 800×400px. Leave empty to keep the current one.</p>
           {heroUrl && (
             <label className="mt-1 flex items-center gap-2 text-xs text-graphite">

@@ -112,11 +112,13 @@ describe("saveEmailTemplate", () => {
       .rejects.toThrow("NEXT_REDIRECT:/console/email-templates?error=That%20email%20doesn't%20exist.");
   });
 
-  it("surfaces a write failure rather than claiming it saved", async () => {
+  it("surfaces a write failure rather than claiming it saved — in plain words; Postgres's go to the error log", async () => {
     db({ email_templates: () => queryBuilder(dbError("permission denied")) });
 
     await expect(saveEmailTemplate(form({ kind: "welcome", subject: "Hello" })))
-      .rejects.toThrow(/permission%20denied/);
+      .rejects.toThrow(/error=That%20couldn't%20be%20saved/);
+    await expect(saveEmailTemplate(form({ kind: "welcome", subject: "Hello" })))
+      .rejects.not.toThrow(/permission/);
   });
 });
 

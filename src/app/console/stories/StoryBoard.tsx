@@ -42,8 +42,9 @@ const COLUMN_CAP: Partial<Record<BoardStatus, number>> = { published: 10, draft:
  * detection (cross-column dropping needs it over closestCenter), same
  * per-card <select> fallback for keyboard/no-JS. Diverges in one way:
  * moveStory can reject a move (see LEGAL_STORY_MOVES), so a rejected drop
- * must revert the optimistic UI and surface why — DevBoard's moveDevTask
- * never fails, so it has no equivalent of `error`/revert here.
+ * must revert the optimistic UI and surface why — and so must a call that
+ * throws. DevBoard's moveDevTask never fails, so it has no equivalent of
+ * `error`/revert here.
  *
  * There is no persisted order within a column (stories has no sort_order,
  * unlike dev_tasks) — the board sorts by updated_at, which a status change
@@ -83,17 +84,22 @@ export function StoryBoard({ stories: initial }: { stories: BoardStory[] }) {
     if (!story || story.status === targetStatus) return;
     const fromStatus = story.status;
 
+    const revert = (message: string) => {
+      if (isBoardStatus(fromStatus)) applyStatus(story.id, fromStatus);
+      setError(message);
+    };
+
     setError(null);
     applyStatus(story.id, targetStatus);
     startTransition(() => {
-      void moveStory({ id: story.id, to: targetStatus }).then((res) => {
-        if (!res.ok) {
-          if (isBoardStatus(fromStatus)) applyStatus(story.id, fromStatus);
-          setError(res.error ?? "That move isn't allowed.");
-        } else {
-          setAnnouncement(`${story.title} moved to ${COLUMN_LABELS[targetStatus]}`);
-        }
-      });
+      void moveStory({ id: story.id, to: targetStatus })
+        .then((res) => {
+          if (!res.ok) revert(res.error ?? "That move isn't allowed.");
+          else setAnnouncement(`${story.title} moved to ${COLUMN_LABELS[targetStatus]}`);
+        })
+        // A throw — the network, the database, or an expired session's
+        // sign-in redirect — must not leave the card where it was dropped.
+        .catch(() => revert("That move didn't save. Reload the board and try again."));
     });
   }
 

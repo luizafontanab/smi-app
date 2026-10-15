@@ -225,10 +225,10 @@ h1, h2, h3 {
 
 /*
  * Inline-image layout (lib/image-layout; Jas 13/10 item 19). On a phone every
- * image is a full-width block — a floated picture beside a 15-character column
- * of text is worse than no wrap at all. From md the author's choice applies:
- * left/right float at the chosen share of the column with the copy wrapping
- * round it; full spans the column.
+ * positioned image is a block on its own line, never floated — a picture
+ * beside a 15-character column of text is worse than no wrap at all. From md
+ * the author's choice applies: left/right float at up to the chosen share of
+ * the column with the copy wrapping round it; full spans the column.
  *
  * Containment: each .story-body clears its own floats (::after), so a tall
  * picture never pokes into the advert that follows an ad-break segment, and
@@ -238,16 +238,24 @@ h1, h2, h3 {
  */
 .story-body::after { content: ""; display: block; clear: both; }
 .story-body h2, .story-body h3 { clear: both; }
-.story-body img[data-align] { display: block; width: 100%; }
+/*
+ * Sizes are CAPS, never stretches: an image renders at its own width up to its
+ * share (width:auto + max-width), so a 300px logo or a low-res photo is not
+ * blown up to fill the column and go soft — it used to be width:100% (or the
+ * 33/50/66% share) whatever its pixels. Full width is the one exception: the
+ * author chose "Full width", which means span the column.
+ */
+.story-body img[data-align] { display: block; width: auto; max-width: 100%; }
+.story-body img[data-align="full"] { width: 100%; }
 @media (min-width: 768px) {
   .story-body img[data-align="left"] { float: left; margin: 0.35em 1.5em 1em 0; }
   .story-body img[data-align="right"] { float: right; margin: 0.35em 0 1em 1.5em; }
   .story-body img[data-align="left"],
-  .story-body img[data-align="right"] { width: 50%; }
+  .story-body img[data-align="right"] { max-width: 50%; }
   .story-body img[data-align="left"][data-size="small"],
-  .story-body img[data-align="right"][data-size="small"] { width: 33%; }
+  .story-body img[data-align="right"][data-size="small"] { max-width: 33%; }
   .story-body img[data-align="left"][data-size="large"],
-  .story-body img[data-align="right"][data-size="large"] { width: 66%; }
+  .story-body img[data-align="right"][data-size="large"] { max-width: 66%; }
 }
 /* The selected image while editing — TipTap marks it with this class. */
 .story-body img.ProseMirror-selectednode { outline: 3px solid var(--smi-brand); outline-offset: 2px; }

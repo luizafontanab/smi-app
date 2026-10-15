@@ -5,6 +5,7 @@ import { serviceDb } from "@/lib/db/server";
 import { UUID_RE } from "@/lib/validate";
 import { advertPaymentsMode, ADVERT_INVOICE_KIND, retrieveCheckoutSession, STRIPE_JS_URL, stripePublishableKey } from "@/lib/adapters/advert-checkout";
 import { formatPounds, settleInvoice } from "@/lib/advert-payments";
+import { isPayableOnline } from "@/lib/invoicing";
 import { simulateInvoicePayment } from "../actions";
 import { EmbeddedCheckout } from "./EmbeddedCheckout";
 
@@ -33,15 +34,23 @@ export default async function PayInvoicePage(props: PageProps<"/dashboard/pay/in
       .maybeSingle();
 
   let { data: invoice } = await load();
-  // service role bypasses RLS, so ownership is checked here
-  if (!invoice || invoice.member_id !== user.memberId) notFound();
+  // service role bypasses RLS, so ownership is checked here — and the kind:
+  // membership is paid by its subscription, never through this page (the
+  // billing page offers no link to one, so a direct URL is the only way here)
+  if (!invoice || invoice.member_id !== user.memberId || !isPayableOnline(invoice)) notFound();
 
   const mode = advertPaymentsMode();
   const sessionId = typeof sp.session_id === "string" ? sp.session_id : null;
   if (sessionId && invoice.status === "issued" && mode === "stripe") {
     const session = await retrieveCheckoutSession(sessionId);
     if (session?.kind === ADVERT_INVOICE_KIND && session.invoiceId === invoice.id && session.paymentStatus === "paid") {
-      await settleInvoice(invoice.id, { sessionId });
+      try {
+        await settleInvoice(invoice.id, { sessionId, paid: { amountPennies: session.amountTotal, currency: session.currency } });
+      } catch (e) {
+        // The webhook is the authority and retries until it lands; the page
+        // just shows "not confirmed yet" below rather than an error.
+        console.error(`[pay/invoice] return-page settle failed for ${invoice.number}:`, e);
+      }
       ({ data: invoice } = await load());
       if (!invoice) notFound();
     }

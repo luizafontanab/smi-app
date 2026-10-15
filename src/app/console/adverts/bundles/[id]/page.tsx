@@ -43,7 +43,12 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
-      <InvoicePanel target={{ bundle_id: bundle.id }} returnTo={`/console/adverts/bundles/${bundle.id}`} />
+      <InvoicePanel
+        target={{ bundle_id: bundle.id }}
+        returnTo={`/console/adverts/bundles/${bundle.id}`}
+        // billable once something is booked under it and still to run or running
+        raise={{ kind: "bundle", id: bundle.id, pricePennies: bundle.price_pennies, billable: (parts ?? []).some((p) => ["awaiting_payment", "scheduled", "live"].includes(p.status)) }}
+      />
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Details</h2>

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { serviceDb } from "../db/server";
 import type { Json, TablesInsert } from "../db/types";
 import { applyOptIn } from "../contacts";
@@ -106,6 +106,9 @@ const DIRTY_GRACE_MS = 10 * 60_000;
 const DIRTY_SWEEP_LIMIT = 50;
 /** 600 pages × 200 = 120k records — Bigin's page_token ceiling is 100k, so this only stops a runaway loop. */
 const MAX_PAGES = 600;
+
+/** Postgres unique_violation — contacts.email and contacts.bigin_id are both unique. */
+const UNIQUE_VIOLATION = "23505";
 
 const LOCAL_COLUMNS =
   "id, email, name, company, bigin_id, bigin_company_id, bigin_company_name, bigin_modified_at, subscribed, unsubscribed_at, crm_dirty_at";
@@ -245,6 +248,24 @@ export function webhookTokenMatches(received: unknown, expected: string | undefi
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/**
+ * The mock Bigin routes (/api/mock/bigin/*, Preview with MOCK_INTEGRATIONS=1)
+ * hold whatever contacts a Preview has pushed, and used to accept any
+ * `Zoho-oauthtoken <anything>` — so anyone who found a Preview URL could read
+ * them. The adapter now also sends this header when it talks to the mock, and
+ * the routes refuse a call without it (store.ts guard).
+ *
+ * An HMAC of the deployment's own SUPABASE_SECRET_KEY: present and random on
+ * every deployment that has a database, never sent anywhere but this
+ * deployment's own mock routes, and not reversible into the key. No key, no
+ * value — and the guard then refuses everything, failing closed.
+ */
+export const MOCK_KEY_HEADER = "x-smi-mock-key";
+export function mockBiginKey(): string | null {
+  const secret = process.env.SUPABASE_SECRET_KEY?.trim();
+  return secret ? createHmac("sha256", secret).update("smi:bigin-mock").digest("hex") : null;
+}
+
 /* ---------- settings (cursor, last run, webhook channel) ---------- */
 
 async function readSetting<T>(key: string): Promise<T | null> {
@@ -297,8 +318,42 @@ class LocalMirrorCrmStub implements CrmSync {
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
-type WriteResponse = { data?: Array<{ code?: string; message?: string; status?: string; details?: { id?: string } & Record<string, unknown> }> };
+type RecordResult = {
+  code?: string;
+  message?: string;
+  status?: string;
+  details?: { id?: string; api_name?: string } & Record<string, unknown>;
+};
+type WriteResponse = { data?: RecordResult[] };
 type ListResponse<T> = { data?: T[]; info?: { more_records?: boolean; next_page_token?: string | null } };
+
+/** A refused Bigin call, with the per-record result kept so a caller can tell what it was refused for. */
+export class BiginApiError extends Error {
+  constructor(message: string, readonly status: number, readonly result: RecordResult | null) {
+    super(message);
+    this.name = "BiginApiError";
+  }
+}
+
+/** The per-record result in a Bigin error body: inside `data[]` for writes, at the top level otherwise. */
+function recordResult(body: unknown): RecordResult | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as { data?: unknown; code?: unknown };
+  if (Array.isArray(b.data) && b.data[0] && typeof b.data[0] === "object") return b.data[0] as RecordResult;
+  return typeof b.code === "string" ? (b as RecordResult) : null;
+}
+
+/**
+ * Could this refusal mean the record id in the URL no longer exists in Bigin?
+ * Bigin documents INVALID_DATA for "the id specified is incorrect" and Zoho's
+ * own docs word it "the id given seems to be invalid", naming no field — unlike
+ * a bad field value, which names its api_name. Only a hint: the caller
+ * confirms by reading the record back before acting on it.
+ */
+const mayBeGoneRecord = (e: BiginApiError) =>
+  e.status === 404 || (e.result?.code === "INVALID_DATA" && (e.result.details?.api_name ?? "id") === "id");
+/** Same, for the Account_Name lookup: the company was deleted or merged in Bigin. */
+const mayBeGoneAccount = (e: BiginApiError) => e.result?.code === "INVALID_DATA" && e.result.details?.api_name === "Account_Name";
 
 /**
  * Raw `fetch` against Bigin's OAuth2 + REST API — no Zoho SDK, matching every
@@ -314,6 +369,8 @@ class BiginCrmSync implements CrmSync {
     private refreshToken: string,
     private accountsBase: string,
     private apiBase: string,
+    /** Only when talking to the mock: proves to its routes that the call is ours (see mockBiginKey). */
+    private mockKey: string | null = null,
   ) {}
 
   private async getToken(): Promise<string> {
@@ -339,7 +396,7 @@ class BiginCrmSync implements CrmSync {
     return access_token;
   }
 
-  /** One API call. 204 → null (Zoho's "nothing here"); any other non-2xx throws, 429 (out of credits) included. */
+  /** One API call. 204 → null (Zoho's "nothing here"); any other non-2xx throws a BiginApiError, 429 (out of credits) included. */
   private async request<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T | null> {
     const token = await this.getToken();
     const res = await fetch(`${this.apiBase}/bigin/v2${path}`, {
@@ -347,13 +404,24 @@ class BiginCrmSync implements CrmSync {
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
         ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(this.mockKey ? { [MOCK_KEY_HEADER]: this.mockKey } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
     if (res.status === 204) return null;
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new Error(`Bigin ${init.method ?? "GET"} ${path.split("?")[0]} failed (${res.status}): ${detail.slice(0, 300)}`);
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(detail);
+      } catch {
+        // not JSON — the status and the text are all there is
+      }
+      throw new BiginApiError(
+        `Bigin ${init.method ?? "GET"} ${path.split("?")[0]} failed (${res.status}): ${detail.slice(0, 300)}`,
+        res.status,
+        recordResult(parsed),
+      );
     }
     const text = await res.text();
     return text ? (JSON.parse(text) as T) : null;
@@ -363,9 +431,29 @@ class BiginCrmSync implements CrmSync {
   private writtenId(body: WriteResponse | null, what: string): string {
     const result = body?.data?.[0];
     if (result?.code !== "SUCCESS" || !result.details?.id) {
-      throw new Error(`Bigin rejected the ${what}: ${result?.code ?? "no result"} ${result?.message ?? ""} ${JSON.stringify(result?.details ?? {})}`.trim());
+      throw new BiginApiError(
+        `Bigin rejected the ${what}: ${result?.code ?? "no result"} ${result?.message ?? ""} ${JSON.stringify(result?.details ?? {})}`.trim(),
+        202,
+        result ?? null,
+      );
     }
     return result.details.id;
+  }
+
+  /**
+   * Is this record really gone from Bigin? Asked before acting on a refusal
+   * that only suggests it, so a contact is never unlinked from a record that
+   * still exists. A record that doesn't exist reads back as 204 (Bigin's
+   * status-code docs) — or, as Zoho CRM answers, the same INVALID_DATA.
+   */
+  private async isGone(path: string): Promise<boolean> {
+    try {
+      const body = await this.request<ListResponse<{ id?: string }>>(path);
+      return !body?.data?.length;
+    } catch (e) {
+      if (e instanceof BiginApiError && mayBeGoneRecord(e)) return true;
+      throw e;
+    }
   }
 
   /** A20: look a contact up by email before ever creating one. */
@@ -390,7 +478,28 @@ class BiginCrmSync implements CrmSync {
     return (body?.data ?? []).filter((a) => a.id && a.Account_Name).map((a) => ({ id: a.id!, name: a.Account_Name! }));
   }
 
-  async pushContact(contactId: string, opts: PushOptions = {}): Promise<void> {
+  /**
+   * Push one contact. Two ways a push could otherwise fail for ever or fork the
+   * record, both handled here:
+   *
+   *  · A stored bigin_id (or company link) Bigin no longer has — deleted there,
+   *    and the delete notification never reached /api/webhooks/bigin. Every PUT
+   *    to it is refused, so before this the push stayed dirty, crm_push died
+   *    and crm_sync threw every 15 minutes. Now a refusal that looks like a
+   *    missing id is confirmed by reading the record back; if it is gone, the
+   *    link is cleared and the push goes on as for a never-linked contact
+   *    (search by email, else create). A gone company is dropped the same way.
+   *
+   *  · Two pushes of a never-linked contact at once (a console edit and its
+   *    queued retry, say) can both search, both find nothing and both create.
+   *    The write-back only links a new record while the row is still
+   *    unlinked (`bigin_id is null`), so exactly one wins; the other deletes
+   *    the record it just made and pushes again — onto the winner's record,
+   *    so its own, possibly newer, state still lands. Serialising pushes per
+   *    contact would need a lock PostgREST can't hold across the HTTP calls;
+   *    the conditional write is the one step that is atomic already.
+   */
+  async pushContact(contactId: string, opts: PushOptions = {}, afterLostRace = false): Promise<void> {
     const db = serviceDb();
     const { data: row, error } = await db.from("contacts").select(LOCAL_COLUMNS).eq("id", contactId).maybeSingle();
     if (error) throw new Error(`crm push: reading contact ${contactId}: ${error.message}`);
@@ -410,26 +519,91 @@ class BiginCrmSync implements CrmSync {
 
     // By stored id first, so an email changed here updates the same Bigin
     // record instead of orphaning it; by email only for a never-linked row.
-    const existingId = row.bigin_id ?? (await this.findContactByEmail(row.email));
-    const create = !existingId;
-    const body = await this.request<WriteResponse>(create ? "/Contacts" : `/Contacts/${encodeURIComponent(existingId)}`, {
-      method: create ? "POST" : "PUT",
-      // trigger: [] — our writes must not fire Bigin workflow emails or automations
-      body: { data: [contactPayload(row, { ...opts, create, account })], trigger: [] },
-    });
-    const biginId = existingId ?? this.writtenId(body, "new contact");
-    if (!create) this.writtenId(body, "contact update");
+    let existingId = row.bigin_id ?? (await this.findContactByEmail(row.email));
+    let biginId: string;
+    for (let attempt = 0; ; attempt++) {
+      const create = !existingId;
+      try {
+        const body = await this.request<WriteResponse>(create ? "/Contacts" : `/Contacts/${encodeURIComponent(existingId!)}`, {
+          method: create ? "POST" : "PUT",
+          // trigger: [] — our writes must not fire Bigin workflow emails or automations
+          body: { data: [contactPayload(row, { ...opts, create, account })], trigger: [] },
+        });
+        const written = this.writtenId(body, create ? "new contact" : "contact update");
+        biginId = existingId ?? written;
+        break;
+      } catch (e) {
+        // two repairs at most (record, then company); anything after that is a real refusal
+        if (attempt >= 2 || !(e instanceof BiginApiError)) throw e;
+        if (existingId && mayBeGoneRecord(e) && (await this.isGone(`/Contacts/${encodeURIComponent(existingId)}?fields=Email`))) {
+          const stale = existingId;
+          // Only the link we read, so a fresh link another push wrote meanwhile survives.
+          const { error: unlinkError } = await db
+            .from("contacts")
+            .update({ bigin_id: null, bigin_modified_at: null })
+            .eq("id", contactId)
+            .eq("bigin_id", stale);
+          if (unlinkError) throw new Error(`crm push: clearing the deleted Bigin record ${stale} from ${contactId}: ${unlinkError.message}`);
+          console.warn(`[crm] Bigin no longer has contact ${stale} (linked to ${contactId}); unlinked, pushing as new`);
+          const found = await this.findContactByEmail(row.email);
+          existingId = found === stale ? null : found;
+          continue;
+        }
+        if (account && mayBeGoneAccount(e) && (await this.isGone(`/Accounts/${encodeURIComponent(account.id)}?fields=Account_Name`))) {
+          if (!autoLinked) {
+            const { error: companyError } = await db
+              .from("contacts")
+              .update({ bigin_company_id: null, bigin_company_name: null })
+              .eq("id", contactId)
+              .eq("bigin_company_id", account.id);
+            if (companyError) throw new Error(`crm push: clearing the deleted Bigin company from ${contactId}: ${companyError.message}`);
+          }
+          console.warn(`[crm] Bigin no longer has company ${account.id} (linked to ${contactId}); pushing without it`);
+          account = null;
+          autoLinked = false;
+          continue;
+        }
+        throw e;
+      }
+    }
 
-    const { error: writeError } = await db
+    const stamp = {
+      bigin_id: biginId,
+      last_synced_at: new Date().toISOString(),
+      crm_dirty_at: null,
+      ...(autoLinked && account ? { bigin_company_id: account.id, bigin_company_name: account.name } : {}),
+    };
+    if (existingId) {
+      const { error: writeError } = await db.from("contacts").update(stamp).eq("id", contactId);
+      if (writeError) throw new Error(`crm push: Bigin accepted ${contactId} but the write-back failed: ${writeError.message}`);
+      return;
+    }
+
+    // A record we just created: link it only if nothing else linked this row first.
+    const { data: claimed, error: claimError } = await db
       .from("contacts")
-      .update({
-        bigin_id: biginId,
-        last_synced_at: new Date().toISOString(),
-        crm_dirty_at: null,
-        ...(autoLinked && account ? { bigin_company_id: account.id, bigin_company_name: account.name } : {}),
-      })
-      .eq("id", contactId);
-    if (writeError) throw new Error(`crm push: Bigin accepted ${contactId} but the write-back failed: ${writeError.message}`);
+      .update(stamp)
+      .eq("id", contactId)
+      .is("bigin_id", null)
+      .select("id")
+      .maybeSingle();
+    if (claimError) throw new Error(`crm push: Bigin created ${biginId} for ${contactId} but the write-back failed: ${claimError.message}`);
+    if (claimed) return;
+
+    // Lost the race: another push linked this contact while ours was creating.
+    await this.deleteDuplicate(biginId, contactId);
+    if (!afterLostRace) await this.pushContact(contactId, opts, true);
+  }
+
+  /** Remove a contact this adapter created a moment ago and turned out not to need. The one delete it ever makes in Bigin. */
+  private async deleteDuplicate(biginId: string, contactId: string): Promise<void> {
+    const body = await this.request<WriteResponse>(`/Contacts/${encodeURIComponent(biginId)}?wf_trigger=false`, { method: "DELETE" });
+    if (body?.data?.[0]?.code !== "SUCCESS") {
+      throw new Error(
+        `crm push: ${contactId} was linked by a concurrent push, and deleting the duplicate Bigin contact ${biginId} failed — ` +
+          `remove it in Bigin by hand: ${JSON.stringify(body?.data?.[0] ?? null)}`,
+      );
+    }
   }
 
   /**
@@ -450,7 +624,7 @@ class BiginCrmSync implements CrmSync {
     const localById = new Map((byId.data as LocalContact[]).map((c) => [c.bigin_id!, c]));
     const localByEmail = new Map((byEmail.data as LocalContact[]).map((c) => [c.email, c]));
 
-    const inserts: TablesInsert<"contacts">[] = [];
+    const inserts: { record: BiginContact; row: TablesInsert<"contacts"> }[] = [];
     const now = new Date();
     for (const record of records) {
       summary.fetched++;
@@ -475,7 +649,7 @@ class BiginCrmSync implements CrmSync {
       if (result.kind === "insert") {
         summary.inserted++;
         if (result.row.unsubscribed_at) summary.optedOut++;
-        inserts.push(result.row);
+        inserts.push({ record, row: result.row });
         continue;
       }
       // Bigin changed the email to one another local row already has — keep ours rather than collide on the unique key.
@@ -488,15 +662,63 @@ class BiginCrmSync implements CrmSync {
       if (result.optedOut) summary.optedOut++;
       if (result.changed) summary.updated++;
       else summary.unchanged++;
-      if (!summary.dryRun) {
-        const { error } = await db.from("contacts").update(result.patch).eq("id", local!.id);
-        if (error) throw new Error(`crm pull: updating contact ${local!.id}: ${error.message}`);
-      }
+      if (!summary.dryRun) await this.updateLocal(local!.id, result.patch, summary);
     }
     if (inserts.length && !summary.dryRun) {
-      const { error } = await db.from("contacts").insert(inserts);
-      if (error) throw new Error(`crm pull: inserting ${inserts.length} contacts: ${error.message}`);
+      const { error } = await db.from("contacts").insert(inserts.map((i) => i.row));
+      if (error && error.code !== UNIQUE_VIOLATION) throw new Error(`crm pull: inserting ${inserts.length} contacts: ${error.message}`);
+      // One row clashing on contacts.email or bigin_id fails the whole batch —
+      // typically someone signed up here between our read and this insert. Go
+      // row by row so the rest still land and the clash is resolved, not fatal.
+      if (error) for (const { record, row } of inserts) await this.insertOne(record, row, summary, now);
     }
+  }
+
+  /**
+   * A per-row update from a pull. A unique clash (the email or bigin_id taken
+   * by a row written since the batch was read) is counted as a duplicate and
+   * left for the next run, rather than failing every other row with it.
+   */
+  private async updateLocal(id: string, patch: Partial<TablesInsert<"contacts">>, summary: PullSummary): Promise<void> {
+    const { error } = await serviceDb().from("contacts").update(patch).eq("id", id);
+    if (!error) return;
+    if (error.code !== UNIQUE_VIOLATION) throw new Error(`crm pull: updating contact ${id}: ${error.message}`);
+    console.warn(`[crm] pull: contact ${id} clashed with a newer row (${error.message}); left for the next run`);
+    summary.duplicates++;
+  }
+
+  /**
+   * One insert from a batch that clashed. The clashing row exists now, so the
+   * Bigin record is applied to it the way it would have been had the batch
+   * read it — linked, or counted as a duplicate when it is already linked to a
+   * different Bigin record — and the summary moves it out of `inserted`.
+   */
+  private async insertOne(record: BiginContact, row: TablesInsert<"contacts">, summary: PullSummary, now: Date): Promise<void> {
+    const db = serviceDb();
+    const { error } = await db.from("contacts").insert(row);
+    if (!error) return;
+    if (error.code !== UNIQUE_VIOLATION) throw new Error(`crm pull: inserting contact ${row.email}: ${error.message}`);
+
+    summary.inserted--;
+    if (row.unsubscribed_at) summary.optedOut--;
+    // Two reads rather than one .or(): an email can hold the characters PostgREST's filter syntax uses.
+    const [byId, byEmail] = await Promise.all([
+      db.from("contacts").select(LOCAL_COLUMNS).eq("bigin_id", record.id).maybeSingle(),
+      db.from("contacts").select(LOCAL_COLUMNS).eq("email", row.email).maybeSingle(),
+    ]);
+    if (byId.error || byEmail.error) throw new Error(`crm pull: reading the row ${row.email} clashed with: ${(byId.error ?? byEmail.error)!.message}`);
+    const local = ((byId.data ?? byEmail.data) as LocalContact | null) ?? null;
+    if (!local || (local.bigin_id && local.bigin_id !== record.id)) {
+      summary.duplicates++;
+      return;
+    }
+    const result = reconcile(record, local, now);
+    if (result.kind !== "update") return; // unreachable: `local` is set
+    if (result.linked) summary.linked++;
+    if (result.optedOut) summary.optedOut++;
+    if (result.changed) summary.updated++;
+    else summary.unchanged++;
+    await this.updateLocal(local.id, result.patch, summary);
   }
 
   async pull(opts: { dryRun?: boolean; allowFirstImport?: boolean } = {}): Promise<PullSummary | null> {
@@ -653,7 +875,7 @@ export function getCrmSync(): CrmSync {
     const mock = mockBaseUrl();
     const accountsBase = mock ? `${mock}/api/mock/bigin` : (process.env.BIGIN_ACCOUNTS_BASE?.trim() || "https://accounts.zoho.eu");
     const apiBase = mock ? `${mock}/api/mock/bigin` : (process.env.BIGIN_API_BASE?.trim() || "https://www.zohoapis.eu");
-    return new BiginCrmSync(clientId, clientSecret, refreshToken, accountsBase, apiBase);
+    return new BiginCrmSync(clientId, clientSecret, refreshToken, accountsBase, apiBase, mock ? mockBiginKey() : null);
   }
   return new LocalMirrorCrmStub();
 }

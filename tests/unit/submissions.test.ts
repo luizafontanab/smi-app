@@ -63,6 +63,18 @@ describe("pendingSubmissions", () => {
     expect(items[0]).toMatchObject({ kind: "story", status: "draft", memberDraft: true, publicHref: null });
   });
 
+  // 16 Oct review: the desk's work stays the desk's. A desk-written story
+  // waiting on (or sent back from) a decision isn't the member's to edit or
+  // withdraw, so it isn't listed with those buttons; once published it is.
+  it("lists desk-written stories only once they're published", async () => {
+    const stories = queryBuilder(dbOk([], 0));
+    db({ stories: () => stories });
+
+    await memberContent("mem1");
+
+    expect(stories.or).toHaveBeenCalledWith("source.eq.member,status.eq.published,member_draft.eq.true");
+  });
+
   // Jas 13/10 item 12: stories led by someone else that feature this member.
   it("lists published stories featuring the member alongside its own, marked featured", async () => {
     let call = 0;

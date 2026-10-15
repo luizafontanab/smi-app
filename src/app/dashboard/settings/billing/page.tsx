@@ -3,6 +3,7 @@ import { serviceDb } from "@/lib/db/server";
 import { signedInvoiceUrl } from "@/lib/invoice-pdf";
 import Link from "next/link";
 import { advertPaymentsMode } from "@/lib/adapters/advert-checkout";
+import { isPayableOnline } from "@/lib/invoicing";
 import { cancelMembership } from "../../actions";
 import { SettingsTabs } from "../SettingsTabs";
 import { CancelMembershipDialog } from "./CancelMembershipDialog";
@@ -64,7 +65,8 @@ export default async function BillingSettingsPage(props: PageProps<"/dashboard/s
                 <td>
                   {i.status === "paid"
                     ? <span className="text-success">paid</span>
-                    : i.status === "issued" && payable && !i.number.startsWith("SMI-JOIN-")
+                    // the pay page's own rule — membership is paid by its subscription, never here
+                    : i.status === "issued" && payable && isPayableOnline(i)
                       ? <Link href={`/dashboard/pay/invoice/${i.id}`} className="rounded bg-ink px-3 py-1 text-xs font-semibold text-white">Pay now</Link>
                       : i.status === "issued" ? "unpaid" : i.status}
                 </td>

@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { BookingCard } from "@/components/console/BookingSections";
 import { PlacementCards } from "@/components/console/PlacementCards";
 import { saveTakeoverPlacement } from "../../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
         One advertiser&apos;s colours and top banner across the whole public site for a paid period — reverts on its own once the dates end.
       </p>
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.cancelled === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Cancelled — the takeover is gone and its invoice is cancelled.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <PlacementCards
@@ -65,7 +67,7 @@ export default async function TakeoverPage(props: PageProps<"/console/adverts/ta
           <TakeoverColorPicker />
           <div>
             <label htmlFor="banner" className="text-sm font-medium">Top banner</label>
-            <input id="banner" name="banner" type="file" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
+            <UploadField id="banner" name="banner" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block w-full rounded border px-3 py-2" /></label>

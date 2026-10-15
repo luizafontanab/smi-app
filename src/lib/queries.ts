@@ -582,53 +582,30 @@ export function ilikeTerm(raw: string): string {
  */
 type MemberFilterOpts = { industries?: string[]; services?: string[]; membershipTypes?: string[] };
 
-/** Members linked to any of `slugs` through a taxonomy join table. */
-async function membersLinkedVia(
-  db: ReturnType<typeof publicDb>,
-  slugs: string[],
-  table: "industries" | "services" | "membership_types",
-  join: "member_industries" | "member_services" | "member_membership_types",
-  fk: "industry_id" | "service_id" | "membership_type_id",
-) {
-  const { data: terms } = await db.from(table).select("id").in("slug", slugs);
-  const ids = (terms ?? []).map((t) => t.id);
-  const { data: links } = ids.length
-    ? await db.from(join).select("member_id").in(fk, ids)
-    : { data: [] };
-  return [...new Set((links ?? []).map((l) => l.member_id))];
-}
-
 /**
- * Resolves the three many-to-many filters (each OR-matched across its selected
- * slugs) to one member-id list memberDirectory and memberPins can both apply
- * with `.in()`. Null means "not filtering at all"; an empty array means
- * "filtered to nothing matches". The axes are intersected, so industries AND
- * services AND membership types all narrow the result.
+ * The directory's members, already narrowed by the three many-to-many filters,
+ * for memberDirectory and memberPins to chain their own select/filters onto.
+ * The matching happens in the database (members_in_taxonomies, migration
+ * 20261016000040): within an axis any selected slug matches, across axes all
+ * must, and an axis with nothing selected doesn't filter. Industries match
+ * every industry a member is in, not only their primary — a member offering
+ * welding and bending is listed under both.
  *
- * Industries match every industry a member is in, not only their primary — a
- * member offering welding and bending is listed under both.
+ * It used to resolve each axis to member ids here and send them back as
+ * `.in("id", ids)` — the join-row read was silently capped at PostgREST's max
+ * rows, and a broad industry's id list could outgrow the GET URL. The slugs
+ * now travel in the /rpc POST body, so neither limit applies.
  */
-async function memberFilterIds(db: ReturnType<typeof publicDb>, opts: MemberFilterOpts) {
-  const axes = await Promise.all([
-    opts.industries?.length
-      ? membersLinkedVia(db, opts.industries, "industries", "member_industries", "industry_id")
-      : Promise.resolve(null),
-    opts.services?.length
-      ? membersLinkedVia(db, opts.services, "services", "member_services", "service_id")
-      : Promise.resolve(null),
-    opts.membershipTypes?.length
-      ? membersLinkedVia(db, opts.membershipTypes, "membership_types", "member_membership_types", "membership_type_id")
-      : Promise.resolve(null),
-  ]);
-  return axes.reduce<string[] | null>(
-    (acc, ids) => (ids === null ? acc : acc === null ? ids : acc.filter((id) => ids.includes(id))),
-    null,
+function filteredMembers(db: ReturnType<typeof publicDb>, opts: MemberFilterOpts) {
+  // undefined, not null, for "not filtering": the argument is then left out of
+  // the call and the function's own default (null) applies
+  const axis = (slugs: string[] | undefined) => (slugs?.length ? slugs : undefined);
+  return db.rpc(
+    "members_in_taxonomies",
+    { p_industries: axis(opts.industries), p_services: axis(opts.services), p_membership_types: axis(opts.membershipTypes) },
+    { count: "exact" },
   );
 }
-
-// members.id is a uuid — this never matches a real row, so an empty
-// member-id list correctly filters the result to nothing.
-const NO_MATCH_UUID = "00000000-0000-0000-0000-000000000000";
 
 export async function memberDirectory(opts: MemberFilterOpts & { q?: string; limit?: number; offset?: number } = {}) {
   const term = ilikeTerm(opts.q ?? "");
@@ -636,17 +613,13 @@ export async function memberDirectory(opts: MemberFilterOpts & { q?: string; lim
   // same stance as searchSite, which returns nothing for an empty tsquery.
   if (opts.q?.trim() && !term) return { members: [], total: 0 };
 
-  const db = publicDb();
-  const memberIds = await memberFilterIds(db, opts);
   // `.order("name")` is NOT the display order — it pins the shuffle's input so
   // the same seed always permutes the same sequence (a DB with no ORDER BY may
   // return rows in a different order per query, which would break pagination).
-  let q = db
-    .from("members")
-    .select("id, slug, name, logo_path, description, address, website, phone, contact_email, lat, lng, industry:industries!members_industry_id_fkey(slug, name)", { count: "exact" })
+  let q = filteredMembers(publicDb(), opts)
+    .select("id, slug, name, logo_path, description, address, website, phone, contact_email, lat, lng, industry:industries!members_industry_id_fkey(slug, name)")
     .eq("status", "active")
     .order("name");
-  if (memberIds) q = q.in("id", memberIds.length ? memberIds : [NO_MATCH_UUID]);
   // Separate PostgREST params are ANDed, so this is the taxonomy filters AND (name OR description).
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data, count } = await q;
@@ -676,10 +649,7 @@ export async function memberDirectory(opts: MemberFilterOpts & { q?: string; lim
 export async function memberPins(opts: MemberFilterOpts & { q?: string } = {}) {
   const term = ilikeTerm(opts.q ?? "");
   if (opts.q?.trim() && !term) return { members: [], total: 0 };
-  const db = publicDb();
-  const memberIds = await memberFilterIds(db, opts);
-  let q = db.from("members").select("slug, name, lat, lng", { count: "exact" }).eq("status", "active").order("name");
-  if (memberIds) q = q.in("id", memberIds.length ? memberIds : [NO_MATCH_UUID]);
+  let q = filteredMembers(publicDb(), opts).select("slug, name, lat, lng").eq("status", "active").order("name");
   if (term) q = q.or(`name.ilike.%${term}%,description.ilike.%${term}%`);
   const { data, count } = await q;
   return { members: data ?? [], total: count ?? 0 };

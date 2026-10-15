@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { serviceDb } from "@/lib/db/server";
 import { record, requestContext } from "@/lib/analytics";
 import { resolveAdvertTarget } from "@/lib/adverts";
+import { isObviousBot } from "@/lib/bots";
 import { isMemberLinkable } from "@/lib/member-visibility";
 
 /**
@@ -23,9 +24,14 @@ export async function GET(req: Request, ctx: RouteContext<"/visit/[id]">) {
     .eq("id", id)
     .maybeSingle();
   if (!ad) redirect("/");
-  const reqCtx = await requestContext();
-  record([{ kind: "ad_click", advert_id: ad.id, member_id: ad.member?.id ?? null, path: resolveClickPath(req), ...reqCtx }]);
-  // An advert with no link_url falls back to its advertiser's member page. That
+  // A crawler is redirected like anyone else but never counted as a paid
+  // click (lib/bots) — robots.ts already disallows /visit/ for those that listen.
+  if (!isObviousBot(req.headers)) {
+    const reqCtx = await requestContext();
+    record([{ kind: "ad_click", advert_id: ad.id, member_id: ad.member?.id ?? null, path: resolveClickPath(req), ...reqCtx }]);
+  }
+  // An advert with no usable link_url (none, or one resolveAdvertTarget can't
+  // make a web address of) falls back to its advertiser's member page. That
   // page 404s for an archived or lapsed member, so the fallback has to be
   // withdrawn with it — a paid click landing on "not found" is worse than one
   // landing on the homepage. The click itself is still recorded either way:

@@ -57,9 +57,18 @@ export type InvoiceCheckoutRequest = {
   description: string;
   amountPennies: number;
   returnUrl: string;
+  /**
+   * The session this one replaces (the invoice's last, now expired or
+   * unusable), or null for an invoice's first. Part of the idempotency key:
+   * two tabs opening checkout from the same state send the same key and get
+   * the same session back, rather than one payable session each.
+   */
+  replacesSessionId: string | null;
 };
 
-export type InvoiceCheckoutResult = { ok: true; clientSecret: string; sessionId: string } | { ok: false; error: string };
+export type InvoiceCheckoutResult =
+  | { ok: true; clientSecret: string; sessionId: string; expiresAt: string }
+  | { ok: false; error: string };
 
 function stripeHeaders(secretKey: string) {
   return {
@@ -69,15 +78,19 @@ function stripeHeaders(secretKey: string) {
   };
 }
 
+/** Stripe's Checkout Session ids — checked before one is put in a URL path. */
+const SESSION_ID_RE = /^cs_[A-Za-z0-9_]+$/;
+
 /** Creates the embedded Checkout Session for one invoice. Only meaningful in `stripe` mode. */
 export async function createInvoiceCheckout(req: InvoiceCheckoutRequest): Promise<InvoiceCheckoutResult> {
   const secret = process.env.STRIPE_SECRET_KEY?.trim();
   if (!secret) return { ok: false, error: "Online payments are not configured." };
 
   // One clock reading for both the idempotency key and expires_at: Stripe
-  // rejects a reused key whose parameters differ, so a double click inside
-  // the same minute must send byte-identical requests.
+  // rejects a reused key whose parameters differ, so two requests carrying
+  // the same key must be byte-identical.
   const minute = Math.floor(Date.now() / 60_000);
+  const expiresAt = (minute + 60) * 60;
   const body = new URLSearchParams({
     mode: "payment",
     ui_mode: "embedded_page",
@@ -94,10 +107,11 @@ export async function createInvoiceCheckout(req: InvoiceCheckoutRequest): Promis
     "payment_intent_data[metadata][invoice_id]": req.invoiceId,
     "payment_intent_data[description]": `${req.invoiceNumber} — ${req.description}`.slice(0, 1000),
     return_url: req.returnUrl,
-    // An hour, not Stripe's default 24: the invoice can be voided meanwhile
-    // (run called off, or its hold lapsing), and a shorter-lived session
-    // narrows the window for paying something no longer owed.
-    expires_at: String((minute + 60) * 60),
+    // An hour, not Stripe's default 24 (it allows 30 minutes to 24 hours):
+    // the invoice can be voided meanwhile, and although voidInvoices()
+    // expires the open session, a shorter-lived one narrows the window if
+    // that call fails.
+    expires_at: String(expiresAt),
   });
   if (req.email) body.set("customer_email", req.email);
 
@@ -105,8 +119,11 @@ export async function createInvoiceCheckout(req: InvoiceCheckoutRequest): Promis
     method: "POST",
     headers: {
       ...stripeHeaders(secret),
-      // A double click must not open two sessions for one invoice.
-      "Idempotency-Key": `invoice-checkout-${req.invoiceId}-${minute}`,
+      // Keyed on what this session replaces, not only on the clock: every
+      // request made from the same state of the invoice is the same request,
+      // so two tabs racing to open checkout get one session between them.
+      // The minute stays in the key because expires_at is in the body.
+      "Idempotency-Key": `invoice-checkout-${req.invoiceId}-${req.replacesSessionId ?? "first"}-${minute}`,
     },
     body,
   });
@@ -116,7 +133,7 @@ export async function createInvoiceCheckout(req: InvoiceCheckoutRequest): Promis
   }
   const session = (await res.json()) as { id?: string; client_secret?: string };
   if (!session.client_secret || !session.id) return { ok: false, error: "Stripe did not return a checkout session." };
-  return { ok: true, clientSecret: session.client_secret, sessionId: session.id };
+  return { ok: true, clientSecret: session.client_secret, sessionId: session.id, expiresAt: new Date(expiresAt * 1000).toISOString() };
 }
 
 export type CheckoutSessionState = {
@@ -124,23 +141,65 @@ export type CheckoutSessionState = {
   paymentStatus: string | null;
   invoiceId: string | null;
   kind: string | null;
+  /** Present on an embedded_page session; what Stripe.js mounts with. */
+  clientSecret: string | null;
+  amountTotal: number | null;
+  currency: string | null;
 };
 
 /**
- * Reads a session back on the return page — the fast path that settles the
- * invoice before the webhook arrives, so the member sees "paid" at once. The
- * webhook stays the authority; settling is idempotent, so both may run.
+ * Reads a session back: on the return page — the fast path that settles the
+ * invoice before the webhook arrives, so the member sees "paid" at once — and
+ * when the pay page reopens an invoice's open session instead of making a
+ * second one. The webhook stays the authority; settling is idempotent, so
+ * both may run.
  */
 export async function retrieveCheckoutSession(sessionId: string): Promise<CheckoutSessionState | null> {
   const secret = process.env.STRIPE_SECRET_KEY?.trim();
-  if (!secret || !/^cs_[A-Za-z0-9_]+$/.test(sessionId)) return null;
+  if (!secret || !SESSION_ID_RE.test(sessionId)) return null;
   const res = await fetch(`https://api.stripe.com/v1/checkout/sessions/${sessionId}`, { headers: stripeHeaders(secret) });
   if (!res.ok) return null;
-  const s = (await res.json()) as { status?: string; payment_status?: string; metadata?: Record<string, string> };
+  const s = (await res.json()) as {
+    status?: string;
+    payment_status?: string;
+    metadata?: Record<string, string>;
+    client_secret?: string | null;
+    amount_total?: number | null;
+    currency?: string | null;
+  };
   return {
     status: s.status ?? null,
     paymentStatus: s.payment_status ?? null,
     invoiceId: s.metadata?.invoice_id ?? null,
     kind: s.metadata?.kind ?? null,
+    clientSecret: s.client_secret ?? null,
+    amountTotal: typeof s.amount_total === "number" ? s.amount_total : null,
+    currency: s.currency ?? null,
   };
+}
+
+export type ExpireResult =
+  | { ok: true }
+  /** The session could not be expired; `status` is what Stripe says it is now, when it could be read. */
+  | { ok: false; status: string | null; error: string };
+
+/**
+ * Ends an open Checkout Session so it can no longer be paid
+ * (POST /v1/checkout/sessions/{id}/expire — Stripe allows it only while the
+ * session is `open`). On a refusal the session is read back, so the caller
+ * can tell "already expired" (fine) from "complete" (the member paid while it
+ * was being cancelled — the invoice must not be voided under them).
+ */
+export async function expireCheckoutSession(sessionId: string): Promise<ExpireResult> {
+  const secret = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!secret) return { ok: false, status: null, error: "Online payments are not configured." };
+  if (!SESSION_ID_RE.test(sessionId)) return { ok: false, status: null, error: "Not a Checkout Session id." };
+  const res = await fetch(`https://api.stripe.com/v1/checkout/sessions/${sessionId}/expire`, {
+    method: "POST",
+    headers: stripeHeaders(secret),
+  });
+  if (res.ok) return { ok: true };
+  const detail = await res.text().catch(() => "");
+  const now = await retrieveCheckoutSession(sessionId);
+  return { ok: false, status: now?.status ?? null, error: `Stripe refused to expire ${sessionId} (${res.status}): ${detail.slice(0, 300)}` };
 }

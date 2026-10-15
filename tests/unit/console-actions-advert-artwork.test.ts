@@ -1,16 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  declineInterest, decideArtworkSwap, proposeArtworkSwap, saveAdvertArtwork, saveAdvertFormats,
+  cancelPlacement, declineInterest, decideArtworkSwap, proposeArtworkSwap, saveAdvertArtwork, saveAdvertFormats,
   saveBannerSpots, saveMediaPack, saveTakeoverPlacement, startAdvertFromInterest,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
+import { invoicesTable } from "../stubs/invoices-table";
 import type { CurrentUser } from "@/lib/auth";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireConsole, uploadImage, uploadDocument, enqueue } = vi.hoisted(() => ({
+const { requireConsole, uploadImage, uploadDocument, enqueue, removeMedia } = vi.hoisted(() => ({
+  removeMedia: vi.fn<(path: string | null | undefined) => Promise<void>>(async () => {}),
   requireConsole: vi.fn(async (): Promise<CurrentUser> => ({
     userId: "admin1", email: "jas@smi.local", role: "admin", memberId: null, displayName: "Jas",
   })),
@@ -19,14 +21,15 @@ const { requireConsole, uploadImage, uploadDocument, enqueue } = vi.hoisted(() =
   enqueue: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
-vi.mock("@/lib/media", () => ({ uploadImage, uploadDocument, removeMedia: vi.fn(async () => {}) }));
-vi.mock("@/lib/jobs", () => ({ enqueue }));
+vi.mock("@/lib/media", () => ({ uploadImage, uploadDocument, removeMedia }));
+vi.mock("@/lib/jobs", () => ({ enqueue, runQueuedJobSoon: vi.fn() }));
 
 afterEach(() => {
   resetDbServerMocks();
   uploadImage.mockReset().mockResolvedValue(null);
   uploadDocument.mockReset().mockResolvedValue(null);
   enqueue.mockReset().mockResolvedValue(undefined);
+  removeMedia.mockReset().mockResolvedValue(undefined);
 });
 
 function form(fields: Record<string, string>) {
@@ -67,6 +70,59 @@ describe("saveAdvertArtwork", () => {
     const [payload] = (advertsBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(payload).not.toHaveProperty("desktop_path");
     expect(payload).not.toHaveProperty("mobile_path");
+  });
+});
+
+// Review findings 16 Oct (link_url only checked by the browser; orphaned uploads).
+describe("saveAdvertArtwork — link and uploads", () => {
+  it("refuses a click-through link that isn't an http(s) web address, before uploading", async () => {
+    const from = db({});
+    await expect(saveAdvertArtwork(form({ name: "Acme banner", member_id: "m1", format: "banner", link_url: "javascript:alert(document.cookie)" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/artwork\/new\?error=The%20click-through%20link/);
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("stores an accepted link normalised", async () => {
+    const advertsBuilder = queryBuilder(dbOk(null));
+    db({ adverts: () => advertsBuilder });
+    await expect(saveAdvertArtwork(form({ id: "ad1", name: "Acme banner", member_id: "m1", format: "banner", link_url: "www.acme.co.uk" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/adverts/artwork");
+    expect(advertsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ link_url: "https://www.acme.co.uk" }));
+  });
+
+  it("a new advert missing one image drops the one that did upload", async () => {
+    uploadImage.mockResolvedValueOnce("panels/d.jpg").mockResolvedValueOnce(null);
+    db({});
+    await expect(saveAdvertArtwork(form({ name: "Acme banner", member_id: "m1", format: "banner" }))).rejects.toThrow(/Both%20a%20desktop/);
+    expect(removeMedia).toHaveBeenCalledWith("panels/d.jpg");
+  });
+});
+
+describe("saveTakeoverPlacement — uploads", () => {
+  it("an edit of a takeover that's gone uploads nothing", async () => {
+    uploadImage.mockResolvedValue("takeovers/new.jpg");
+    db({ placements: () => queryBuilder(dbOk(null)) });
+    await expect(saveTakeoverPlacement(form({ id: "t1", member_id: "m1", hex: "#003366", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
+      .rejects.toThrow(/takeover\?error=That%20takeover%20no%20longer%20exists/);
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
+
+  it("a booking refused for overlap drops the banner it just uploaded", async () => {
+    uploadImage.mockResolvedValue("takeovers/new.jpg");
+    db({ placements: () => queryBuilder(dbError('violates exclusion constraint "placements_takeover_no_overlap"')) });
+    await expect(saveTakeoverPlacement(form({ member_id: "m1", hex: "#003366", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
+      .rejects.toThrow(/only%20one%20can%20run%20at%20a%20time/);
+    expect(removeMedia).toHaveBeenCalledWith("takeovers/new.jpg");
+  });
+
+  it("an edit that fails keeps the stored banner and drops only the new upload", async () => {
+    uploadImage.mockResolvedValue("takeovers/new.jpg");
+    db({ placements: sequence<unknown>(dbOk({ config: { banner_path: "takeovers/old.jpg" } }), dbError("boom")) });
+    await expect(saveTakeoverPlacement(form({ id: "t1", member_id: "m1", hex: "#003366", starts_on: "2026-10-01", ends_on: "2026-10-31" })))
+      .rejects.toThrow(/takeover\/t1\?error=That%20couldn't%20be%20saved/);
+    expect(removeMedia).toHaveBeenCalledWith("takeovers/new.jpg");
+    expect(removeMedia).not.toHaveBeenCalledWith("takeovers/old.jpg");
   });
 });
 
@@ -115,7 +171,7 @@ describe("startAdvertFromInterest", () => {
   });
 
   it("confirms the request, notifies the member, invoices only a positive amount, and hands off to the artwork form", async () => {
-    const invoicesBuilder = queryBuilder(dbOk(null));
+    const invoicesBuilder = queryBuilder(dbOk({ id: "inv1" }));
     db({ visibility_requests: () => queryBuilder(dbOk({ id: "req1", member_id: "m1", product: "banner" })), invoices: () => invoicesBuilder });
 
     await expect(startAdvertFromInterest(form({ id: "req1", amount_pounds: "100" })))
@@ -125,6 +181,26 @@ describe("startAdvertFromInterest", () => {
     (invoicesBuilder.insert as ReturnType<typeof vi.fn>).mockClear();
     await expect(startAdvertFromInterest(form({ id: "req1" }))).rejects.toThrow(/NEXT_REDIRECT/);
     expect(invoicesBuilder.insert).not.toHaveBeenCalled();
+  });
+});
+
+// Review finding 16 Oct: the amount was Number()'d, so "1e5" was £100,000 and
+// a third decimal place was rounded away. Same parser and limits as every price.
+describe("startAdvertFromInterest — the amount", () => {
+  it("refuses an amount that isn't plain pounds within the limits, before confirming anything", async () => {
+    const from = db({});
+    for (const amount_pounds of ["1e5", "12.345", "0.10", "1000000"]) {
+      await expect(startAdvertFromInterest(form({ id: "req1", amount_pounds })))
+        .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/interest\?error=Enter%20the%20price%20in%20pounds/);
+    }
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("says so when the invoice couldn't be raised, instead of handing off as if it had", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    db({ visibility_requests: () => queryBuilder(dbOk({ id: "req1", member_id: "m1", product: "banner" })), invoices: () => queryBuilder(dbError("boom")) });
+    await expect(startAdvertFromInterest(form({ id: "req1", amount_pounds: "100" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/interest\?error=Confirmed%2C%20but%20the%20invoice/);
   });
 });
 
@@ -268,5 +344,76 @@ describe("declineInterest", () => {
     await declineInterest(form({ id: "req1", reason: "Not the right fit right now" }));
 
     expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "visibility_declined", reason: "Not the right fit right now" }));
+  });
+});
+
+const TK = "44444444-4444-4444-8444-444444444444";
+const takeover = (extra: Record<string, unknown> = {}) => ({
+  id: TK, kind: "takeover", member_id: "m1", price_pennies: null, starts_on: "2099-09-01", ends_on: "2099-09-30",
+  awaiting_payment: false, config: { hex: "#003366", banner_path: "takeovers/old.jpg" }, ...extra,
+});
+
+describe("takeover billing", () => {
+  beforeEach(() => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "");
+    vi.stubEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  // Review finding 20: priced holds were never tested.
+  it("a priced new takeover is held, and its invoice is linked to the placement", async () => {
+    uploadImage.mockResolvedValue("takeovers/b.jpg");
+    const placements = queryBuilder(dbOk({ id: TK }));
+    const invoices = invoicesTable(null, "inv5");
+    db({ placements: () => placements, invoices: invoices.factory });
+
+    await expect(saveTakeoverPlacement(form({ member_id: "m1", hex: "#003366", starts_on: "2099-09-01", ends_on: "2099-09-30", price_pounds: "1500" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/adverts/takeover?saved=1");
+
+    expect(placements.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "takeover", price_pennies: 150000, awaiting_payment: true }));
+    expect(invoices.inserts()).toEqual([expect.objectContaining({ placement_id: TK, amount_pennies: 150000, member_id: "m1" })]);
+    expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "advert_payment_due", invoice_id: "inv5" }));
+  });
+
+  it("moving a held takeover to another advertiser re-issues its invoice to them", async () => {
+    const placements = queryBuilder(dbOk(takeover({ member_id: "m2", price_pennies: 150000, awaiting_payment: true }), 0));
+    const invoices = invoicesTable({ id: "inv1", number: "SMI-ADV-1", member_id: "m1", amount_pennies: 150000, status: "issued" }, "inv2");
+    db({ placements: () => placements, invoices: invoices.factory });
+
+    await expect(saveTakeoverPlacement(form({ id: TK, member_id: "m2", hex: "#003366", starts_on: "2099-09-01", ends_on: "2099-09-30", price_pounds: "1500" })))
+      .rejects.toThrow(`takeover/${TK}?saved=1`);
+
+    expect(invoices.updates()).toEqual([expect.objectContaining({ status: "void" })]);
+    expect(invoices.inserts()).toEqual([expect.objectContaining({ member_id: "m2", placement_id: TK })]);
+  });
+
+  it("a re-issue whose dates clash with another takeover is refused before the old invoice is voided", async () => {
+    const placements = queryBuilder(dbOk(takeover({ price_pennies: 150000, awaiting_payment: true }), 1));
+    const invoices = invoicesTable({ id: "inv1", number: "SMI-ADV-1", member_id: "m1", amount_pennies: 150000, status: "issued" });
+    db({ placements: () => placements, invoices: invoices.factory });
+
+    await expect(saveTakeoverPlacement(form({ id: TK, member_id: "m2", hex: "#003366", starts_on: "2099-09-01", ends_on: "2099-09-30", price_pounds: "1500" })))
+      .rejects.toThrow(/only%20one%20can%20run%20at%20a%20time/);
+    expect(invoices.updates()).toEqual([]);
+    expect(placements.update).not.toHaveBeenCalled();
+  });
+
+  it("a paid takeover can't change advertiser", async () => {
+    const placements = queryBuilder(dbOk(takeover({ price_pennies: 150000 }), 0));
+    db({ placements: () => placements, invoices: invoicesTable({ id: "inv1", number: "SMI-ADV-1", member_id: "m1", amount_pennies: 150000, status: "paid" }).factory });
+    await expect(saveTakeoverPlacement(form({ id: TK, member_id: "m2", hex: "#003366", starts_on: "2099-09-01", ends_on: "2099-09-30", price_pounds: "1500" })))
+      .rejects.toThrow(/error=SMI-ADV-1%20has%20already%20been%20paid/);
+    expect(placements.update).not.toHaveBeenCalled();
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
+
+  it("cancelling a held takeover frees its dates and voids its invoice", async () => {
+    const placements = queryBuilder(dbOk(takeover({ price_pennies: 150000, awaiting_payment: true })));
+    const invoices = invoicesTable({ id: "inv1", number: "SMI-ADV-1", member_id: "m1", amount_pennies: 150000, status: "issued" });
+    db({ placements: () => placements, invoices: invoices.factory });
+
+    await expect(cancelPlacement(form({ id: TK, confirm: "1" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/takeover?cancelled=1");
+    expect(invoices.updates()).toEqual([expect.objectContaining({ status: "void" })]);
+    expect(placements.delete).toHaveBeenCalled();
   });
 });

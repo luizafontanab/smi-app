@@ -20,6 +20,26 @@ export function isLocalSupabaseUrl(url: string): boolean {
   return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])([:/]|$)/.test(url);
 }
 
+/**
+ * The same rule for the maintenance scripts that write with the service-role
+ * key (backfill-industries, create-test-accounts, remove-sample-adverts,
+ * audit-test-rows): a local stack by default, a hosted project only with an
+ * explicit --remote — which only their `:prod` package script passes. They
+ * load .env.local only when the shell has no key of its own, so a shell with
+ * production's env sourced (for an earlier `:prod` run, say) would otherwise
+ * turn the "local" command into a write to the live database.
+ */
+export function assertScriptTarget(url: string, script: string, argv: readonly string[] = process.argv): void {
+  if (isLocalSupabaseUrl(url) || argv.includes("--remote")) return;
+
+  throw new Error(
+    `Refusing to run ${script} against a remote project without --remote.\n` +
+      `  target: ${url}\n` +
+      `Use its :prod package script, which sources .env.production.local and passes --remote, ` +
+      `if that is the intent. Otherwise the shell has a hosted project's env sourced — open a fresh one.`,
+  );
+}
+
 export function assertSeedTarget(url: string): void {
   const isLocal = isLocalSupabaseUrl(url);
   if (isLocal || process.argv.includes("--remote")) return;

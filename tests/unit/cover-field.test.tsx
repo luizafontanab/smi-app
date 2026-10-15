@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CoverField } from "@/components/CoverField";
+import { UploadRejectedError } from "@/lib/upload-limits";
+
+// The direct upload itself is tested in direct-upload/upload-field; here it
+// just hands back a staged path (or a refusal).
+const STAGED = "members/m1/3d6f0a1b-2c3d-4e5f-8a9b-0c1d2e3f4a5b.webp";
+const { stageUpload } = vi.hoisted(() => ({ stageUpload: vi.fn<(file: File, kind: string) => Promise<string>>() }));
+vi.mock("@/lib/direct-upload", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/direct-upload")>()), stageUpload }));
 
 beforeEach(() => {
   // jsdom doesn't implement createObjectURL, and has no createImageBitmap/canvas
@@ -9,6 +16,7 @@ beforeEach(() => {
   // (returns the original file), so only the former needs a stand-in here.
   URL.createObjectURL = vi.fn(() => "blob:mock-preview");
   URL.revokeObjectURL = vi.fn();
+  stageUpload.mockReset().mockResolvedValue(STAGED);
 });
 
 afterEach(() => {
@@ -51,6 +59,31 @@ describe("CoverField", () => {
     // createImageBitmap isn't implemented in jsdom, so compress() hits its
     // catch-all and resolves with note: null — "Optimising…" must not stick.
     expect(screen.queryByText("Optimising…")).not.toBeInTheDocument();
+  });
+
+  it("sends the chosen file straight to Storage and carries the staged path as the cover", async () => {
+    const { container } = render(<form><CoverField /></form>);
+    const input = screen.getByLabelText("Cover image");
+    expect(input).not.toHaveAttribute("name"); // the bytes never ride with the form
+    let file: File | undefined;
+    await act(async () => {
+      file = pickFile(input);
+    });
+    // compress() can't re-encode in jsdom, so the original is what's sent
+    expect(stageUpload).toHaveBeenCalledWith(file, "image", expect.anything());
+    await waitFor(() => expect(container.querySelector('input[type="hidden"][name="cover"]')).toHaveValue(STAGED));
+  });
+
+  it("drops the preview when the upload is refused, and says why", async () => {
+    stageUpload.mockRejectedValue(new UploadRejectedError("Image too large (8MB max)"));
+    const onPreview = vi.fn();
+    render(<form><CoverField onPreview={onPreview} /></form>);
+    await act(async () => {
+      pickFile(screen.getByLabelText("Cover image"));
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Image too large (8MB max)");
+    expect(onPreview).toHaveBeenLastCalledWith(null);
+    expect(screen.queryByText(/Crop focus/)).not.toBeInTheDocument();
   });
 
   it("clearing the file selection removes the preview", async () => {

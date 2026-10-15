@@ -97,6 +97,17 @@ function liveEnv() {
   vi.stubEnv("MOCK_INTEGRATIONS", "");
 }
 
+/**
+ * Bigin unconnected, explicitly. vitest.config.ts loads .env.local into every
+ * test, so leaving these to the machine means real Bigin credentials there
+ * would quietly turn a "local stub" test into one building a live client.
+ */
+function unconnectedEnv(over: { BIGIN_CLIENT_ID?: string } = {}) {
+  vi.stubEnv("BIGIN_CLIENT_ID", over.BIGIN_CLIENT_ID ?? "");
+  vi.stubEnv("BIGIN_CLIENT_SECRET", "");
+  vi.stubEnv("BIGIN_REFRESH_TOKEN", "");
+}
+
 async function freshCrm() {
   // cachedToken lives at module scope by design; reset the module so it doesn't leak between tests.
   vi.resetModules();
@@ -172,6 +183,14 @@ describe("reconcile", () => {
     expect(reconcile(record({ Email: " Ada@B.com " }), null, NOW)).toMatchObject({ row: { email: "ada@b.com" } });
   });
 
+  // Every lookup by address (unsubscribe, signup, the Resend webhook) is an
+  // exact match on the lowercased form, so an email change pulled from Bigin
+  // must be stored that way too — not only a new row.
+  it("lowercases and trims an email Bigin changed, too", () => {
+    const r = reconcile(record({ Email: "  Ada.New@B.COM " }), local({ bigin_id: "500" }), NOW);
+    expect(r).toMatchObject({ kind: "update", patch: { email: "ada.new@b.com" } });
+  });
+
   it("links an existing local contact found by email", () => {
     const r = reconcile(record(), local({ name: "Ada Byron" }), NOW);
     expect(r).toMatchObject({ kind: "update", linked: true, changed: true, patch: { bigin_id: "500" } });
@@ -243,7 +262,7 @@ describe("escapeCriteria / webhookTokenMatches", () => {
 
 describe("getCrmSync — local stub", () => {
   it("is used when the Bigin env vars are incomplete, and only logs a push", async () => {
-    vi.stubEnv("BIGIN_CLIENT_ID", "id_1"); // secret + refresh token missing
+    unconnectedEnv({ BIGIN_CLIENT_ID: "id_1" }); // secret + refresh token missing
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const crm = getCrmSync();
     await crm.pushContact("c1");
@@ -252,6 +271,7 @@ describe("getCrmSync — local stub", () => {
   });
 
   it("no longer stamps last_synced_at on contacts that were never synced", async () => {
+    unconnectedEnv();
     const result = await getCrmSync().sync();
     expect(result).toEqual({ pulled: null, pushed: 0, pushFailed: 0, watch: "skipped" });
     expect(serviceDb).not.toHaveBeenCalled();
@@ -371,6 +391,164 @@ describe("BiginCrmSync.pushContact", () => {
   });
 });
 
+/* ---------- Bigin: push repairs (deleted records, concurrent creates) ---------- */
+
+// What real Bigin answers for a write to a record id it doesn't have (Zoho's
+// update-records docs: INVALID_DATA, HTTP 400, "the id given seems to be
+// invalid") — the same body the mock now returns (store.ts invalidRecordId).
+const goneRecord = (id: string) =>
+  json({ data: [{ code: "INVALID_DATA", details: { id }, message: "the id given seems to be invalid", status: "error" }] }, 400);
+const goneAccount = (id: string) =>
+  json({ data: [{ code: "INVALID_DATA", details: { api_name: "Account_Name", id }, message: "the related id given seems to be invalid", status: "error" }] }, 400);
+
+/** A contacts table answering each call in turn — for a push that reads, writes and reads again. */
+function contactsInTurn(...results: DbResult[]) {
+  let n = 0;
+  return () => results[Math.min(n++, results.length - 1)];
+}
+
+describe("BiginCrmSync.pushContact — a linked record deleted in Bigin", () => {
+  it("confirms the record is gone, unlinks it, and pushes as a new contact instead of failing for ever", async () => {
+    liveEnv();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = db({ contacts: dbOk(local({ bigin_id: "500", name: "Ada Byron" })) });
+    const fetchSpy = fetchRoutes((url, init) => {
+      if (url === `${API}/Contacts/500` && init?.method === "PUT") return goneRecord("500");
+      if (url === `${API}/Contacts/500?fields=Email`) return noContent(); // Bigin: 204 for a record that doesn't exist
+      if (url.startsWith(`${API}/Contacts/search`)) return noContent();
+      if (url === `${API}/Contacts`) return written("777");
+    });
+
+    await (await freshCrm()).getCrmSync().pushContact("c1");
+
+    expect(calls(fetchSpy)).toEqual([
+      `PUT ${API}/Contacts/500`,
+      `GET ${API}/Contacts/500?fields=Email`,
+      `GET ${API}/Contacts/search?criteria=${encodeURIComponent("(Email:equals:a@b.com)")}`,
+      `POST ${API}/Contacts`,
+    ]);
+    // a create sends the name, as for any never-linked contact
+    expect(bodyOf(fetchSpy, `${API}/Contacts`).data[0]).toMatchObject({ Email: "a@b.com", First_Name: "Ada", Last_Name: "Byron" });
+    expect(t.writes("contacts", "update")).toEqual([
+      { bigin_id: null, bigin_modified_at: null },
+      expect.objectContaining({ bigin_id: "777", crm_dirty_at: null }),
+    ]);
+    // the unlink only clears the link it read; the new link only lands on a still-unlinked row
+    expect(t.filters("contacts", "eq")).toContainEqual(["bigin_id", "500"]);
+    expect(t.filters("contacts", "is")).toContainEqual(["bigin_id", null]);
+  });
+
+  it("re-links to a live Bigin record with the same email rather than creating a duplicate", async () => {
+    liveEnv();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = db({ contacts: dbOk(local({ bigin_id: "500" })) });
+    const fetchSpy = fetchRoutes((url, init) => {
+      if (url === `${API}/Contacts/500` && init?.method === "PUT") return goneRecord("500");
+      if (url === `${API}/Contacts/500?fields=Email`) return noContent();
+      if (url.startsWith(`${API}/Contacts/search`)) return json({ data: [{ id: "888" }] });
+      if (url === `${API}/Contacts/888`) return written("888");
+    });
+
+    await (await freshCrm()).getCrmSync().pushContact("c1");
+
+    expect(calls(fetchSpy).at(-1)).toBe(`PUT ${API}/Contacts/888`);
+    expect(calls(fetchSpy).some((c) => c.startsWith("POST"))).toBe(false);
+    expect(t.writes("contacts", "update").at(-1)).toMatchObject({ bigin_id: "888" });
+  });
+
+  it("does not unlink when the record still exists — the refusal was about something else", async () => {
+    liveEnv();
+    const t = db({ contacts: dbOk(local({ bigin_id: "500" })) });
+    fetchRoutes((url, init) => {
+      if (url === `${API}/Contacts/500` && init?.method === "PUT") return goneRecord("500");
+      if (url === `${API}/Contacts/500?fields=Email`) return json({ data: [{ id: "500", Email: "a@b.com" }] });
+    });
+
+    await expect((await freshCrm()).getCrmSync().pushContact("c1")).rejects.toThrow(/INVALID_DATA/);
+    expect(t.writes("contacts", "update")).toEqual([]); // still linked, still dirty, retried later
+  });
+
+  it("drops a linked company Bigin no longer has and pushes without it", async () => {
+    liveEnv();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = db({ contacts: dbOk(local({ bigin_id: "500", bigin_company_id: "900", bigin_company_name: "Acme" })) });
+    let puts = 0;
+    const fetchSpy = fetchRoutes((url, init) => {
+      if (url === `${API}/Contacts/500` && init?.method === "PUT") return puts++ === 0 ? goneAccount("900") : written("500");
+      if (url === `${API}/Accounts/900?fields=Account_Name`) return noContent();
+    });
+
+    await (await freshCrm()).getCrmSync().pushContact("c1");
+
+    const bodies = fetchSpy.mock.calls.filter(([u, i]) => String(u) === `${API}/Contacts/500` && i?.method === "PUT").map(([, i]) => JSON.parse(String(i?.body)));
+    expect(bodies[0].data[0]).toHaveProperty("Account_Name");
+    expect(bodies[1].data[0]).not.toHaveProperty("Account_Name");
+    expect(t.writes("contacts", "update")[0]).toEqual({ bigin_company_id: null, bigin_company_name: null });
+    expect(t.filters("contacts", "eq")).toContainEqual(["bigin_company_id", "900"]);
+  });
+});
+
+describe("BiginCrmSync.pushContact — two pushes creating the same contact at once", () => {
+  it("loses gracefully: deletes the record it just made and pushes onto the winner's", async () => {
+    liveEnv();
+    const t = db({
+      contacts: contactsInTurn(
+        dbOk(local()), // our read: never linked
+        dbOk(null), // the claim: another push linked the row first, so nothing matched `bigin_id is null`
+        dbOk(local({ bigin_id: "600" })), // the re-push reads the winner's link
+        dbOk(null), // its write-back
+      ),
+    });
+    const fetchSpy = fetchRoutes((url, init) => {
+      if (url.startsWith(`${API}/Contacts/search`)) return noContent();
+      if (url === `${API}/Contacts`) return written("500");
+      if (url === `${API}/Contacts/500?wf_trigger=false` && init?.method === "DELETE") {
+        return json({ data: [{ code: "SUCCESS", details: { id: "500" }, message: "record deleted", status: "success" }] });
+      }
+      if (url === `${API}/Contacts/600`) return written("600");
+    });
+
+    await (await freshCrm()).getCrmSync().pushContact("c1");
+
+    expect(calls(fetchSpy)).toEqual([
+      `GET ${API}/Contacts/search?criteria=${encodeURIComponent("(Email:equals:a@b.com)")}`,
+      `POST ${API}/Contacts`,
+      `DELETE ${API}/Contacts/500?wf_trigger=false`,
+      `PUT ${API}/Contacts/600`,
+    ]);
+    expect(t.writes("contacts", "update")).toEqual([
+      expect.objectContaining({ bigin_id: "500" }), // the claim that matched nothing
+      expect.objectContaining({ bigin_id: "600", crm_dirty_at: null }),
+    ]);
+  });
+
+  it("the winner links its record as usual", async () => {
+    liveEnv();
+    const t = db({ contacts: contactsInTurn(dbOk(local()), dbOk({ id: "c1" })) });
+    const fetchSpy = fetchRoutes((url) => {
+      if (url.startsWith(`${API}/Contacts/search`)) return noContent();
+      if (url === `${API}/Contacts`) return written("500");
+    });
+
+    await (await freshCrm()).getCrmSync().pushContact("c1");
+
+    expect(calls(fetchSpy).some((c) => c.startsWith("DELETE"))).toBe(false);
+    expect(t.writes("contacts", "update")).toEqual([expect.objectContaining({ bigin_id: "500" })]);
+  });
+
+  it("fails loudly, naming the duplicate, when Bigin won't delete it", async () => {
+    liveEnv();
+    db({ contacts: contactsInTurn(dbOk(local()), dbOk(null)) });
+    fetchRoutes((url, init) => {
+      if (url.startsWith(`${API}/Contacts/search`)) return noContent();
+      if (url === `${API}/Contacts`) return written("500");
+      if (init?.method === "DELETE") return json({ data: [{ code: "NO_PERMISSION", details: {}, message: "permission denied", status: "error" }] });
+    });
+
+    await expect((await freshCrm()).getCrmSync().pushContact("c1")).rejects.toThrow(/duplicate Bigin contact 500 failed — remove it in Bigin by hand/);
+  });
+});
+
 /* ---------- Bigin: pull ---------- */
 
 describe("BiginCrmSync.pull", () => {
@@ -481,6 +659,64 @@ describe("BiginCrmSync.pull", () => {
     });
 
     await expect((await freshCrm()).getCrmSync().pull({ allowFirstImport: true })).rejects.toThrow(/500/);
+    expect(t.writes("settings", "upsert")).toEqual([]);
+  });
+});
+
+describe("BiginCrmSync.pull — a batch insert that clashes", () => {
+  const clash = () => dbError('duplicate key value violates unique constraint "contacts_email_key"', { code: "23505" }) as DbResult;
+
+  it("goes row by row instead of failing the batch, and links the row that clashed", async () => {
+    liveEnv();
+    // Between our read and the insert, b@b.com signed up here.
+    const t = db({
+      settings: dbOk({ value: { since: "2026-10-01T00:00:00Z" } }),
+      contacts: contactsInTurn(
+        dbOk([]), dbOk([]), // the batch's lookups by bigin_id and by email: nothing local
+        clash(), // the batch insert
+        dbOk(null), // row a@: inserts fine
+        clash(), // row b@: clashes
+        dbOk(null), dbOk(local({ id: "c7", email: "b@b.com" })), // b@ by bigin_id, by email
+        dbOk(null), // linking c7
+      ),
+    });
+    fetchRoutes((url) => url.startsWith(`${API}/Contacts?`) ? json({ data: [record({ id: "1", Email: "a@b.com" }), record({ id: "2", Email: "b@b.com" })], info: { more_records: false } }) : undefined);
+
+    const summary = await (await freshCrm()).getCrmSync().pull();
+
+    expect(summary).toMatchObject({ fetched: 2, inserted: 1, linked: 1, duplicates: 0 });
+    expect(t.writes("contacts", "insert")).toEqual([
+      [expect.objectContaining({ email: "a@b.com" }), expect.objectContaining({ email: "b@b.com" })],
+      expect.objectContaining({ email: "a@b.com" }),
+      expect.objectContaining({ email: "b@b.com" }),
+    ]);
+    expect(t.writes("contacts", "update")).toEqual([expect.objectContaining({ bigin_id: "2" })]);
+    expect(t.filters("contacts", "eq")).toContainEqual(["id", "c7"]);
+    // the run completed, so the cursor moves
+    expect(t.writes("settings", "upsert")).toHaveLength(1);
+  });
+
+  it("counts a clash with a row linked to another Bigin record as a duplicate, not a failure", async () => {
+    liveEnv();
+    const t = db({
+      settings: dbOk({ value: { since: "2026-10-01T00:00:00Z" } }),
+      contacts: contactsInTurn(dbOk([]), dbOk([]), clash(), clash(), dbOk(null), dbOk(local({ id: "c7", email: "b@b.com", bigin_id: "99" }))),
+    });
+    fetchRoutes((url) => url.startsWith(`${API}/Contacts?`) ? json({ data: [record({ id: "2", Email: "b@b.com" })], info: { more_records: false } }) : undefined);
+
+    expect(await (await freshCrm()).getCrmSync().pull()).toMatchObject({ inserted: 0, duplicates: 1, linked: 0 });
+    expect(t.writes("contacts", "update")).toEqual([]);
+  });
+
+  it("still fails the run on any other insert error, so the cursor stays put", async () => {
+    liveEnv();
+    const t = db({
+      settings: dbOk({ value: { since: "2026-10-01T00:00:00Z" } }),
+      contacts: contactsInTurn(dbOk([]), dbOk([]), dbError("connection reset") as DbResult),
+    });
+    fetchRoutes((url) => url.startsWith(`${API}/Contacts?`) ? json({ data: [record({ id: "2", Email: "b@b.com" })], info: { more_records: false } }) : undefined);
+
+    await expect((await freshCrm()).getCrmSync().pull()).rejects.toThrow(/connection reset/);
     expect(t.writes("settings", "upsert")).toEqual([]);
   });
 });
@@ -596,6 +832,7 @@ describe("syncContactToCrm", () => {
   });
 
   it("does not mark anything dirty or queue anything with Bigin unconnected", async () => {
+    unconnectedEnv();
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { syncContactToCrm } = await freshCrm();
     await syncContactToCrm("c1");

@@ -1,5 +1,6 @@
 "use server";
 
+import { applyOptIn } from "@/lib/contacts";
 import { serviceDb } from "@/lib/db/server";
 import { ADMIN_EMAIL } from "@/lib/notify-admin";
 import { allowRequest, HOUR } from "@/lib/rate-limit";
@@ -13,7 +14,7 @@ export async function subscribeNewsletter(_prev: { message: string }, formData: 
   const db = serviceDb();
 
   // opt-outs are permanent: never re-subscribe an unsubscribed contact silently
-  const { data: existing } = await db.from("contacts").select("id, unsubscribed_at").eq("email", email).maybeSingle();
+  const { data: existing } = await db.from("contacts").select("id, subscribed, unsubscribed_at").eq("email", email).maybeSingle();
   if (existing?.unsubscribed_at) {
     return { message: "This address previously unsubscribed — contact us to re-opt-in." };
   }
@@ -22,6 +23,19 @@ export async function subscribeNewsletter(_prev: { message: string }, formData: 
   if (!existing) {
     const { data: created } = await db.from("contacts").insert({ email, source: "newsletter", subscribed: true }).select("id").single();
     contactId = created?.id ?? null;
+  } else if (!existing.subscribed) {
+    // Known but never on the list — a member's contact, a CRM import (GAPS
+    // B5.4). Signing up is the opt-in, so say it and mean it: this used to
+    // answer "Subscribed" and leave `subscribed` false, which the newsletter
+    // audience requires. applyOptIn keeps the permanence rule in one place —
+    // unsubscribed_at is null here, so it can only ever turn the flag on.
+    const { error } = await db.from("contacts")
+      .update(applyOptIn(existing, { newsletter: "subscribed", reOptIn: false }))
+      .eq("id", existing.id).is("unsubscribed_at", null);
+    if (error) {
+      console.error("[newsletter] could not opt in an existing contact:", error.message);
+      return { message: "Something went wrong — please try again in a moment." };
+    }
   }
   // Write-through to Bigin (GAPS B6.2). Never throws: the signup is already
   // recorded above, and a CRM outage must not cost a visitor their

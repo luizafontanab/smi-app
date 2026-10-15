@@ -178,6 +178,10 @@ describe("storyPostUrl", () => {
     ["facebook", "https://fb.com/SMIUK/posts/1"],
     ["x", "https://x.com/SMIUK_/status/1845"],
     ["x", "https://twitter.com/SMIUK_/status/1845"],
+    ["x", "https://x.com/i/web/status/1845"],
+    ["facebook", "https://www.facebook.com/share/p/1AbCdEf/"],
+    ["facebook", "https://www.facebook.com/permalink.php?story_fbid=123&id=456"],
+    ["linkedin", "https://www.linkedin.com/posts/smi_blm-activity-1234-abcd?utm_source=share&utm_medium=member_desktop"],
   ] as const)("accepts a %s post on its own host: %s", (network, url) => {
     expect(storyPostUrl(network, url)).toBe(new URL(url).toString());
   });
@@ -189,6 +193,18 @@ describe("storyPostUrl", () => {
     ["a script URL", "x", "javascript:alert(1)//x.com/"],
     ["a bare handle", "x", "SMIUK_"],
     ["junk", "linkedin", "https://"],
+    // Review 16 Oct: the right host, but they forward anywhere.
+    ["Facebook's link shim", "facebook", "https://l.facebook.com/l.php?u=https%3A%2F%2Fevil.example%2F"],
+    ["Facebook's mobile link shim", "facebook", "https://lm.facebook.com/l.php?u=https://evil.example/"],
+    ["l.php on the main host", "facebook", "https://www.facebook.com/l.php?u=https://evil.example/"],
+    ["Facebook's external-link warning", "facebook", "https://www.facebook.com/flx/warn/?u=https://evil.example/"],
+    ["an OAuth dialog with a return URL", "facebook", "https://www.facebook.com/dialog/oauth?client_id=1&redirect_uri=https://evil.example/"],
+    ["LinkedIn's redirector", "linkedin", "https://www.linkedin.com/redir/redirect?url=https%3A%2F%2Fevil.example"],
+    ["LinkedIn's external-link warning", "linkedin", "https://www.linkedin.com/safety/go?url=https://evil.example"],
+    ["a sign-in page with a return URL", "linkedin", "https://www.linkedin.com/login?session_redirect=https://evil.example"],
+    ["X's redirector", "x", "https://x.com/i/redirect?url=https://evil.example"],
+    ["a share intent", "x", "https://twitter.com/intent/tweet?url=https://smi.example/news/x"],
+    ["any URL carried in a parameter", "linkedin", "https://www.linkedin.com/posts/x?next=//evil.example"],
   ] as const)("refuses %s", (_label, network, url) => {
     expect(storyPostUrl(network, url)).toBeNull();
   });

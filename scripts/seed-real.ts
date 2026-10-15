@@ -48,6 +48,7 @@ import type { Role } from "@/lib/auth";
 import { FEATURED_SLOTS } from "@/lib/pricing";
 import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
+import { must } from "./lib/must";
 import { assertSeedTarget } from "./lib/target-guard";
 import { listAllObjects } from "./lib/storage-list";
 import { INDUSTRY_ROWS } from "./lib/industries";
@@ -215,12 +216,12 @@ async function seedAdverts(
       .select("id").single();
     if (adErr) throw adErr;
     // last two expire within the week, so the console's expiry view has something to show
-    await db.from("advert_bookings").insert({
+    await must("advert_bookings", db.from("advert_bookings").insert({
       advert_id: ad!.id,
       ...booked,
       starts_on: iso(monthsAgo),
       ends_on: i < 6 ? iso(monthsAhead) : iso(new Date(today.getTime() + 5 * 864e5)),
-    });
+    }));
   }
 
   for (let i = 0; i < narrowBanners.length; i++) {
@@ -235,7 +236,7 @@ async function seedAdverts(
       .insert({ member_id: memberId(m.wp_member_id), name: `${name} narrow banner`, desktop_path: dPath, mobile_path: mPath, format: "banner_narrow" })
       .select("id").single();
     if (adErr) throw adErr;
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+    await must("advert_bookings", db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) }));
   }
 
   for (let i = 0; i < logos.length; i++) {
@@ -247,7 +248,7 @@ async function seedAdverts(
       .insert({ member_id: memberId(m.wp_member_id), name: `${name} supplier logo`, desktop_path: p, mobile_path: p, format: "supplier_logo" })
       .select("id").single();
     if (adErr) throw adErr;
-    await db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) });
+    await must("advert_bookings", db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) }));
   }
 
   // Sample prices (fix-list 77): a run carries its own price now that the rate
@@ -259,7 +260,7 @@ async function seedAdverts(
   for (const [format, price_pennies] of Object.entries(SAMPLE_PRICES)) {
     const { data: ads } = await db.from("adverts").select("id").eq("format", format);
     const ids = (ads ?? []).map((a) => a.id);
-    if (ids.length) await db.from("advert_bookings").update({ price_pennies }).in("advert_id", ids).is("bundle_id", null);
+    if (ids.length) await must("advert_bookings", db.from("advert_bookings").update({ price_pennies }).in("advert_id", ids).is("bundle_id", null));
   }
 }
 
@@ -502,7 +503,7 @@ async function seedDemoRows(): Promise<void> {
   // newsletter_items has no natural key to upsert on, so a re-run replaces
   // each issue's list rather than doubling it.
   for (const issue of written ?? []) {
-    await db.from("newsletter_items").delete().eq("issue_id", issue.id);
+    await must("newsletter_items", db.from("newsletter_items").delete().eq("issue_id", issue.id));
     const slice = stories.slice((47 - issue.number) * 8, (47 - issue.number) * 8 + 8);
     if (slice.length === 0) continue;
     const { error } = await db
@@ -562,7 +563,7 @@ async function seedDemoRows(): Promise<void> {
    * tag is also the handle for removing them by hand.
    */
   const DEMO_INBOX_TAG = "smi-demo";
-  await db.from("inbox_messages").delete().eq("payload->>demo", DEMO_INBOX_TAG);
+  await must("inbox_messages", db.from("inbox_messages").delete().eq("payload->>demo", DEMO_INBOX_TAG));
 
   const { data: demoMembers } = await db
     .from("members").select("id, name").eq("status", "active").order("name").limit(2);
@@ -1063,7 +1064,7 @@ async function main() {
     const mkUser = async (email: string, role: Role, member_id: string | null, display_name: string) => {
       const { data, error } = await db.auth.admin.createUser({ email, password: "local-dev-password", email_confirm: true });
       if (error) throw error;
-      await db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name });
+      await must("profiles", db.from("profiles").insert({ user_id: data.user.id, role, member_id, display_name }));
     };
     await mkUser("jas@smi.local", "admin", null, "Jas");
 
@@ -1095,13 +1096,16 @@ async function main() {
   let storyMemberLinks = 0;
   for (const rows of chunk(storyRows, 100)) {
     // `member_wp_ids` is a side-channel key like `category_slugs` — it must be
-    // destructured out, not spread, or PostgREST rejects the row on a column
-    // that doesn't exist. It feeds story_members (20260924000001); member_id
-    // keeps the primary member so existing single-member reads still work.
-    const insert = rows.map(({ wp_member_id, category_slugs, member_wp_ids, ...r }) => ({
-      ...r,
-      member_id: memberId(wp_member_id),
-    }));
+    // dropped, not spread, or PostgREST rejects the row on a column that
+    // doesn't exist. It feeds story_members (20260924000001); member_id keeps
+    // the primary member so existing single-member reads still work. Dropped
+    // the same way insertMembers drops its side-channel keys, so lint has no
+    // unused bindings to warn about.
+    const insert = rows.map((row) => {
+      const r: Record<string, unknown> = { ...row };
+      for (const key of ["wp_member_id", "category_slugs", "member_wp_ids"]) delete r[key];
+      return { ...r, member_id: memberId(row.wp_member_id) };
+    });
     const { data, error } = await db.from("stories").insert(insert).select("id, slug");
     if (error) throw error;
     const junctions = data!.flatMap((st) => {
@@ -1184,13 +1188,13 @@ async function main() {
 
   console.log("— infra: settings, page layouts");
   // Banner spots are one settings row (migration 20261004000002), not per-position rows.
-  await db.from("settings").insert([
+  await must("settings", db.from("settings").insert([
     { key: "grid", value: { blocks: 12, mix: { news: 6, video: 2, member_news: 2, featured_member: 1, featured_machine: 1 } } },
     { key: "social_caps", value: { per_day: 3, delay_minutes: 30 } },
     // The site-wide design (GAPS A8.2). Grid is also the code fallback; the row
     // makes the console's "live now" reflect a real choice.
     { key: "site_variant", value: "grid" },
-  ]);
+  ]));
   // No `prospect_marks` here, unlike scripts/seed.ts: those marks point at the
   // LeadGenSource mock's fictional prospects, and this seed builds the real
   // WordPress content. Seeding invented lead-gen state next to real member data
@@ -1203,9 +1207,9 @@ async function main() {
   // give the console one "Customised" example to render.
 
   const { DEFAULT_LAYOUTS } = await import("../src/lib/blocks/defaults");
-  await db.from("page_layouts").insert(
+  await must("page_layouts", db.from("page_layouts").insert(
     Object.entries(DEFAULT_LAYOUTS).map(([page_type, layout]) => ({ page_type, entity_id: null, layout })),
-  );
+  ));
 
   // Real featured machine (fix list): the WP export has no machine/equipment
   // content type at all — "equipment suppliers" are just members tagged with a

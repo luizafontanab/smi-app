@@ -285,4 +285,18 @@ describe("advertHref / resolveAdvertTarget", () => {
     expect(resolveAdvertTarget(null, "acme")).toBe("/member/acme");
     expect(resolveAdvertTarget(null, null)).toBe("/");
   });
+
+  it("adds https:// to a scheme-less link saved before the console validated it", () => {
+    // As stored, "www.acme.co.uk" is a relative redirect: /visit/www.acme.co.uk.
+    expect(resolveAdvertTarget("www.acme.co.uk", "acme")).toBe("https://www.acme.co.uk");
+    expect(resolveAdvertTarget("  acme.co.uk/offers  ", null)).toBe("https://acme.co.uk/offers");
+    expect(resolveAdvertTarget("http://acme.co.uk", "acme")).toBe("http://acme.co.uk");
+  });
+
+  it("treats a link that can't be a web address as no link — member page, else home", () => {
+    for (const junk of ["javascript:alert(1)", "data:text/html,<script>x</script>", "mailto:sales@acme.co.uk", "/member/someone-else", "see website", ""]) {
+      expect(resolveAdvertTarget(junk, "acme"), junk).toBe("/member/acme");
+      expect(resolveAdvertTarget(junk, null), junk).toBe("/");
+    }
+  });
 });

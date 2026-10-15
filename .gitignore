@@ -66,3 +66,7 @@ dev.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Client feedback PDFs stay local: they can carry screenshots of client data,
+# and at several MB each they bloat every clone.
+docs/*.pdf

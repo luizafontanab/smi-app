@@ -1,6 +1,8 @@
 import { serviceDb } from "./db/server";
 import { replaceMemberMembershipTypes } from "./member-services";
 import { notifyConsole } from "./notify-admin";
+import { invoiceNumber } from "./invoicing";
+import { websiteUrl } from "./website-url";
 import type { CheckoutResult } from "./adapters/payments";
 
 export const slugify = (s: string) =>
@@ -70,6 +72,7 @@ export async function provisionMember(opts: {
     };
   }
 
+  const website = websiteUrl(opts.website);
   const { data: member, error: memberErr } = await db.from("members").insert({
     slug: `${slugify(opts.company)}-${Date.now().toString(36)}`,
     name: opts.company,
@@ -80,7 +83,9 @@ export async function provisionMember(opts: {
     // what /join step 3 promises to "auto-fill" — only what was actually
     // collected at step 1, everything else stays blank for the member to add
     ...(opts.phone ? { phone: opts.phone } : {}),
-    ...(opts.website ? { website: opts.website } : {}),
+    // Stored as an absolute link, like every other save path (website-url.ts):
+    // "www.foo.co.uk" typed at signup used to become a relative href.
+    ...(website ? { website } : {}),
     ...(opts.address ? { address: opts.address } : {}),
   }).select("id").single();
   if (memberErr || !member) {
@@ -103,11 +108,6 @@ export async function provisionMember(opts: {
 }
 
 /**
- * V13 step 2 — persist what checkout settled: card payment (+ invoice the
- * member can see under Billing) or comped months from a promo code.
- * `/api/stripe/webhook` calls this too — keep it the single seam.
- */
-/**
  * Queue a member notification without ever failing the caller.
  *
  * Every caller here has already committed the thing that matters — the payment
@@ -123,26 +123,72 @@ async function notifyQuietly(memberId: string, payload: Record<string, unknown>)
   }
 }
 
-export async function applyPaymentResult(memberId: string, result: CheckoutResult): Promise<void> {
+/**
+ * V13 step 2 — persist what checkout settled: card payment (+ invoice the
+ * member can see under Billing) or comped months from a promo code.
+ * `/api/stripe/webhook` calls this too — keep it the single seam.
+ *
+ * `opts.sessionId` is the Stripe Checkout Session the payment came through, and
+ * makes this idempotent per session: the invoice row is claimed FIRST, on the
+ * unique invoices_stripe_session_idx (20261006000002), and a conflict means a
+ * retry of an event already recorded — so nothing else (paid_at, PDF, receipt)
+ * is repeated. Stripe retries any webhook it doesn't see a 2xx for, and a
+ * timeout after this had run used to raise a second SMI-JOIN invoice and mail
+ * a second receipt. Callers without a session (the stubbed checkout in dev)
+ * work exactly as before.
+ *
+ * With a session this throws when the payment can't be recorded, so the
+ * webhook answers 500 and Stripe tries again.
+ */
+export async function applyPaymentResult(memberId: string, result: CheckoutResult, opts: { sessionId?: string } = {}): Promise<void> {
   const db = serviceDb();
   if (result.kind === "paid") {
     const now = new Date();
-    const number = `SMI-JOIN-${now.getTime().toString(36).toUpperCase()}`;
+    const number = invoiceNumber("JOIN", now);
     const issuedOn = now.toISOString().slice(0, 10);
-    await db.from("members").update({ paid_at: now.toISOString() }).eq("id", memberId);
+
+    let claimedId: string | null = null;
+    if (opts.sessionId) {
+      const { data: claimed, error } = await db.from("invoices").insert({
+        member_id: memberId,
+        number,
+        amount_pennies: 4000,
+        issued_on: issuedOn,
+        status: "paid",
+        paid_at: now.toISOString(),
+        stripe_session_id: opts.sessionId,
+      }).select("id").single();
+      if (error?.code === "23505" && error.message.includes("invoices_stripe_session_idx")) return; // already recorded
+      if (error || !claimed) throw new Error(`applyPaymentResult: ${opts.sessionId} for member ${memberId} was not recorded: ${error?.message ?? "no row returned"}`);
+      claimedId = claimed.id;
+      const { error: memberErr } = await db.from("members").update({ paid_at: now.toISOString() }).eq("id", memberId);
+      if (memberErr) {
+        // Release the claim, or the retry this throw asks for would find it
+        // and skip — leaving the member unpaid for good.
+        await db.from("invoices").delete().eq("id", claimedId);
+        throw new Error(`applyPaymentResult: paid_at not stamped for member ${memberId}: ${memberErr.message}`);
+      }
+    } else {
+      await db.from("members").update({ paid_at: now.toISOString() }).eq("id", memberId);
+    }
+
     const { data: member } = await db.from("members").select("name").eq("id", memberId).single();
     const { generateAndStoreInvoicePdf } = await import("./invoice-pdf");
     const pdfPath = await generateAndStoreInvoicePdf(memberId, {
       number, amountPennies: 4000, issuedOn, memberName: member?.name ?? "Member",
     });
-    await db.from("invoices").insert({
-      member_id: memberId,
-      number,
-      amount_pennies: 4000,
-      issued_on: issuedOn,
-      status: "paid",
-      ...(pdfPath ? { pdf_path: pdfPath } : {}),
-    });
+    if (claimedId) {
+      if (pdfPath) await db.from("invoices").update({ pdf_path: pdfPath }).eq("id", claimedId);
+    } else {
+      await db.from("invoices").insert({
+        member_id: memberId,
+        number,
+        amount_pennies: 4000,
+        issued_on: issuedOn,
+        status: "paid",
+        ...(pdfPath ? { pdf_path: pdfPath } : {}),
+      });
+    }
     // Gated, not unconditional: while payments are stubbed a "paid" result means
     // nothing was charged (GAPS C1), and a receipt for money that never moved is
     // a false record in a member's inbox. Flips on with the Stripe adapter — and

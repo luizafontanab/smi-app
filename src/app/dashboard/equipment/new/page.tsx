@@ -3,6 +3,7 @@ import { memberUploadImage, submitMachine } from "../../actions";
 import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Add equipment" };
@@ -34,7 +35,7 @@ export default async function NewMemberMachine(props: PageProps<"/dashboard/equi
           </div>
           <div>
             <label htmlFor="image" className="text-sm font-medium">Photo</label>
-            <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
+            <UploadField id="image" name="image" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
             <p className="mt-1 text-xs text-graphite">Landscape, JPG/PNG, max 8MB.</p>
           </div>
         </div>

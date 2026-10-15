@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { serviceDb } from "@/lib/db/server";
 import { record, requestContext, type EventKind } from "@/lib/analytics";
+import { isObviousBot } from "@/lib/bots";
 import { SOCIAL_CHANNELS, socialLinks } from "@/lib/social";
+import { websiteUrl } from "@/lib/website-url";
 
 /**
  * Member contact-link click-through (A5.6 / A5.10): website, phone, email
@@ -52,7 +54,11 @@ export async function GET(req: Request, ctx: RouteContext<"/go/[memberId]">) {
   let socialPlatform: string | null = null;
 
   if (kind === "website") {
-    target = member.website;
+    // Normalised here as well as on save: rows saved before lib/website-url
+    // hold "www.foo.co.uk", which as a redirect target is RELATIVE — the
+    // reader went to /go/www.foo.co.uk and from there to the homepage. A value
+    // that can't be made a link falls back to the member page below.
+    target = websiteUrl(member.website);
   } else if (kind === "phone") {
     target = member.phone ? `tel:${member.phone}` : null;
   } else if (kind === "email") {
@@ -65,7 +71,12 @@ export async function GET(req: Request, ctx: RouteContext<"/go/[memberId]">) {
     }
   }
 
-  const reqCtx = await requestContext();
-  record([{ kind: eventKind, member_id: member.id, platform: socialPlatform, ...reqCtx }]);
+  // A crawler following a story's company line still gets the redirect, but
+  // is not a click on the member's stats (lib/bots; robots.ts disallows /go/
+  // for the ones that listen).
+  if (!isObviousBot(req.headers)) {
+    const reqCtx = await requestContext();
+    record([{ kind: eventKind, member_id: member.id, platform: socialPlatform, ...reqCtx }]);
+  }
   redirect(target || fallback);
 }

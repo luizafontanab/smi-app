@@ -7,28 +7,43 @@ import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
 import { serviceDb, sessionDb } from "@/lib/db/server";
 import { isEventType } from "@/lib/event-types";
-import { editorImageUpload } from "@/lib/editor-upload";
+import { editorImageUpload, uploadFailureMessage } from "@/lib/editor-upload";
 import type { UploadResult } from "@/lib/upload-limits";
-import { removeMedia, uploadImage } from "@/lib/media";
+import { removeMedia, removeMediaIfUnused, uploadImage } from "@/lib/media";
+import { memberUploads, submittedFile } from "@/lib/staged-upload";
+import { canRenewBooking, renewalDatesProblem } from "@/lib/advert-renewal";
 import { companyPageValuesFromForm } from "@/lib/member-form";
 import { resolveCoordinates } from "@/lib/member-geocode";
 import {
+  memberIndustriesError,
   membershipTypeIdsFromForm,
   membershipTypesError,
   replaceMemberIndustries,
   replaceMemberMembershipTypes,
   replaceMemberServices,
+  UNKNOWN_INDUSTRY_ERROR,
 } from "@/lib/member-services";
 import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
 import { companyLinksFor, withCompanyLines } from "@/lib/company-link";
 import { isMemberLinkable } from "@/lib/member-visibility";
-import { memberCanDeleteStory, memberCanEditStory } from "@/lib/member-story";
+import {
+  memberCanDeleteStory,
+  memberCanEditStory,
+  memberCanWithdrawStory,
+  memberStoryImagePaths,
+  STORY_CHANGED_ERROR,
+} from "@/lib/member-story";
 import { isMemberDraft } from "@/lib/story-board";
 import { replaceStoryMembers } from "@/lib/story-members";
 import { HOUR, withinLimit } from "@/lib/rate-limit";
+import { advertLinkFromForm } from "@/lib/advert-link";
+import { logError } from "@/lib/log";
 import { siteUrl } from "@/lib/site-url";
 import { EMAIL_RE } from "@/lib/validate";
 import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
+
+/** Shown when a save fails for a reason that isn't the member's to fix; the detail goes to the error log. */
+const SAVE_FAILED = "That didn't save — please try again in a moment. If it keeps happening, contact us.";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -59,7 +74,9 @@ async function notifySubmitted(
   await notifyConsole({ kind, memberId, payload, message });
 }
 
-type EditableTable = "stories" | "videos" | "events" | "featured_machines";
+// Stories are not here: who may change one depends on who wrote it as well as
+// its status, so they go through lib/member-story instead.
+type EditableTable = "videos" | "events" | "featured_machines";
 const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
 
 /**
@@ -81,17 +98,25 @@ async function assertOwnsAdvert(db: ReturnType<typeof serviceDb>, id: string, me
   return data?.member_id === memberId;
 }
 
-type OwnedBooking = { id: string; status: string; advert_id: string; price_pennies: number | null };
+type OwnedBooking = { id: string; status: string; advert_id: string; price_pennies: number | null; starts_on: string; ends_on: string };
 
 /** The `advert_bookings` row `id` if it belongs to this member (via its advert), else null. */
 async function assertOwnsBooking(db: ReturnType<typeof serviceDb>, id: string, memberId: string): Promise<OwnedBooking | null> {
   const { data } = await db
     .from("advert_bookings")
-    .select("id, status, advert_id, price_pennies, advert:adverts(member_id)")
+    .select("id, status, advert_id, price_pennies, starts_on, ends_on, advert:adverts(member_id)")
     .eq("id", id)
     .single();
   if (!data || data.advert?.member_id !== memberId) return null;
-  return { id: data.id, status: data.status, advert_id: data.advert_id, price_pennies: data.price_pennies };
+  return {
+    id: data.id, status: data.status, advert_id: data.advert_id, price_pennies: data.price_pennies,
+    starts_on: data.starts_on, ends_on: data.ends_on,
+  };
+}
+
+/** Where a member is sent when their story changed under them: their list, which shows its state now. */
+function storyChanged(): never {
+  redirect(`/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
 }
 
 /** True when the `prospect_marks` row `id` is this member's own — never an admin mark. */
@@ -103,7 +128,7 @@ async function assertOwnsMark(db: ReturnType<typeof serviceDb>, id: string, memb
 /** Editor image upload — returns { url } for insertion as <img src>, or { error } to show. */
 export async function memberUploadImage(formData: FormData): Promise<UploadResult> {
   const user = await requireMember();
-  return editorImageUpload(formData.get("file"), `stories/${user.memberId}`);
+  return editorImageUpload(formData, memberUploads(user.memberId), `stories/${user.memberId}`);
 }
 
 /**
@@ -124,12 +149,12 @@ export async function submitStory(formData: FormData) {
   }
   let cover: string | null = null;
   try {
-    cover = await uploadImage(formData.get("cover") as File | null, "stories");
+    cover = await uploadImage(await submittedFile(formData, "cover", memberUploads(user.memberId)), "stories");
   } catch (e) {
     // Was an unhandled throw into the error boundary — an 8MB file lost the
     // whole draft. redirect() stays outside the try: its NEXT_REDIRECT must
     // not be caught as an upload failure.
-    redirect(`/dashboard/story/new?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
+    redirect(`/dashboard/story/new?error=${encodeURIComponent(uploadFailureMessage(e, "upload:story-cover", "The cover didn't upload — please try again."))}`);
   }
   if (!cover && !asDraft) redirect(`/dashboard/story/new?error=${encodeURIComponent("A cover image is required.")}`);
   const db = serviceDb();
@@ -183,27 +208,57 @@ export async function previewStoryBody(html: string): Promise<string> {
  * Delete the member's own unsubmitted draft. Only a draft: anything already
  * submitted has been seen by the editor, so it is withdrawn instead and the
  * record stays.
+ *
+ * The delete is conditional on it still being their draft — submitted from
+ * another tab since this page loaded, it is no longer theirs to delete — and
+ * the images go with it: the cover, and every photo the body uploaded under
+ * their own prefix, each only if nothing else now points at it.
  */
 export async function deleteStoryDraft(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id") ?? "");
   const db = serviceDb();
-  const { data: story } = await db.from("stories").select("id, status, member_id, member_draft, cover_path").eq("id", id).single();
-  if (!memberCanDeleteStory(story, user.memberId)) return;
-  await db.from("stories").delete().eq("id", id);
-  await removeMedia(story!.cover_path);
+  const { data: story } = await db.from("stories").select("id, status, member_id, member_draft, source").eq("id", id).single();
+  if (!memberCanDeleteStory(story, user.memberId)) {
+    // Theirs, but no longer a draft: say so. Anyone else's: nothing to say.
+    if (story?.member_id === user.memberId && story.source === "member") storyChanged();
+    return;
+  }
+  // member_draft implies status 'draft' and source 'member' (stories_member_draft_check).
+  const { data: deleted, error } = await db.from("stories").delete()
+    .eq("id", id).eq("member_id", user.memberId).eq("member_draft", true)
+    .select("cover_path, body");
+  if (error) {
+    redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("The draft couldn't be deleted just now — please try again.")}`);
+  }
+  if (!deleted?.length) storyChanged();
+  await removeMediaIfUnused(deleted.flatMap((row) => [row.cover_path, ...memberStoryImagePaths(row.body, user.memberId)]));
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/submissions");
   redirect("/dashboard/submissions?deleted=draft");
 }
 
-/** Pull back a story that's still waiting on (or was sent back from) a decision. */
+/**
+ * Pull back a story the member wrote that's still waiting on (or was sent back
+ * from) a decision. Conditional on the status just read, so a story the desk
+ * published or scheduled in between is left alone and the member told.
+ */
 export async function withdrawStory(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
   const db = serviceDb();
-  if (!(await assertOwnsRow(db, "stories", id, user.memberId))) return;
-  await db.from("stories").update({ status: "withdrawn" }).eq("id", id);
+  const { data: story } = await db.from("stories").select("id, status, member_id, member_draft, source").eq("id", id).single();
+  if (!memberCanWithdrawStory(story, user.memberId)) {
+    if (story?.member_id === user.memberId && story.source === "member") storyChanged();
+    return;
+  }
+  const { data: withdrawn, error } = await db.from("stories").update({ status: "withdrawn" })
+    .eq("id", id).eq("member_id", user.memberId).eq("source", "member").eq("member_draft", false).eq("status", story!.status)
+    .select("id");
+  if (error) {
+    redirect(`/dashboard/submissions?error=${encodeURIComponent("The story couldn't be withdrawn just now — please try again.")}`);
+  }
+  if (!withdrawn?.length) storyChanged();
   revalidatePath("/dashboard");
   redirect("/dashboard");
 }
@@ -212,14 +267,30 @@ export async function withdrawStory(formData: FormData) {
  * Edit and resubmit a story that's awaiting approval or was rejected — mirrors
  * resubmitAdvert. Also where a member's draft is saved again (intent=draft,
  * stays a draft) or finally submitted (moves to awaiting approval).
+ *
+ * Optimistic concurrency, because the form can be open for hours: the edit
+ * page posts the `updated_at` it was rendered from as `version`, and the write
+ * lands only if the row is still at that version, in the status and draft
+ * state read here, still the member's. Otherwise the desk acted in between —
+ * approved it, edited the copy, sent it back — and a resubmit would have
+ * pulled a live story back into the queue or written over Jas's changes. The
+ * member is told instead and nothing is saved. (A form from before `version`
+ * existed still gets the status check.)
  */
 export async function editStory(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
   const db = serviceDb();
-  const { data: row } = await db.from("stories").select("id, status, member_id, member_draft").eq("id", id).single();
-  if (!memberCanEditStory(row, user.memberId)) return;
-  const wasDraft = isMemberDraft(row!);
+  const { data: row } = await db.from("stories")
+    .select("id, status, member_id, member_draft, source, cover_path, updated_at").eq("id", id).single();
+  if (!memberCanEditStory(row, user.memberId)) {
+    if (row?.member_id === user.memberId && row.source === "member") storyChanged();
+    return;
+  }
+  const story = row!;
+  const openedAt = String(formData.get("version") ?? "");
+  if (openedAt && openedAt !== story.updated_at) storyChanged();
+  const wasDraft = isMemberDraft(story);
   // "Save draft" only means something for a draft: a submitted story can't be
   // pulled back into the member's private workspace this way.
   const asDraft = wasDraft && formData.get("intent") === "draft";
@@ -230,18 +301,17 @@ export async function editStory(formData: FormData) {
   }
   let cover: string | null = null;
   try {
-    cover = await uploadImage(formData.get("cover") as File | null, "stories");
+    cover = await uploadImage(await submittedFile(formData, "cover", memberUploads(user.memberId)), "stories");
   } catch (e) {
-    redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent(e instanceof Error ? e.message : "Cover upload failed.")}`);
+    redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent(uploadFailureMessage(e, "upload:story-cover", "The cover didn't upload — please try again."))}`);
   }
   // A cover is mandatory — fine to keep the existing one on a resubmit, but a
   // story that somehow has neither (pre-dates this rule, or a draft saved
   // before one was chosen) can't be submitted without one.
-  if (!cover && !asDraft) {
-    const { data: existing } = await db.from("stories").select("cover_path").eq("id", id).single();
-    if (!existing?.cover_path) redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("A cover image is required.")}`);
+  if (!cover && !asDraft && !story.cover_path) {
+    redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("A cover image is required.")}`);
   }
-  await db.from("stories").update({
+  const { data: saved, error } = await db.from("stories").update({
     title,
     excerpt: String(formData.get("excerpt") ?? ""),
     body: sanitizeRichText(String(formData.get("body") ?? "")),
@@ -255,7 +325,19 @@ export async function editStory(formData: FormData) {
     ...(formData.get("focus_x")
       ? { cover_focus: { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) } }
       : {}),
-  }).eq("id", id);
+  })
+    .eq("id", id).eq("member_id", user.memberId).eq("source", "member")
+    .eq("status", story.status).eq("member_draft", story.member_draft).eq("updated_at", story.updated_at)
+    .select("id");
+  if (error || !saved?.length) {
+    // Nothing points at the cover this request uploaded.
+    await removeMedia(cover);
+    if (error) redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("Your changes couldn't be saved just now — please try again.")}`);
+    storyChanged();
+  }
+  // The cover it replaced, unless something else still shows it (the media
+  // library lets the desk reuse any upload).
+  if (cover && story.cover_path && story.cover_path !== cover) await removeMediaIfUnused([story.cover_path]);
   const cat = Number(formData.get("category") || 0);
   if (cat) {
     await db.from("story_categories").delete().eq("story_id", id);
@@ -278,7 +360,7 @@ export async function editStory(formData: FormData) {
 /** Editor image upload for the description field — returns { url } for insertion as <img src>, or { error } to show. */
 export async function memberUploadVideoImage(formData: FormData): Promise<UploadResult> {
   const user = await requireMember();
-  return editorImageUpload(formData.get("file"), `videos/${user.memberId}`);
+  return editorImageUpload(formData, memberUploads(user.memberId), `videos/${user.memberId}`);
 }
 
 /** Member self-post: lands awaiting approval, never live directly. */
@@ -289,7 +371,14 @@ export async function submitVideo(formData: FormData) {
   // Say why rather than silently re-rendering the form (same as submitStory).
   const problem = !title || !url ? "A title and a YouTube link are both required." : !youtubeId(url) ? YOUTUBE_ONLY_ERROR : null;
   if (problem) redirect(`/dashboard/video/new?error=${encodeURIComponent(problem)}`);
-  const thumbnail = await uploadImage(formData.get("thumbnail") as File | null, "videos");
+  let thumbnail: string | null = null;
+  try {
+    thumbnail = await uploadImage(await submittedFile(formData, "thumbnail", memberUploads(user.memberId)), "videos");
+  } catch (e) {
+    // Was an unhandled throw into the error boundary; now said on the form,
+    // like the story cover. redirect() stays outside the try.
+    redirect(`/dashboard/video/new?error=${encodeURIComponent(uploadFailureMessage(e, "upload:video-thumbnail", "The thumbnail didn't upload — please try again."))}`);
+  }
   // The id is selected back purely so the console notification can link to it.
   const { data } = await serviceDb().from("videos").insert({
     slug: `${slugify(title)}-${Date.now().toString(36)}`,
@@ -329,7 +418,12 @@ export async function editVideo(formData: FormData) {
   const url = String(formData.get("url") ?? "").trim();
   const problem = !title || !url ? "A title and a YouTube link are both required." : !youtubeId(url) ? YOUTUBE_ONLY_ERROR : null;
   if (problem) redirect(`/dashboard/video/${id}/edit?error=${encodeURIComponent(problem)}`);
-  const thumbnail = await uploadImage(formData.get("thumbnail") as File | null, "videos");
+  let thumbnail: string | null = null;
+  try {
+    thumbnail = await uploadImage(await submittedFile(formData, "thumbnail", memberUploads(user.memberId)), "videos");
+  } catch (e) {
+    redirect(`/dashboard/video/${id}/edit?error=${encodeURIComponent(uploadFailureMessage(e, "upload:video-thumbnail", "The thumbnail didn't upload — please try again."))}`);
+  }
   await db.from("videos").update({
     title,
     url,
@@ -348,7 +442,7 @@ export async function editVideo(formData: FormData) {
 /** Editor image upload for the description field — returns { url } for insertion as <img src>, or { error } to show. */
 export async function memberUploadEventImage(formData: FormData): Promise<UploadResult> {
   const user = await requireMember();
-  return editorImageUpload(formData.get("file"), `events/${user.memberId}`);
+  return editorImageUpload(formData, memberUploads(user.memberId), `events/${user.memberId}`);
 }
 
 /** M4 — member adds an event; Jas approves. */
@@ -356,7 +450,13 @@ export async function submitEvent(formData: FormData) {
   const user = await requireMember();
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
-  const cover = await uploadImage(formData.get("cover") as File | null, "events");
+  let cover: string | null = null;
+  try {
+    cover = await uploadImage(await submittedFile(formData, "cover", memberUploads(user.memberId)), "events");
+  } catch (e) {
+    // Was an unhandled throw into the error boundary; now said on the form.
+    redirect(`/dashboard/event/new?error=${encodeURIComponent(uploadFailureMessage(e, "upload:event-cover", "The cover didn't upload — please try again."))}`);
+  }
   const typeInput = String(formData.get("type") ?? "");
   const eventType = isEventType(typeInput) ? typeInput : null;
   const location = String(formData.get("location") ?? "");
@@ -406,7 +506,12 @@ export async function editEvent(formData: FormData) {
   if (!(await assertOwnsRow(db, "events", id, user.memberId))) return;
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
-  const cover = await uploadImage(formData.get("cover") as File | null, "events");
+  let cover: string | null = null;
+  try {
+    cover = await uploadImage(await submittedFile(formData, "cover", memberUploads(user.memberId)), "events");
+  } catch (e) {
+    redirect(`/dashboard/event/${id}/edit?error=${encodeURIComponent(uploadFailureMessage(e, "upload:event-cover", "The cover didn't upload — please try again."))}`);
+  }
   const typeInput = String(formData.get("type") ?? "");
   const eventType = isEventType(typeInput) ? typeInput : null;
   const location = String(formData.get("location") ?? "");
@@ -468,15 +573,15 @@ export async function submitProfileEdit(formData: FormData) {
   let uploaded: { logo_path: string | null; hero_path: string | null };
   try {
     const [logo_path, hero_path] = await Promise.all([
-      uploadImage(formData.get("logo") as File | null, `members/${user.memberId}`),
-      uploadImage(formData.get("hero") as File | null, `members/${user.memberId}`),
+      submittedFile(formData, "logo", memberUploads(user.memberId)).then((file) => uploadImage(file, `members/${user.memberId}`)),
+      submittedFile(formData, "hero", memberUploads(user.memberId)).then((file) => uploadImage(file, `members/${user.memberId}`)),
     ]);
     uploaded = { logo_path, hero_path };
   } catch (e) {
     // redirect() must stay outside the try or its NEXT_REDIRECT is swallowed
     // as an upload failure — same reasoning as saveMember.
     uploaded = { logo_path: null, hero_path: null };
-    back(e instanceof Error ? e.message : "Image upload failed.");
+    back(uploadFailureMessage(e, "upload:member-page", "The image didn't upload — please try again."));
     return;
   }
 
@@ -486,6 +591,20 @@ export async function submitProfileEdit(formData: FormData) {
   // Industries: the set, reconciled with the primary in values.industry_id.
   // Like services, it travels as `industry_ids` on a live member's revision.
   const industryIds = parsed.industryIds;
+  // Capped — but a set they already hold (the backfill can give four) may
+  // stay, so past the cap their current set is read before refusing.
+  if (memberIndustriesError(industryIds)) {
+    const { data: held } = await db.from("member_industries").select("industry_id").eq("member_id", user.memberId);
+    const tooManyIndustries = memberIndustriesError(industryIds, (held ?? []).map((r) => r.industry_id));
+    if (tooManyIndustries) return back(tooManyIndustries);
+  }
+  // An id that isn't an industry used to reach the foreign key and throw the
+  // member onto the error page — or, on a live member, sit in a revision until
+  // Jas's approval threw instead.
+  if (industryIds.length) {
+    const { data: known } = await db.from("industries").select("id").in("id", industryIds);
+    if ((known ?? []).length !== new Set(industryIds).size) return back(UNKNOWN_INDUSTRY_ERROR);
+  }
 
   // The member owns their own URL now that the form is shared, so the same
   // guards the console applies have to apply here: a clash would violate the
@@ -561,7 +680,13 @@ export async function submitMachine(formData: FormData) {
   // Optional, YouTube only (GAPS A9.4) — refused before the photo uploads.
   const video = optionalYoutubeUrl(formData.get("video_url"));
   if ("error" in video) redirect(`/dashboard/equipment/new?error=${encodeURIComponent(video.error)}`);
-  const image = await uploadImage(formData.get("image") as File | null, `machines/${user.memberId}`);
+  let image: string | null = null;
+  try {
+    image = await uploadImage(await submittedFile(formData, "image", memberUploads(user.memberId)), `machines/${user.memberId}`);
+  } catch (e) {
+    // Was an unhandled throw into the error boundary; now said on the form.
+    redirect(`/dashboard/equipment/new?error=${encodeURIComponent(uploadFailureMessage(e, "upload:machine-photo", "The photo didn't upload — please try again."))}`);
+  }
   const { data } = await serviceDb().from("featured_machines").insert({
     name,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
@@ -599,7 +724,12 @@ export async function editMachine(formData: FormData) {
   if (!name) return;
   const video = optionalYoutubeUrl(formData.get("video_url"));
   if ("error" in video) redirect(`/dashboard/equipment/${id}/edit?error=${encodeURIComponent(video.error)}`);
-  const image = await uploadImage(formData.get("image") as File | null, `machines/${user.memberId}`);
+  let image: string | null = null;
+  try {
+    image = await uploadImage(await submittedFile(formData, "image", memberUploads(user.memberId)), `machines/${user.memberId}`);
+  } catch (e) {
+    redirect(`/dashboard/equipment/${id}/edit?error=${encodeURIComponent(uploadFailureMessage(e, "upload:machine-photo", "The photo didn't upload — please try again."))}`);
+  }
   await db.from("featured_machines").update({
     name,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
@@ -804,14 +934,17 @@ export async function submitAdvert(formData: FormData) {
   const starts_on = String(formData.get("starts_on") ?? "");
   const ends_on = String(formData.get("ends_on") ?? "");
   if (!name || !format || !starts_on || !ends_on) return;
+  // Checked before anything uploads, so a bad link leaves no orphaned artwork.
+  const link = advertLinkFromForm(formData);
+  if ("error" in link) redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(link.error)}`);
 
   let desktop_path: string | null = null;
   let mobile_path: string | null = null;
   try {
-    desktop_path = await uploadImage(formData.get("desktop") as File | null, `panels/${user.memberId}`);
-    mobile_path = await uploadImage(formData.get("mobile") as File | null, `panels/${user.memberId}`);
+    desktop_path = await uploadImage(await submittedFile(formData, "desktop", memberUploads(user.memberId)), `panels/${user.memberId}`);
+    mobile_path = await uploadImage(await submittedFile(formData, "mobile", memberUploads(user.memberId)), `panels/${user.memberId}`);
   } catch (e) {
-    redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
+    redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(uploadFailureMessage(e, "upload:advert-artwork", "The artwork didn't upload — please try again."))}`);
   }
   if (!desktop_path || !mobile_path) {
     redirect(`/dashboard/advertising/buy?error=${encodeURIComponent("Both a desktop and a mobile image are required.")}`);
@@ -824,13 +957,16 @@ export async function submitAdvert(formData: FormData) {
     format,
     desktop_path,
     mobile_path,
-    link_url: String(formData.get("link_url") ?? "").trim() || null,
+    link_url: link.url,
   }).select("id").single();
   if (!advert) {
     // Nothing was written, so the just-uploaded artwork would otherwise be
     // orphaned storage with no row pointing at it.
     await Promise.all([removeMedia(desktop_path), removeMedia(mobile_path)]);
-    redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(advertError?.message ?? "Could not save the advert.")}`);
+    // The database's own wording (constraint names, columns) is for the error
+    // log, not the member.
+    logError({ source: "server", area: "action:submitAdvert", error: advertError ?? new Error("advert insert returned no row") });
+    redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(SAVE_FAILED)}`);
   }
 
   const { data: booking, error: bookingError } = await db.from("advert_bookings").insert({
@@ -849,10 +985,10 @@ export async function submitAdvert(formData: FormData) {
     // artwork up rather than leaving an orphan and redirecting to "success".
     await Promise.all([removeMedia(desktop_path), removeMedia(mobile_path)]);
     await db.from("adverts").delete().eq("id", advert.id);
+    const datesWrong = bookingError.message.includes("ends_on");
+    if (!datesWrong) logError({ source: "server", area: "action:submitAdvert", error: bookingError });
     redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(
-      bookingError.message.includes("ends_on")
-        ? "The run must end on or after its start date."
-        : bookingError.message,
+      datesWrong ? "The run must end on or after its start date." : SAVE_FAILED,
     )}`);
   }
   await notifySubmitted("advert_submitted", user.memberId, { booking_id: booking?.id }, `Booked an advert run for approval: “${name}”, ${starts_on} to ${ends_on}.`);
@@ -875,21 +1011,23 @@ export async function resubmitAdvert(formData: FormData) {
   const booking = await assertOwnsBooking(db, id, user.memberId);
   if (!booking) return;
   if (!["draft", "review_required"].includes(booking.status)) return;
+  const link = advertLinkFromForm(formData);
+  if ("error" in link) redirect(`/dashboard/advert/${id}?error=${encodeURIComponent(link.error)}`);
 
   let desktop_path: string | null = null;
   let mobile_path: string | null = null;
   try {
-    desktop_path = await uploadImage(formData.get("desktop") as File | null, `panels/${user.memberId}`);
-    mobile_path = await uploadImage(formData.get("mobile") as File | null, `panels/${user.memberId}`);
+    desktop_path = await uploadImage(await submittedFile(formData, "desktop", memberUploads(user.memberId)), `panels/${user.memberId}`);
+    mobile_path = await uploadImage(await submittedFile(formData, "mobile", memberUploads(user.memberId)), `panels/${user.memberId}`);
   } catch (e) {
-    redirect(`/dashboard/advert/${id}?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
+    redirect(`/dashboard/advert/${id}?error=${encodeURIComponent(uploadFailureMessage(e, "upload:advert-artwork", "The artwork didn't upload — please try again."))}`);
   }
 
   const name = String(formData.get("name") ?? "").trim();
   if (name || desktop_path || mobile_path || formData.get("link_url") !== null) {
     await db.from("adverts").update({
       ...(name ? { name } : {}),
-      link_url: String(formData.get("link_url") ?? "").trim() || null,
+      link_url: link.url,
       ...(desktop_path ? { desktop_path } : {}),
       ...(mobile_path ? { mobile_path } : {}),
       updated_at: new Date().toISOString(),
@@ -912,29 +1050,49 @@ export async function resubmitAdvert(formData: FormData) {
   redirect("/dashboard?submitted=advert");
 }
 
-/** Rebook a finished run: same artwork, new dates, back through approval. */
+/**
+ * Rebook a finished run: same artwork, new dates, back through approval. Only
+ * a run that has ended (lib/advert-renewal — the booking page offers the form
+ * on exactly the same rule), only for dates that are real, in order and not in
+ * the past, and the console is told only once the new booking exists.
+ */
 export async function renewAdvertBooking(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
   const db = serviceDb();
   const prev = await assertOwnsBooking(db, id, user.memberId);
   if (!prev) return;
+  const back = (msg: string) => redirect(`/dashboard/advert/${id}?error=${encodeURIComponent(msg)}`);
+  const today = new Date().toISOString().slice(0, 10);
+  if (!canRenewBooking(prev, today)) return back("Only a run that has finished can be booked again.");
+  const starts_on = String(formData.get("starts_on") ?? "");
+  const ends_on = String(formData.get("ends_on") ?? "");
+  const datesProblem = renewalDatesProblem(starts_on, ends_on, today);
+  if (datesProblem) return back(datesProblem);
 
-  const { data: renewal } = await db.from("advert_bookings").insert({
+  const { data: renewal, error } = await db.from("advert_bookings").insert({
     advert_id: prev.advert_id,
     // last run's price, which the admin sees prefilled when approving
     price_pennies: prev.price_pennies,
-    starts_on: String(formData.get("starts_on")),
-    ends_on: String(formData.get("ends_on")),
+    starts_on,
+    ends_on,
     status: "awaiting_approval",
     source: "member",
     renewed_from: id,
     submitted_by: user.userId,
     submitted_at: new Date().toISOString(),
   }).select("id").single();
+  // A second submit of the same form (advert_bookings_one_pending_member_renewal).
+  if (error?.code === "23505" && error.message.includes("one_pending_member_renewal")) {
+    return back("You've already asked to book this run again — that request is waiting for a decision.");
+  }
+  if (error || !renewal) {
+    console.error(`[dashboard] renewal of booking ${id} failed: ${error?.message ?? "no row returned"}`);
+    return back("The new run couldn't be booked just now — please try again.");
+  }
   // Links to the NEW booking, not the run it was renewed from — the new one is
   // the row awaiting a decision.
-  await notifySubmitted("advert_submitted", user.memberId, { booking_id: renewal?.id }, `Asked to renew an advert run: ${String(formData.get("starts_on"))} to ${String(formData.get("ends_on"))}.`);
+  await notifySubmitted("advert_submitted", user.memberId, { booking_id: renewal.id }, `Asked to renew an advert run: ${starts_on} to ${ends_on}.`);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=advert");
 }
@@ -954,10 +1112,10 @@ export async function proposeOwnArtworkSwap(formData: FormData) {
   let desktop_path: string | null = null;
   let mobile_path: string | null = null;
   try {
-    desktop_path = await uploadImage(formData.get("desktop") as File | null, `panels/${user.memberId}`);
-    mobile_path = await uploadImage(formData.get("mobile") as File | null, `panels/${user.memberId}`);
+    desktop_path = await uploadImage(await submittedFile(formData, "desktop", memberUploads(user.memberId)), `panels/${user.memberId}`);
+    mobile_path = await uploadImage(await submittedFile(formData, "mobile", memberUploads(user.memberId)), `panels/${user.memberId}`);
   } catch (e) {
-    redirect(`/dashboard/advert/${String(formData.get("booking_id"))}?error=${encodeURIComponent(e instanceof Error ? e.message : "Artwork upload failed.")}`);
+    redirect(`/dashboard/advert/${String(formData.get("booking_id"))}?error=${encodeURIComponent(uploadFailureMessage(e, "upload:advert-artwork", "The artwork didn't upload — please try again."))}`);
   }
   if (!desktop_path || !mobile_path) {
     redirect(`/dashboard/advert/${String(formData.get("booking_id"))}?error=${encodeURIComponent("Both a desktop and a mobile image are required.")}`);
@@ -973,10 +1131,10 @@ export async function proposeOwnArtworkSwap(formData: FormData) {
   });
   // the partial unique index is the likely rejection: one proposal already awaiting a decision
   if (error) {
+    const alreadyPending = error.message.includes("advert_artwork_proposals_one_pending");
+    if (!alreadyPending) logError({ source: "server", area: "action:proposeOwnArtworkSwap", error });
     redirect(`/dashboard/advert/${String(formData.get("booking_id"))}?error=${encodeURIComponent(
-      error.message.includes("advert_artwork_proposals_one_pending")
-        ? "You already have a swap awaiting a decision on this advert."
-        : error.message,
+      alreadyPending ? "You already have a swap awaiting a decision on this advert." : SAVE_FAILED,
     )}`);
   }
   // No per-proposal console route exists, so this lands on the artwork queue —

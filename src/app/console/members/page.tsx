@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
-import { mustList } from "@/lib/db/must";
+import { pagedList } from "../paged-list";
 import { MEMBER_STATUSES } from "@/lib/membership";
 import { ilikeTerm } from "@/lib/queries";
 import { Pagination } from "@/components/Pagination";
@@ -25,29 +25,29 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
   // mutually exclusive: the archived view is a short list you go and look at
   // deliberately, not a facet of the working one.
   const archived = sp.archived === "1";
-  const page = Math.max(1, Number(sp.page) || 1);
+  const requestedPage = Math.max(1, Number(sp.page) || 1);
   const db = serviceDb();
 
   // Search and filter server-side: this used to pull every member (with a
   // category join) on each load and substring-match in JS — the search box was
   // a client-side illusion over a full table pull. Same ilikeTerm + range
   // pattern as /console/crm.
-  let membersQuery = db
-    .from("members")
-    .select("id, name, status, archived_at, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, industry:industries!members_industry_id_fkey(name)", { count: "exact" })
-    .order("name");
-  // The unfiltered list excludes archived members — otherwise archiving someone
-  // would change nothing visible here and the button would read as broken.
-  membersQuery = archived
-    ? membersQuery.not("archived_at", "is", null)
-    : membersQuery.is("archived_at", null);
-  if (!archived && status !== "all") membersQuery = membersQuery.eq("status", status);
   const term = ilikeTerm(q);
-  if (term) membersQuery = membersQuery.or(`name.ilike.%${term}%,description.ilike.%${term}%,contact_email.ilike.%${term}%`);
-  const { data: filtered, count } = await mustList(
-    membersQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
-    "console/members list",
-  );
+  // Rebuilt per attempt: pagedList re-runs it as the last page when ?page= is
+  // past the end, rather than letting PostgREST's 416 throw.
+  const membersQuery = (from: number, to: number) => {
+    let query = db
+      .from("members")
+      .select("id, name, status, archived_at, joined_at, billing_mode, paid_at, comped_until, draft_submitted_at, industry:industries!members_industry_id_fkey(name)", { count: "exact" })
+      .order("name");
+    // The unfiltered list excludes archived members — otherwise archiving someone
+    // would change nothing visible here and the button would read as broken.
+    query = archived ? query.not("archived_at", "is", null) : query.is("archived_at", null);
+    if (!archived && status !== "all") query = query.eq("status", status);
+    if (term) query = query.or(`name.ilike.%${term}%,description.ilike.%${term}%,contact_email.ilike.%${term}%`);
+    return query.range(from, to);
+  };
+  const { data: filtered, count, page } = await pagedList(membersQuery, requestedPage, PAGE_SIZE, "console/members list");
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
   const qs = q ? `&q=${encodeURIComponent(q)}` : "";

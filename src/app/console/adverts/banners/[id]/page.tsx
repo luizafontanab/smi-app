@@ -8,7 +8,12 @@ import { UUID_RE } from "@/lib/validate";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { SubmitButton } from "@/components/SubmitButton";
 import { InvoicePanel } from "@/components/console/InvoicePanel";
+
+// Approved and not over — before approval, approving is what invoices it;
+// an ended run (perhaps called off unpaid) isn't re-billed from here.
+const BILLABLE_RUN = ["awaiting_payment", "scheduled", "live"];
 import { saveBannerRun } from "../../../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -49,12 +54,12 @@ export default async function BannerRunEditPage(props: PageProps<"/console/adver
           <div>
             <label htmlFor="desktop" className="text-sm font-medium">Desktop image</label>
             {desktop && <Image src={desktop} alt="Current desktop banner" width={1280} height={170} className="mt-1 h-auto w-full rounded border" unoptimized />}
-            <input id="desktop" name="desktop" type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
+            <UploadField id="desktop" name="desktop" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
           </div>
           <div>
             <label htmlFor="mobile" className="text-sm font-medium">Mobile image</label>
             {mobile && <Image src={mobile} alt="Current mobile banner" width={370} height={280} className="mt-1 h-auto w-40 rounded border" unoptimized />}
-            <input id="mobile" name="mobile" type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
+            <UploadField id="mobile" name="mobile" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
           </div>
         </div>
         <p className="text-xs text-graphite">Leave a file empty to keep that image.</p>
@@ -69,10 +74,14 @@ export default async function BannerRunEditPage(props: PageProps<"/console/adver
             <input name="price_pounds" inputMode="decimal" placeholder="optional" defaultValue={booking.price_pennies != null ? (booking.price_pennies / 100).toFixed(2) : ""} className="mt-1 block w-full rounded border px-3 py-2" />
           </label>
         </div>
-        <p className="text-xs text-graphite">Changing the price here records it on the run; it doesn&apos;t raise or change an invoice.</p>
+        <p className="text-xs text-graphite">A price added here is invoiced when you save, and held for payment if it hasn&apos;t started. A new price or member on an unpaid invoice replaces it; a paid one isn&apos;t re-billed.</p>
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
-      <InvoicePanel target={{ advert_booking_id: booking.id }} returnTo={`/console/adverts/banners/${booking.id}`} />
+      <InvoicePanel
+        target={{ advert_booking_id: booking.id }}
+        returnTo={`/console/adverts/banners/${booking.id}`}
+        raise={{ kind: "booking", id: booking.id, pricePennies: booking.price_pennies, billable: BILLABLE_RUN.includes(booking.status) }}
+      />
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import sanitizeHtml from "sanitize-html";
 import { IMAGE_ALIGNS, IMAGE_SIZES } from "@/lib/image-layout";
-
-const MEDIA_PREFIX = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/media/`;
+import { MEDIA_PREFIX } from "@/lib/media-prefix";
 
 /**
  * The full rich-text vocabulary the editor can produce and .story-body styles.

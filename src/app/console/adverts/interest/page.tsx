@@ -16,8 +16,9 @@ const PRODUCT_LABELS: Record<string, string> = {
   featured_machine: "Featured Machine",
 };
 
-export default async function AdvertInterestPage() {
+export default async function AdvertInterestPage(props: PageProps<"/console/adverts/interest">) {
   await requireConsole();
+  const sp = await props.searchParams;
   const db = serviceDb();
   const requests = await must(
     db.from("visibility_requests")
@@ -36,6 +37,7 @@ export default async function AdvertInterestPage() {
       <p className="mt-1 text-sm text-graphite">
         Members who asked about advertising from their dashboard. You confirm availability and set the amount; the member can pay that invoice by card from their billing page.
       </p>
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Waiting on you ({open.length})</h2>
@@ -56,7 +58,7 @@ export default async function AdvertInterestPage() {
                 <input type="hidden" name="id" value={r.id} />
                 <span aria-hidden="true" className="text-xs text-graphite">£</span>
                 <label htmlFor={`interest-amount-${r.id}`} className="sr-only">Amount in pounds</label>
-                <input id={`interest-amount-${r.id}`} name="amount_pounds" type="number" step="0.01" min="0.01" required placeholder="0.00" className="w-20 rounded border px-1.5 py-1 text-xs" />
+                <input id={`interest-amount-${r.id}`} name="amount_pounds" type="number" step="0.01" min="0.30" max="999999.99" required placeholder="0.00" className="w-20 rounded border px-1.5 py-1 text-xs" />
                 <button className="rounded bg-ink px-3 py-1.5 text-xs text-white">Confirm &amp; invoice</button>
               </form>
               <form action={declineInterest}>

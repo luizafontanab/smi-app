@@ -1,4 +1,6 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { MOCK_KEY_HEADER, mockBiginKey } from "@/lib/adapters/crm";
 import { mockBaseUrl } from "@/lib/adapters/mock-base-url";
 
 /**
@@ -63,13 +65,57 @@ export function org(): Org {
   return g.__biginMockOrg;
 }
 
-/** 404 when the mock is off, 401 without a Zoho-style auth header — the same order the real API checks in. */
+/**
+ * 404 when the mock is off; 401 without a Zoho-style auth header — the same
+ * order the real API checks in — or without the deployment's own mock key.
+ *
+ * The auth header alone proves nothing here: these routes accepted any
+ * `Zoho-oauthtoken <anything>`, so on a Preview with MOCK_INTEGRATIONS=1
+ * anyone with the URL could read every contact the Preview had pushed. The
+ * adapter now sends MOCK_KEY_HEADER too (lib/adapters/crm.ts mockBiginKey, an
+ * HMAC of this deployment's SUPABASE_SECRET_KEY), compared in constant time.
+ * Real Bigin knows nothing of it; it is the mock's own lock.
+ */
 export function guard(request: Request): NextResponse | null {
   if (!mockBaseUrl()) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (!request.headers.get("authorization")?.startsWith("Zoho-oauthtoken ")) {
-    return NextResponse.json({ code: "INVALID_TOKEN", message: "invalid oauth token", status: "error" }, { status: 401 });
-  }
+  const invalid = NextResponse.json({ code: "INVALID_TOKEN", message: "invalid oauth token", status: "error" }, { status: 401 });
+  if (!request.headers.get("authorization")?.startsWith("Zoho-oauthtoken ")) return invalid;
+  const expected = mockBiginKey();
+  const given = request.headers.get(MOCK_KEY_HEADER) ?? "";
+  if (!expected || given.length !== expected.length || !timingSafeEqual(Buffer.from(given), Buffer.from(expected))) return invalid;
   return null;
+}
+
+/**
+ * Bigin's answer to a write against a record id it doesn't have — deleted, or
+ * never existed. Bigin's status-code docs list INVALID_DATA for "the id
+ * specified is incorrect"; Zoho's update-records docs (same platform) give it
+ * as HTTP 400 "the id given seems to be invalid". The per-record `data[]`
+ * envelope and `details: { id }` follow Zoho's other write errors and are an
+ * assumption until a live account confirms them (HUMAN-TODO 7.5).
+ */
+export const invalidRecordId = (id: string) =>
+  NextResponse.json(
+    { data: [{ code: "INVALID_DATA", details: { id }, message: "the id given seems to be invalid", status: "error" }] },
+    { status: 400 },
+  );
+
+/**
+ * A lookup pointing at a record Bigin doesn't have — here, Account_Name naming
+ * a company that was deleted or merged. Zoho words it "the related id given
+ * seems to be invalid" and names the field in details.api_name.
+ */
+export const invalidAccount = (id: string) => ({
+  code: "INVALID_DATA",
+  details: { api_name: "Account_Name", json_path: "$.data[0].Account_Name", id },
+  message: "the related id given seems to be invalid",
+  status: "error",
+});
+
+/** The Account_Name a write names, if the org has no such company. */
+export function unknownAccount(data: Record<string, unknown>): string | null {
+  const account = data.Account_Name as { id?: string } | undefined;
+  return account?.id && !org().accounts.some((a) => a.id === account.id) ? account.id : null;
 }
 
 /** `(Field:equals:value)` → value, undoing Zoho's backslash escapes. Only the one shape the adapter sends. */

@@ -9,7 +9,10 @@ import { must, mustList } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { PHASE_LABELS } from "@/components/console/advert-formats";
 import { InvoicePanel } from "@/components/console/InvoicePanel";
-import { decideArtworkSwap, decideAdvertBooking, endBooking, proposeArtworkSwap, renewBooking } from "../../actions";
+import { ApproveBookingFields } from "@/components/console/ApproveBookingFields";
+import { holdsForPayment } from "@/lib/advert-payments";
+import { bookDraftRun, decideArtworkSwap, decideAdvertBooking, endBooking, proposeArtworkSwap, renewBooking } from "../../actions";
+import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +79,12 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       {/* A bundle part is paid through its bundle's invoice, not one of its own. */}
-      <InvoicePanel target={booking.bundle_id ? { bundle_id: booking.bundle_id } : { advert_booking_id: booking.id }} returnTo={`/console/adverts/${booking.id}`} />
+      <InvoicePanel
+        target={booking.bundle_id ? { bundle_id: booking.bundle_id } : { advert_booking_id: booking.id }}
+        returnTo={`/console/adverts/${booking.id}`}
+        // A bundle part's invoice is raised from its bundle's page.
+        raise={booking.bundle_id ? undefined : { kind: "booking", id: booking.id, pricePennies: booking.price_pennies, billable: ["awaiting_payment", "scheduled", "live"].includes(booking.status) }}
+      />
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -124,7 +132,6 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
       {booking.status === "awaiting_approval" && (
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Approval</h2>
-          <p className="mt-1 text-xs text-graphite">Approving schedules it; it goes live on its start date.</p>
           {spotCheck && (
             <p className={`mt-2 text-sm ${spotCheck.after > spotCheck.spots ? "font-semibold text-danger" : "text-graphite"}`}>
               Approving puts {spotCheck.after} banner{spotCheck.after === 1 ? "" : "s"} live on {spotCheck.day}
@@ -136,18 +143,10 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
             <input type="hidden" name="decision" value="approve" />
             {/* A member's request arrives unpriced; this is where the run gets
                 its price and the invoice is raised off it (fix-list 77). */}
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="block text-sm">Price (£)
-                <input
-                  name="price_pounds"
-                  inputMode="decimal"
-                  placeholder="blank = invoice by hand"
-                  defaultValue={booking.price_pennies != null ? (booking.price_pennies / 100).toFixed(2) : ""}
-                  className="mt-1 block w-44 rounded border px-3 py-1.5"
-                />
-              </label>
-              <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve &amp; schedule</button>
-            </div>
+            <ApproveBookingFields
+              defaultPounds={booking.price_pennies != null ? (booking.price_pennies / 100).toFixed(2) : ""}
+              pricedHolds={holdsForPayment(1)}
+            />
           </form>
           <form action={decideAdvertBooking} className="mt-3 flex gap-2">
             <input type="hidden" name="id" value={id} />
@@ -155,6 +154,30 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
             <label htmlFor="booking-reason" className="sr-only">Reason (sent to the member)</label>
             <input id="booking-reason" name="reason" placeholder="What needs changing? (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
             <button className="whitespace-nowrap rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Send back</button>
+          </form>
+        </section>
+      )}
+
+      {/* A console rebook lands here as a draft (renewBooking): this is where
+          it is checked and booked. A member's own draft is theirs to send. */}
+      {booking.status === "draft" && booking.source === "admin" && (
+        <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
+          <h2 className="font-bold text-ink">Book this run</h2>
+          <p className="mt-1 text-xs text-graphite">Not booked yet — it holds no dates and shows nowhere until you book it.</p>
+          <form action={bookDraftRun} className="mt-3">
+            <input type="hidden" name="id" value={id} />
+            {booking.bundle_id ? (
+              <>
+                <p className="text-sm text-graphite">Part of a bundle, so it has no price of its own: the bundle&apos;s invoice covers it, and it waits for that to be paid if it isn&apos;t yet.</p>
+                <button className="mt-2 rounded bg-success px-4 py-2 text-sm text-white">Book &amp; schedule</button>
+              </>
+            ) : (
+              <ApproveBookingFields
+                verb="Book"
+                defaultPounds={booking.price_pennies != null ? (booking.price_pennies / 100).toFixed(2) : ""}
+                pricedHolds={holdsForPayment(1)}
+              />
+            )}
           </form>
         </section>
       )}
@@ -168,11 +191,11 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
             <input type="hidden" name="booking_id" value={id} />
             <div>
               <label htmlFor="swap-desktop" className="text-xs font-medium">New desktop artwork</label>
-              <input id="swap-desktop" name="desktop" type="file" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
+              <UploadField id="swap-desktop" name="desktop" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
             </div>
             <div>
               <label htmlFor="swap-mobile" className="text-xs font-medium">New mobile artwork</label>
-              <input id="swap-mobile" name="mobile" type="file" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
+              <UploadField id="swap-mobile" name="mobile" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
             </div>
             <button className="sm:col-span-2 rounded bg-ink px-4 py-2 text-sm text-white">Swap now</button>
           </form>
