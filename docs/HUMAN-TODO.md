@@ -763,7 +763,7 @@ steps decide who hears about them.
       Console → Adverts → Inventory still works (the count falls back to 8 if
       the row is missing) but production carries the dead table. Afterwards,
       check Inventory shows "Spots we sell: 8" and the next-six-months table.
-      *(Working tree, uncommitted.)*
+      *(Committed in `4f14b9b`.)*
 - [ ] **23.2 — Tell Jas the impression figures will step up.** Each banner
       position now cycles 3 adverts in-page (§5.4), and each one counts its own
       impression once it has been on screen for a second. The 30-day stat on
@@ -829,7 +829,7 @@ and **clears every existing assignment**. The backfill then re-derives them all
 from the `member_services` and `story_categories` already on the target. It
 needs no WordPress export. Industry slugs change (`/industry/welding` →
 `/industry/welding-joining` and so on), with no redirects because the site isn't
-public yet. *(Working tree, uncommitted.)*
+public yet. *(Committed in `4f14b9b`.)*
 
 - [ ] **26.1 — Push the migration, then run the backfill straight away.**
       `pnpm db:push:prod`, then `pnpm industries:backfill:prod -- --dry-run`
@@ -868,7 +868,7 @@ Fix-list 80–87. Four migrations, all additive and idempotent:
 member into `story_members`, adds a story-views index on `analytics_events`,
 and narrows `story_members`' public read to published stories), and
 `20261015000004_story_summary.sql` (the `story_summary` computed field). All four were
-applied locally with `supabase migration up`; no reset. *(Working tree, uncommitted.)*
+applied locally with `supabase migration up`; no reset. *(Committed in `4f14b9b`.)*
 
 - [ ] **27.1 — Push the four migrations with the code, not after it.**
       `pnpm db:push:prod`. The code reads `member_draft`, `social_posts`,
