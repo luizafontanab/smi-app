@@ -16,19 +16,19 @@ export const BOARD_STATUSES = ["draft", "awaiting_approval", "scheduled", "publi
 export type BoardStatus = (typeof BOARD_STATUSES)[number];
 
 export const COLUMN_LABELS: Record<BoardStatus, string> = {
-  awaiting_approval: "Awaiting approval",
+  awaiting_approval: "Ready to review",
   draft: "Drafts",
   scheduled: "Scheduled",
-  published: "Published",
+  published: "Live",
 };
 
 export const LEGAL_VIDEO_MOVES: Record<BoardStatus, readonly BoardStatus[]> = {
   // draft rows are admin-authored (member submissions start at
   // awaiting_approval), so "publish now" here never skips a member's approval.
   draft: ["awaiting_approval", "published"],
-  // reject needs a reason and notifies the member — keep that on the dedicated
-  // Reject form, not as a drag target.
-  awaiting_approval: ["published"],
+  // "Not yet" sends an admin's own video back to draft; a member's needs the
+  // Send back form (reason + email), so moveVideo refuses it — as for stories.
+  awaiting_approval: ["draft", "published"],
   scheduled: ["draft", "published"],
   // unpublish/take down. Videos had no route back from published at all before
   // this (fix list) — not by drag, and not by any button.

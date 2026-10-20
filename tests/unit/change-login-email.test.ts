@@ -8,16 +8,20 @@ import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireMember, withinLimit } = vi.hoisted(() => ({
+const { requireMember, currentUser, withinLimit, audit } = vi.hoisted(() => ({
   requireMember: vi.fn(async () => ({ userId: "u1", email: "old@acme.example", role: "member", memberId: "mem1", displayName: "Acme" })),
+  currentUser: vi.fn(async () => ({ userId: "u1", email: "new@acme.example", role: "member", memberId: "mem1", displayName: "Acme" })),
   withinLimit: vi.fn(() => true),
+  audit: vi.fn(async () => {}),
 }));
-vi.mock("@/lib/auth", () => ({ requireMember }));
+vi.mock("@/lib/auth", () => ({ requireMember, currentUser }));
+vi.mock("@/lib/audit", () => ({ audit }));
 vi.mock("@/lib/rate-limit", async (importOriginal) => ({ ...(await importOriginal<object>()), withinLimit }));
 
 afterEach(() => {
   resetDbServerMocks();
   withinLimit.mockReset().mockReturnValue(true);
+  audit.mockClear();
 });
 
 function authDb(over: Record<string, unknown>) {
@@ -49,6 +53,8 @@ describe("changeLoginEmail", () => {
       { email: "new@acme.example" },
       { emailRedirectTo: expect.stringMatching(/\/account\/email\/confirm$/) },
     );
+    // the request is a security event; the new address itself isn't logged
+    expect(audit).toHaveBeenCalledWith({ action: "login_email_change_requested", actorUserId: "u1", actorRole: "member", memberId: "mem1" });
   });
 
   it("refuses an invalid address, the current address, and a fourth request in an hour — without calling Supabase", async () => {
@@ -83,6 +89,7 @@ describe("GET /account/email/confirm", () => {
 
     expect(verifyOtp).toHaveBeenCalledWith({ type: "email_change", token_hash: "abc" });
     expect(res.headers.get("location")).toContain("/dashboard/settings/security?econfirmed=1");
+    expect(audit).toHaveBeenCalledWith({ action: "login_email_change_confirmed", actorUserId: "u1", actorRole: "member", memberId: "mem1" });
   });
 
   it("exchanges a PKCE code", async () => {

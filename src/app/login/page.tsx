@@ -19,16 +19,24 @@ export default async function LoginPage(props: PageProps<"/login">) {
   async function signIn(formData: FormData) {
     "use server";
     const db = await sessionDb();
+    const email = String(formData.get("email") ?? "");
     const { error } = await db.auth.signInWithPassword({
-      email: String(formData.get("email") ?? ""),
+      email,
       password: String(formData.get("password") ?? ""),
     });
     // Re-validated here, not just at render: the hidden field is client-editable.
     const dest = safeInternalPath(formData.get("next")) ?? "";
-    if (error) redirect(`/login?error=1${dest ? `&next=${encodeURIComponent(dest)}` : ""}`);
-    if (dest) redirect(dest);
+    const { audit } = await import("@/lib/audit");
+    if (error) {
+      // The attempted address (capped) is what makes repeated failures against
+      // one account visible; it's stripped from the log after 90 days.
+      await audit({ action: "sign_in_failed", detail: { email: email.trim().toLowerCase().slice(0, 254) } });
+      redirect(`/login?error=1${dest ? `&next=${encodeURIComponent(dest)}` : ""}`);
+    }
     const { currentUser } = await import("@/lib/auth");
     const user = await currentUser();
+    if (user) await audit({ action: "sign_in", actorUserId: user.userId, actorRole: user.role, memberId: user.memberId });
+    if (dest) redirect(dest);
     if (!user) redirect("/login?error=1");
     redirect(user.role === "member" ? "/dashboard" : "/console");
   }

@@ -26,6 +26,7 @@ const CONSOLE_SECTIONS: NavSection[] = [
     label: "Content",
     children: [
       { href: "/console/stories", label: "Story Engine" },
+      { href: "/console/sources", label: "Story Sources" },
       { href: "/console/videos", label: "Video Engine" },
       { href: "/console/events", label: "Events" },
       { href: "/console/newsletter", label: "Newsletter" },

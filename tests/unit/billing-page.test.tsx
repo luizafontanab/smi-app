@@ -8,7 +8,7 @@ import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 vi.mock("@/lib/auth", () => ({
-  requireMember: vi.fn(async () => ({ userId: "u1", email: "m@acme.example", role: "member", memberId: "mem1", displayName: "Acme" })),
+  requireMemberView: vi.fn(async () => ({ memberId: "mem1", email: "m@acme.example", viewingAs: null })),
 }));
 vi.mock("@/lib/invoice-pdf", () => ({ signedInvoiceUrl: vi.fn(async () => null) }));
 vi.mock("@/lib/adapters/advert-checkout", () => ({ advertPaymentsMode: () => "simulated" }));

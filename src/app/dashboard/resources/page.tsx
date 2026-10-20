@@ -1,11 +1,11 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Resources" };
 
 export default async function ResourcesPage() {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const [{ data: m }, { data: resources }] = await Promise.all([
     serviceDb().from("members").select("name, slug").eq("id", user.memberId).single(),
     serviceDb().from("resources").select("id, title, path, kind").order("created_at", { ascending: false }),

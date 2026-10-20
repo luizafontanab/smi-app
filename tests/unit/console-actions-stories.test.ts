@@ -316,14 +316,29 @@ describe("decideStory", () => {
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "story", decision: "approved" }));
   });
 
-  it("rejecting records the reason and notifies the member without publishing", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval" }));
+  it("rejecting a member's story records the reason and notifies the member without publishing", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member" }));
     db({ stories: () => storiesBuilder, approvals: () => queryBuilder(dbOk(null)) });
 
     await decideStory(form({ id: "s1", decision: "reject", reason: "Needs a photo" }));
 
     expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "rejected", rejected_reason: "Needs a photo" });
     expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "story_rejected", reason: "Needs a photo" }));
+  });
+
+  // Jas's flow chart (16 Oct): "not yet" goes back to draft. member_id on the
+  // desk's own story is the company it's about — before 20 Oct they were
+  // emailed a "your story was sent back" for a story they never wrote.
+  it("'not yet' on the desk's own story puts it back to draft and emails nobody", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "admin" }));
+    const approvalsBuilder = queryBuilder(dbOk(null));
+    db({ stories: () => storiesBuilder, approvals: () => approvalsBuilder });
+
+    await decideStory(form({ id: "s1", decision: "reject" }));
+
+    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "draft" });
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "story", decision: "rejected", reason: null }));
   });
 });
 
@@ -414,6 +429,27 @@ describe("moveStory", () => {
   });
 });
 
+describe("moveStory — review back to draft", () => {
+  it("won't drag a member's submission back to draft — that's Send back, with a reason", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "awaiting_approval", member_id: "m1", member_draft: false, source: "member" }));
+    db({ stories: () => storiesBuilder });
+
+    expect(await moveStory({ id: "s1", to: "draft" })).toEqual({ ok: false, error: expect.stringContaining("sent back from its editor") });
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("drags the desk's own story back to draft, recording the 'not yet' like decideStory", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "awaiting_approval", member_id: "m1", member_draft: false, source: "admin" }));
+    const approvalsBuilder = queryBuilder(dbOk(null));
+    db({ stories: () => storiesBuilder, approvals: () => approvalsBuilder });
+
+    expect(await moveStory({ id: "s1", to: "draft" })).toEqual({ ok: true });
+    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "draft" });
+    expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "story", decision: "rejected" }));
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+});
+
 describe("moveStory — a failed write is reported, not swallowed", () => {
   it("publishing: no social push or member emails for a story that didn't publish", async () => {
     db({ stories: sequence(dbOk({ id: "s1", status: "draft", member_id: "m1", member_draft: false }), dbError("boom")) });
@@ -442,6 +478,15 @@ describe("setStoryStatus", () => {
     db({ stories: () => queryBuilder(dbOk({ id: "s1", status: "draft", member_id: null })) });
 
     await expect(setStoryStatus(form({ id: "s1", status: "awaiting_approval" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories");
+  });
+
+  // The editor's "Mark ready to review" (20 Oct) comes back to the editor.
+  it("returns to the story's own editor when asked, and to the board for any other return_to", async () => {
+    db({ stories: () => queryBuilder(dbOk({ id: "s1", status: "draft", member_id: null })) });
+    await expect(setStoryStatus(form({ id: "s1", status: "awaiting_approval", return_to: "/console/stories/s1" })))
+      .rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories\/s1$/);
+    await expect(setStoryStatus(form({ id: "s1", status: "awaiting_approval", return_to: "/console/stories/other" })))
+      .rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
   });
 });
 

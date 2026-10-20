@@ -10,7 +10,8 @@ import type { ProvisionResult } from "@/lib/membership";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireConsole, uploadImage, removeMedia, enqueue, provisionMember, applyPaymentResult, send, recordRename } = vi.hoisted(() => ({
+const { requireConsole, uploadImage, removeMedia, enqueue, provisionMember, applyPaymentResult, send, recordRename, audit } = vi.hoisted(() => ({
+  audit: vi.fn(async () => {}),
   requireConsole: vi.fn(async (): Promise<CurrentUser> => ({
     userId: "admin1", email: "jas@smi.local", role: "admin", memberId: null, displayName: "Jas",
   })),
@@ -23,6 +24,7 @@ const { requireConsole, uploadImage, removeMedia, enqueue, provisionMember, appl
   recordRename: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
+vi.mock("@/lib/audit", () => ({ audit }));
 vi.mock("@/lib/media", () => ({ uploadImage, removeMedia }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
 // Partial mock: memberValuesFromForm also pulls activationBlocked/BILLING_MODES/
@@ -45,6 +47,7 @@ afterEach(() => {
   applyPaymentResult.mockReset().mockResolvedValue(undefined);
   send.mockReset().mockResolvedValue(undefined);
   recordRename.mockReset().mockResolvedValue(undefined);
+  audit.mockClear();
 });
 
 function form(fields: Record<string, string>) {
@@ -313,6 +316,7 @@ describe("setMemberStatus", () => {
     await setMemberStatus(form({ id: "m1", status: "active" }));
 
     expect(membersBuilder.update).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled(); // nothing changed, nothing logged
   });
 
   it("activating a paid draft member updates the status and records the activation", async () => {
@@ -334,6 +338,10 @@ describe("setMemberStatus", () => {
 
     expect(membersBuilder.update).toHaveBeenCalledWith({ status: "grace" });
     expect(from).not.toHaveBeenCalledWith("approvals");
+    // GDPR.md §16: admin changes to a member are in the security log
+    expect(audit).toHaveBeenCalledWith({
+      action: "member_status_changed", actorUserId: "admin1", actorRole: "admin", memberId: "m1", detail: { from: "active", to: "grace" },
+    });
   });
 });
 
@@ -457,6 +465,10 @@ describe("deleteMember", () => {
     // profiles.member_id is ON DELETE SET NULL — the login would otherwise
     // outlive the member as a member-role account attached to nothing
     expect(deleteUser).toHaveBeenCalledWith("u1");
+    // the log outlives the member, so it carries the name
+    expect(audit).toHaveBeenCalledWith({
+      action: "member_deleted", actorUserId: "admin1", actorRole: "admin", memberId: "m1", detail: { name: "Acme Ltd" },
+    });
   });
 
   it("redirects to the list when the member is already gone", async () => {

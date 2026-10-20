@@ -55,7 +55,7 @@ describe("StoryBoard drop", () => {
     render(<StoryBoard stories={[card]} />);
     await dropOn("awaiting_approval");
     expect(within(column(/^Drafts/)).getByText("Laser cutter launch")).toBeInTheDocument();
-    expect(within(column(/^Awaiting approval/)).queryByText("Laser cutter launch")).not.toBeInTheDocument();
+    expect(within(column(/^Ready to review/)).queryByText("Laser cutter launch")).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("didn't save");
   });
 
@@ -63,7 +63,7 @@ describe("StoryBoard drop", () => {
     moveStory.mockResolvedValueOnce({ ok: true });
     render(<StoryBoard stories={[card]} />);
     await dropOn("awaiting_approval");
-    expect(within(column(/^Awaiting approval/)).getByText("Laser cutter launch")).toBeInTheDocument();
+    expect(within(column(/^Ready to review/)).getByText("Laser cutter launch")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

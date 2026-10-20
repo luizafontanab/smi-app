@@ -20,6 +20,15 @@ const MEMBERS_ITEMS = [
   { href: "/join", label: "Join" },
 ];
 
+/** A member's account menu. The member area always shows this one — including to an admin viewing as a member. */
+export function memberAccountLinks(unread = 0) {
+  return [
+    { href: "/dashboard", label: "Member area" },
+    { href: "/dashboard/notifications", label: "Notifications", badge: unread || undefined },
+    { href: "/dashboard/help", label: "Help" },
+  ];
+}
+
 /** The signed-in account menu, by role — members also get notifications and help. */
 export function accountLinks(user: CurrentUser, unread = 0) {
   // Admins are deliberately not given a member notification count — their
@@ -30,11 +39,7 @@ export function accountLinks(user: CurrentUser, unread = 0) {
         { href: "/console/notifications", label: "Notifications" },
         { href: "/console/releases", label: "What's new" },
       ]
-    : [
-        { href: "/dashboard", label: "Member area" },
-        { href: "/dashboard/notifications", label: "Notifications", badge: unread || undefined },
-        { href: "/dashboard/help", label: "Help" },
-      ];
+    : memberAccountLinks(unread);
 }
 
 /**

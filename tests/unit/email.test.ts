@@ -160,3 +160,19 @@ describe("MailpitSender", () => {
     expect(log).toHaveBeenCalled();
   });
 });
+
+describe("maskEmail (GDPR.md G6)", () => {
+  it("keeps the first letter and the domain, never the whole address", async () => {
+    const { maskEmail } = await import("@/lib/adapters/email");
+    expect(maskEmail("jane.smith@acme.co.uk")).toBe("j…@acme.co.uk");
+    expect(maskEmail("not-an-address")).toBe("…");
+  });
+
+  it("the no-key sender logs the masked address", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await (await freshSender()).send({ to: "jane.smith@acme.co.uk", subject: "Hi", text: "x" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("to=j…@acme.co.uk"));
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("jane.smith@"));
+    log.mockRestore();
+  });
+});

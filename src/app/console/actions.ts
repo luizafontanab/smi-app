@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { audit } from "@/lib/audit";
 import { requireConsole } from "@/lib/auth";
 import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
@@ -205,17 +206,22 @@ export async function decideStory(formData: FormData) {
   const decision = String(formData.get("decision"));
   const reason = String(formData.get("reason") ?? "");
   const db = serviceDb();
-  const { data: story } = await db.from("stories").select("id, member_id, status").eq("id", id).single();
+  const { data: story } = await db.from("stories").select("id, member_id, status, source").eq("id", id).single();
   if (!story || story.status !== "awaiting_approval") return;
 
   if (decision === "approve") {
     await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", id);
     await enqueue("social_push", { story_id: id }, new Date(Date.now() + 30 * 60_000));
     await enqueueStoryLive(db, { id, member_id: story.member_id }, enqueue);
-  } else {
+  } else if (story.source === "member") {
     // working assumption #1: member is notified with a reason
     await db.from("stories").update({ status: "rejected", rejected_reason: reason }).eq("id", id);
     if (story.member_id) await enqueue("notify_member", { member_id: story.member_id, kind: "story_rejected", story_id: id, reason });
+  } else {
+    // The desk's own story: "not yet" goes back to draft (Jas's flow chart,
+    // 16 Oct). member_id here is the company it is *about*, who didn't write
+    // it — before 20 Oct they were emailed that "their" story was sent back.
+    await db.from("stories").update({ status: "draft" }).eq("id", id);
   }
   await db.from("approvals").insert({ kind: "story", subject_id: id, decision: decision === "approve" ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
   revalidatePath("/console");
@@ -243,12 +249,17 @@ export async function pinStory(formData: FormData) {
 export async function moveStory(input: { id: string; to: string }): Promise<{ ok: boolean; error?: string }> {
   const user = await requireConsole();
   const db = serviceDb();
-  const { data: story } = await db.from("stories").select("id, status, member_id, member_draft").eq("id", input.id).single();
+  const { data: story } = await db.from("stories").select("id, status, member_id, member_draft, source").eq("id", input.id).single();
   // A member's unsubmitted draft is theirs until they submit it — never the
   // desk's to publish or move (lib/story-board isMemberDraft).
   if (!story || isMemberDraft(story)) return { ok: false, error: "Story not found." };
   if (!canMoveStory(story.status, input.to)) {
     return { ok: false, error: `Can't move a ${story.status} story straight to ${input.to}.` };
+  }
+  // A member's submission is sent back with a reason they're told, never
+  // dragged silently to draft (LEGAL_STORY_MOVES).
+  if (story.status === "awaiting_approval" && input.to === "draft" && story.source === "member") {
+    return { ok: false, error: "A member's story is sent back from its editor, with a reason they'll see." };
   }
   if (input.to === "published") {
     // Checked: an unchecked failure here still queued the social push and the
@@ -271,6 +282,10 @@ export async function moveStory(input: { id: string; to: string }): Promise<{ ok
       ...(story.status === "published" ? { published_at: null } : {}),
     }).eq("id", input.id);
     if (error) return { ok: false, error: "The story couldn't be moved — try again." };
+    if (story.status === "awaiting_approval" && input.to === "draft") {
+      // mirror decideStory's "not yet" so the review leaves the same trail either way
+      await db.from("approvals").insert({ kind: "story", subject_id: input.id, decision: "rejected", reason: null, decided_by: user.userId });
+    }
   }
   revalidatePath("/console");
   revalidatePath("/console/stories");
@@ -286,9 +301,12 @@ export async function setStoryStatus(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const to = String(formData.get("status") ?? "");
   if (!id || !to) return;
+  // The editor's "Mark ready to review" posts here too and comes back to
+  // itself — only ever to this story's own editor, never an arbitrary path.
+  const back = formData.get("return_to") === `/console/stories/${id}` ? `/console/stories/${id}` : "/console/stories";
   const res = await moveStory({ id, to });
-  if (!res.ok) redirect(`/console/stories?error=${encodeURIComponent(res.error ?? "That move isn't allowed.")}`);
-  redirect("/console/stories");
+  if (!res.ok) redirect(`${back}?error=${encodeURIComponent(res.error ?? "That move isn't allowed.")}`);
+  redirect(back);
 }
 
 /* ---------- videos ---------- */
@@ -377,16 +395,20 @@ export async function decideVideo(formData: FormData) {
   const decision = String(formData.get("decision"));
   const reason = String(formData.get("reason") ?? "");
   const db = serviceDb();
-  const { data: video } = await db.from("videos").select("id, member_id, status").eq("id", id).single();
+  const { data: video } = await db.from("videos").select("id, member_id, status, source").eq("id", id).single();
   if (!video || video.status !== "awaiting_approval") return;
 
   if (decision === "approve") {
     await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
     await enqueue("social_push", { video_id: id }, new Date(Date.now() + 30 * 60_000));
     if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: id });
-  } else {
+  } else if (video.source === "member") {
     await db.from("videos").update({ status: "rejected", rejected_reason: reason, updated_at: new Date().toISOString() }).eq("id", id);
     if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_rejected", video_id: id, reason });
+  } else {
+    // The desk's own video: "not yet" goes back to draft, and the member it
+    // features isn't emailed about a video they didn't send in (as decideStory).
+    await db.from("videos").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", id);
   }
   await db.from("approvals").insert({ kind: "video", subject_id: id, decision: decision === "approve" ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
   revalidatePath("/console");
@@ -413,10 +435,13 @@ export async function pinVideo(formData: FormData) {
 export async function moveVideo(input: { id: string; to: string }): Promise<{ ok: boolean; error?: string }> {
   const user = await requireConsole();
   const db = serviceDb();
-  const { data: video } = await db.from("videos").select("id, status, member_id").eq("id", input.id).single();
+  const { data: video } = await db.from("videos").select("id, status, member_id, source").eq("id", input.id).single();
   if (!video) return { ok: false, error: "Video not found." };
   if (!canMoveVideo(video.status, input.to)) {
     return { ok: false, error: `Can't move a ${video.status} video straight to ${input.to}.` };
+  }
+  if (video.status === "awaiting_approval" && input.to === "draft" && video.source === "member") {
+    return { ok: false, error: "A member's video is sent back from its editor, with a reason they'll see." };
   }
   if (input.to === "published") {
     await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", input.id);
@@ -436,6 +461,9 @@ export async function moveVideo(input: { id: string; to: string }): Promise<{ ok
       updated_at: new Date().toISOString(),
       ...(video.status === "published" ? { published_at: null } : {}),
     }).eq("id", input.id);
+    if (video.status === "awaiting_approval" && input.to === "draft") {
+      await db.from("approvals").insert({ kind: "video", subject_id: input.id, decision: "rejected", reason: null, decided_by: user.userId });
+    }
   }
   revalidatePath("/console");
   revalidatePath("/console/videos");
@@ -447,7 +475,11 @@ export async function setVideoStatus(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const to = String(formData.get("status") ?? "");
   if (!id || !to) return;
-  await moveVideo({ id, to });
+  const res = await moveVideo({ id, to });
+  // The editor's "Mark ready to review" comes back to its own page (as setStoryStatus).
+  if (formData.get("return_to") === `/console/videos/${id}`) {
+    redirect(res.ok ? `/console/videos/${id}` : `/console/videos/${id}?error=${encodeURIComponent(res.error ?? "That move isn't allowed.")}`);
+  }
 }
 
 /* ---------- unpublish ---------- */
@@ -2615,6 +2647,7 @@ export async function saveMember(formData: FormData) {
     await recordRename(`/member/${member.slug}`, `/member/${slug}`);
   }
   if (activatingDraft) await recordActivation(id, user.userId);
+  await audit({ action: "member_updated", actorUserId: user.userId, actorRole: "admin", memberId: id });
 
   revalidatePath("/console/members");
   revalidatePath("/console");
@@ -2626,7 +2659,7 @@ export async function saveMember(formData: FormData) {
  * public join flow, minus the funnel notifications: Jas is the actor here.
  */
 export async function createMember(formData: FormData) {
-  await requireConsole();
+  const admin = await requireConsole();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const company = String(formData.get("company") ?? "").trim();
@@ -2653,6 +2686,7 @@ export async function createMember(formData: FormData) {
   // rather than queued, so a credential-equivalent never sits in the
   // `notifications` payload for anyone with console access to read.
   const invited = await sendAccountInvite(email);
+  await audit({ action: "member_created", actorUserId: admin.userId, actorRole: "admin", memberId: result.memberId });
 
   revalidatePath("/console/members");
   revalidatePath("/console");
@@ -2695,7 +2729,7 @@ async function sendAccountInvite(email: string): Promise<boolean> {
  * shows up under the member's Billing tab.
  */
 export async function recordMemberPayment(formData: FormData) {
-  await requireConsole();
+  const admin = await requireConsole();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const months = Number(formData.get("months") || 0);
@@ -2706,6 +2740,10 @@ export async function recordMemberPayment(formData: FormData) {
 
   const { applyPaymentResult } = await import("@/lib/membership");
   await applyPaymentResult(id, comping ? { kind: "comped", months } : { kind: "paid" });
+  await audit({
+    action: "member_payment_recorded", actorUserId: admin.userId, actorRole: "admin", memberId: id,
+    detail: comping ? { kind: "comped", months } : { kind: "paid" },
+  });
   revalidatePath("/console/members");
   revalidatePath("/console");
   redirect(`/console/members/${id}?saved=1`);
@@ -2725,6 +2763,7 @@ export async function setMemberStatus(formData: FormData) {
 
   await db.from("members").update({ status }).eq("id", id);
   if (member.status === "draft" && status === "active") await recordActivation(id, user.userId);
+  await audit({ action: "member_status_changed", actorUserId: user.userId, actorRole: "admin", memberId: id, detail: { from: member.status, to: status } });
   revalidatePath("/console/members");
   revalidatePath("/console");
 }
@@ -2755,7 +2794,7 @@ function revalidateMemberSurfaces(id: string, slug: string | null) {
  * which keeps describing where they sit in the billing lifecycle.
  */
 export async function archiveMember(formData: FormData) {
-  await requireConsole();
+  const admin = await requireConsole();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const db = serviceDb();
@@ -2764,13 +2803,14 @@ export async function archiveMember(formData: FormData) {
 
   const { error } = await db.from("members").update({ archived_at: new Date().toISOString() }).eq("id", id);
   if (error) return memberFail(id, dbProblem("action:archiveMember", error));
+  await audit({ action: "member_archived", actorUserId: admin.userId, actorRole: "admin", memberId: id });
   revalidateMemberSurfaces(id, member.slug);
   redirect(`/console/members/${id}?saved=1`);
 }
 
 /** The way back out. Archiving must never be a one-way door. */
 export async function unarchiveMember(formData: FormData) {
-  await requireConsole();
+  const admin = await requireConsole();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const db = serviceDb();
@@ -2779,6 +2819,7 @@ export async function unarchiveMember(formData: FormData) {
 
   const { error } = await db.from("members").update({ archived_at: null }).eq("id", id);
   if (error) return memberFail(id, dbProblem("action:unarchiveMember", error));
+  await audit({ action: "member_unarchived", actorUserId: admin.userId, actorRole: "admin", memberId: id });
   revalidateMemberSurfaces(id, member.slug);
   redirect(`/console/members/${id}?saved=1`);
 }
@@ -2806,7 +2847,7 @@ export async function unarchiveMember(formData: FormData) {
  * outlive the member as a member-role account attached to nothing.
  */
 export async function deleteMember(formData: FormData) {
-  await requireConsole();
+  const admin = await requireConsole();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   // Same gate as deleteIndustry/deleteResource: the confirmation is part of the
@@ -2858,6 +2899,10 @@ export async function deleteMember(formData: FormData) {
         : dbProblem("action:deleteMember", error),
     );
   }
+
+  // The log has no foreign key to members, so this row — with the name, since
+  // the member is gone — is the lasting record of who deleted them.
+  await audit({ action: "member_deleted", actorUserId: admin.userId, actorRole: "admin", memberId: id, detail: { name: member.name } });
 
   // Storage objects are outside the database, so the cascade never touched them.
   await removeMedia(member.logo_path);

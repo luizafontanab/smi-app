@@ -82,7 +82,8 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
       {/* A refused board move (setStoryStatus) or an editor that sent Jas back here. */}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <p className="mt-1 text-sm text-graphite">
-        Nothing publishes without approval. The &quot;suggested&quot; column arrives with the Content OS (module 6).
+        Nothing publishes without approval. New articles found on company news pages are in{" "}
+        <Link href="/console/sources" className="underline hover:text-ink">Story sources</Link>.
       </p>
 
       <div className="mt-4 flex gap-1 border-b text-sm">

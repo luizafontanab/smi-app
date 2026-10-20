@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { analyticsConsented, classifyReferrer, CONSENT_COOKIE, record, recordSearch, requestContext } from "@/lib/analytics";
+import { analyticsConsented, classifyReferrer, CONSENT_COOKIE, record, recordSearch, requestContext, sessionHash } from "@/lib/analytics";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -187,5 +187,23 @@ describe("requestContext", () => {
         "rpc missing",
       ),
     );
+  });
+});
+
+describe("sessionHash (GDPR.md G2)", () => {
+  it("is stable for one visitor and differs between visitors", () => {
+    expect(sessionHash("203.0.113.7", "Mozilla/5.0")).toBe(sessionHash("203.0.113.7", "Mozilla/5.0"));
+    expect(sessionHash("203.0.113.7", "Mozilla/5.0")).not.toBe(sessionHash("203.0.113.8", "Mozilla/5.0"));
+    expect(sessionHash("203.0.113.7", "Mozilla/5.0")).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("depends on the server key, so it can't be recomputed from an IP without it", () => {
+    const withKey = sessionHash("203.0.113.7", "Mozilla/5.0");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "a-different-key");
+    try {
+      expect(sessionHash("203.0.113.7", "Mozilla/5.0")).not.toBe(withKey);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

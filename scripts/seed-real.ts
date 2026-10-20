@@ -58,6 +58,7 @@ import { selectMembers } from "./lib/select-members";
 import { AUTHORED_EVENT_COORDS } from "./lib/event-coords";
 import { planLegacyAdverts, type LegacyAdvertRow } from "./lib/legacy-adverts";
 import { newsTopics } from "./lib/news-topics";
+import { importContentSources } from "./lib/content-sources";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACT_DIR = process.env.EXTRACT_DIR ?? path.resolve(HERE, "../../handover-extract");
@@ -1283,6 +1284,11 @@ async function main() {
   } else {
     console.warn("— featured members: no active member has a logo, skipped");
   }
+
+  // Story sources (ChangeTower replacement): Jas's real list of company news
+  // pages. Nothing is fetched here — the source_watch job reads them later.
+  const sources = await importContentSources(db);
+  console.log(`— story sources: ${sources.added} added${sources.skipped.length ? `, ${sources.skipped.length} rows skipped (not an address)` : ""}`);
 
   // Last, and after the real events are in: it borrows their covers, and it
   // needs published stories to fill each newsletter issue. Local only —

@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { audit } from "@/lib/audit";
+import { currentUser } from "@/lib/auth";
 import { sessionDb } from "@/lib/db/server";
 
 /**
@@ -35,5 +37,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(failed);
   }
 
+  // One row per link clicked: with secure email change there are two, and the
+  // change applies only after both, so this records a confirmation, not the switch.
+  const user = await currentUser();
+  if (user) await audit({ action: "login_email_change_confirmed", actorUserId: user.userId, actorRole: user.role, memberId: user.memberId });
   return NextResponse.redirect(new URL("/dashboard/settings/security?econfirmed=1", request.url));
 }

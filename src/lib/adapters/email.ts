@@ -86,16 +86,25 @@ class MailpitSender implements EmailSender {
       // Dev convenience only: a stopped Mailpit must never fail a local flow,
       // so this degrades to the log line rather than throwing like Resend does.
       console.warn(`[email] mailpit rejected (${res.status}) — falling back to log`);
-      console.log(`[email] to=${mail.to} subject="${mail.subject}"`);
+      console.log(`[email] to=${maskEmail(mail.to)} subject="${mail.subject}"`);
     }
   }
+}
+
+/**
+ * "j…@acme.co.uk": enough to tell which mail went where while debugging,
+ * without writing whole addresses into function logs (docs/GDPR.md G6).
+ */
+export function maskEmail(address: string): string {
+  const at = address.lastIndexOf("@");
+  return at > 0 ? `${address[0]}…${address.slice(at)}` : "…";
 }
 
 class ConsoleSender implements EmailSender {
   async send(mail: OutgoingEmail): Promise<void> {
     // No key and no Mailpit: notification emails are also stored in
     // `notifications`, so nothing depends on delivery here.
-    console.log(`[email] to=${mail.to} subject="${mail.subject}"`);
+    console.log(`[email] to=${maskEmail(mail.to)} subject="${mail.subject}"`);
   }
 }
 

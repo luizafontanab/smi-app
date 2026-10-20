@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { AccountMenu } from "@/components/AccountMenu";
 import { SkipLink } from "@/components/SkipLink";
-import { accountLinks } from "@/components/SiteHeader";
+import { memberAccountLinks } from "@/components/SiteHeader";
 import { Wordmark } from "@/components/Wordmark";
 import { ConsoleNav, type NavSection } from "@/components/console/ConsoleNav";
+import { ViewAsBanner } from "@/components/dashboard/ViewAsBanner";
 import { signOut } from "@/app/actions";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { unreadNotificationCount } from "@/lib/notifications";
 
@@ -27,7 +28,7 @@ const NAV: NavSection[] = [
 ];
 
 export default async function MemberLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const [{ data: member }, unread] = await Promise.all([
     serviceDb().from("members").select("name, status").eq("id", user.memberId).single(),
     unreadNotificationCount(user.memberId),
@@ -36,6 +37,7 @@ export default async function MemberLayout({ children }: { children: React.React
   return (
     <div className="min-h-screen bg-paper">
       <SkipLink />
+      {user.viewingAs && <ViewAsBanner memberName={member?.name ?? "this member"} />}
       <header className="bg-chrome text-white">
         {/* flex-wrap + truncate: a long company name must never force the page
             into horizontal scroll at phone widths. */}
@@ -48,7 +50,7 @@ export default async function MemberLayout({ children }: { children: React.React
             {/* data-testid: the e2e suite reads the company name here — styling
                 classes on this span change too often to anchor a locator on. */}
             <span data-testid="member-name" className="max-w-[14rem] truncate text-white/75">{member?.name}</span>
-            <AccountMenu name={member?.name ?? user.email} links={accountLinks(user, unread)} signOutAction={signOut} unread={unread} />
+            <AccountMenu name={member?.name ?? user.email} links={memberAccountLinks(unread)} signOutAction={signOut} unread={unread} />
           </div>
         </div>
         <div className="mx-auto max-w-5xl">

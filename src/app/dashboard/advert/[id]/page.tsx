@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { bookingPhase } from "@/lib/adverts";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { renewAdvertBooking, resubmitAdvert } from "../../actions";
 import { AdvertForm } from "../AdvertForm";
@@ -26,7 +26,7 @@ const STATUS_COPY: Record<string, string> = {
 export default async function MemberAdvertPage(props: PageProps<"/dashboard/advert/[id]">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const user = await requireMember();
+  const user = await requireMemberView();
   const db = serviceDb();
   const today = new Date().toISOString().slice(0, 10);
 

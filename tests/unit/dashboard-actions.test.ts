@@ -10,16 +10,19 @@ import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
-import type { CurrentUser } from "@/lib/auth";
+import type { CurrentUser, MemberView } from "@/lib/auth";
 import { IMAGE_TOO_LARGE, UPLOAD_EXPIRED, UploadRejectedError } from "@/lib/upload-limits";
 import { STORY_CHANGED_ERROR } from "@/lib/member-story";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireMember, uploadImage, removeMedia, removeMediaIfUnused, notifyAdminFunnel, notifyConsole, geocodeAddress, logError } = vi.hoisted(() => ({
+const { requireMember, requireMemberView, uploadImage, removeMedia, removeMediaIfUnused, notifyAdminFunnel, notifyConsole, geocodeAddress, logError } = vi.hoisted(() => ({
   requireMember: vi.fn(async (): Promise<CurrentUser & { memberId: string }> => ({
     userId: "u1", email: "member@acme.example", role: "member", memberId: "mem1", displayName: "Acme",
   })),
+  // previewStoryBody only: the one read-only member action an admin viewing as
+  // the member may call (view-as-wiring.test.ts).
+  requireMemberView: vi.fn(async (): Promise<MemberView> => ({ memberId: "mem1", email: "member@acme.example", viewingAs: null })),
   uploadImage: vi.fn<(file: File | null, prefix: string) => Promise<string | null>>(async () => null),
   removeMedia: vi.fn<(path: string | null | undefined) => Promise<void>>(async () => {}),
   removeMediaIfUnused: vi.fn<(paths: readonly (string | null | undefined)[]) => Promise<void>>(async () => {}),
@@ -32,7 +35,9 @@ const { requireMember, uploadImage, removeMedia, removeMediaIfUnused, notifyAdmi
   notifyConsole: vi.fn(async () => {}),
   geocodeAddress: vi.fn<(address: string) => Promise<{ lat: number; lng: number } | null>>(async () => null),
 }));
-vi.mock("@/lib/auth", () => ({ requireMember }));
+vi.mock("@/lib/auth", () => ({ requireMember, requireMemberView }));
+// The security log has its own tests (audit.test.ts); here it only must not get in the way.
+vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => {}) }));
 vi.mock("@/lib/media", () => ({ uploadImage, removeMedia, removeMediaIfUnused }));
 vi.mock("@/lib/log", () => ({ logError }));
 vi.mock("@/lib/notify-admin", () => ({ notifyAdminFunnel, notifyConsole }));
@@ -60,6 +65,7 @@ afterEach(() => {
   requireMember.mockReset().mockResolvedValue({
     userId: "u1", email: "member@acme.example", role: "member", memberId: "mem1", displayName: "Acme",
   });
+  requireMemberView.mockReset().mockResolvedValue({ memberId: "mem1", email: "member@acme.example", viewingAs: null });
   uploadImage.mockReset().mockResolvedValue(null);
   removeMedia.mockReset().mockResolvedValue(undefined);
   removeMediaIfUnused.mockReset().mockResolvedValue(undefined);
@@ -823,8 +829,18 @@ describe("previewStoryBody", () => {
   });
 
   it("is member-only", async () => {
-    requireMember.mockRejectedValueOnce(new Error("NEXT_REDIRECT:/login?next=/dashboard"));
+    requireMemberView.mockRejectedValueOnce(new Error("NEXT_REDIRECT:/login?next=/dashboard"));
     await expect(previewStoryBody("<p>x</p>")).rejects.toThrow(/NEXT_REDIRECT/);
+  });
+
+  // Fix-list 94: it only reads, so an admin viewing as the member gets the
+  // same preview the member would — closing with the viewed member's line.
+  it("previews as the viewed member for an admin viewing as them", async () => {
+    requireMemberView.mockResolvedValueOnce({ memberId: "mem2", email: "ops@beta.example", viewingAs: { adminUserId: "a1", adminName: "Jas" } });
+    const from = db({ members: () => queryBuilder(dbOk({ id: "mem2", name: "Beta", website: "https://beta.example", status: "active", archived_at: null })) });
+    expect(await previewStoryBody("<p>Hi</p>")).toContain('href="/go/mem2?kind=website"');
+    expect(from).toHaveBeenCalledWith("members");
+    expect(requireMember).not.toHaveBeenCalled();
   });
 });
 

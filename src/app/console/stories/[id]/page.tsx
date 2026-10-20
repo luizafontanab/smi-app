@@ -4,7 +4,7 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
-import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory } from "../../actions";
+import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, setStoryStatus } from "../../actions";
 import { CoverField } from "@/components/CoverField";
 import { parseFocus } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -18,7 +18,7 @@ import { isMemberLinkable } from "@/lib/member-visibility";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Badge } from "@/components/console/ui";
-import { isMemberDraft, parseStoryListFilters, storyListHref } from "@/lib/story-board";
+import { STORY_STATUS_LABELS, isMemberDraft, parseStoryListFilters, storyListHref } from "@/lib/story-board";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +56,11 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
     ? []
     : await must(db.from("story_categories").select("category_id").eq("story_id", id), "console/stories selected categories");
   const selected = new Set((selectedCats ?? []).map((c) => c.category_id));
+  // Started from a Story sources suggestion: the article it came from, for reference
+  // while writing. Kept off the story itself so it can't go live by accident.
+  const origin = isNew
+    ? null
+    : await must(db.from("source_items").select("url, source:content_sources(domain, label)").eq("story_id", id).limit(1).maybeSingle(), "console/stories source suggestion");
   // every member the story features, primary first (lib/story-members)
   const tagged = isNew || !story ? [] : await taggedMembers(db, id, story.member_id);
   const taggedIds = new Set(tagged.map((m) => m.id));
@@ -92,6 +97,12 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
       </div>
       {story?.status === "rejected" && (
         <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">Rejected: {story.rejected_reason}</p>
+      )}
+      {origin && (
+        <p className="mt-2 rounded bg-white p-2 text-sm text-graphite shadow-sm">
+          Started from a suggestion on {origin.source?.label ?? origin.source?.domain}:{" "}
+          <a href={origin.url} target="_blank" rel="noopener noreferrer" className="break-all text-ink underline">{origin.url}</a>
+        </p>
       )}
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
@@ -202,29 +213,46 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           </div>
           <p className="mt-1 text-sm text-graphite">{statusNext(story)}</p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          {/* Ready to review (Jas's flow chart, 16 Oct): approve, then schedule.
+              Approving for a time is the main path; publishing now is the
+              urgent one. "Not yet" depends on who wrote it — a member is told
+              why, the desk's own story just goes back to draft. */}
           {story.status === "awaiting_approval" && (
             <div className={ACTION_PANEL}>
-              <h2 className="font-bold text-ink">Approval</h2>
-              <p className="mt-1 text-xs text-graphite">
-                Publishes immediately. It isn&apos;t pinned: pinning to the headline is a separate choice once it&apos;s live.
-                To approve for a later date instead, use Schedule below.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <form action={decideStory}>
-                  <input type="hidden" name="id" value={id} />
-                  <input type="hidden" name="decision" value="approve" />
-                  <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
-                </form>
-              </div>
-              <form action={decideStory} className="mt-3 flex gap-2">
+              <h2 className="font-bold text-ink">Approve</h2>
+              <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
-                <input type="hidden" name="decision" value="reject" />
-                <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border bg-white px-3 py-1.5 text-sm" />
-                <button className="rounded border border-danger/30 bg-white px-3 py-1.5 text-sm text-danger">Reject</button>
+                <input type="hidden" name="return_to" value={backTo} />
+                <label htmlFor="approve_at" className="sr-only">Publish at</label>
+                <input id="approve_at" type="datetime-local" name="scheduled_at" required defaultValue={story.scheduled_at?.slice(0, 16) ?? ""} className="rounded border bg-white px-3 py-1.5 text-sm" />
+                <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</button>
               </form>
+              <form action={decideStory} className="mt-2">
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="decision" value="approve" />
+                <button className="rounded border border-ink bg-white px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</button>
+              </form>
+              <p className="mt-2 text-xs text-graphite">
+                Social push follows publication after the configured delay; daily cap applies. Pinning to the headline is a separate choice once it&apos;s live.
+              </p>
+              {story.source === "member" ? (
+                <form action={decideStory} className="mt-4 flex gap-2 border-t border-black/5 pt-3">
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="decision" value="reject" />
+                  <input name="reason" aria-label="Reason (sent to the member)" placeholder="Reason (sent to the member)" required className="w-full rounded border bg-white px-3 py-1.5 text-sm" />
+                  <button className="shrink-0 rounded border border-danger/30 bg-white px-3 py-1.5 text-sm text-danger">Send back</button>
+                </form>
+              ) : (
+                <form action={decideStory} className="mt-4 border-t border-black/5 pt-3">
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="decision" value="reject" />
+                  <button className="rounded border border-black/15 bg-white px-3 py-1.5 text-sm text-ink">Not yet — back to draft</button>
+                  <p className="mt-1 text-xs text-graphite">Nobody is emailed. Edit it, then mark it ready to review again.</p>
+                </form>
+              )}
             </div>
           )}
-          {(story.status === "draft" || story.status === "rejected" || story.status === "scheduled" || story.status === "awaiting_approval") && (
+          {(story.status === "draft" || story.status === "rejected" || story.status === "scheduled") && (
             <div className={ACTION_PANEL}>
               <h2 className="font-bold text-ink">Schedule</h2>
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
@@ -235,9 +263,19 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
               </form>
               <p className="mt-2 text-xs text-graphite">
-                {story.status === "awaiting_approval" && "Scheduling or publishing here also approves the story. "}
                 Social push follows publication after the configured delay; daily cap applies.
               </p>
+              {/* Optional (Luiza, 20 Oct): a draft can still be scheduled
+                  directly; this parks it for a second look first. */}
+              {story.status === "draft" && (
+                <form action={setStoryStatus} className="mt-4 border-t border-black/5 pt-3">
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="status" value="awaiting_approval" />
+                  <input type="hidden" name="return_to" value={`/console/stories/${id}`} />
+                  <button className="rounded border border-black/15 bg-white px-3 py-1.5 text-sm text-ink">Mark ready to review</button>
+                  <p className="mt-1 text-xs text-graphite">Optional. Puts it in Ready to review for a final check before it&apos;s scheduled.</p>
+                </form>
+              )}
             </div>
           )}
           {/* Pinning is its own, optional decision — never part of approving
@@ -331,14 +369,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
 /** The Publishing panels: flat on the shade ground — controls, not content (see the section). */
 const ACTION_PANEL = "rounded-xl border border-black/5 bg-shade p-5";
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: "Draft",
-  awaiting_approval: "Awaiting approval",
-  scheduled: "Scheduled",
-  published: "Live",
-  rejected: "Sent back",
-  withdrawn: "Withdrawn",
-};
+const STATUS_LABEL: Record<string, string> = STORY_STATUS_LABELS;
 
 const STATUS_TONE: Record<string, "neutral" | "brand" | "green" | "red"> = {
   awaiting_approval: "brand",
@@ -348,12 +379,14 @@ const STATUS_TONE: Record<string, "neutral" | "brand" | "green" | "red"> = {
 };
 
 /** One line under the status: where the story stands and what can happen next. */
-function statusNext(story: { status: string; scheduled_at: string | null; published_at: string | null }): string {
+function statusNext(story: { status: string; source: string; scheduled_at: string | null; published_at: string | null }): string {
   const when = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
   switch (story.status) {
     case "awaiting_approval":
-      return "Waiting on you. Approve it, schedule it, or send it back with a reason.";
+      return story.source === "member"
+        ? "Ready to review. Approve it for a time, publish it now, or send it back with a reason."
+        : "Ready to review. Approve it for a time, publish it now, or put it back to draft.";
     case "scheduled":
       return `Goes live on ${when(story.scheduled_at)}. Change the time or publish it now below.`;
     case "published":

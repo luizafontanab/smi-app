@@ -3,7 +3,8 @@ import PayInvoicePage from "@/app/dashboard/pay/invoice/[id]/page";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
-import type { CurrentUser } from "@/lib/auth";
+import type { MemberView } from "@/lib/auth";
+import { EmbeddedCheckout } from "@/app/dashboard/pay/invoice/[id]/EmbeddedCheckout";
 
 /**
  * The pay page's own guards (the action has its twin in
@@ -12,16 +13,14 @@ import type { CurrentUser } from "@/lib/auth";
  */
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireMember, settleInvoice, retrieveCheckoutSession } = vi.hoisted(() => ({
-  requireMember: vi.fn(async (): Promise<CurrentUser & { memberId: string }> => ({
-    userId: "u1", email: "ops@acme.example", role: "member", memberId: "m1", displayName: "Acme",
-  })),
+const { requireMemberView, settleInvoice, retrieveCheckoutSession } = vi.hoisted(() => ({
+  requireMemberView: vi.fn(async (): Promise<MemberView> => ({ memberId: "m1", email: "ops@acme.example", viewingAs: null })),
   settleInvoice: vi.fn(async () => ({ settled: true, memberId: "m1" })),
   retrieveCheckoutSession: vi.fn(async () => ({
     status: "complete", paymentStatus: "paid", invoiceId: INV, kind: "advert_invoice", clientSecret: null, amountTotal: 65000, currency: "gbp",
   })),
 }));
-vi.mock("@/lib/auth", () => ({ requireMember }));
+vi.mock("@/lib/auth", () => ({ requireMemberView }));
 vi.mock("@/lib/advert-payments", () => ({ settleInvoice, formatPounds: (p: number) => `£${(p / 100).toFixed(2)}` }));
 vi.mock("@/lib/adapters/advert-checkout", async (orig) => ({
   ...(await orig<typeof import("@/lib/adapters/advert-checkout")>()),
@@ -52,7 +51,16 @@ afterEach(() => {
   vi.unstubAllEnvs();
   settleInvoice.mockClear();
   retrieveCheckoutSession.mockClear();
+  requireMemberView.mockClear();
 });
+
+/** Every element in a rendered tree — enough to ask whether one was mounted without rendering it. */
+function elements(node: unknown): { type: unknown; props: Record<string, unknown> }[] {
+  if (Array.isArray(node)) return node.flatMap(elements);
+  if (!node || typeof node !== "object" || !("props" in node)) return [];
+  const el = node as { type: unknown; props: Record<string, unknown> };
+  return [el, ...elements(el.props.children)];
+}
 
 describe("/dashboard/pay/invoice/[id]", () => {
   it("serves the member's own advertising invoice", async () => {
@@ -82,5 +90,32 @@ describe("/dashboard/pay/invoice/[id]", () => {
     settleInvoice.mockRejectedValueOnce(new Error("connection reset"));
     db(row);
     await expect(open({ session_id: "cs_test_1" })).resolves.toBeTruthy();
+  });
+
+  // Fix-list 94: an admin viewing as the member only looks.
+  describe("while an admin is viewing as the member", () => {
+    beforeEach(() => {
+      requireMemberView.mockResolvedValueOnce({ memberId: "m1", email: "ops@acme.example", viewingAs: { adminUserId: "a1", adminName: "Jas" } });
+    });
+
+    it("doesn't settle on a Stripe return — the webhook stays the authority", async () => {
+      db(row);
+      await open({ session_id: "cs_test_1" });
+      expect(settleInvoice).not.toHaveBeenCalled();
+      expect(retrieveCheckoutSession).not.toHaveBeenCalled();
+    });
+
+    it("doesn't mount the checkout, which would ask for a session as it loads", async () => {
+      db(row);
+      const tree = elements(await open());
+      expect(tree.some((el) => el.type === EmbeddedCheckout)).toBe(false);
+      const text = tree.flatMap((el) => [el.props.children].flat().filter((c) => typeof c === "string")).join("");
+      expect(text).toContain("payment form is hidden");
+    });
+  });
+
+  it("mounts the checkout for the member themselves", async () => {
+    db(row);
+    expect(elements(await open()).some((el) => el.type === EmbeddedCheckout)).toBe(true);
   });
 });

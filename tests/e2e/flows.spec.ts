@@ -507,7 +507,7 @@ test.describe("admin (A1/A4)", () => {
     await expect(page.getByRole("link", { name: "List", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("columnheader", { name: "Status" })).toBeVisible();
 
-    await page.getByRole("link", { name: "Published", exact: true }).click();
+    await page.getByRole("link", { name: "Live", exact: true }).click();
     await page.waitForURL(/status=published/);
     const first = page.locator("tbody tr").first().getByRole("link").first();
     await first.click();

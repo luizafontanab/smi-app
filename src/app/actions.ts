@@ -1,12 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { audit } from "@/lib/audit";
 import { currentUser, isAdmin } from "@/lib/auth";
 import { serviceDb, sessionDb } from "@/lib/db/server";
 import type { Json } from "@/lib/db/types";
 import { devTaskFromForm, renderDevTaskNotes } from "@/lib/dev-tasks";
 import { allowRequest, MINUTE } from "@/lib/rate-limit";
+import { VIEW_AS_COOKIE } from "@/lib/view-as";
 
 /**
  * The floating "Report a bug" widget renders on every route (see
@@ -22,8 +25,12 @@ import { allowRequest, MINUTE } from "@/lib/rate-limit";
  * renders on every route, and the dashboard and console layouts share it.
  */
 export async function signOut() {
+  const user = await currentUser();
+  if (user) await audit({ action: "sign_out", actorUserId: user.userId, actorRole: user.role, memberId: user.memberId });
   const db = await sessionDb();
   await db.auth.signOut();
+  // An admin who was viewing as a member shouldn't carry that into the next sign-in.
+  (await cookies()).delete(VIEW_AS_COOKIE);
   redirect("/login");
 }
 

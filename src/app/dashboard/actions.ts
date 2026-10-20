@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireMember } from "@/lib/auth";
+import { audit } from "@/lib/audit";
+import { requireMember, requireMemberView } from "@/lib/auth";
 import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
 import { serviceDb, sessionDb } from "@/lib/db/server";
@@ -196,7 +197,9 @@ export async function submitStory(formData: FormData) {
  * Server-side so sanitize-html stays out of the browser bundle.
  */
 export async function previewStoryBody(html: string): Promise<string> {
-  const user = await requireMember();
+  // Read-only, so an admin viewing as the member (fix-list 94) gets a faithful
+  // preview too — the one member action allowed requireMemberView (view-as-wiring test).
+  const user = await requireMemberView();
   // closes with the member's own name + website line, as the published page will
   const { data: member } = await serviceDb()
     .from("members").select("id, name, website, status, archived_at").eq("id", user.memberId).maybeSingle();
@@ -854,7 +857,7 @@ const PASSWORD_MIN_LENGTH = 8;
 
 /** In-session change-password: no recovery token needed since the member is already authenticated. */
 export async function changePassword(formData: FormData) {
-  await requireMember();
+  const user = await requireMember();
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
   if (password.length < PASSWORD_MIN_LENGTH) redirect("/dashboard/settings/security?perror=short");
@@ -864,6 +867,7 @@ export async function changePassword(formData: FormData) {
   const { error } = await db.auth.updateUser({ password });
   if (error) redirect("/dashboard/settings/security?perror=failed");
 
+  await audit({ action: "password_changed", actorUserId: user.userId, actorRole: user.role, memberId: user.memberId });
   redirect("/dashboard/settings/security?psaved=1");
 }
 
@@ -895,6 +899,8 @@ export async function changeLoginEmail(formData: FormData) {
   // Supabase refuses an address another account already uses; say so without
   // echoing anything about that other account.
   if (error) return back(/already|registered|exists/i.test(error.message) ? "taken" : "failed");
+  // The new address is not logged: the change itself is the security event.
+  await audit({ action: "login_email_change_requested", actorUserId: user.userId, actorRole: user.role, memberId: user.memberId });
   redirect("/dashboard/settings/security?esent=1");
 }
 

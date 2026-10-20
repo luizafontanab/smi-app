@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { changeLoginEmail, changePassword } from "../../actions";
 import { RequiredMark } from "@/components/RequiredMark";
 import { SettingsTabs } from "../SettingsTabs";
@@ -9,7 +9,7 @@ export const metadata = { title: "Account security" };
 const PASSWORD_MIN_LENGTH = 8;
 
 export default async function SecuritySettingsPage(props: PageProps<"/dashboard/settings/security">) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const sp = await props.searchParams;
 
   const perror = typeof sp.perror === "string" ? sp.perror : "";

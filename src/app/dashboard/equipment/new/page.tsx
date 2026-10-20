@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { memberUploadImage, submitMachine } from "../../actions";
 import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Add equipment" };
 
 export default async function NewMemberMachine(props: PageProps<"/dashboard/equipment/new">) {
-  await requireMember();
+  await requireMemberView();
   const sp = await props.searchParams;
   return (
     <div className="mx-auto max-w-2xl">

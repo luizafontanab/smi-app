@@ -65,9 +65,12 @@ export const CONSOLE_UPLOADS: UploadOwner = "console";
 export const memberUploads = (memberId: string): UploadOwner => `members/${memberId}`;
 
 /**
- * The owner for whoever is signed in. The two roles are exclusive
- * (lib/auth: requireMember turns an admin away and vice versa), so the role
- * alone decides — no area is taken from the request.
+ * The owner for whoever is signed in. The two roles are exclusive for every
+ * action (lib/auth: requireMember turns an admin away and vice versa), so the
+ * role alone decides — no area is taken from the request. An admin viewing as
+ * a member (lib/view-as) can open member pages but still gets the console's
+ * prefix here: any file they choose stays in console staging, is never
+ * consumed by the refused member action, and is swept within a day.
  */
 export function uploadOwnerFor(user: CurrentUser | null): UploadOwner | null {
   if (user?.role === "admin") return CONSOLE_UPLOADS;

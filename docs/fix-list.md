@@ -139,4 +139,13 @@
       - It's derived on read, so editing the body updates it, and nothing is written. The forms still edit the raw field, so a blank stays blank there.
     - **Rename and hint:** the console's "Excerpt" field is now "Summary (optional, 1–2 sentences)", matching the member form, and both forms say where it appears and what happens when it's left empty. *(Committed in `4f14b9b`.)*
 
-- add loading gift and turn off buttons for all actions on member and admin panels, for example, uploading an image to a story.
+- pg_dump: warning: there are circular foreign-key constraints on this table:
+pg_dump: detail: advert_bookings
+
+94. [x] Jas: can see EVERYTHING a member can, including stats and all — **View as member**, read-only: a "View as member" link on `/console/members/[id]` opens that member's real `/dashboard`, so every page (overview, My page, content, adverts, stats, leads, invoices, settings) is exactly what they see and can't drift from it.
+    - **How:** an `smi-view-as` cookie (httpOnly, 8h) names the member; `requireMemberView()` (`src/lib/auth.ts`) honours it for an admin only, and all 26 dashboard pages plus the layout render through it. A grey "Admin view" bar on every page has "Back to console".
+    - **Read-only by construction:** every member action still opens with `requireMember()`, which never lets an admin through — with the cookie it bounces back to the page with "That change wasn't saved". A future action that forgets about view-as refuses too. `tests/unit/view-as-wiring.test.ts` fails if an action uses the permissive guard (one read-only exception, the story Preview tab) or a page keeps the strict one.
+      - This also blocks password and login-email changes, which run on the signed-in session and would otherwise have changed Jas's own.
+      - The invoice page skips its on-load settle and hides the payment form while viewing as.
+    - **Last signed in:** the console member page shows each login's last sign-in from Supabase Auth, or "Never". No tracking of our own; it moves only on a real sign-in, not a refreshed session.
+    - **Not done:** a log of what members do (edits, uploads, page visits) — new tracking, close to the "company-level only, no named individuals" line; a separate decision with Jas if this isn't enough. *(Working tree, uncommitted.)*

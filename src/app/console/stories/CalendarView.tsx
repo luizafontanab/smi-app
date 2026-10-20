@@ -52,7 +52,7 @@ export function CalendarView({ month, stories }: { month: Date; stories: Calenda
         <Link href="/console/stories?view=calendar" className={`${navLink} ml-1`}>Today</Link>
         <p className="ml-auto flex items-center gap-3 text-xs text-graphite">
           <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-ink" /> Published
+            <span className="h-2 w-2 rounded-full bg-ink" /> Live
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full border border-graphite" /> Scheduled

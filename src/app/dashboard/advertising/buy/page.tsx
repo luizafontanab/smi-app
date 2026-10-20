@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { VISIBILITY_PRODUCTS } from "@/lib/visibility-products";
 import { requestVisibility, submitAdvert } from "../../actions";
 import { AdvertForm } from "../../advert/AdvertForm";
@@ -9,7 +9,7 @@ export const metadata = { title: "Buy advertising" };
 
 export default async function AdvertisingBuyPage(props: PageProps<"/dashboard/advertising/buy">) {
   const sp = await props.searchParams;
-  await requireMember();
+  await requireMemberView();
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="mt-1 text-xl font-bold text-ink">Buy advertising</h1>

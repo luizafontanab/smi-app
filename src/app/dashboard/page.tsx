@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { loadEmailTemplates } from "@/lib/email/store";
 import { notificationLabel, type NotificationPayload } from "@/lib/email/templates";
@@ -30,7 +30,7 @@ const CARDS = [
 ];
 
 export default async function MemberDashboard(props: PageProps<"/dashboard">) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const sp = await props.searchParams;
   const db = serviceDb();
 

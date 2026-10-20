@@ -192,17 +192,17 @@ export default async function CommandCentre(props: PageProps<"/console">) {
 
   const pipeline: { label: string; value: number | null }[] = [
     { label: "Suggested", value: null },
-    { label: "Awaiting approval", value: pendingStories?.length ?? 0 },
+    { label: "Ready to review", value: pendingStories?.length ?? 0 },
     { label: "Drafts", value: draftStories.count ?? 0 },
     { label: "Scheduled", value: scheduledStories.count ?? 0 },
-    { label: "Published", value: publishedStories.count ?? 0 },
+    { label: "Live", value: publishedStories.count ?? 0 },
   ];
 
   const videoPipeline: { label: string; value: number }[] = [
-    { label: "Awaiting approval", value: pendingVideos?.length ?? 0 },
+    { label: "Ready to review", value: pendingVideos?.length ?? 0 },
     { label: "Drafts", value: draftVideos.count ?? 0 },
     { label: "Scheduled", value: scheduledVideos.count ?? 0 },
-    { label: "Published", value: publishedVideosCount.count ?? 0 },
+    { label: "Live", value: publishedVideosCount.count ?? 0 },
   ];
 
   const needs: { label: string; href: string; urgent?: boolean }[] = [];

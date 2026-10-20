@@ -5,7 +5,7 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
-import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo } from "../../actions";
+import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -103,26 +103,41 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
 
       {!isNew && video && (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          {/* Ready to review: approve for a time first, publish now as the
+              urgent option; "not yet" depends on who sent it in (as stories). */}
           {video.status === "awaiting_approval" && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
-              <h2 className="font-bold text-ink">Approval</h2>
-              <p className="mt-1 text-xs text-graphite">Publishes immediately. To approve for a later date instead, use Schedule below.</p>
-              <div className="mt-3 flex gap-2">
-                <form action={decideVideo}>
-                  <input type="hidden" name="id" value={id} />
-                  <input type="hidden" name="decision" value="approve" />
-                  <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
-                </form>
-              </div>
-              <form action={decideVideo} className="mt-3 flex gap-2">
+              <h2 className="font-bold text-ink">Ready to review</h2>
+              <form action={scheduleVideo} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
-                <input type="hidden" name="decision" value="reject" />
-                <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
+                <input type="hidden" name="return_to" value={backTo} />
+                <label htmlFor="approve_at" className="sr-only">Publish at</label>
+                <input id="approve_at" type="datetime-local" name="scheduled_at" required defaultValue={video.scheduled_at?.slice(0, 16) ?? ""} className="rounded border px-3 py-1.5 text-sm" />
+                <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</button>
               </form>
+              <form action={decideVideo} className="mt-2">
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="decision" value="approve" />
+                <button className="rounded border border-ink px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</button>
+              </form>
+              {video.source === "member" ? (
+                <form action={decideVideo} className="mt-4 flex gap-2 border-t pt-3">
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="decision" value="reject" />
+                  <input name="reason" aria-label="Reason (sent to the member)" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
+                  <button className="shrink-0 rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Send back</button>
+                </form>
+              ) : (
+                <form action={decideVideo} className="mt-4 border-t pt-3">
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="decision" value="reject" />
+                  <button className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Not yet — back to draft</button>
+                  <p className="mt-1 text-xs text-graphite">Nobody is emailed. Edit it, then mark it ready to review again.</p>
+                </form>
+              )}
             </div>
           )}
-          {(video.status === "draft" || video.status === "rejected" || video.status === "scheduled" || video.status === "awaiting_approval") && (
+          {(video.status === "draft" || video.status === "rejected" || video.status === "scheduled") && (
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <h2 className="font-bold text-ink">Schedule</h2>
               <form action={scheduleVideo} className="mt-3 flex flex-wrap items-center gap-2">
@@ -133,9 +148,17 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
                 <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
               </form>
               <p className="mt-2 text-xs text-graphite">
-                {video.status === "awaiting_approval" && "Scheduling or publishing here also approves the video. "}
                 Social push follows publication after the configured delay; daily cap applies.
               </p>
+              {video.status === "draft" && (
+                <form action={setVideoStatus} className="mt-4 border-t pt-3">
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="status" value="awaiting_approval" />
+                  <input type="hidden" name="return_to" value={`/console/videos/${id}`} />
+                  <button className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Mark ready to review</button>
+                  <p className="mt-1 text-xs text-graphite">Optional. Puts it in Ready to review for a final check before it&apos;s scheduled.</p>
+                </form>
+              )}
             </div>
           )}
           {video.status === "published" && (

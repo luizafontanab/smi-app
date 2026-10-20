@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { CONSENT_COOKIE } from "./consent";
 import { serviceDb } from "./db/server";
@@ -154,17 +155,27 @@ export async function requestContext(): Promise<RequestContext> {
   const h = await headers();
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
   const ua = h.get("user-agent") ?? "";
-  const session_hash = simpleHash(`${ip}|${ua}`);
+  const session_hash = sessionHash(ip, ua);
   const referrer = h.get("referer");
   const { resolveIp } = await import("./adapters/company-resolver");
   const { region, company } = await resolveIp(ip);
   return { session_hash, referrer, region, company, consented: true };
 }
 
-function simpleHash(s: string): string {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h).toString(36);
+/**
+ * A visitor's pseudonym: a keyed HMAC of IP + user-agent (docs/GDPR.md G2).
+ * It replaced an unkeyed 32-bit string hash that anyone could recompute from
+ * an IP, or brute-force back towards one. Keyed with the server's secret, it
+ * can't be reversed or matched to an IP without that key; 64 bits also makes
+ * two visitors sharing a hash vanishingly unlikely.
+ *
+ * Deliberately not rotated daily: the Command Centre's "site users" figure
+ * counts distinct visitors over a year (site_sessions_last_year), and a daily
+ * salt would count one visitor once a day. It is still personal data
+ * (pseudonymous, we hold the key) and is treated as such. Changing this —
+ * or rotating SUPABASE_SECRET_KEY — starts every visitor afresh.
+ */
+export function sessionHash(ip: string, userAgent: string): string {
+  const key = createHmac("sha256", process.env.SUPABASE_SECRET_KEY ?? "").update("smi:session-hash:v2").digest();
+  return createHmac("sha256", key).update(`${ip}|${userAgent}`).digest("hex").slice(0, 16);
 }

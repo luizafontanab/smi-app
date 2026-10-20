@@ -28,10 +28,10 @@ export type BoardStory = {
 };
 
 const COLUMN_LABELS: Record<BoardStatus, string> = {
-  awaiting_approval: "Awaiting approval",
+  awaiting_approval: "Ready to review",
   draft: "Drafts",
   scheduled: "Scheduled",
-  published: "Published",
+  published: "Live",
 };
 
 const COLUMN_CAP: Partial<Record<BoardStatus, number>> = { published: 10, draft: 30, awaiting_approval: 30, scheduled: 30 };

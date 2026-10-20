@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { SiteHeader } from "@/components/SiteHeader";
+import { memberAccountLinks, SiteHeader } from "@/components/SiteHeader";
 import type { CurrentUser } from "@/lib/auth";
 
 // SiteHeader passes the shared signOut server action into the account menu;
@@ -76,5 +76,18 @@ describe("logged in", () => {
   it("falls back to the email when there is no display name", () => {
     render(<SiteHeader user={user({ displayName: null, email: "someone@acme.test" })} />);
     expect(screen.getByRole("button", { name: "Account: someone@acme.test" })).toBeInTheDocument();
+  });
+});
+
+describe("memberAccountLinks", () => {
+  // The member area renders this directly — so an admin viewing as a member
+  // (fix-list 94) sees the member's menu, not the console's.
+  it("is the member menu, with the unread count as a badge only when there is one", () => {
+    expect(memberAccountLinks(3)).toEqual([
+      { href: "/dashboard", label: "Member area" },
+      { href: "/dashboard/notifications", label: "Notifications", badge: 3 },
+      { href: "/dashboard/help", label: "Help" },
+    ]);
+    expect(memberAccountLinks(0)[1].badge).toBeUndefined();
   });
 });

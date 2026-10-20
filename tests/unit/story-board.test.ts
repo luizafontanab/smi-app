@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  BOARD_STATUSES, canMoveStory, isBoardStatus, LEGAL_STORY_MOVES,
+  BOARD_STATUSES, canMoveStory, isBoardStatus, LEGAL_STORY_MOVES, LIST_STATUSES, STORY_STATUS_LABELS,
   parseStoryListFilters, parseStoryView, storyEditorHrefFromList, storyListHref,
 } from "@/lib/story-board";
 
@@ -24,8 +24,11 @@ describe("canMoveStory", () => {
     }
   });
 
-  it("rejects a reject-style move: awaiting_approval can only go to published", () => {
-    expect(canMoveStory("awaiting_approval", "draft")).toBe(false);
+  // Jas's flow chart (16 Oct): "not yet" goes back to draft. Whether a
+  // member's submission may (it may not) is moveStory's check, not the matrix's.
+  it("lets awaiting_approval go back to draft or on to published, but not to scheduled", () => {
+    expect(canMoveStory("awaiting_approval", "draft")).toBe(true);
+    expect(canMoveStory("awaiting_approval", "published")).toBe(true);
     expect(canMoveStory("awaiting_approval", "scheduled")).toBe(false);
   });
 
@@ -37,6 +40,16 @@ describe("canMoveStory", () => {
     expect(canMoveStory("bogus", "draft")).toBe(false);
     expect(canMoveStory("draft", "bogus")).toBe(false);
     expect(canMoveStory("bogus", "also-bogus")).toBe(false);
+  });
+});
+
+// One set of names for the board, list, editor and preview bar (20 Oct).
+describe("STORY_STATUS_LABELS", () => {
+  it("names every status, with Jas's \"Ready to review\" for the approval step", () => {
+    for (const status of LIST_STATUSES) expect(STORY_STATUS_LABELS[status]).toBeTruthy();
+    expect(STORY_STATUS_LABELS.awaiting_approval).toBe("Ready to review");
+    expect(STORY_STATUS_LABELS.published).toBe("Live");
+    expect(STORY_STATUS_LABELS.rejected).toBe("Sent back");
   });
 });
 

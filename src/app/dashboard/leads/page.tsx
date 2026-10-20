@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { LeadsDisclaimer } from "@/components/leads/LeadsDisclaimer";
 import { serviceDb } from "@/lib/db/server";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
@@ -7,7 +7,7 @@ import { markProspectFollowUp, unmarkProspect } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardLeadsPage() {
-  const user = await requireMember();
+  const user = await requireMemberView();
 
   // M14 is "prospects relevant to their own business", not a search panel —
   // the criteria form is A29's job, on the console side.

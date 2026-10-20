@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { signedInvoiceUrl } from "@/lib/invoice-pdf";
 import Link from "next/link";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Billing" };
 
 export default async function BillingSettingsPage(props: PageProps<"/dashboard/settings/billing">) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const sp = await props.searchParams;
   const db = serviceDb();
   const [{ data: invoices }, { data: member }] = await Promise.all([

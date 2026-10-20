@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import Link from "next/link";
 import { loadEmailTemplates } from "@/lib/email/store";
@@ -13,7 +13,7 @@ export const metadata = { title: "Notifications" };
 const PAGE_SIZE = 20;
 
 export default async function NotificationsPage(props: PageProps<"/dashboard/notifications">) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const sp = await props.searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const db = serviceDb();

@@ -29,8 +29,9 @@ export type JobKind =
   | "stats_summary"          // daily sweep: fires per member on their chosen stats cadence
   | "lead_alert"             // daily sweep: fires per member on their chosen leads cadence
   | "dev_error_digest"       // daily: the last 24h of recorded errors, emailed to DEV_ALERT_EMAIL (docs/logging.md)
-  | "log_retention"          // daily: drops log rows older than 90 days
-  | "upload_staging_sweep";  // hourly: removes direct uploads staged but never saved (lib/staged-upload)
+  | "log_retention"          // daily: error logs past 90 days; audit_events per purge_audit_events()
+  | "upload_staging_sweep"   // hourly: removes direct uploads staged but never saved (lib/staged-upload)
+  | "source_watch";          // hourly: checks the story sources due their daily read (lib/sources/check)
 
 /**
  * In development only, a job that is due now runs as soon as the response is
@@ -148,6 +149,10 @@ export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   await ensurePeriodic("dev_error_digest", 24 * 60 * 60);
   await ensurePeriodic("log_retention", 24 * 60 * 60);
   await ensurePeriodic("upload_staging_sweep", 60 * 60);
+  // Hourly, so the ~726 sources spread across the day in time-boxed batches;
+  // each source is still read only once a day (CHECK_EVERY_MS). Production's
+  // once-a-day cron (GAPS A3.1) would reach one batch a day — see docs/story-sources.md.
+  await ensurePeriodic("source_watch", 60 * 60);
 
   const { data: due } = await db
     .from("jobs")
@@ -398,8 +403,8 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       ]);
 
       const lines = [
-        ["Stories awaiting approval", stories.count],
-        ["Videos awaiting approval", videos.count],
+        ["Stories ready to review", stories.count],
+        ["Videos ready to review", videos.count],
         ["Events awaiting approval", events.count],
         ["Featured machines awaiting approval", machines.count],
         ["Page edits awaiting approval", revisions.count],
@@ -474,6 +479,11 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       if (eventsErr) throw new Error(`log retention (events) failed: ${eventsErr.message}`);
       const { error: occErr } = await db.from("error_occurrences").delete().lt("occurred_at", cutoff);
       if (occErr) throw new Error(`log retention (occurrences) failed: ${occErr.message}`);
+      // The security audit log keeps its own clock (12 months; IPs and
+      // attempted-login emails 90 days — docs/GDPR.md §16). The app may not
+      // delete from it, so its owner-run function does.
+      const { error: auditErr } = await db.rpc("purge_audit_events");
+      if (auditErr) throw new Error(`log retention (audit) failed: ${auditErr.message}`);
       break;
     }
     case "upload_staging_sweep": {
@@ -484,6 +494,15 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       // abandoned file can sit for up to two days — private, and never served.
       const { sweepStagedUploads } = await import("./staged-upload");
       await sweepStagedUploads();
+      break;
+    }
+    case "source_watch": {
+      // Story sources (ChangeTower replacement). Time-boxed so one run can't
+      // hold the cron request; a source it doesn't reach stays due next run.
+      // Per-source failures are recorded on the source, not thrown — a site
+      // being down is an outcome, not a job failure.
+      const { runSourceWatch } = await import("./sources/check");
+      await runSourceWatch();
       break;
     }
     case "comp_expiry": {

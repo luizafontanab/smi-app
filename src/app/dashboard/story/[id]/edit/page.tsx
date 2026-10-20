@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, publicDb, serviceDb } from "@/lib/db/server";
 import { renderableHtml } from "@/lib/sanitize";
 import { memberCanEditStory } from "@/lib/member-story";
@@ -13,7 +13,7 @@ export const metadata = { title: "Edit your story" };
 export default async function EditMemberStory(props: PageProps<"/dashboard/story/[id]/edit">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const user = await requireMember();
+  const user = await requireMemberView();
   const db = serviceDb();
   const [{ data: story }, { data: cats }, { data: member }, { data: link }, { data: inds }] = await Promise.all([
     db.from("stories").select("id, title, excerpt, body, cover_path, cover_focus, status, member_id, member_draft, source, industry_id, updated_at").eq("id", id).single(),

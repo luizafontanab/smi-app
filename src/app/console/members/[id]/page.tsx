@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { memberActivityTimeline } from "@/lib/activity";
 import { requireConsole } from "@/lib/auth";
+import { memberLogins, type MemberLogin } from "@/lib/member-logins";
+import { memberAdminAccess, type AuditRow } from "@/lib/audit";
+import { startViewAs } from "@/app/view-as/actions";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
@@ -95,7 +98,12 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
   // the renewal-call view (A18) — stories, placements, invoices, notifications,
   // advert clicks and newsletter appearances (A5.8), merged in lib/activity.ts
   // so the CRM per-contact panel can reuse the exact same query.
-  const timeline = await memberActivityTimeline(id);
+  //
+  // Logins: when each one last signed in, from Supabase Auth — the only
+  // "do they use it" signal kept (fix-list 94; no tracking of our own).
+  // Admin access: who viewed as or changed this member, from the security log
+  // (lib/audit). The member's own sign-ins stay out of it.
+  const [timeline, logins, adminAccess] = await Promise.all([memberActivityTimeline(id), memberLogins(id), memberAdminAccess(id)]);
 
   const logo = mediaUrl(member.logo_path);
   const hero = mediaUrl(member.hero_path);
@@ -145,8 +153,14 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             </a>
           )}
           <Link href={`/console/pages?type=member_profile&entity=${id}`} className="text-graphite underline">Page layout</Link>
+          {/* Their real dashboard, read-only (fix-list 94) — a form, since it sets a cookie. */}
+          <form action={startViewAs}>
+            <input type="hidden" name="member_id" value={id} />
+            <button className="text-graphite underline">View as member</button>
+          </form>
         </span>
       </div>
+      <LastSignedIn logins={logins} />
 
       {typeof sp.created === "string" && (
         <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Member created — finish their details below.</p>
@@ -306,6 +320,8 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         </ul>
       </Card>
 
+      <AdminAccessCard rows={adminAccess} />
+
       <Card className="mt-4 border-danger/30">
         <SectionTitle>Danger zone</SectionTitle>
         <div className="mt-3 border-t pt-3">
@@ -353,5 +369,69 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         </div>
       </Card>
     </div>
+  );
+}
+
+const signedInAt = (iso: string) =>
+  new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" });
+
+/**
+ * When the member's login(s) last signed in. Supabase moves this only on a
+ * real sign-in, not when a session refreshes — so it's "last signed in", never
+ * "last seen". One shared login per company today; more get one line each.
+ */
+function LastSignedIn({ logins }: { logins: MemberLogin[] }) {
+  if (logins.length === 0) return <p className="mt-1 text-sm text-graphite">No login yet.</p>;
+  return (
+    <ul className="mt-1 text-sm text-graphite">
+      {logins.map((l) => (
+        <li key={l.userId}>
+          Last signed in: <span className="tabular-nums text-ink">{l.lastSignInAt ? signedInAt(l.lastSignInAt) : "Never"}</span>
+          {logins.length > 1 && <> · {l.email ?? "unknown login"}</>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const ACCESS_LABEL: Partial<Record<AuditRow["action"], string>> = {
+  view_as_start: "Viewed as member",
+  view_as_stop: "Left the member view",
+  member_created: "Created the member",
+  member_updated: "Edited the member",
+  member_status_changed: "Changed status",
+  member_payment_recorded: "Recorded a payment",
+  member_archived: "Archived",
+  member_unarchived: "Unarchived",
+};
+
+/**
+ * Admin access to this member, newest first (docs/GDPR.md §16). Read-only by
+ * construction: the log can't be edited or deleted from the app.
+ */
+function AdminAccessCard({ rows }: { rows: AuditRow[] }) {
+  return (
+    <Card className="mt-4">
+      <SectionTitle>Admin access</SectionTitle>
+      <p className="mt-1 text-sm text-graphite">Who has viewed as this member or changed their record. Kept for 12 months; it can&apos;t be edited.</p>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-graphite">Nothing recorded yet.</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5 text-sm">
+          {rows.map((r, i) => (
+            <li key={i} className="flex gap-3 border-t pt-1.5">
+              <span className="w-36 shrink-0 text-xs tabular-nums text-graphite">{signedInAt(r.at)}</span>
+              <span>
+                {ACCESS_LABEL[r.action] ?? r.action}
+                {r.action === "member_status_changed" && typeof r.detail.from === "string" && typeof r.detail.to === "string" && (
+                  <> ({r.detail.from} → {r.detail.to})</>
+                )}
+                <span className="text-graphite"> · {r.actorName ?? "unknown admin"}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

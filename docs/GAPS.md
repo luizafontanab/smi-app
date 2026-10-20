@@ -149,7 +149,7 @@ Several closed B items were written against documented APIs and **have never run
 
 Per [`PHASE-1-TECHNICAL.md §04`](../../proposal/PHASE-1-TECHNICAL.md), these are deferred by design:
 
-- Content OS and the kanban "suggested" column (module 6)
+- Content OS and the kanban "suggested" column (module 6). **Story discovery built 20 Oct.** The ChangeTower replacement is `/console/sources`: 724 sources, read daily by feed, WordPress API, news-page HTML or sitemap, with new links becoming suggestions → "Start story" drafts. About 80% of the list is readable; [`story-sources.md`](story-sources.md) lists the rest. Suggestions live on their own page, not as a board column. The rest of module 6 is still deferred: the tense/person rewrite, press-release and YouTube intake, and the in-tool article reader. *(Working tree, uncommitted.)*
 - Named-company click identification (F·43, parked)
 - The marketplace
 - Tiered membership

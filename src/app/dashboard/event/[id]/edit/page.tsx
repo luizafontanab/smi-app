@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { renderableHtml } from "@/lib/sanitize";
 import { editEvent, memberUploadEventImage, withdrawEvent } from "../../../actions";
@@ -13,7 +13,7 @@ const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
 export default async function EditMemberEvent(props: PageProps<"/dashboard/event/[id]/edit">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const user = await requireMember();
+  const user = await requireMemberView();
   const db = serviceDb();
   const [{ data: event }, { data: member }, { data: inds }] = await Promise.all([
     db.from("events").select("id, title, description, starts_on, starts_time, ends_on, location, link, type, cover_path, status, member_id, industry_id").eq("id", id).single(),

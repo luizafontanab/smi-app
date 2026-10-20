@@ -145,6 +145,49 @@
     reads £0 until you mark invoices paid. Is "money in this month" the view you want,
     or would you rather see what's been sold?
 
+27. **Data protection — four answers (20 Oct).** Written up for Jas as a short document:
+    https://claude.ai/code/artifact/df015872-7399-43ca-99bb-26865779395e. Background and sources are in
+    [`GDPR.md`](GDPR.md) §17. The four questions:
+    - the company's legal name, address and a privacy contact email;
+    - whether SMI is registered with the regulator (the £52 fee);
+    - retention periods (proposed defaults in the doc);
+    - go-ahead for monthly member usage counts.
+
+    Company names in "Who's engaging" are paused for now (Luiza's call, 20 Oct), so they aren't asked.
+
+    Item 19's impressions line goes into the privacy policy rewrite these answers unblock.
+
+28. **Story sources: what to do with the sites we can't read (20 Oct).** The
+    ChangeTower replacement reads about 580 of your 726 news pages automatically
+    ([`story-sources.md`](story-sources.md)). The rest need your decision, group by group:
+    - **68 sites block automated reading.** These are mostly bot-check screens, which
+      we won't work around. Do you check them by hand, or drop them?
+    - **21 news pages have moved (404).** For many of them the homepage suggests the
+      new address. Should we update them, or are some companies no longer worth
+      following?
+    - **23 sites are unreachable** (dead domains, expired certificates). Should we drop
+      them?
+    - **31 are built with JavaScript, or show nothing readable.** Is checking them by
+      hand worth it?
+    - **Dormant sources:** only 213 of the 399 sources that date their posts have
+      posted since April. Should quiet sources stay on the list?
+    - **Non-English sources** (at least one is Italian): keep, or English only?
+
+    The flow chart's open question about Bigin scraping domains instead is answered
+    by this. The list now lives in the app and can be edited at `/console/sources`,
+    so ChangeTower can go once the first week looks right (HUMAN-TODO 30.5).
+
+29. **"Approved via Bigin link" — we've read it as your own sign-off (20 Oct).** Your
+    16 Oct flow chart has one gate: *Ready to review — approved via Bigin link?* We've
+    built it as a step inside the console, with no Bigin involved: the admin manager
+    can mark a story or video **Ready to review**, then **Approve & schedule** it (or
+    publish it now if it's urgent), or put it back to draft with **Not yet**. The step
+    is optional, so a finished draft can still be scheduled straight away. "Awaiting
+    approval" is now called "Ready to review" for stories and videos, members' too.
+    **If you meant someone outside SMI signs off** (for example, the company the story
+    is about approving it from a link you send them from Bigin), tell us. That would be
+    a separate piece of work: a no-login review link and a record of who approved.
+
 ## Data validation
 
 - sent to Jas on oct 4th

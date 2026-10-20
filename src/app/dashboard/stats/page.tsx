@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { StackedTrendChart, type ChartSeries } from "@/components/StackedTrendChart";
 import { TrendChart } from "@/components/Sparkline";
@@ -29,7 +29,7 @@ export const metadata = { title: "Your statistics" };
  * showing "Not available yet" everywhere.
  */
 export default async function MemberStatsPage() {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const db = serviceDb();
   // eslint-disable-next-line react-hooks/purity -- per-request render
   const now = Date.now();

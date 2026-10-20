@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { CONTENT_FILTERS, isContentFilter, memberContent, type ContentFilter } from "@/lib/submissions";
 import { SubmissionList } from "@/components/dashboard/SubmissionList";
 import { SectionTabs } from "@/components/dashboard/SectionTabs";
@@ -34,7 +34,7 @@ const EMPTY: Record<ContentFilter, string> = {
  * would be worse than one with tabs.
  */
 export default async function SubmissionsPage(props: PageProps<"/dashboard/submissions">) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const sp = await props.searchParams;
   const filter: ContentFilter = typeof sp.status === "string" && isContentFilter(sp.status) ? sp.status : "all";
   const { items } = await memberContent(user.memberId, { statuses: CONTENT_FILTERS[filter] });

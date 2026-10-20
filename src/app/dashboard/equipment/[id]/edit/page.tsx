@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { renderableHtml } from "@/lib/sanitize";
 import { RequiredMark } from "@/components/RequiredMark";
@@ -16,7 +16,7 @@ const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
 export default async function EditMemberMachine(props: PageProps<"/dashboard/equipment/[id]/edit">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const user = await requireMember();
+  const user = await requireMemberView();
   const db = serviceDb();
   const { data: machine } = await db.from("featured_machines")
     .select("id, name, description, external_url, image_path, video_url, status, member_id")

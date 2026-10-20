@@ -37,6 +37,10 @@ export default async function NewPasswordPage(props: PageProps<"/reset/new">) {
 
     const { currentUser } = await import("@/lib/auth");
     const user = await currentUser();
+    if (user) {
+      const { audit } = await import("@/lib/audit");
+      await audit({ action: "password_reset", actorUserId: user.userId, actorRole: user.role, memberId: user.memberId });
+    }
     redirect(user?.role === "admin" ? "/console" : "/dashboard");
   }
 

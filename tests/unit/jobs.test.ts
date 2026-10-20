@@ -208,6 +208,7 @@ describe("runDueJobs", () => {
         "newsletter_sync",
         "publish_scheduled",
         "rollup_daily",
+        "source_watch",
         "stats_summary",
         "upload_staging_sweep",
       ].sort(),
@@ -507,7 +508,7 @@ describe("runJob kinds", () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({
       to: "jas@sheetmetalindustries.com",
       subject: "SMI — 3 items waiting for you",
-      text: expect.stringContaining("2 — Stories awaiting approval"),
+      text: expect.stringContaining("2 — Stories ready to review"),
     }));
   });
 
@@ -630,9 +631,10 @@ describe("runJob kinds", () => {
     const j = job("log_retention");
     const eventsBuilder = queryBuilder(dbOk(null));
     const occBuilder = queryBuilder(dbOk(null));
+    const rpc = vi.fn(async () => dbOk(null));
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
       error_events: () => eventsBuilder, error_occurrences: () => occBuilder,
-    });
+    }, rpc);
 
     await runJobById(j.id);
     vi.useRealTimers();
@@ -641,6 +643,8 @@ describe("runJob kinds", () => {
     expect(eventsBuilder.delete).toHaveBeenCalled();
     expect(eventsBuilder.lt).toHaveBeenCalledWith("last_seen", cutoff);
     expect(occBuilder.lt).toHaveBeenCalledWith("occurred_at", cutoff);
+    // the security audit log is append-only to the app; only its own function prunes it
+    expect(rpc).toHaveBeenCalledWith("purge_audit_events");
   });
 
   // Direct uploads (lib/staged-upload): a file staged for a form nobody saved.

@@ -41,6 +41,22 @@ describe("SubmissionList kind labels", () => {
   });
 });
 
+// "Ready to review" is Jas's name for the step (flow chart, 16 Oct) — for news
+// and videos only; events and equipment keep the older wording for now.
+describe("SubmissionList waiting wording", () => {
+  it("says ready to review for news and videos, awaiting approval for events and equipment", () => {
+    render(<SubmissionList items={[
+      item({ kind: "story", status: "awaiting_approval", id: "s1" }),
+      item({ kind: "video", status: "awaiting_approval", id: "v1" }),
+      item({ kind: "event", status: "awaiting_approval", id: "e1" }),
+      item({ kind: "machine", status: "awaiting_approval", id: "m1" }),
+    ]} />);
+
+    expect(screen.getAllByText("ready to review")).toHaveLength(2);
+    expect(screen.getAllByText("awaiting approval")).toHaveLength(2);
+  });
+});
+
 describe("SubmissionList per-status actions", () => {
   it("offers edit and withdraw only while the member may still change it", () => {
     render(<SubmissionList items={[item({ kind: "story", status: "awaiting_approval" })]} />);

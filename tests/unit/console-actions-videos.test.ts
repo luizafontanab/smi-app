@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  consoleUploadVideoImage, decideVideo, moveVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo,
+  consoleUploadVideoImage, decideVideo, moveVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
@@ -181,8 +181,8 @@ describe("decideVideo", () => {
     expect(enqueue).not.toHaveBeenCalledWith("notify_member", expect.anything());
   });
 
-  it("rejecting stamps a reason and notifies the member", async () => {
-    const videosBuilder = queryBuilder(dbOk({ id: "v1", member_id: "m1", status: "awaiting_approval" }));
+  it("rejecting a member's video stamps a reason and notifies the member", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", member_id: "m1", status: "awaiting_approval", source: "member" }));
     db({ videos: () => videosBuilder, approvals: () => queryBuilder(dbOk(null)) });
 
     await decideVideo(form({ id: "v1", decision: "reject", reason: "Poor audio" }));
@@ -190,18 +190,54 @@ describe("decideVideo", () => {
     expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "rejected", rejected_reason: "Poor audio" }));
     expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "video_rejected" }));
   });
+
+  // The desk's own video names a member it is *about*; "not yet" must not
+  // email them a rejection for something they never sent in (20 Oct).
+  it("'not yet' on the desk's own video puts it back to draft and emails nobody", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", member_id: "m1", status: "awaiting_approval", source: "admin" }));
+    const approvalsBuilder = queryBuilder(dbOk(null));
+    db({ videos: () => videosBuilder, approvals: () => approvalsBuilder });
+
+    await decideVideo(form({ id: "v1", decision: "reject" }));
+
+    expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "draft" }));
+    expect(videosBuilder.update).not.toHaveBeenCalledWith(expect.objectContaining({ status: "rejected" }));
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", decision: "rejected" }));
+  });
 });
 
 describe("moveVideo", () => {
   it("refuses a move the matrix doesn't allow, and says why", async () => {
-    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "m1" }));
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "m1", source: "admin" }));
     db({ videos: () => videosBuilder });
 
-    const res = await moveVideo({ id: "v1", to: "draft" });
+    const res = await moveVideo({ id: "v1", to: "scheduled" });
 
     expect(res.ok).toBe(false);
     expect(res.error).toContain("awaiting_approval");
     expect(videosBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("won't drag a member's submission back to draft — that's Send back, with a reason", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "m1", source: "member" }));
+    db({ videos: () => videosBuilder });
+
+    const res = await moveVideo({ id: "v1", to: "draft" });
+
+    expect(res).toEqual({ ok: false, error: expect.stringContaining("sent back from its editor") });
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("drags the desk's own video from review back to draft, recording the 'not yet'", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "m1", source: "admin" }));
+    const approvalsBuilder = queryBuilder(dbOk(null));
+    db({ videos: () => videosBuilder, approvals: () => approvalsBuilder });
+
+    expect(await moveVideo({ id: "v1", to: "draft" })).toEqual({ ok: true });
+    expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "draft" }));
+    expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", decision: "rejected" }));
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("reads the current status from the DB, not from the caller", async () => {
@@ -305,5 +341,18 @@ describe("pinVideo", () => {
     db({ videos: () => builder });
     await pinVideo(form({ id: "v1", days: "0" }));
     expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ pinned_until: null }));
+  });
+});
+
+describe("setVideoStatus", () => {
+  it("comes back to the video's own editor when it asked to (Mark ready to review)", async () => {
+    db({ videos: () => queryBuilder(dbOk({ id: "v1", status: "draft", member_id: null, source: "admin" })) });
+    await expect(setVideoStatus(form({ id: "v1", status: "awaiting_approval", return_to: "/console/videos/v1" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/videos/v1");
+  });
+
+  it("ignores a return_to that isn't this video's editor, as before", async () => {
+    db({ videos: () => queryBuilder(dbOk({ id: "v1", status: "draft", member_id: null, source: "admin" })) });
+    await expect(setVideoStatus(form({ id: "v1", status: "awaiting_approval", return_to: "https://evil.example" }))).resolves.toBeUndefined();
   });
 });

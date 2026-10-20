@@ -28,8 +28,11 @@ describe("canMoveVideo", () => {
     }
   });
 
-  it("rejects a reject-style move: awaiting_approval can only go to published", () => {
-    expect(canMoveVideo("awaiting_approval", "draft")).toBe(false);
+  // Jas's flow chart (16 Oct): "not yet" goes back to draft. Whether a
+  // member's submission may (it may not) is moveVideo's check, not the matrix's.
+  it("lets awaiting_approval go back to draft or on to published, but not to scheduled", () => {
+    expect(canMoveVideo("awaiting_approval", "draft")).toBe(true);
+    expect(canMoveVideo("awaiting_approval", "published")).toBe(true);
     expect(canMoveVideo("awaiting_approval", "scheduled")).toBe(false);
   });
 
@@ -54,5 +57,10 @@ describe("canMoveVideo", () => {
 describe("COLUMN_LABELS", () => {
   it("labels every column the board renders", () => {
     for (const status of BOARD_STATUSES) expect(COLUMN_LABELS[status]).toBeTruthy();
+  });
+
+  it("uses Jas's names for the review and live columns, same as stories", () => {
+    expect(COLUMN_LABELS.awaiting_approval).toBe("Ready to review");
+    expect(COLUMN_LABELS.published).toBe("Live");
   });
 });

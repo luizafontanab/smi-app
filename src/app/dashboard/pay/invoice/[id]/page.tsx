@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { UUID_RE } from "@/lib/validate";
 import { advertPaymentsMode, ADVERT_INVOICE_KIND, retrieveCheckoutSession, STRIPE_JS_URL, stripePublishableKey } from "@/lib/adapters/advert-checkout";
@@ -24,7 +24,7 @@ export const metadata = { title: "Pay an invoice" };
 export default async function PayInvoicePage(props: PageProps<"/dashboard/pay/invoice/[id]">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const user = await requireMember();
+  const user = await requireMemberView();
   if (!UUID_RE.test(id)) notFound();
   const db = serviceDb();
   const load = () =>
@@ -41,7 +41,10 @@ export default async function PayInvoicePage(props: PageProps<"/dashboard/pay/in
 
   const mode = advertPaymentsMode();
   const sessionId = typeof sp.session_id === "string" ? sp.session_id : null;
-  if (sessionId && invoice.status === "issued" && mode === "stripe") {
+  // An admin viewing as the member (fix-list 94) only looks: no settling on
+  // render (the webhook remains the authority) and no payment form below.
+  const readOnly = user.viewingAs !== null;
+  if (!readOnly && sessionId && invoice.status === "issued" && mode === "stripe") {
     const session = await retrieveCheckoutSession(sessionId);
     if (session?.kind === ADVERT_INVOICE_KIND && session.invoiceId === invoice.id && session.paymentStatus === "paid") {
       try {
@@ -97,7 +100,11 @@ export default async function PayInvoicePage(props: PageProps<"/dashboard/pay/in
 
       {invoice.status === "issued" && (
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
-          {mode === "stripe" && publishableKey ? (
+          {readOnly ? (
+            // EmbeddedCheckout asks for a checkout session as it mounts — a member
+            // action, which would bounce the admin straight back off this page.
+            <p className="text-sm text-graphite">The payment form is hidden while you&apos;re viewing as a member.</p>
+          ) : mode === "stripe" && publishableKey ? (
             <EmbeddedCheckout invoiceId={invoice.id} publishableKey={publishableKey} stripeJsUrl={STRIPE_JS_URL} />
           ) : mode === "simulated" ? (
             <form action={simulateInvoicePayment} className="space-y-3 text-sm">

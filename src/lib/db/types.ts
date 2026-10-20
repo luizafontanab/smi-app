@@ -671,6 +671,39 @@ export type Database = {
           },
         ]
       }
+      audit_events: {
+        Row: {
+          action: string
+          actor_role: string | null
+          actor_user_id: string | null
+          at: string
+          detail: Json
+          id: number
+          ip: unknown
+          member_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_role?: string | null
+          actor_user_id?: string | null
+          at?: string
+          detail?: Json
+          id?: never
+          ip?: unknown
+          member_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_role?: string | null
+          actor_user_id?: string | null
+          at?: string
+          detail?: Json
+          id?: never
+          ip?: unknown
+          member_id?: string | null
+        }
+        Relationships: []
+      }
       bundles: {
         Row: {
           created_at: string
@@ -806,6 +839,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      content_sources: {
+        Row: {
+          access: string
+          active: boolean
+          created_at: string
+          domain: string
+          failure_count: number
+          id: string
+          label: string | null
+          last_checked_at: string | null
+          last_error: string | null
+          last_item_at: string | null
+          last_ok_at: string | null
+          method: string | null
+          method_url: string | null
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          access?: string
+          active?: boolean
+          created_at?: string
+          domain: string
+          failure_count?: number
+          id?: string
+          label?: string | null
+          last_checked_at?: string | null
+          last_error?: string | null
+          last_item_at?: string | null
+          last_ok_at?: string | null
+          method?: string | null
+          method_url?: string | null
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          access?: string
+          active?: boolean
+          created_at?: string
+          domain?: string
+          failure_count?: number
+          id?: string
+          label?: string | null
+          last_checked_at?: string | null
+          last_error?: string | null
+          last_item_at?: string | null
+          last_ok_at?: string | null
+          method?: string | null
+          method_url?: string | null
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
       }
       dev_tasks: {
         Row: {
@@ -2270,6 +2357,57 @@ export type Database = {
         }
         Relationships: []
       }
+      source_items: {
+        Row: {
+          first_seen_at: string
+          id: string
+          published_at: string | null
+          source_id: string
+          state: string
+          story_id: string | null
+          title: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          first_seen_at?: string
+          id?: string
+          published_at?: string | null
+          source_id: string
+          state?: string
+          story_id?: string | null
+          title: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          first_seen_at?: string
+          id?: string
+          published_at?: string | null
+          source_id?: string
+          state?: string
+          story_id?: string | null
+          title?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_items_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "content_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "source_items_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       static_pages: {
         Row: {
           body: string
@@ -2683,6 +2821,7 @@ export type Database = {
           emails: string[]
         }[]
       }
+      purge_audit_events: { Args: never; Returns: undefined }
       replace_story_members: {
         Args: { p_member_ids: string[]; p_story_id: string }
         Returns: undefined

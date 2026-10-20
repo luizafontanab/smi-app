@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { paymentsAreLive } from "@/lib/adapters/payments";
 import { PayForm } from "./PayForm";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Pay for your membership" };
 
 export default async function MemberPayPage() {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const { data: member } = await serviceDb()
     .from("members").select("status, paid_at, comped_until").eq("id", user.memberId).single();
   if (!member || member.paid_at || member.comped_until || member.status !== "draft") redirect("/dashboard");

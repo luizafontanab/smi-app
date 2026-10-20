@@ -33,7 +33,9 @@ const EDITABLE: readonly SubmissionStatus[] = ["awaiting_approval", "rejected"];
 function StatusText({ item }: { item: PendingSubmission }) {
   switch (item.status) {
     case "awaiting_approval":
-      return <span className="text-brand-text">awaiting approval</span>;
+      // Jas's name for the step (flow chart, 16 Oct) — stories and videos only;
+      // events and equipment keep the older wording until their flow is reviewed.
+      return <span className="text-brand-text">{item.kind === "story" || item.kind === "video" ? "ready to review" : "awaiting approval"}</span>;
     case "published":
       return <span className="text-success">live</span>;
     case "scheduled":

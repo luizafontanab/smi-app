@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { CompanyPageForm } from "@/components/member/CompanyPageForm";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -20,7 +20,7 @@ const SELECT =
  * timeline and the approve/reject panel. None of that belongs here.
  */
 export default async function MemberProfilePage(props: PageProps<"/dashboard/profile">) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const sp = await props.searchParams;
   const db = serviceDb();
   const [{ data: m }, { data: pendingRev }, { data: inds }, { data: myInds }, { data: svcs }, { data: mySvcs }, { data: types }, { data: myTypes }] =

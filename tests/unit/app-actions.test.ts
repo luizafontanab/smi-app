@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { submitDevTask } from "@/app/actions";
+import { signOut, submitDevTask } from "@/app/actions";
 import { serviceDb, sessionDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
+import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
+import { VIEW_AS_COOKIE } from "@/lib/view-as";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const { audit } = vi.hoisted(() => ({ audit: vi.fn(async () => {}) }));
+vi.mock("@/lib/audit", () => ({ audit }));
 
 const { allowRequest } = vi.hoisted(() => ({ allowRequest: vi.fn(async () => true) }));
 vi.mock("@/lib/rate-limit", () => ({ allowRequest, MINUTE: 60_000 }));
@@ -14,6 +18,7 @@ afterEach(() => {
   resetDbServerMocks();
   allowRequest.mockReset().mockResolvedValue(true);
   vi.mocked(revalidatePath).mockClear();
+  resetNextHeadersMocks();
 });
 
 function form(overrides: Record<string, string> = {}) {
@@ -114,5 +119,23 @@ describe("submitDevTask", () => {
 
     expect(result.message).toContain("constraint violated");
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe("signOut", () => {
+  it("signs out and forgets any view-as member, so it can't carry into the next sign-in", async () => {
+    const authSignOut = vi.fn(async () => ({ error: null }));
+    vi.mocked(sessionDb).mockResolvedValue(asDb(mockDb({
+      auth: { signOut: authSignOut, getUser: vi.fn(async () => dbOk({ user: { id: "u1", email: "m@acme.example" } })) },
+    })));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({ profiles: () => queryBuilder(dbOk({ role: "member", member_id: "mem1", display_name: null })) }),
+    })));
+    cookieStore.set(VIEW_AS_COOKIE, "11111111-1111-4111-8111-111111111111");
+
+    await expect(signOut()).rejects.toThrow("NEXT_REDIRECT:/login");
+    expect(authSignOut).toHaveBeenCalled();
+    expect(cookieStore.has(VIEW_AS_COOKIE)).toBe(false);
+    expect(audit).toHaveBeenCalledWith({ action: "sign_out", actorUserId: "u1", actorRole: "member", memberId: "mem1" });
   });
 });

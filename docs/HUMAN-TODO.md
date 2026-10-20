@@ -654,9 +654,19 @@ live database against `handover-extract/seed/` and names every difference.
 `src/content/release-notes.md`. Members never see the link and are bounced
 from the page.
 
-- [ ] **18.1 — Review the first four entries' wording before it ships.** They
-      were drafted from the 20–25 Sep commits in plain language for Jas; check
-      nothing reads as a promise you don't want to make.
+- [ ] **18.1 — Review every entry's wording before it ships.** The first three
+      were drafted from the 20–25 Sep commits. Seven more (dated 25 Sep to 16 Oct)
+      were added on 16 Oct, catching up on fix-list 71–93, the GAPS A8/A9 pass and
+      the 16 Oct review fixes. They describe **everything on staging**, so most of
+      it is ahead of production until §28 deploys: either ship them with that
+      deploy or keep Jas on staging until then. Check that nothing reads as a
+      promise you don't want to make, especially these lines:
+      - Online payment (6 Oct): "switches on once Stripe is set up", see §25.
+      - Uploads over 4.5 MB (16 Oct): "will be checked on the live site", see §28.12.
+      - Impressions rising (4 Oct): this is §23.2.
+      Two things were left out on purpose. The lead-gen panels still run on sample
+      data (GAPS A8.3), and the login-email change has never been checked end to
+      end (§19.6). *(Working tree, uncommitted.)*
 - [ ] **18.3 — Add an entry with each deploy.** Nothing generates it. The
       format is in the comment at the top of the file, and a malformed edit
       fails `pnpm check` (`tests/unit/release-notes.test.ts`).
@@ -1017,6 +1027,48 @@ those items can't be done separately: following §7.6 alone would also run §26.
       keep that file out of the project folder except when you're about to run a
       `:prod` script, or add a guard to `next start` — your call; it touches
       the scripts in `package.json`.
+
+## 29 · Data protection pass (20 Oct) — production follow-through
+
+[`GDPR.md`](GDPR.md) is the reference. Jas's decisions are ask-jas 27, not here.
+
+- [ ] **29.1 — Push migration `20261020000001_audit_events`** with the §28 push. It
+      only adds a table and a function, so it's safe at any point in §28's order. Until
+      it's pushed, every audit write fails: sign-in, view-as and member edits still
+      work, but nothing is recorded, and each failure lands in the error log as
+      `audit:<action>`, alerting the developer.
+- [ ] **29.2 — Check Supabase's own auth audit log** (Dashboard → Authentication →
+      Logs) and how long it's kept. If it already holds sign-ins, say so in
+      GDPR.md §16, so the privacy policy doesn't promise two copies.
+- [ ] **29.3 — Expect a step in "site users this year".** The visitor pseudonym is
+      now a keyed HMAC (GDPR.md G2). Every visitor gets a new identifier, so anyone
+      who visited before the deploy counts twice in the Command Centre's 12-month
+      figure until their old rows age out. Analytics only.
+
+## 30 · Story sources (20 Oct) — switches the ChangeTower replacement on
+
+[`story-sources.md`](story-sources.md) is the reference. Until these are done
+`/console/sources` exists but is empty, and nothing is checked.
+
+- [ ] **30.1 — Push migration `20261020000002_content_sources`** with the §28 push.
+      It only adds two tables, so it's safe anywhere in that order.
+- [ ] **30.2 — Import the list:** `pnpm sources:import:prod`, after 30.1. It adds
+      the 724 sources from `scripts/seed-assets/content-sources.csv` and fetches
+      nothing itself. Safe to re-run; existing sources are left alone.
+- [ ] **30.3 — Decide the cron cadence (§13.1) with this in mind.** The
+      `source_watch` job checks a time-boxed batch per run. With today's
+      once-a-day cron it reaches one batch a day (roughly 100–300 sources), so
+      the full list is covered only every few days. Hourly covers it daily.
+- [ ] **30.4 — Watch the first week.** The first check of each source is a
+      silent baseline, so suggestions start on its second check. After a few
+      days, look at the "Blocked", "News page gone" and "Nothing readable found"
+      filters, and update or pause sources there (ask-jas 28).
+- [ ] **30.5 — Replace ChangeTower only after that first week**, once the
+      suggestions look right (TECH-DECISIONS lists it among the tools being
+      cancelled, ~£17). Keep it until then: about 20% of the list can't be read
+      automatically, and those sites still need checking by hand.
+
+---
 
 ## Not in this list
 

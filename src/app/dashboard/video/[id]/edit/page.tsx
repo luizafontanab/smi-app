@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { renderableHtml } from "@/lib/sanitize";
 import { editVideo, memberUploadVideoImage, withdrawVideo } from "../../../actions";
@@ -13,7 +13,7 @@ const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
 export default async function EditMemberVideo(props: PageProps<"/dashboard/video/[id]/edit">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const user = await requireMember();
+  const user = await requireMemberView();
   const db = serviceDb();
   const [{ data: video }, { data: member }, { data: inds }] = await Promise.all([
     db.from("videos").select("id, title, url, description, thumbnail_path, status, member_id, industry_id").eq("id", id).single(),

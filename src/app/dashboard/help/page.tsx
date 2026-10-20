@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { sendMemberMessage } from "../actions";
 import { RequiredMark } from "@/components/RequiredMark";
 
@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Help" };
 
 export default async function MemberHelpPage(props: PageProps<"/dashboard/help">) {
-  await requireMember();
+  await requireMemberView();
   const sp = await props.searchParams;
   return (
     <div className="mx-auto max-w-2xl">

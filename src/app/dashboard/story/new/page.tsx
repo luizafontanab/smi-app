@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, publicDb, serviceDb } from "@/lib/db/server";
 import { AddContentTabs } from "@/components/dashboard/AddContentTabs";
 import { memberUploadImage, previewStoryBody, submitStory } from "../../actions";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Add a story" };
 
 export default async function NewMemberStory(props: PageProps<"/dashboard/story/new">) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const sp = await props.searchParams;
   const [{ data: cats }, { data: member }, { data: inds }] = await Promise.all([
     publicDb().from("categories").select("id, name, slug").order("name"),

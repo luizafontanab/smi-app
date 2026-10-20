@@ -1,4 +1,4 @@
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { savePrefs } from "../actions";
 import { SettingsTabs } from "./SettingsTabs";
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage(props: PageProps<"/dashboard/settings">) {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const sp = await props.searchParams;
   const { data: prefs } = await serviceDb().from("notification_prefs").select("*").eq("member_id", user.memberId).maybeSingle();
 

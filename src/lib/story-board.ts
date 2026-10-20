@@ -34,9 +34,10 @@ export const LEGAL_STORY_MOVES: Record<BoardStatus, readonly BoardStatus[]> = {
   // the move/schedule/save actions (isMemberDraft) — so "publish now" here
   // never skips a member's approval.
   draft: ["awaiting_approval", "published"],
-  // reject needs a reason and notifies the member — keep that on the
-  // dedicated Reject form, not as a drag target.
-  awaiting_approval: ["published"],
+  // "Not yet" (Jas's flow chart, 16 Oct): an admin's own story goes back to
+  // draft. A member's must not — sending theirs back needs a reason and tells
+  // them, so moveStory refuses it and the editor's Send back form does it.
+  awaiting_approval: ["draft", "published"],
   scheduled: ["draft", "published"],
   // unpublish/take down — a capability the buttons don't offer today, but a
   // legitimate admin action once drag exists.
@@ -69,12 +70,17 @@ export function parseStoryView(value: unknown): StoryView {
 export const LIST_STATUSES = ["draft", "awaiting_approval", "scheduled", "published", "rejected", "withdrawn"] as const;
 export type ListStatus = (typeof LIST_STATUSES)[number];
 
+/**
+ * The one set of status names for stories, used by the board, list, editor and
+ * preview bar. "Ready to review" is Jas's name for the approval step (flow
+ * chart, 16 Oct); the enum value stays `awaiting_approval`.
+ */
 export const STORY_STATUS_LABELS: Record<ListStatus, string> = {
   draft: "Draft",
-  awaiting_approval: "Awaiting approval",
+  awaiting_approval: "Ready to review",
   scheduled: "Scheduled",
-  published: "Published",
-  rejected: "Rejected",
+  published: "Live",
+  rejected: "Sent back",
   withdrawn: "Withdrawn",
 };
 

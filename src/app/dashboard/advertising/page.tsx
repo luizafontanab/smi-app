@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { DEFAULT_AD_FORMATS, type AdFormat } from "@/lib/advert-formats";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { VISIBILITY_PRODUCTS } from "@/lib/visibility-products";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Advertising" };
 
 export default async function AdvertisingInfoPage() {
-  await requireMember();
+  await requireMemberView();
   const db = serviceDb();
   const [{ data: packSetting }, { data: formatSetting }] = await Promise.all([
     db.from("settings").select("value").eq("key", "media_pack").maybeSingle(),

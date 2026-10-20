@@ -709,6 +709,23 @@ async function main() {
     { title: "Old machine listing importer", status: "canceled", assignee: null, priority: "low", sort_order: 0 },
   ], { defaultToNull: false }));
 
+  console.log("— story sources (synthetic, paused) + suggestions");
+  // Example addresses, paused: the synthetic seed must never send the
+  // source_watch job at real company sites. seed-real.ts imports the real list.
+  const { data: sources } = await must("content_sources", db.from("content_sources").insert([
+    { url: "https://example-fabrication.test/news/", domain: "example-fabrication.test", label: "Example Fabrication", active: false, method: "feed", method_url: "https://example-fabrication.test/feed/", access: "ok", last_checked_at: new Date().toISOString(), last_ok_at: new Date().toISOString(), last_item_at: new Date(Date.now() - 2 * 864e5).toISOString() },
+    { url: "https://example-laser.test/blog/", domain: "example-laser.test", label: "Example Laser Cutting", active: false, method: "html", method_url: "https://example-laser.test/blog/", access: "ok", last_checked_at: new Date().toISOString(), last_ok_at: new Date().toISOString() },
+    { url: "https://example-blocked.test/news/", domain: "example-blocked.test", active: false, access: "blocked", last_checked_at: new Date().toISOString(), failure_count: 1, last_error: "HTTP 403 — the site refuses automated requests" },
+    { url: "https://example-moved.test/latest-news/", domain: "example-moved.test", active: false, access: "not_found", last_checked_at: new Date().toISOString(), failure_count: 2, last_error: "HTTP 404 — the news page has moved or gone" },
+  ]).select("id, domain"));
+  const sourceId = (domain: string) => sources!.find((s) => s.domain === domain)!.id;
+  await must("source_items", db.from("source_items").insert([
+    { source_id: sourceId("example-fabrication.test"), url: "https://example-fabrication.test/news/new-fibre-laser-installed/", title: "New 12kW fibre laser installed at our Sheffield site", published_at: new Date(Date.now() - 2 * 864e5).toISOString(), state: "new" },
+    { source_id: sourceId("example-fabrication.test"), url: "https://example-fabrication.test/news/apprentice-of-the-year/", title: "Apprentice of the year award for our press brake team", published_at: new Date(Date.now() - 5 * 864e5).toISOString(), state: "new" },
+    { source_id: sourceId("example-laser.test"), url: "https://example-laser.test/blog/iso-9001-renewed/", title: "ISO 9001 certification renewed for another three years", state: "new" },
+    { source_id: sourceId("example-laser.test"), url: "https://example-laser.test/blog/old-post/", title: "An older post that was there on the first check", state: "baseline" },
+  ]));
+
   // Industries for every member and piece of content, from the member_services
   // and story_categories written above — the same backfill real data gets.
   await runIndustryBackfill(db);

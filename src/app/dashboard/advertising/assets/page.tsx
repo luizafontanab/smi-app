@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { bookingPhase } from "@/lib/adverts";
 import { MEMBER_ADVERT_PHASE } from "@/lib/advert-phase-labels";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { ADVERT_FORMATS } from "@/components/console/advert-formats";
@@ -35,7 +35,7 @@ const formatLabel = (format: string) => ADVERT_FORMATS.find((f) => f.value === f
  * row links there rather than duplicating the forms.
  */
 export default async function AdvertisingAssetsPage() {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const db = serviceDb();
   const [adverts, machines] = await Promise.all([
     must(

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { bookingPhase } from "@/lib/adverts";
-import { requireMember } from "@/lib/auth";
+import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { MEMBER_ADVERT_PHASE } from "@/lib/advert-phase-labels";
 import { visibilityProductName } from "@/lib/visibility-products";
@@ -16,7 +16,7 @@ const REQUEST_STATUS: Record<string, { label: string; className: string }> = {
 };
 
 export default async function AdvertisingManagePage() {
-  const user = await requireMember();
+  const user = await requireMemberView();
   const db = serviceDb();
   const [{ data: bookings }, { data: requests }] = await Promise.all([
     // Adverts belong to the member, and their run carries the state — so this

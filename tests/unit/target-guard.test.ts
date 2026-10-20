@@ -68,6 +68,7 @@ describe("scripts/ that open a Supabase client", () => {
     "create-test-accounts.ts": "accounts:test",
     "remove-sample-adverts.ts": "remove-sample-adverts",
     "audit-test-rows.ts": "audit:test-rows",
+    "import-sources.ts": "sources:import",
   };
   /** Behind assertSeedTarget, which has the same --remote rule. */
   const SEEDS = ["seed.ts", "seed-real.ts"];
