@@ -8,7 +8,7 @@ one into an ordinary admin draft and opens the editor; the approval gate is
 unchanged. Nothing here publishes, and pausing the job leaves the manual flow
 exactly as it was.
 
-*(Working tree, uncommitted — 20 Oct 2026.)*
+*(Committed in `d89aee9`, 20 Oct 2026.)*
 
 ## How a source is read
 
