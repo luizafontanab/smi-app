@@ -477,6 +477,10 @@ async function main() {
       proof_checks: Object.fromEntries(PROOF_KEYS.map((key) => [key, true])),
     }).select("id").single());
     await must("newsletter_items", db.from("newsletter_items").insert(pubStories!.slice(n * 8, n * 8 + 8).map((s, i) => ({ issue_id: issue!.id, story_id: s.id, position: i }))));
+    // A supplier directory (gap review area 5) on each sent issue, so its web
+    // copy shows one: three active members.
+    const listed = (members ?? []).filter((m) => m.status === "active").slice(n * 3, n * 3 + 3);
+    if (listed.length) await must("newsletter_directory", db.from("newsletter_directory").insert(listed.map((m) => ({ issue_id: issue!.id, member_id: m.id }))));
   }
 
   console.log("— contacts (~120)");

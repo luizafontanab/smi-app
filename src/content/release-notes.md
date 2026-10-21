@@ -10,6 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-21 — Sponsored story, events diary and supplier directory in the newsletter
+- There's a new artwork format, "Newsletter sponsored story": one 600×400 image with a headline and up to 80 words. Attached to an issue like a banner, it shows as a story card marked "Sponsored", and clicks are counted like any advert. One per issue.
+- Each issue now ends with an events diary: the published events starting in the 30 days after it goes out.
+- A new "Supplier directory" section on the issue page lets you pick members to list near the footer, each linked to their page.
+- The story Summary box now counts words and suggests 40–60, as the newsletter SOP asks; it never stops you saving.
+- The issue's page on the website shows all three as well.
+
 ## 2026-10-21 — Newsletter laid out like the Mailchimp issues
 - Each newsletter issue now opens with the SMI logo, and an "In association with" sponsor logo beside it when one is attached (one per issue).
 - The first story or video is the lead, at full width; the rest sit two to a row under "Sheeting Hot News", one under another on phones.

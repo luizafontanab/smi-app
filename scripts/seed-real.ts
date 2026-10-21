@@ -514,6 +514,17 @@ async function seedDemoRows(): Promise<void> {
     if (error) throw error;
   }
 
+  // A supplier directory (gap review area 5) on the newest seeded issue, so
+  // its web copy shows one. The primary key makes a re-run a no-op.
+  const newest = [...(written ?? [])].sort((a, b) => b.number - a.number)[0];
+  const { data: listed } = await db.from("members").select("id").eq("status", "active").is("archived_at", null).order("name").limit(4);
+  if (newest && listed?.length) {
+    await must("newsletter_directory", db.from("newsletter_directory").upsert(
+      listed.map((m) => ({ issue_id: newest.id, member_id: m.id })),
+      { onConflict: "issue_id,member_id", ignoreDuplicates: true },
+    ));
+  }
+
   /*
    * Top the Featured Member carousel up to its cap. The seed sells three, and
    * the homepage box shows three at a time — so at three it never rotates and

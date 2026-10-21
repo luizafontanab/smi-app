@@ -276,9 +276,11 @@ export type Database = {
       }
       adverts: {
         Row: {
+          body: string | null
           created_at: string
           desktop_path: string
           format: string
+          headline: string | null
           id: string
           link_url: string | null
           member_id: string
@@ -287,9 +289,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          body?: string | null
           created_at?: string
           desktop_path: string
           format?: string
+          headline?: string | null
           id?: string
           link_url?: string | null
           member_id: string
@@ -298,9 +302,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          body?: string | null
           created_at?: string
           desktop_path?: string
           format?: string
+          headline?: string | null
           id?: string
           link_url?: string | null
           member_id?: string
@@ -1850,6 +1856,39 @@ export type Database = {
             columns: ["issue_id"]
             isOneToOne: false
             referencedRelation: "newsletter_issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      newsletter_directory: {
+        Row: {
+          created_at: string
+          issue_id: string
+          member_id: string
+        }
+        Insert: {
+          created_at?: string
+          issue_id: string
+          member_id: string
+        }
+        Update: {
+          created_at?: string
+          issue_id?: string
+          member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "newsletter_directory_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "newsletter_issues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "newsletter_directory_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]

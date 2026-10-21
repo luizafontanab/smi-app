@@ -201,8 +201,8 @@
     issue now looks like the issues you send from Mailchimp today: the SMI logo with
     the "In association with" sponsor beside it, the lead story at full width, then
     the stories two to a row under "Sheeting Hot News", with adverts between the rows.
-    The SOP's extras (sponsored story, events diary, supplier directory, UTM tags and
-    a per-issue report) come next.
+    The SOP's sponsored story, events diary and supplier directory are in too; UTM
+    tags and a per-issue report come next.
     - **"In association with" logo size.** We sell it as 250×60, but the logos in
       your recent issues are 372×110. Which should we ask advertisers for?
     - **Advert sizes stay at 560×300**, the size we sell and the one your live issues
@@ -210,6 +210,11 @@
       updating.
     - **Adverts are now labelled "Sponsored"**, as the SOP asks. The live issues have
       no label.
+    - **The sponsored story isn't on the advertising page or price list yet.** It's set
+      up as artwork in its own format (image 600×400, a headline and up to 80 words),
+      one per issue. How do you want to sell it, and at what price?
+    - **The events diary** lists published events in the 30 days after the send date,
+      up to 8. Is that the right window, or should you pick them by hand?
     - **Not being built for now:** the A/B subject-line test (we're not sure Resend
       can do it) and the link to a Bigin "Advertising" pipeline. Tell us if either
       matters to you.

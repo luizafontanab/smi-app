@@ -7,6 +7,8 @@ import { UUID_RE } from "@/lib/validate";
 import { ADVERT_FORMATS, advertFormatOptions } from "@/components/console/advert-formats";
 import { saveAdvertArtwork } from "../../../actions";
 import { UploadField } from "@/components/UploadField";
+import { CountedInput } from "@/components/console/CountedInput";
+import { SPONSORED_STORY_MAX_WORDS } from "@/lib/newsletter-layout";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +70,28 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
           <input id="link_url" name="link_url" type="url" defaultValue={advert?.link_url ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
           <p className="mt-1 text-xs text-graphite">Leave blank to send clicks to their member page.</p>
         </div>
+        <fieldset className="rounded border p-3">
+          <legend className="px-1 text-sm font-medium">Newsletter sponsored story</legend>
+          <p className="text-xs text-graphite">
+            Only for the sponsored story format. It shows in the newsletter as a story card marked &ldquo;Sponsored&rdquo;: the desktop image (600×400), this headline and text, and the link above.
+          </p>
+          <div className="mt-2">
+            <label htmlFor="headline" className="text-xs font-medium">Headline</label>
+            <input id="headline" name="headline" defaultValue={advert?.headline ?? ""} className="mt-1 w-full rounded border px-3 py-2" />
+          </div>
+          <div className="mt-2">
+            <CountedInput
+              name="body"
+              label="Text"
+              unit="words"
+              softMax={SPONSORED_STORY_MAX_WORDS}
+              overMessage="the SOP allows up to 80"
+              multiline
+              rows={4}
+              defaultValue={advert?.body ?? ""}
+            />
+          </div>
+        </fieldset>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <span className="block text-sm font-medium">Desktop image</span>
@@ -79,7 +103,8 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
             <span className="block text-sm font-medium">Mobile image</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {mobile && <img src={mobile} alt="" className="mt-2 h-16 w-auto rounded border" />}
-            <UploadField name="mobile" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" required={isNew} />
+            <UploadField name="mobile" accept="image/jpeg,image/png,image/webp" className="mt-2 w-full text-sm" />
+            <p className="mt-1 text-xs text-graphite">Required, except for a sponsored story, which uses the desktop image.</p>
           </div>
         </div>
         <p className="text-xs text-graphite">

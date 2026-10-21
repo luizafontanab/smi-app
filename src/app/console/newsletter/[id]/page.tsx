@@ -6,9 +6,10 @@ import { must, mustList } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { renderIssueHtml } from "@/lib/adapters/newsletter";
 import type { IssueContentResult } from "@/lib/newsletter-picker";
-import { PREVIEW_TEXT_SOFT_MAX, SUBJECT_SOFT_MAX } from "@/lib/newsletter-layout";
+import { ONE_PER_ISSUE_FORMATS, PREVIEW_TEXT_SOFT_MAX, SUBJECT_SOFT_MAX } from "@/lib/newsletter-layout";
+import { PUBLIC_MEMBER_STATUSES } from "@/lib/member-visibility";
 import { audienceDrift, missingChecks, PROOF_CHECKLIST, tickedKeys } from "@/lib/newsletter-proof";
-import { approveIssue, attachNewsletterAd, detachNewsletterAd, placeNewsletterAd, saveProofChecks, searchIssueContent, sendTestIssue, updateIssue, withdrawApproval } from "../../actions";
+import { addDirectoryMember, approveIssue, attachNewsletterAd, detachNewsletterAd, placeNewsletterAd, removeDirectoryMember, saveProofChecks, searchIssueContent, sendTestIssue, updateIssue, withdrawApproval } from "../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { CountedInput } from "@/components/console/CountedInput";
 import { IssueItemsPicker } from "@/components/console/IssueItemsPicker";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 // link to advert_bookings or a rate card, so the artwork's own format is the
 // only structural signal for "meant for a newsletter." Whether a given member
 // is entitled to be in this particular issue stays a manual judgment call.
-const NEWSLETTER_FORMATS = ["newsletter_banner", "association_logo"];
+const NEWSLETTER_FORMATS = ["newsletter_banner", "association_logo", "sponsored_story"];
 
 export default async function IssueDetail(props: PageProps<"/console/newsletter/[id]">) {
   const { id } = await props.params;
@@ -39,12 +40,17 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
   // A failed send can still be fixed and retried, so it stays editable too.
   const editable = issue.status === "draft" || issue.status === "scheduled" || issue.status === "send_failed";
 
-  const [items, ads, eligible, allStories, allVideos, preview] = await Promise.all([
+  const [items, ads, eligible, allStories, allVideos, directory, directoryMembers, preview] = await Promise.all([
     must(db.from("newsletter_items").select("position, story_id, video_id, story:stories(id, title, published_at, status), video:videos(id, title, published_at, status)").eq("issue_id", id).order("position"), "console/newsletter items"),
     must(db.from("newsletter_ads").select("advert_id, after_item, advert:adverts(id, name, format, member:members(name))").eq("issue_id", id).order("position"), "console/newsletter ads"),
     must(db.from("adverts").select("id, name, format, member:members(name)").in("format", NEWSLETTER_FORMATS).order("created_at", { ascending: false }), "console/newsletter eligible adverts"),
     must(db.from("stories").select("id, title, published_at, status").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter all stories"),
     must(db.from("videos").select("id, title, published_at, status").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter all videos"),
+    must(db.from("newsletter_directory").select("member_id, member:members(name, status, archived_at)").eq("issue_id", id), "console/newsletter directory"),
+    // Only members with a public page can be listed: the entry links to it.
+    editable
+      ? must(db.from("members").select("id, name").in("status", [...PUBLIC_MEMBER_STATUSES]).is("archived_at", null).order("name"), "console/newsletter directory members")
+      : Promise.resolve([]),
     // B5.3: reuse the same render the send job uses, so "Preview" is a proof
     // of the actual email, not a second approximation of it. Only worth the
     // query while the issue can still change.
@@ -82,7 +88,9 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
     ...(allStories ?? []).map((s) => ({ ...s, kind: "story" as const })),
     ...(allVideos ?? []).map((v) => ({ ...v, kind: "video" as const })),
   ].sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""));
-  const hasMastheadLogo = (ads ?? []).some((a) => a.advert?.format === "association_logo");
+  const takenFormats = new Set((ads ?? []).flatMap((a) => (a.advert && ONE_PER_ISSUE_FORMATS.has(a.advert.format) ? [a.advert.format] : [])));
+  const listed = [...(directory ?? [])].sort((a, b) => (a.member?.name ?? "").localeCompare(b.member?.name ?? ""));
+  const listedIds = new Set(listed.map((d) => d.member_id));
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -246,7 +254,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Advert slots ({(ads ?? []).length} · ~2–3 recommended)</h2>
         <p className="mt-1 text-xs text-graphite">
-          Banners sit between the stories, labelled “Sponsored”. Left on auto, the first goes after item 3 (the lead and the first row), the last just before the footer, and any others between. An “In association with” logo goes in the masthead, one per issue.
+          Banners and the sponsored story sit between the stories, labelled “Sponsored”. Left on auto, the first goes after item 3 (the lead and the first row), the last just before the footer, and any others between. An “In association with” logo goes in the masthead. One logo and one sponsored story per issue.
         </p>
         {(ads ?? []).map((a) => (
           <div key={a.advert_id} className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
@@ -278,7 +286,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
         {editable && (
           <>
             <h3 className="mt-4 text-xs font-bold uppercase text-graphite">Add</h3>
-            {available.filter((a) => !(hasMastheadLogo && a.format === "association_logo")).map((a) => (
+            {available.filter((a) => !takenFormats.has(a.format)).map((a) => (
               <div key={a.id} className="mt-2 flex items-center justify-between border-t pt-2 text-sm">
                 <span>{a.name} — {a.member?.name} <span className="text-graphite">({a.format.replace(/_/g, " ")})</span></span>
                 <form action={attachNewsletterAd}>
@@ -290,6 +298,40 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
             ))}
             {!available.length && <p className="mt-2 text-sm text-graphite">No newsletter-format artwork available — add some from Artwork.</p>}
           </>
+        )}
+      </section>
+
+      <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-ink">Supplier directory ({listed.length})</h2>
+        <p className="mt-1 text-xs text-graphite">Members listed near the footer, in name order, each linked to their page.</p>
+        {listed.map((d) => (
+          <div key={d.member_id} className="mt-2 flex items-center justify-between border-t pt-2 text-sm">
+            <span>
+              {d.member?.name}
+              {d.member && (d.member.archived_at || !(PUBLIC_MEMBER_STATUSES as readonly string[]).includes(d.member.status)) && (
+                <span className="text-xs text-danger"> no public page — left out of the issue</span>
+              )}
+            </span>
+            {editable && (
+              <form action={removeDirectoryMember}>
+                <input type="hidden" name="issue_id" value={id} />
+                <input type="hidden" name="member_id" value={d.member_id} />
+                <button className="text-xs text-danger hover:underline">remove</button>
+              </form>
+            )}
+          </div>
+        ))}
+        {!listed.length && <p className="mt-2 text-sm text-graphite">No members listed — the directory is left out of the issue.</p>}
+        {editable && (
+          <form action={addDirectoryMember} className="mt-3 flex gap-2 text-sm">
+            <input type="hidden" name="issue_id" value={id} />
+            <label htmlFor="directory-member" className="sr-only">Member to add</label>
+            <select id="directory-member" name="member_id" required defaultValue="" className="min-w-0 flex-1 rounded border px-3 py-1.5">
+              <option value="">— choose a member —</option>
+              {(directoryMembers ?? []).filter((m) => !listedIds.has(m.id)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <button className="rounded bg-ink px-3 py-1 text-xs text-white">Add</button>
+          </form>
         )}
       </section>
     </div>

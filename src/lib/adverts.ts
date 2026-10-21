@@ -58,7 +58,10 @@ export type AdvertFormat =
   | "association_logo"
   | "skyscraper"
   | "mpu"
-  | "in_feed";
+  | "in_feed"
+  // Gap review area 5: the newsletter's sponsored story — a 600×400 image with
+  // a headline and up to 80 words (adverts.headline/body). Newsletter only.
+  | "sponsored_story";
 
 /**
  * The statuses that may appear on the public site. Exported because the render

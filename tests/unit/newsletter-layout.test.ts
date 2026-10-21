@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adSlots, issueBlocks, splitMastheadSponsor } from "@/lib/newsletter-layout";
+import { adSlots, countWords, diaryDate, diaryWindow, issueBlocks, splitMastheadSponsor } from "@/lib/newsletter-layout";
 
 const auto = (n: number) => Array.from({ length: n }, () => null);
 
@@ -90,5 +90,38 @@ describe("splitMastheadSponsor", () => {
 
   it("has no sponsor without an association logo", () => {
     expect(splitMastheadSponsor([{ format: "newsletter_banner" }]).sponsor).toBeNull();
+  });
+});
+
+describe("diaryWindow", () => {
+  const now = new Date("2026-10-21T10:00:00Z");
+
+  it("runs 30 days from the send date", () => {
+    expect(diaryWindow("2026-11-03T09:00:00Z", now)).toEqual({ from: "2026-11-03", to: "2026-12-03" });
+  });
+
+  it("starts today for a draft with no send date, or a bad one", () => {
+    expect(diaryWindow(null, now)).toEqual({ from: "2026-10-21", to: "2026-11-20" });
+    expect(diaryWindow("not a date", now)).toEqual({ from: "2026-10-21", to: "2026-11-20" });
+  });
+});
+
+describe("diaryDate", () => {
+  it("formats one day, a run within a month, and a run across months", () => {
+    expect(diaryDate("2026-11-04")).toBe("4 November");
+    expect(diaryDate("2026-11-04", "2026-11-06")).toBe("4–6 November");
+    expect(diaryDate("2026-11-28", "2026-12-02")).toBe("28 November – 2 December");
+  });
+
+  it("treats an end on or before the start as a single day", () => {
+    expect(diaryDate("2026-11-04", "2026-11-04")).toBe("4 November");
+    expect(diaryDate("2026-11-04", null)).toBe("4 November");
+  });
+});
+
+describe("countWords", () => {
+  it("counts words however they are spaced, and nothing as zero", () => {
+    expect(countWords("  Laser cutting,\n five   ways ")).toBe(4);
+    expect(countWords("   ")).toBe(0);
   });
 });

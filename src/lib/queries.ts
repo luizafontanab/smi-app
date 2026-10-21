@@ -798,7 +798,7 @@ export async function newsletterBySlug(slug: string) {
   const db = publicDb();
   const { data: issue } = await db
     .from("newsletter_issues")
-    .select("number, subject, intro, sent_at, id")
+    .select("number, subject, intro, sent_at, scheduled_at, id")
     .eq("status", "sent")
     .eq("web_slug", slug)
     .single();
@@ -815,7 +815,7 @@ export async function newsletterBySlug(slug: string) {
     // anon client above, and to the columns the emailed issue itself exposes.
     serviceDb()
       .from("newsletter_ads")
-      .select("position, after_item, advert:adverts(id, name, format, desktop_path, mobile_path)")
+      .select("position, after_item, advert:adverts(id, name, format, desktop_path, mobile_path, headline, body)")
       .eq("issue_id", issue.id)
       .order("position"),
   ]);

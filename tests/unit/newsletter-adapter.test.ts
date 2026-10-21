@@ -210,6 +210,52 @@ describe("renderIssueHtml", () => {
       expect((await renderIssueHtml("iss1"))!.html).not.toContain("display:none");
     });
 
+    it("draws a sponsored story as its own card, marked Sponsored and tracked through /visit", async () => {
+      issue({}, [1, 2, 3, 4].map(story), [
+        { position: 0, after_item: null, advert: { id: "sp1", name: "Bystronic", format: "sponsored_story", desktop_path: "sp1.jpg", mobile_path: "sp1.jpg", headline: "Bending <faster>", body: "Eighty words at most." } },
+      ]);
+      const { html } = (await renderIssueHtml("iss1"))!;
+
+      expect(html).toContain("Bending &lt;faster&gt;");
+      expect(html).toContain('alt="Bending &lt;faster&gt;"');
+      expect(html).toContain("Eighty words at most.");
+      expect(html).toContain("/visit/sp1?src=newsletter");
+      expect(html).toContain(">Sponsored<");
+      // placed like a banner: after item 3
+      const [s3, sp, s4] = order(html, ["Story 3", "sp1.jpg", "Story 4"]);
+      expect(s3).toBeLessThan(sp);
+      expect(sp).toBeLessThan(s4);
+    });
+
+    it("adds the events diary and the supplier directory after the stories, in both versions", async () => {
+      db({
+        newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 50, subject: "November", intro: null, preview_text: null, web_slug: null, scheduled_at: "2026-11-03T09:00:00Z", sent_at: null })),
+        newsletter_items: () => queryBuilder(dbOk([story(1)])),
+        newsletter_ads: () => queryBuilder(dbOk([])),
+        events: () => queryBuilder(dbOk([{ slug: "euroblech", title: "EuroBLECH & co", starts_on: "2026-11-10", ends_on: "2026-11-13", location: "Hanover" }])),
+        newsletter_directory: () => queryBuilder(dbOk([{ member: { slug: "amada", name: "Amada", logo_path: null, status: "active", archived_at: null } }])),
+      });
+      const { html, text } = (await renderIssueHtml("iss1"))!;
+
+      expect(html).toContain("Events diary");
+      expect(html).toContain("10–13 November");
+      expect(html).toContain("EuroBLECH &amp; co");
+      expect(html).toContain("/event/euroblech");
+      expect(html).toContain("Supplier directory");
+      expect(html).toContain("/member/amada");
+      expect(html.indexOf("Story 1")).toBeLessThan(html.indexOf("Events diary"));
+      expect(html.indexOf("Events diary")).toBeLessThan(html.indexOf("Supplier directory"));
+      expect(text).toContain("- 10–13 November: EuroBLECH & co");
+      expect(text).toContain("- Amada: ");
+    });
+
+    it("leaves the diary and directory out when there is nothing to list", async () => {
+      issue({}, [story(1)], []);
+      const { html } = (await renderIssueHtml("iss1"))!;
+      expect(html).not.toContain("Events diary");
+      expect(html).not.toContain("Supplier directory");
+    });
+
     it("lists items in the composer's order in the text version, videos mixed in", async () => {
       issue({}, [
         { position: 0, story: null, video: { slug: "demo", title: "Demo video", thumbnail_path: null } },

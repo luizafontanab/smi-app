@@ -30,6 +30,7 @@ export const ADVERT_FORMATS: AdvertFormatOption[] = [
   { value: "supplier_logo", label: "Supplier logo" },
   { value: "newsletter_banner", label: "Newsletter banner" },
   { value: "association_logo", label: "Association logo" },
+  { value: "sponsored_story", label: "Newsletter sponsored story (600×400 image + up to 80 words)" },
 ];
 
 /** Formats still held by existing rows but no longer offered. */

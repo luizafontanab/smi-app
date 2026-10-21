@@ -73,6 +73,47 @@ describe("saveAdvertArtwork", () => {
   });
 });
 
+describe("saveAdvertArtwork — newsletter sponsored story (gap review area 5)", () => {
+  it("needs a headline and text, before anything is uploaded", async () => {
+    const from = db({});
+    await expect(saveAdvertArtwork(form({ name: "Bystronic story", member_id: "m1", format: "sponsored_story", headline: "Faster bending", body: " " })))
+      .rejects.toThrow(/needs%20a%20headline%20and%20its%20text/);
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("is created from the one 600×400 image, which fills the mobile slot too", async () => {
+    uploadImage.mockResolvedValueOnce("panels/story.jpg").mockResolvedValueOnce(null);
+    const advertsBuilder = queryBuilder(dbOk(null));
+    db({ adverts: () => advertsBuilder });
+
+    await expect(saveAdvertArtwork(form({
+      name: "Bystronic story", member_id: "m1", format: "sponsored_story", headline: " Faster bending ", body: "Up to eighty words.",
+    }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/artwork");
+
+    expect(advertsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
+      format: "sponsored_story", headline: "Faster bending", body: "Up to eighty words.",
+      desktop_path: "panels/story.jpg", mobile_path: "panels/story.jpg",
+    }));
+  });
+
+  it("keeps other formats needing both images", async () => {
+    uploadImage.mockResolvedValueOnce("panels/d.jpg").mockResolvedValueOnce(null);
+    db({});
+    await expect(saveAdvertArtwork(form({ name: "Acme", member_id: "m1", format: "newsletter_banner" }))).rejects.toThrow(/Both%20a%20desktop/);
+  });
+
+  it("stores blank words as null on other formats", async () => {
+    const advertsBuilder = queryBuilder(dbOk(null));
+    db({ adverts: () => advertsBuilder });
+
+    await expect(saveAdvertArtwork(form({ id: "ad1", name: "Acme banner", member_id: "m1", format: "banner", headline: "", body: "" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/adverts/artwork");
+
+    expect(advertsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ headline: null, body: null }));
+  });
+});
+
 // Review findings 16 Oct (link_url only checked by the browser; orphaned uploads).
 describe("saveAdvertArtwork — link and uploads", () => {
   it("refuses a click-through link that isn't an http(s) web address, before uploading", async () => {

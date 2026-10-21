@@ -2,7 +2,8 @@ import { allRows } from "../db/all-rows";
 import { serviceDb } from "../db/server";
 import { mediaUrl } from "../db/server";
 import { siteUrl } from "../site-url";
-import { issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "../newsletter-layout";
+import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "../newsletter-layout";
+import { issueExtras } from "../newsletter-extras";
 import { EmailSendError } from "./email";
 
 /**
@@ -128,7 +129,7 @@ export async function renderIssueHtml(
 
   const { data: issue } = await db
     .from("newsletter_issues")
-    .select("id, number, subject, intro, preview_text, web_slug")
+    .select("id, number, subject, intro, preview_text, web_slug, scheduled_at, sent_at")
     .eq("id", issueId)
     .single();
   if (!issue) return null;
@@ -139,7 +140,7 @@ export async function renderIssueHtml(
       .select("position, story:stories(slug, title, excerpt:story_summary, cover_path), video:videos(slug, title, thumbnail_path)")
       .eq("issue_id", issueId).order("position"),
     db.from("newsletter_ads")
-      .select("position, after_item, advert:adverts(id, name, format, desktop_path, mobile_path)")
+      .select("position, after_item, advert:adverts(id, name, format, desktop_path, mobile_path, headline, body)")
       .eq("issue_id", issueId).order("position"),
   ]);
 
@@ -180,6 +181,13 @@ export async function renderIssueHtml(
           <td class="smi-col" width="50%" valign="top" style="padding:0 0 0 8px;">${cardHtml(block.items[1], CARD_IMAGE_WIDTH, 16)}</td>
         </tr></table></td></tr>`;
         case "ad": {
+          if (block.ad.format === "sponsored_story") {
+            // Gap review area 5 slice B: the advertiser's own story card, one
+            // 600×400 image (the desktop one) and its words, marked Sponsored.
+            const image = mediaUrl(block.ad.desktop_path) ?? mediaUrl(block.ad.mobile_path);
+            const card: IssueCard = { href: visit(block.ad.id), title: block.ad.headline ?? block.ad.name ?? "", summary: block.ad.body, image, kicker: AD_LABEL, cta: "Read more" };
+            return `<tr><td style="padding:16px;background:#f4f5f6;border-radius:4px;">${cardHtml(card, LEAD_IMAGE_WIDTH - 32, 18)}</td></tr>`;
+          }
           // The mobile creative, not the desktop one: this column is 600px at
           // its widest and narrower than that on a phone, which is what the
           // mobile artwork is cut for (560×300, the size sold).
@@ -193,6 +201,22 @@ export async function renderIssueHtml(
       }
     })
     .join("");
+
+  const extras = await issueExtras(issue.id, issue.scheduled_at ?? issue.sent_at);
+  const diaryHtml = extras.events.length
+    ? `<tr><td style="padding:24px 0 4px;border-top:3px solid #ff8200;"><p style="margin:0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#111418;">${escapeHtml(DIARY_HEADING)}</p></td></tr>
+      ${extras.events.map((event) => `<tr><td style="padding:8px 0;border-bottom:1px solid #e4e6e9;">
+        <p style="margin:0;font-size:12px;font-weight:700;text-transform:uppercase;color:#5a6068;">${escapeHtml(diaryDate(event.starts_on, event.ends_on))}</p>
+        <p style="margin:2px 0 0;font-size:15px;font-weight:700;"><a href="${escapeHtml(`${base}/event/${event.slug}`)}" style="color:#111418;text-decoration:none;">${escapeHtml(event.title)}</a></p>
+        ${event.location ? `<p style="margin:2px 0 0;font-size:13px;color:#5a6068;">${escapeHtml(event.location)}</p>` : ""}
+      </td></tr>`).join("")}`
+    : "";
+  const directoryHtml = extras.directory.length
+    ? `<tr><td style="padding:24px 0 4px;border-top:3px solid #ff8200;"><p style="margin:0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#111418;">${escapeHtml(DIRECTORY_HEADING)}</p></td></tr>
+      <tr><td style="padding:8px 0 0;font-size:14px;line-height:1.9;">${extras.directory
+        .map((member) => `<a href="${escapeHtml(`${base}/member/${member.slug}`)}" style="color:#111418;text-decoration:none;font-weight:700;">${escapeHtml(member.name)}</a>`)
+        .join(` <span style="color:#ff8200;">&middot;</span> `)}</td></tr>`
+    : "";
 
   const sponsorImage = sponsor ? mediaUrl(sponsor.desktop_path) ?? mediaUrl(sponsor.mobile_path) : null;
   const masthead = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -232,12 +256,18 @@ export async function renderIssueHtml(
       intro: issue.intro ?? "",
       preheader,
       masthead,
-      items: body,
+      items: body + diaryHtml + directoryHtml,
       // The adverts are placed between the items now, so they arrive inside
       // {{items}}. The token stays, empty, so a shell edited in the console
       // before this still validates and renders.
       adverts: "",
-      items_text: cards.map((card) => `- ${card.title}\n  ${card.href}`).join("\n"),
+      items_text: [
+        cards.map((card) => `- ${card.title}\n  ${card.href}`).join("\n"),
+        extras.events.length
+          ? `${DIARY_HEADING}\n${extras.events.map((e) => `- ${diaryDate(e.starts_on, e.ends_on)}: ${e.title}\n  ${base}/event/${e.slug}`).join("\n")}`
+          : "",
+        extras.directory.length ? `${DIRECTORY_HEADING}\n${extras.directory.map((m) => `- ${m.name}: ${base}/member/${m.slug}`).join("\n")}` : "",
+      ].filter(Boolean).join("\n\n"),
       online_link: issue.web_slug
         ? ` · <a href="${escapeHtml(base)}/newsletters/${escapeHtml(issue.web_slug)}" style="color:#5a6068;">Read this issue online</a>`
         : "",

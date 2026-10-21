@@ -34,6 +34,8 @@ describe("/console/newsletter/[id] story picker", () => {
         stories: () => queryBuilder(dbOk([row("new", "Newer story")])),
         videos: () => queryBuilder(dbOk([])),
         contacts: () => queryBuilder({ data: null, error: null, count: 0 }),
+        newsletter_directory: () => queryBuilder(dbOk([])),
+        members: () => queryBuilder(dbOk([])),
       }),
     })));
 
@@ -69,6 +71,8 @@ describe("/console/newsletter/[id] proof and approval", () => {
         stories: () => queryBuilder(dbOk([])),
         videos: () => queryBuilder(dbOk([])),
         contacts: () => queryBuilder({ data: null, error: null, count: 120 }),
+        newsletter_directory: () => queryBuilder(dbOk([])),
+        members: () => queryBuilder(dbOk([])),
         profiles: () => queryBuilder(dbOk([{ user_id: "admin1", display_name: "Jas" }])),
       }),
     })));

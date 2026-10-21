@@ -20,6 +20,8 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { Badge } from "@/components/console/ui";
 import { STORY_STATUS_LABELS, isMemberDraft, parseStoryListFilters, storyListHref } from "@/lib/story-board";
 import { SocialPostFields } from "@/components/console/SocialPostFields";
+import { CountedInput } from "@/components/console/CountedInput";
+import { STORY_SUMMARY_WORDS } from "@/lib/newsletter-layout";
 import { latestSocialJob, readSocialCaps, socialStatusLine } from "@/lib/social-push";
 import { isSocialLive } from "@/lib/adapters/social";
 import { formatLondon, londonInputValue } from "@/lib/london-time";
@@ -123,11 +125,20 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           <label htmlFor="title" className="text-sm font-medium">Title</label>
           <input id="title" name="title" defaultValue={story?.title ?? ""} required className="mt-1 w-full rounded border px-3 py-2" />
         </div>
-        <div>
-          <label htmlFor="excerpt" className="text-sm font-medium">Summary <span className="font-normal text-graphite">(optional, 1–2 sentences)</span></label>
-          <textarea id="excerpt" name="excerpt" defaultValue={story?.excerpt ?? ""} rows={2} aria-describedby="excerpt-hint" className="mt-1 w-full rounded border px-3 py-2" />
-          <p id="excerpt-hint" className="mt-1 text-xs text-graphite">Shown under the title on story cards and in newsletters, and as the description when the story is shared on social media or found in search. Left empty, the story&apos;s opening lines are used.</p>
-        </div>
+        <CountedInput
+          id="excerpt"
+          name="excerpt"
+          label={<>Summary <span className="font-normal text-graphite">(optional, {STORY_SUMMARY_WORDS.min}–{STORY_SUMMARY_WORDS.max} words)</span></>}
+          labelClassName="text-sm font-medium"
+          unit="words"
+          softMin={STORY_SUMMARY_WORDS.min}
+          softMax={STORY_SUMMARY_WORDS.max}
+          overMessage="longer than the newsletter SOP suggests"
+          multiline
+          rows={3}
+          defaultValue={story?.excerpt ?? ""}
+          hint="Shown under the title on story cards and in newsletters, and as the description when the story is shared on social media or found in search. Left empty, the story's opening lines are used."
+        />
         <div>
           <span className="block text-sm font-medium">Body</span>
           <RichTextEditor name="body" ariaLabel="Body" initialHtml={story?.body ?? ""} uploadImage={consoleUploadImage} allowAdBreak minHeightClass="min-h-80" />

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addContact, approveIssue, attachNewsletterAd, createIssue, placeNewsletterAd, previewBiginPull, runBiginSync, saveContact, saveProofChecks, scheduleIssue,
-  searchBiginCompanies, searchIssueContent, sendIssue, sendTestIssue, unscheduleIssue, updateIssue, withdrawApproval,
+  addContact, addDirectoryMember, approveIssue, attachNewsletterAd, createIssue, placeNewsletterAd, previewBiginPull, runBiginSync, saveContact, saveProofChecks, scheduleIssue,
+  removeDirectoryMember, searchBiginCompanies, searchIssueContent, sendIssue, sendTestIssue, unscheduleIssue, updateIssue, withdrawApproval,
 } from "@/app/console/actions";
 import { PROOF_KEYS } from "@/lib/newsletter-proof";
 import { serviceDb } from "@/lib/db/server";
@@ -395,6 +395,49 @@ describe("issue layout (gap review area 5)", () => {
     await attachNewsletterAd(form({ issue_id: "iss1", advert_id: "banner1" }));
 
     expect(adsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ advert_id: "banner1" }));
+  });
+
+  it("attachNewsletterAd allows one sponsored story per issue", async () => {
+    const adsBuilder = queryBuilder(dbOk([{ advert: { format: "sponsored_story" } }]));
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ status: "draft" })),
+      adverts: () => queryBuilder(dbOk({ format: "sponsored_story" })),
+      newsletter_ads: () => adsBuilder,
+    });
+
+    await expect(attachNewsletterAd(form({ issue_id: "iss1", advert_id: "sp2" }))).rejects.toThrow(/already%20has%20a%20sponsored%20story/);
+    expect(adsBuilder.insert).not.toHaveBeenCalled();
+  });
+
+  it("addDirectoryMember lists a member once and withdraws approval", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    const directoryBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => issuesBuilder, newsletter_directory: () => directoryBuilder });
+
+    await addDirectoryMember(form({ issue_id: "iss1", member_id: OLD }));
+
+    expect(directoryBuilder.upsert).toHaveBeenCalledWith({ issue_id: "iss1", member_id: OLD }, { onConflict: "issue_id,member_id", ignoreDuplicates: true });
+    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ approved_at: null }));
+  });
+
+  it("addDirectoryMember refuses a missing member and a sent issue", async () => {
+    const directoryBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => queryBuilder(dbOk({ status: "sent" })), newsletter_directory: () => directoryBuilder });
+
+    await expect(addDirectoryMember(form({ issue_id: "iss1", member_id: "" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    await expect(addDirectoryMember(form({ issue_id: "iss1", member_id: OLD }))).rejects.toThrow(/can%20no%20longer%20be%20edited/);
+    expect(directoryBuilder.upsert).not.toHaveBeenCalled();
+  });
+
+  it("removeDirectoryMember takes the member off this issue only", async () => {
+    const directoryBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => queryBuilder(dbOk({ status: "draft" })), newsletter_directory: () => directoryBuilder });
+
+    await removeDirectoryMember(form({ issue_id: "iss1", member_id: OLD }));
+
+    expect(directoryBuilder.delete).toHaveBeenCalled();
+    expect(directoryBuilder.eq).toHaveBeenCalledWith("issue_id", "iss1");
+    expect(directoryBuilder.eq).toHaveBeenCalledWith("member_id", OLD);
   });
 
   it("searchIssueContent searches published titles since a date, with LIKE wildcards escaped, newest first", async () => {

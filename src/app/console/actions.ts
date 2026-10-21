@@ -48,6 +48,7 @@ import { sanitizeRichText } from "@/lib/sanitize";
 import { siteUrl } from "@/lib/site-url";
 import { missingChecks, PROOF_KEYS } from "@/lib/newsletter-proof";
 import { parseIssueItems, type IssueContentResult, type IssueItemRef } from "@/lib/newsletter-picker";
+import { ONE_PER_ISSUE_FORMATS } from "@/lib/newsletter-layout";
 import { isVariant, SITE_VARIANT_KEY, VARIANT_COOKIE } from "@/lib/variant";
 import { HOME_SECTION_IDS, HOME_SECTIONS_KEY, LOCKED_VISIBLE, moveHomeSection, resolveHomeSections, type HomeSectionId } from "@/lib/home-sections";
 import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
@@ -1533,6 +1534,14 @@ export async function saveAdvertArtwork(formData: FormData) {
   // Before the upload, so a bad link doesn't leave orphaned artwork behind.
   const link = advertLinkFromForm(formData);
   if ("error" in link) redirect(`/console/adverts/artwork/${id || "new"}?error=${encodeURIComponent(link.error)}`);
+  // Gap review area 5: a sponsored story carries its own words. Kept on any
+  // format, so correcting a mis-set format doesn't lose them.
+  const headline = String(formData.get("headline") ?? "").trim() || null;
+  const body = String(formData.get("body") ?? "").trim() || null;
+  const sponsoredStory = format === "sponsored_story";
+  if (sponsoredStory && (!headline || !body)) {
+    redirect(`/console/adverts/artwork/${id || "new"}?error=${encodeURIComponent("A sponsored story needs a headline and its text.")}`);
+  }
 
   let desktop_path: string | null = null;
   let mobile_path: string | null = null;
@@ -1550,6 +1559,8 @@ export async function saveAdvertArtwork(formData: FormData) {
     member_id,
     format,
     link_url: link.url,
+    headline,
+    body,
     updated_at: new Date().toISOString(),
     ...(desktop_path ? { desktop_path } : {}),
     ...(mobile_path ? { mobile_path } : {}),
@@ -1558,6 +1569,9 @@ export async function saveAdvertArtwork(formData: FormData) {
   if (id) {
     await db.from("adverts").update(values).eq("id", id);
   } else {
+    // A sponsored story has one image (600×400). Both columns are NOT NULL,
+    // so it fills the mobile one too; removeMedia tolerates the shared path.
+    if (sponsoredStory && desktop_path && !mobile_path) mobile_path = desktop_path;
     // both images are NOT NULL, so a new advert cannot be created without them
     if (!desktop_path || !mobile_path) {
       // the one that did upload has nothing to belong to
@@ -2450,12 +2464,15 @@ export async function attachNewsletterAd(formData: FormData) {
   const db = serviceDb();
   const issueId = String(formData.get("issue_id"));
   const advertId = String(formData.get("advert_id"));
-  // The masthead has room for one "In association with" logo (area 5).
+  // The masthead has room for one "In association with" logo, and the SOP has
+  // one sponsored story (area 5).
   const { data: advert } = await db.from("adverts").select("format").eq("id", advertId).maybeSingle();
-  if (advert?.format === "association_logo") {
+  if (advert && ONE_PER_ISSUE_FORMATS.has(advert.format)) {
     const { data: attached } = await db.from("newsletter_ads").select("advert:adverts(format)").eq("issue_id", issueId);
-    if ((attached ?? []).some((row) => row.advert?.format === "association_logo")) {
-      issueFail(issueId, "This issue already has an “In association with” logo. Remove it first to use another.");
+    if ((attached ?? []).some((row) => row.advert?.format === advert.format)) {
+      issueFail(issueId, advert.format === "association_logo"
+        ? "This issue already has an “In association with” logo. Remove it first to use another."
+        : "This issue already has a sponsored story. Remove it first to use another.");
     }
   }
   const { count } = await db.from("newsletter_ads").select("*", { count: "exact", head: true }).eq("issue_id", issueId);
@@ -2474,6 +2491,37 @@ export async function detachNewsletterAd(formData: FormData) {
   await markIssueEdited(db, issueId, user.userId);
   revalidatePath(`/console/newsletter/${issueId}`);
   revalidatePath("/console/newsletter");
+}
+
+/**
+ * The issue's supplier directory (gap review area 5, SOP §1b): members Jas
+ * picks, listed near the footer in name order. Changing it changes the issue,
+ * so it withdraws approval like any other edit.
+ */
+export async function addDirectoryMember(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const issueId = String(formData.get("issue_id"));
+  const memberId = String(formData.get("member_id") ?? "");
+  if (!UUID_RE.test(memberId)) issueFail(issueId, "Choose a member to add to the directory.");
+  const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", issueId).single();
+  if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) issueFail(issueId, "This issue can no longer be edited.");
+  // The primary key makes a double-click a no-op rather than a duplicate.
+  await db.from("newsletter_directory").upsert({ issue_id: issueId, member_id: memberId }, { onConflict: "issue_id,member_id", ignoreDuplicates: true });
+  await markIssueEdited(db, issueId, user.userId);
+  revalidatePath(`/console/newsletter/${issueId}`);
+}
+
+export async function removeDirectoryMember(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const issueId = String(formData.get("issue_id"));
+  const memberId = String(formData.get("member_id") ?? "");
+  const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", issueId).single();
+  if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) issueFail(issueId, "This issue can no longer be edited.");
+  await db.from("newsletter_directory").delete().eq("issue_id", issueId).eq("member_id", memberId);
+  await markIssueEdited(db, issueId, user.userId);
+  revalidatePath(`/console/newsletter/${issueId}`);
 }
 
 /**
