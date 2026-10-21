@@ -201,8 +201,9 @@
     issue now looks like the issues you send from Mailchimp today: the SMI logo with
     the "In association with" sponsor beside it, the lead story at full width, then
     the stories two to a row under "Sheeting Hot News", with adverts between the rows.
-    The SOP's sponsored story, events diary and supplier directory are in too; UTM
-    tags and a per-issue report come next.
+    The SOP's sponsored story, events diary and supplier directory are in too, and so
+    are the UTM tags on advert links and a per-issue report (top stories and each
+    advert's clicks) on a sent issue's page.
     - **"In association with" logo size.** We sell it as 250×60, but the logos in
       your recent issues are 372×110. Which should we ask advertisers for?
     - **Advert sizes stay at 560×300**, the size we sell and the one your live issues

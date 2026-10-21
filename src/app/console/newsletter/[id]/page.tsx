@@ -13,6 +13,7 @@ import { addDirectoryMember, approveIssue, attachNewsletterAd, detachNewsletterA
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { CountedInput } from "@/components/console/CountedInput";
 import { IssueItemsPicker } from "@/components/console/IssueItemsPicker";
+import { summariseIssueClicks } from "@/lib/newsletter-tracking";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
   const editable = issue.status === "draft" || issue.status === "scheduled" || issue.status === "send_failed";
 
   const [items, ads, eligible, allStories, allVideos, directory, directoryMembers, preview] = await Promise.all([
-    must(db.from("newsletter_items").select("position, story_id, video_id, story:stories(id, title, published_at, status), video:videos(id, title, published_at, status)").eq("issue_id", id).order("position"), "console/newsletter items"),
+    must(db.from("newsletter_items").select("position, story_id, video_id, story:stories(id, title, published_at, status), video:videos(id, slug, title, published_at, status)").eq("issue_id", id).order("position"), "console/newsletter items"),
     must(db.from("newsletter_ads").select("advert_id, after_item, advert:adverts(id, name, format, member:members(name))").eq("issue_id", id).order("position"), "console/newsletter ads"),
     must(db.from("adverts").select("id, name, format, member:members(name)").in("format", NEWSLETTER_FORMATS).order("created_at", { ascending: false }), "console/newsletter eligible adverts"),
     must(db.from("stories").select("id, title, published_at, status").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter all stories"),
@@ -56,6 +57,16 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
     // query while the issue can still change.
     editable ? renderIssueHtml(id) : Promise.resolve(null),
   ]);
+
+  // Gap review area 5 slice C: clicks counted per issue, for the SOP's report.
+  const clickRows = issue.status === "sent"
+    ? await must(db.rpc("newsletter_issue_clicks", { p_issue: id }), "console/newsletter issue clicks")
+    : [];
+  const report = summariseIssueClicks(
+    clickRows ?? [],
+    items ?? [],
+    (ads ?? []).map((a) => ({ advert_id: a.advert_id, name: `${a.advert?.name ?? "Advert"}${a.advert?.member?.name ? ` — ${a.advert.member.name}` : ""}` })),
+  );
 
   const namedIds = [issue.approved_by, issue.last_test_sent_by].filter((v): v is string => Boolean(v));
   // Gap review area 4: the audience check compares against the most recent
@@ -112,6 +123,29 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
               No opens or clicks recorded yet — this also reads 0 if the Resend account isn&apos;t live, since local sends use the logging stub.
             </p>
           )}
+          <div className="mt-4 grid gap-4 border-t pt-3 text-sm sm:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-graphite">Top stories from this issue</h3>
+              <ol className="mt-1 space-y-1">
+                {report.top.map((row, i) => (
+                  <li key={i} className="flex justify-between gap-2"><span className="min-w-0 truncate">{row.title}</span><span className="shrink-0 text-graphite">{row.clicks} {row.clicks === 1 ? "click" : "clicks"} · {row.visitors} known</span></li>
+                ))}
+                {!report.top.length && <li className="text-graphite">No story clicks recorded.</li>}
+              </ol>
+            </div>
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-graphite">Advert clicks</h3>
+              <ul className="mt-1 space-y-1">
+                {report.adverts.map((row, i) => (
+                  <li key={i} className="flex justify-between gap-2"><span className="min-w-0 truncate">{row.name}</span><span className="shrink-0 text-graphite">{row.clicks} {row.clicks === 1 ? "click" : "clicks"} · {row.visitors} known</span></li>
+                ))}
+                {!report.adverts.length && <li className="text-graphite">No adverts in this issue.</li>}
+              </ul>
+            </div>
+            <p className="text-xs text-graphite sm:col-span-2">
+              Every click from the email is counted. &ldquo;Known&rdquo; is how many different readers made them, which can only be told for readers who accepted analytics cookies; the rest are counted anonymously. Issues sent before 21 October 2026 have no per-issue figures. Click-through rates need per-recipient figures from the email sender, which aren&apos;t available yet.
+            </p>
+          </div>
         </section>
       )}
 

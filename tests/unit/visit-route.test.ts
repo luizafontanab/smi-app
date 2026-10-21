@@ -1,16 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET, resolveClickPath } from "@/app/visit/[id]/route";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
+import type { RequestContext } from "@/lib/analytics";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const { record, requestContext } = vi.hoisted(() => ({
   record: vi.fn(() => {}),
-  requestContext: vi.fn(async () => ({ session_hash: "h", referrer: null, region: null, company: null, consented: true })),
+  requestContext: vi.fn(async (): Promise<RequestContext> => ({ session_hash: "h", referrer: null, region: null, company: null, consented: true })),
 }));
-vi.mock("@/lib/analytics", () => ({ record, requestContext }));
+vi.mock("@/lib/analytics", async (orig) => ({ ...(await orig<typeof import("@/lib/analytics")>()), record, requestContext }));
 
 afterEach(() => {
   resetDbServerMocks();
@@ -62,6 +63,56 @@ describe("GET /visit/[id]", () => {
     })));
 
     await expect(GET(click("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:/member/acme");
+  });
+
+  describe("from a newsletter issue (gap review area 5)", () => {
+    const ISSUE = "11111111-1111-4111-8111-111111111111";
+    function stub(advert: Record<string, unknown>, issue: Record<string, unknown> | null) {
+      vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+        from: fromByTable({ adverts: () => queryBuilder(dbOk(advert)), newsletter_issues: () => queryBuilder(dbOk(issue)) }),
+      })));
+    }
+
+    it("records the issue and adds the SOP's UTM tags to the advertiser's link", async () => {
+      stub({ id: "ad1", name: "Kerf banner", link_url: "https://kerf.example/", member: { id: "m1", slug: "kerf" } }, { id: ISSUE, scheduled_at: "2026-11-03T09:00:00Z", sent_at: "2026-11-03T09:01:00Z" });
+
+      await expect(GET(click(`https://smi.local/visit/ad1?src=newsletter&issue=${ISSUE}&slot=banner-2`), ctx("ad1")))
+        .rejects.toThrow("NEXT_REDIRECT:https://kerf.example/?utm_source=newsletter&utm_medium=email&utm_campaign=smi-2026-11&utm_content=kerf-banner-2");
+      expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_click", path: "newsletter", newsletter_issue_id: ISSUE })]);
+    });
+
+    it("counts a newsletter click without consent, anonymously", async () => {
+      requestContext.mockResolvedValueOnce({ session_hash: null, referrer: null, region: null, company: null, consented: false });
+      stub({ id: "ad1", name: "Kerf banner", link_url: "https://kerf.example/", member: { id: "m1", slug: "kerf" } }, { id: ISSUE, scheduled_at: null, sent_at: "2026-11-03T09:01:00Z" });
+
+      await expect(GET(click(`https://smi.local/visit/ad1?src=newsletter&issue=${ISSUE}&slot=banner-1`), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:");
+
+      expect(record).toHaveBeenCalledWith([expect.objectContaining({ kind: "ad_click", newsletter_issue_id: ISSUE, session_hash: null, anonymous: true })]);
+    });
+
+    it("still drops an on-site advert click without consent", async () => {
+      requestContext.mockResolvedValueOnce({ session_hash: null, referrer: null, region: null, company: null, consented: false });
+      stub({ id: "ad1", name: "Kerf banner", link_url: "https://kerf.example/", member: { id: "m1", slug: "kerf" } }, null);
+
+      await expect(GET(click("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:");
+
+      expect(record).toHaveBeenCalledWith([expect.objectContaining({ consented: false })]);
+      expect(record).not.toHaveBeenCalledWith([expect.objectContaining({ anonymous: true })]);
+    });
+
+    it("sends a member-page fallback on without tags", async () => {
+      stub({ id: "ad1", name: "Kerf banner", link_url: null, member: { id: "m1", slug: "kerf" } }, { id: ISSUE, scheduled_at: null, sent_at: "2026-11-03T09:01:00Z" });
+
+      await expect(GET(click(`https://smi.local/visit/ad1?src=newsletter&issue=${ISSUE}&slot=masthead`), ctx("ad1"))).rejects.toThrow(/^NEXT_REDIRECT:\/member\/kerf$/);
+    });
+
+    it("treats an old link with no issue, or a made-up issue, as before: no issue, no tags", async () => {
+      stub({ id: "ad1", name: "Kerf banner", link_url: "https://kerf.example/", member: { id: "m1", slug: "kerf" } }, null);
+
+      await expect(GET(click("https://smi.local/visit/ad1?src=newsletter"), ctx("ad1"))).rejects.toThrow(/^NEXT_REDIRECT:https:\/\/kerf\.example\/?$/);
+      await expect(GET(click(`https://smi.local/visit/ad1?src=newsletter&issue=${ISSUE}`), ctx("ad1"))).rejects.toThrow(/^NEXT_REDIRECT:https:\/\/kerf\.example\/?$/);
+      expect(record).toHaveBeenLastCalledWith([expect.objectContaining({ path: "newsletter", newsletter_issue_id: null })]);
+    });
   });
 
   it("sends a scheme-less stored link to the advertiser's site, not to a relative /visit/ path", async () => {

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { record, requestContext } from "@/lib/analytics";
+import { issueFromLink, newsletterLinkParams } from "@/lib/newsletter-tracking";
+import { newsletterClick, record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
 import { breadcrumbLd, newsArticleLd } from "@/lib/jsonld";
 import { storyBySlug } from "@/lib/queries";
@@ -37,13 +38,15 @@ export async function generateMetadata(props: PageProps<"/news/[slug]">) {
 
 export default async function StoryPage(props: PageProps<"/news/[slug]">) {
   const { slug } = await props.params;
-  const [story, ctx] = await Promise.all([storyBySlug(slug), requestContext()]);
+  const sp = await props.searchParams;
+  const [story, ctx, issue] = await Promise.all([storyBySlug(slug), requestContext(), issueFromLink(newsletterLinkParams(sp))]);
   if (!story) notFound();
 
   const path = `/news/${slug}`;
   const data = await loadStoryPageData(story);
   // impressions come from the browser once seen — see AdCreative / /api/seen
-  record([{ kind: "story_view", story_id: story.id, member_id: story.member_id, path, ...ctx }]);
+  // From a newsletter link it counts without consent too, anonymously (lib/analytics newsletterClick).
+  record([{ kind: "story_view", story_id: story.id, member_id: story.member_id, path, newsletter_issue_id: issue?.id ?? null, ...newsletterClick(ctx, newsletterLinkParams(sp).src) }]);
 
   const cover = mediaUrl(story.cover_path);
   const cats = (story.categories ?? []).map((c) => c.category).filter(Boolean) as { slug: string; name: string }[];

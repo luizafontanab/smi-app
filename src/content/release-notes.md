@@ -10,6 +10,12 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-21 — Clicks counted per newsletter issue
+- A sent issue's page now shows its five most-clicked stories and videos, and how many clicks each advert in it got, including any that got none.
+- Advert links in the newsletter now carry the UTM tags from the newsletter SOP (source, medium, the issue's month and the advertiser's slot), so advertisers can see newsletter visits in their own analytics. A tag the advertiser already put in their link is kept.
+- These figures start with the next issue sent. Every click from the email is counted, including from readers who haven't accepted analytics cookies; those are counted anonymously, with nothing that identifies the reader.
+- This also means newsletter advert clicks, and story views from the newsletter, now count for readers who haven't accepted cookies; before, they weren't counted at all, so advert click figures and members' story views will go up.
+
 ## 2026-10-21 — Sponsored story, events diary and supplier directory in the newsletter
 - There's a new artwork format, "Newsletter sponsored story": one 600×400 image with a headline and up to 80 words. Attached to an issue like a banner, it shows as a story card marked "Sponsored", and clicks are counted like any advert. One per issue.
 - Each issue now ends with an events diary: the published events starting in the 30 days after it goes out.

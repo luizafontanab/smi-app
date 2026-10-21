@@ -380,6 +380,7 @@ For the statistics exception (para 5), all of these must hold:
 | `smi-theme` | Design switcher (currently off) | Appearance (para 6), or strictly necessary for a feature the admin asked for. Not gated; fine while the switcher is admin-only. |
 | `viewed_cats` | Personalises the news page | Appearance (para 6). Already gated behind "Accept". |
 | Analytics (`analytics_events` via `session_hash`) | Readership stats | **Doesn't store anything on the device**: we hash IP + browser on the server. Reading "information automatically emitted" may still count as "access" under reg 6(2). Consent-gated today, which is the safe side. |
+| Newsletter click counts (`analytics_events`, no identifier) | Counting clicks from a newsletter issue | **Recorded without consent since 21 Oct 2026** (Luiza's decision, GAPS B5.10), but only as a bare count: the event, the time, what was clicked and the issue. No session hash, referrer, region or company, and the IP and browser are never read (`requestContext()` returns before touching them; `record()` blanks the fields again). Only for links that carry `src=newsletter`. With consent, the usual full row is kept instead. See consequence 4. |
 
 Three consequences:
 1. **"Who's engaging" (IP → company) must stay consent-based.** It is the textbook case the ICO
@@ -393,6 +394,15 @@ Three consequences:
    But today the same `analytics_events` rows feed **members' stats** (who viewed *their* page). That
    is reporting to third parties, arguably beyond "improving the service". **Keep consent** unless a
    solicitor signs off.
+4. **Anonymous newsletter click counts (21 Oct 2026).** A row with no identifier is not personal
+   data (§2), and nothing is read from the device beyond the request itself, which is needed to serve
+   the page or the redirect. That is the reasoning for counting these without consent. It has not
+   been checked by a solicitor. Two things to put to one alongside consequence 2:
+   - these rows also count towards **members' story-view figures** (a story_view from a newsletter
+     link is credited to the story's member like any other view), which is reporting to third
+     parties, though only as a count;
+   - the privacy notice should say that newsletter clicks are counted, anonymously, whatever the
+     cookie choice (for the rewrite ask-jas 27 unblocks).
 3. **Logged-in member activity is not a PECR question** once the user is authenticated. We read the
    `sb-*` cookie to authenticate (strictly necessary), and what we then record on the server is UK
    GDPR processing.

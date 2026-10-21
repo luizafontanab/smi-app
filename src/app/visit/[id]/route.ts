@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { serviceDb } from "@/lib/db/server";
-import { record, requestContext } from "@/lib/analytics";
+import { newsletterClick, record, requestContext } from "@/lib/analytics";
 import { resolveAdvertTarget } from "@/lib/adverts";
 import { isObviousBot } from "@/lib/bots";
 import { isMemberLinkable } from "@/lib/member-visibility";
+import { issueFromLink, slotFromLink, utmSlug, withUtm } from "@/lib/newsletter-tracking";
 
 /**
  * Advert click-through: record the click, then send the reader on.
@@ -20,15 +21,20 @@ export async function GET(req: Request, ctx: RouteContext<"/visit/[id]">) {
   const db = serviceDb();
   const { data: ad } = await db
     .from("adverts")
-    .select("id, link_url, member:members(id, slug, status, archived_at)")
+    .select("id, name, link_url, member:members(id, slug, status, archived_at)")
     .eq("id", id)
     .maybeSingle();
   if (!ad) redirect("/");
+  // Gap review area 5: a link from a newsletter issue names the issue and the
+  // slot it sat in. Only a real issue is recorded (lib/newsletter-tracking).
+  const params = new URL(req.url).searchParams;
+  const issue = await issueFromLink({ src: params.get("src"), issue: params.get("issue") });
   // A crawler is redirected like anyone else but never counted as a paid
   // click (lib/bots) — robots.ts already disallows /visit/ for those that listen.
   if (!isObviousBot(req.headers)) {
-    const reqCtx = await requestContext();
-    record([{ kind: "ad_click", advert_id: ad.id, member_id: ad.member?.id ?? null, path: resolveClickPath(req), ...reqCtx }]);
+    // A newsletter click is counted without consent too, anonymously (lib/analytics newsletterClick).
+    const reqCtx = newsletterClick(await requestContext(), params.get("src"));
+    record([{ kind: "ad_click", advert_id: ad.id, member_id: ad.member?.id ?? null, path: resolveClickPath(req), newsletter_issue_id: issue?.id ?? null, ...reqCtx }]);
   }
   // An advert with no usable link_url (none, or one resolveAdvertTarget can't
   // make a web address of) falls back to its advertiser's member page. That
@@ -38,7 +44,9 @@ export async function GET(req: Request, ctx: RouteContext<"/visit/[id]">) {
   // the advertiser paid for the impression and the click happened.
   // This is serviceDb(), so RLS does not do it for us (fix-list 72).
   const target = isMemberLinkable(ad.member) ? ad.member.slug : null;
-  redirect(resolveAdvertTarget(ad.link_url, target));
+  const destination = resolveAdvertTarget(ad.link_url, target);
+  // The SOP's UTM tags, on the advertiser's own site only (withUtm).
+  redirect(issue ? withUtm(destination, issue.campaign, `${utmSlug(ad.member?.slug ?? ad.name)}-${slotFromLink(params.get("slot"))}`) : destination);
 }
 
 /**

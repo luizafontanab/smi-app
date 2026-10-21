@@ -4,6 +4,7 @@ import { mediaUrl } from "../db/server";
 import { siteUrl } from "../site-url";
 import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "../newsletter-layout";
 import { issueExtras } from "../newsletter-extras";
+import { newsletterParams } from "../newsletter-tracking";
 import { EmailSendError } from "./email";
 
 /**
@@ -147,14 +148,17 @@ export async function renderIssueHtml(
   // Stories and videos are rendered in the same position order they were
   // added, rather than stories-then-videos, so the composer's picked order
   // is what a reader actually sees.
+  // Every link carries the issue, so its clicks can be counted per issue
+  // (gap review area 5 slice C, lib/newsletter-tracking).
+  const tracked = newsletterParams(issue.id);
   const cards = (items ?? []).flatMap((item): IssueCard[] => {
     if (item.story) {
       const s = item.story;
-      return [{ href: `${base}/news/${s.slug}`, title: s.title, summary: s.excerpt, image: mediaUrl(s.cover_path), kicker: null, cta: "Read article" }];
+      return [{ href: `${base}/news/${s.slug}?${tracked}`, title: s.title, summary: s.excerpt, image: mediaUrl(s.cover_path), kicker: null, cta: "Read article" }];
     }
     if (item.video) {
       const v = item.video;
-      return [{ href: `${base}/video/${v.slug}`, title: v.title, summary: null, image: mediaUrl(v.thumbnail_path), kicker: "Video", cta: "Watch video" }];
+      return [{ href: `${base}/video/${v.slug}?${tracked}`, title: v.title, summary: null, image: mediaUrl(v.thumbnail_path), kicker: "Video", cta: "Watch video" }];
     }
     return [];
   });
@@ -163,7 +167,10 @@ export async function renderIssueHtml(
   // ad click generates the same ad_click event a web ad slot click does
   // (A5.4/A5.7) — /visit/[id] already falls back to the advertiser's own
   // member page when there's no link_url.
-  const visit = (advertId: string) => `${base}/visit/${advertId}?src=newsletter`;
+  // `slot` names where the advert sat, for the SOP's utm_content: masthead,
+  // sponsored, or banner-1, banner-2… in the order they appear.
+  const visit = (advertId: string, slot: string) => `${base}/visit/${advertId}?${newsletterParams(issue.id, slot)}`;
+  let bannerCount = 0;
   const placed = (ads ?? []).flatMap((slot) => (slot.advert ? [{ ...slot.advert, after_item: slot.after_item }] : []));
   const { sponsor, banners } = splitMastheadSponsor(placed);
 
@@ -185,7 +192,7 @@ export async function renderIssueHtml(
             // Gap review area 5 slice B: the advertiser's own story card, one
             // 600×400 image (the desktop one) and its words, marked Sponsored.
             const image = mediaUrl(block.ad.desktop_path) ?? mediaUrl(block.ad.mobile_path);
-            const card: IssueCard = { href: visit(block.ad.id), title: block.ad.headline ?? block.ad.name ?? "", summary: block.ad.body, image, kicker: AD_LABEL, cta: "Read more" };
+            const card: IssueCard = { href: visit(block.ad.id, "sponsored"), title: block.ad.headline ?? block.ad.name ?? "", summary: block.ad.body, image, kicker: AD_LABEL, cta: "Read more" };
             return `<tr><td style="padding:16px;background:#f4f5f6;border-radius:4px;">${cardHtml(card, LEAD_IMAGE_WIDTH - 32, 18)}</td></tr>`;
           }
           // The mobile creative, not the desktop one: this column is 600px at
@@ -195,7 +202,7 @@ export async function renderIssueHtml(
           if (!image) return "";
           return `<tr><td style="padding:16px 0;">
           <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5a6068;">${escapeHtml(AD_LABEL)}</p>
-          <a href="${escapeHtml(visit(block.ad.id))}"><img src="${escapeHtml(image)}" width="${LEAD_IMAGE_WIDTH}" alt="${escapeHtml(block.ad.name ?? AD_LABEL)}" style="display:block;width:100%;max-width:${LEAD_IMAGE_WIDTH}px;height:auto;border:0;border-radius:4px;"></a>
+          <a href="${escapeHtml(visit(block.ad.id, `banner-${++bannerCount}`))}"><img src="${escapeHtml(image)}" width="${LEAD_IMAGE_WIDTH}" alt="${escapeHtml(block.ad.name ?? AD_LABEL)}" style="display:block;width:100%;max-width:${LEAD_IMAGE_WIDTH}px;height:auto;border:0;border-radius:4px;"></a>
         </td></tr>`;
         }
       }
@@ -224,7 +231,7 @@ export async function renderIssueHtml(
     ${sponsor && sponsorImage
       ? `<td valign="middle" align="right">
       <p style="margin:0 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#5a6068;">In association with</p>
-      <a href="${escapeHtml(visit(sponsor.id))}"><img src="${escapeHtml(sponsorImage)}" width="186" alt="${escapeHtml(sponsor.name ?? "Sponsor")}" style="display:block;width:186px;max-width:100%;height:auto;border:0;margin-left:auto;"></a>
+      <a href="${escapeHtml(visit(sponsor.id, "masthead"))}"><img src="${escapeHtml(sponsorImage)}" width="186" alt="${escapeHtml(sponsor.name ?? "Sponsor")}" style="display:block;width:186px;max-width:100%;height:auto;border:0;margin-left:auto;"></a>
     </td>`
       : ""}
   </tr></table>`;

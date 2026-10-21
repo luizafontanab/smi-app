@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { analyticsConsented, classifyReferrer, CONSENT_COOKIE, record, recordSearch, requestContext, sessionHash } from "@/lib/analytics";
+import { analyticsConsented, classifyReferrer, CONSENT_COOKIE, newsletterClick, record, recordSearch, requestContext, sessionHash } from "@/lib/analytics";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -61,6 +61,46 @@ describe("record", () => {
     await Promise.resolve();
 
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[analytics]"), "insert failed");
+  });
+});
+
+describe("newsletterClick (GAPS B5.10)", () => {
+  const consented = { session_hash: "h", referrer: "https://mail.example", region: "West Midlands", company: "Acme", consented: true };
+  const declined = { session_hash: null, referrer: null, region: null, company: null, consented: false };
+
+  it("keeps a consenting reader's full context", () => {
+    expect(newsletterClick(consented, "newsletter")).toBe(consented);
+  });
+
+  it("leaves an ordinary visit without consent declined", () => {
+    expect(newsletterClick(declined, null)).toBe(declined);
+    expect(newsletterClick(declined, "elsewhere")).toBe(declined);
+  });
+
+  it("turns a newsletter click without consent into an anonymous, recordable one", () => {
+    expect(newsletterClick(declined, "newsletter")).toEqual({ ...declined, anonymous: true });
+  });
+
+  it("never reads the reader's IP or browser for one", async () => {
+    // No consent cookie: requestContext must return before resolving the IP.
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({})));
+    const { resolveIp } = await import("@/lib/adapters/company-resolver");
+    const ctx = newsletterClick(await requestContext(), "newsletter");
+    expect(ctx).toEqual({ session_hash: null, referrer: null, region: null, company: null, consented: false, anonymous: true });
+    expect(resolveIp).not.toHaveBeenCalled();
+  });
+});
+
+describe("record — anonymous rows", () => {
+  it("inserts an anonymous event with every identifier blanked, whatever was passed in", () => {
+    const builder = queryBuilder(dbOk(null));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => builder })));
+
+    record([{ kind: "ad_click", advert_id: "ad1", path: "newsletter", session_hash: "leaked", region: "X", company: "Y", referrer: "Z", consented: false, anonymous: true }]);
+
+    expect(builder.insert).toHaveBeenCalledWith([
+      { kind: "ad_click", advert_id: "ad1", path: "newsletter", session_hash: null, region: null, company: null, referrer: null },
+    ]);
   });
 });
 

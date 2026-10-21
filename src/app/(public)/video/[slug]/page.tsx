@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { issueFromLink, newsletterLinkParams } from "@/lib/newsletter-tracking";
 import { notFound } from "next/navigation";
-import { record, requestContext } from "@/lib/analytics";
+import { newsletterClick, record, requestContext } from "@/lib/analytics";
 import { youtubeId } from "@/lib/hero";
 import { breadcrumbLd, stripTags, videoLd } from "@/lib/jsonld";
 import { isMemberLinkable } from "@/lib/member-visibility";
@@ -33,9 +34,12 @@ const fmt = (iso: string | null) =>
 
 export default async function VideoPage(props: PageProps<"/video/[slug]">) {
   const { slug } = await props.params;
-  const [video, ctx] = await Promise.all([videoBySlug(slug), requestContext()]);
+  const sp = await props.searchParams;
+  const [video, ctx, issue] = await Promise.all([videoBySlug(slug), requestContext(), issueFromLink(newsletterLinkParams(sp))]);
   if (!video) notFound();
-  record([{ kind: "page_view", path: `/video/${slug}`, ...ctx }]);
+  // The newsletter issue rides on the page_view only, so a video counts once in the issue's report.
+  // From a newsletter link it counts without consent too, anonymously (lib/analytics newsletterClick).
+  record([{ kind: "page_view", path: `/video/${slug}`, newsletter_issue_id: issue?.id ?? null, ...newsletterClick(ctx, newsletterLinkParams(sp).src) }]);
   // Content reach (GAPS A9.2): the member's own view count for this video.
   // Only for member videos — an editorial video has nobody to credit. A
   // SEPARATE call on purpose: record() inserts its batch as one statement, so

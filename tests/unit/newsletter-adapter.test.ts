@@ -256,6 +256,20 @@ describe("renderIssueHtml", () => {
       expect(html).not.toContain("Supplier directory");
     });
 
+    it("tags every story and advert link with the issue, and each advert with its slot", async () => {
+      issue({}, [1, 2, 3, 4, 5].map(story), [
+        banner("a1"), banner("a2"),
+        { position: 0, after_item: null, advert: { id: "logo1", name: "Greenfield", format: "association_logo", desktop_path: "logo1.png", mobile_path: null } },
+      ]);
+      const { html, text } = (await renderIssueHtml("iss1"))!;
+
+      expect(html).toContain("/news/story-1?src=newsletter&amp;issue=iss1");
+      expect(text).toContain("/news/story-1?src=newsletter&issue=iss1");
+      expect(html).toContain("/visit/a1?src=newsletter&amp;issue=iss1&amp;slot=banner-1");
+      expect(html).toContain("/visit/a2?src=newsletter&amp;issue=iss1&amp;slot=banner-2");
+      expect(html).toContain("/visit/logo1?src=newsletter&amp;issue=iss1&amp;slot=masthead");
+    });
+
     it("lists items in the composer's order in the text version, videos mixed in", async () => {
       issue({}, [
         { position: 0, story: null, video: { slug: "demo", title: "Demo video", thumbnail_path: null } },

@@ -331,6 +331,7 @@ export type Database = {
           id: number
           kind: string
           member_id: string | null
+          newsletter_issue_id: string | null
           occurred_at: string
           path: string | null
           platform: string | null
@@ -345,6 +346,7 @@ export type Database = {
           id?: never
           kind: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -359,6 +361,7 @@ export type Database = {
           id?: never
           kind?: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -376,6 +379,7 @@ export type Database = {
           id: number
           kind: string
           member_id: string | null
+          newsletter_issue_id: string | null
           occurred_at: string
           path: string | null
           platform: string | null
@@ -390,6 +394,7 @@ export type Database = {
           id?: never
           kind: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -404,6 +409,7 @@ export type Database = {
           id?: never
           kind?: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -421,6 +427,7 @@ export type Database = {
           id: number
           kind: string
           member_id: string | null
+          newsletter_issue_id: string | null
           occurred_at: string
           path: string | null
           platform: string | null
@@ -435,6 +442,7 @@ export type Database = {
           id?: never
           kind: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -449,6 +457,7 @@ export type Database = {
           id?: never
           kind?: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -466,6 +475,7 @@ export type Database = {
           id: number
           kind: string
           member_id: string | null
+          newsletter_issue_id: string | null
           occurred_at: string
           path: string | null
           platform: string | null
@@ -480,6 +490,7 @@ export type Database = {
           id?: never
           kind: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -494,6 +505,7 @@ export type Database = {
           id?: never
           kind?: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -511,6 +523,7 @@ export type Database = {
           id: number
           kind: string
           member_id: string | null
+          newsletter_issue_id: string | null
           occurred_at: string
           path: string | null
           platform: string | null
@@ -525,6 +538,7 @@ export type Database = {
           id?: never
           kind: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -539,6 +553,7 @@ export type Database = {
           id?: never
           kind?: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -556,6 +571,7 @@ export type Database = {
           id: number
           kind: string
           member_id: string | null
+          newsletter_issue_id: string | null
           occurred_at: string
           path: string | null
           platform: string | null
@@ -570,6 +586,7 @@ export type Database = {
           id?: never
           kind: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -584,6 +601,7 @@ export type Database = {
           id?: never
           kind?: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -601,6 +619,7 @@ export type Database = {
           id: number
           kind: string
           member_id: string | null
+          newsletter_issue_id: string | null
           occurred_at: string
           path: string | null
           platform: string | null
@@ -615,6 +634,7 @@ export type Database = {
           id?: never
           kind: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -629,6 +649,7 @@ export type Database = {
           id?: never
           kind?: string
           member_id?: string | null
+          newsletter_issue_id?: string | null
           occurred_at?: string
           path?: string | null
           platform?: string | null
@@ -2937,6 +2958,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      newsletter_issue_clicks: {
+        Args: { p_issue: string }
+        Returns: {
+          advert_id: string
+          clicks: number
+          kind: string
+          path: string
+          story_id: string
+          visitors: number
+        }[]
       }
       normalise_contact_emails: {
         Args: never

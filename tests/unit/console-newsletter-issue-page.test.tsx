@@ -101,3 +101,34 @@ describe("/console/newsletter/[id] proof and approval", () => {
     expect(screen.queryByRole("button", { name: "Approve to send" })).toBeNull();
   });
 });
+
+describe("/console/newsletter/[id] per-issue report (gap review area 5)", () => {
+  it("shows a sent issue's top stories and every advert's clicks, with the consent caveat", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({
+        newsletter_issues: () => queryBuilder(dbOk({
+          id: ISSUE_ID, number: 47, subject: "September", intro: "", status: "sent", sent_count: 2400, opens_count: 900, clicks_count: 120,
+        })),
+        newsletter_items: () => queryBuilder(dbOk([
+          { position: 0, story_id: "s1", video_id: null, story: row("s1", "Lead story"), video: null },
+        ])),
+        newsletter_ads: () => queryBuilder(dbOk([
+          { advert_id: "a1", after_item: null, advert: { id: "a1", name: "Kerf banner", format: "newsletter_banner", member: { name: "Kerf" } } },
+        ])),
+        adverts: () => queryBuilder(dbOk([])),
+        stories: () => queryBuilder(dbOk([])),
+        videos: () => queryBuilder(dbOk([])),
+        contacts: () => queryBuilder({ data: null, error: null, count: 0 }),
+        newsletter_directory: () => queryBuilder(dbOk([])),
+        members: () => queryBuilder(dbOk([])),
+      }),
+      rpc: vi.fn(() => queryBuilder(dbOk([{ kind: "story_view", story_id: "s1", advert_id: null, path: null, clicks: 12, visitors: 9 }]))),
+    })));
+
+    render(await IssueDetail(props));
+
+    expect(screen.getByText("Lead story", { selector: "li > span" }).closest("li")).toHaveTextContent("12 clicks · 9 known");
+    expect(screen.getByText("Kerf banner — Kerf", { selector: "li > span" }).closest("li")).toHaveTextContent("0 clicks · 0 known");
+    expect(screen.getByText(/counted anonymously/)).toBeInTheDocument();
+  });
+});

@@ -34,6 +34,8 @@ type EventRow = {
   referrer?: string | null;
   /** Only meaningful for kind: "social_click", e.g. "linkedin". */
   platform?: string | null;
+  /** The newsletter issue a click came from (lib/newsletter-tracking), when the link said so. */
+  newsletter_issue_id?: string | null;
 };
 
 export { CONSENT_COOKIE } from "./consent";
@@ -49,8 +51,12 @@ export async function analyticsConsented(): Promise<boolean> {
   return (await cookies()).get(CONSENT_COOKIE)?.value === "all";
 }
 
-/** Marks a context built without consent; stripped before the row is written. */
-type Consent = { consented: boolean };
+/**
+ * Marks a context built without consent; stripped before the row is written.
+ * `anonymous` marks the one exception, a newsletter click (newsletterClick
+ * below): recorded without consent, but with every identifier blanked.
+ */
+type Consent = { consented: boolean; anonymous?: boolean };
 
 const DECLINED: RequestContext = {
   session_hash: null,
@@ -76,9 +82,12 @@ export type RequestContext = {
 export function record(events: (EventRow & Partial<Consent>)[]): void {
   const rows: EventRow[] = [];
   for (const event of events) {
-    if (event.consented === false) continue;
+    if (event.consented === false && !event.anonymous) continue;
     const row = { ...event };
     delete row.consented; // no such column — the flag only ever rides in memory
+    delete row.anonymous;
+    // Belt and braces: whatever a caller spread in, an anonymous row keeps nothing that could point at a reader.
+    if (event.anonymous) Object.assign(row, { session_hash: null, referrer: null, region: null, company: null });
     rows.push(row);
   }
   if (rows.length === 0) return;
@@ -160,6 +169,25 @@ export async function requestContext(): Promise<RequestContext> {
   const { resolveIp } = await import("./adapters/company-resolver");
   const { region, company } = await resolveIp(ip);
   return { session_hash, referrer, region, company, consented: true };
+}
+
+/**
+ * A click that arrived from a newsletter link (`src=newsletter`) is counted
+ * even when the reader hasn't accepted analytics cookies (GAPS B5.10, Luiza
+ * 21 Oct): a reader coming from an email has usually never seen the site's
+ * banner, so consent-only counting missed most newsletter clicks, paid advert
+ * clicks included.
+ *
+ * Without consent the row carries no identifier at all: no session hash, no
+ * referrer, no region, no company. requestContext() returns before reading the
+ * IP or browser in that case, so nothing about the reader is even processed.
+ * What is kept is the event, the time, and what was clicked: a count, not a
+ * record of a person (docs/GDPR.md §7). With consent, the full context is used
+ * as for any other visit.
+ */
+export function newsletterClick(ctx: RequestContext, src: string | null | undefined): RequestContext {
+  if (ctx.consented || src !== "newsletter") return ctx;
+  return { ...DECLINED, anonymous: true };
 }
 
 /**
