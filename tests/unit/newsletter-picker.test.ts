@@ -1,21 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { pickerOptions } from "@/lib/newsletter-picker";
+import { parseIssueItems } from "@/lib/newsletter-picker";
 
-const item = (id: string, status = "published") => ({ id, title: `Item ${id}`, published_at: "2026-09-01T09:00:00Z", status });
+const A = "11111111-1111-4111-8111-111111111111";
+const B = "22222222-2222-4222-8222-222222222222";
 
-describe("pickerOptions", () => {
-  it("keeps a picked item that is older than the recent window, ticked", () => {
-    const options = pickerOptions([item("old")], [item("r1"), item("r2")]);
-    expect(options.map((o) => [o.id, o.picked])).toEqual([["old", true], ["r1", false], ["r2", false]]);
+describe("parseIssueItems", () => {
+  it("keeps the posted order, stories and videos mixed", () => {
+    expect(parseIssueItems([`video:${B}`, `story:${A}`, `story:${B}`])).toEqual([
+      { kind: "video", id: B },
+      { kind: "story", id: A },
+      { kind: "story", id: B },
+    ]);
   });
 
-  it("lists a picked item once when it is also recent, and keeps the issue's order", () => {
-    const options = pickerOptions([item("r2"), item("r1")], [item("r1"), item("r2"), item("r3")]);
-    expect(options.map((o) => [o.id, o.picked])).toEqual([["r2", true], ["r1", true], ["r3", false]]);
+  it("drops anything malformed rather than failing the save", () => {
+    expect(parseIssueItems([`event:${A}`, "story:not-a-uuid", "story:", A, `story:${A}`])).toEqual([{ kind: "story", id: A }]);
   });
 
-  it("keeps a picked item that is no longer live, so it can be seen and unticked", () => {
-    const options = pickerOptions([item("gone", "withdrawn")], []);
-    expect(options).toEqual([{ ...item("gone", "withdrawn"), picked: true }]);
+  it("keeps a repeat in its first place only", () => {
+    expect(parseIssueItems([`story:${A}`, `video:${A}`, `story:${A}`])).toEqual([
+      { kind: "story", id: A },
+      { kind: "video", id: A },
+    ]);
   });
 });

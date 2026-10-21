@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addContact, approveIssue, attachNewsletterAd, createIssue, previewBiginPull, runBiginSync, saveContact, saveProofChecks, scheduleIssue,
-  searchBiginCompanies, sendIssue, sendTestIssue, unscheduleIssue, updateIssue, withdrawApproval,
+  addContact, approveIssue, attachNewsletterAd, createIssue, placeNewsletterAd, previewBiginPull, runBiginSync, saveContact, saveProofChecks, scheduleIssue,
+  searchBiginCompanies, searchIssueContent, sendIssue, sendTestIssue, unscheduleIssue, updateIssue, withdrawApproval,
 } from "@/app/console/actions";
 import { PROOF_KEYS } from "@/lib/newsletter-proof";
 import { serviceDb } from "@/lib/db/server";
@@ -285,6 +285,148 @@ describe("edits withdraw approval", () => {
 
     expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ approved_at: null, last_test_sent_at: null }));
     expect(issuesBuilder.update).not.toHaveBeenCalledWith(expect.objectContaining({ status: "draft" }));
+  });
+});
+
+describe("issue layout (gap review area 5)", () => {
+  const OLD = "11111111-1111-4111-8111-111111111111";
+  const VID = "22222222-2222-4222-8222-222222222222";
+  const NEW = "33333333-3333-4333-8333-333333333333";
+
+  it("updateIssue saves the posted order, stories and videos mixed, including an item older than the picker shows", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    const itemsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => issuesBuilder, newsletter_items: () => itemsBuilder });
+    const fd = form({ id: "iss1", subject: "November", intro: "", preview_text: "  Ten stories, one show  " });
+    for (const item of [`video:${VID}`, `story:${OLD}`, `story:${NEW}`, "story:junk"]) fd.append("items", item);
+
+    await updateIssue(fd);
+
+    expect(itemsBuilder.delete).toHaveBeenCalled();
+    expect(itemsBuilder.insert).toHaveBeenCalledWith([
+      { issue_id: "iss1", video_id: VID, position: 0 },
+      { issue_id: "iss1", story_id: OLD, position: 1 },
+      { issue_id: "iss1", story_id: NEW, position: 2 },
+    ]);
+    expect(issuesBuilder.update).toHaveBeenCalledWith({ subject: "November", intro: "", preview_text: "Ten stories, one show" });
+  });
+
+  it("updateIssue stores blank preview text as null", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    db({ newsletter_issues: () => issuesBuilder, newsletter_items: () => queryBuilder(dbOk(null)) });
+
+    await updateIssue(form({ id: "iss1", subject: "November", intro: "", preview_text: " " }));
+
+    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ preview_text: null }));
+  });
+
+  it("createIssue still takes the two checklists, stories first", async () => {
+    const itemsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => queryBuilder(dbOk({ id: "iss9", number: 51 })), newsletter_items: () => itemsBuilder });
+    const fd = form({ subject: "December" });
+    fd.append("videos", VID);
+    fd.append("stories", OLD);
+
+    await createIssue(fd);
+
+    expect(itemsBuilder.insert).toHaveBeenCalledWith([
+      { issue_id: "iss9", story_id: OLD, position: 0 },
+      { issue_id: "iss9", video_id: VID, position: 1 },
+    ]);
+  });
+
+  it("placeNewsletterAd sets an advert's place and withdraws approval", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    const adsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => issuesBuilder, newsletter_ads: () => adsBuilder });
+
+    await placeNewsletterAd(form({ issue_id: "iss1", advert_id: "ad1", after_item: "5" }));
+
+    expect(adsBuilder.update).toHaveBeenCalledWith({ after_item: 5 });
+    expect(adsBuilder.eq).toHaveBeenCalledWith("advert_id", "ad1");
+    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ approved_at: null }));
+  });
+
+  it("placeNewsletterAd turns a blank place back to automatic", async () => {
+    const adsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => queryBuilder(dbOk({ status: "draft" })), newsletter_ads: () => adsBuilder });
+
+    await placeNewsletterAd(form({ issue_id: "iss1", advert_id: "ad1", after_item: "" }));
+
+    expect(adsBuilder.update).toHaveBeenCalledWith({ after_item: null });
+  });
+
+  it.each(["0", "2.5", "three"])("placeNewsletterAd rejects %j without writing", async (value) => {
+    const adsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => queryBuilder(dbOk({ status: "draft" })), newsletter_ads: () => adsBuilder });
+
+    await expect(placeNewsletterAd(form({ issue_id: "iss1", advert_id: "ad1", after_item: value }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(adsBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("placeNewsletterAd refuses a sent issue", async () => {
+    const adsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => queryBuilder(dbOk({ status: "sent" })), newsletter_ads: () => adsBuilder });
+
+    await expect(placeNewsletterAd(form({ issue_id: "iss1", advert_id: "ad1", after_item: "2" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(adsBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("attachNewsletterAd allows one association logo per issue — the masthead has room for one", async () => {
+    const adsBuilder = queryBuilder(dbOk([{ advert: { format: "association_logo" } }]));
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ status: "draft" })),
+      adverts: () => queryBuilder(dbOk({ format: "association_logo" })),
+      newsletter_ads: () => adsBuilder,
+    });
+
+    await expect(attachNewsletterAd(form({ issue_id: "iss1", advert_id: "logo2" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(adsBuilder.insert).not.toHaveBeenCalled();
+  });
+
+  it("attachNewsletterAd still adds a banner next to an association logo", async () => {
+    const adsBuilder = queryBuilder(dbOk([{ advert: { format: "association_logo" } }]));
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ status: "draft" })),
+      adverts: () => queryBuilder(dbOk({ format: "newsletter_banner" })),
+      newsletter_ads: () => adsBuilder,
+    });
+
+    await attachNewsletterAd(form({ issue_id: "iss1", advert_id: "banner1" }));
+
+    expect(adsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ advert_id: "banner1" }));
+  });
+
+  it("searchIssueContent searches published titles since a date, with LIKE wildcards escaped, newest first", async () => {
+    const storiesBuilder = queryBuilder(dbOk([
+      { id: "s1", title: "100% laser", published_at: "2025-03-01T09:00:00Z", status: "published" },
+    ]));
+    const videosBuilder = queryBuilder(dbOk([
+      { id: "v1", title: "100% laser, filmed", published_at: "2025-04-01T09:00:00Z", status: "published" },
+    ]));
+    db({ stories: () => storiesBuilder, videos: () => videosBuilder });
+
+    const found = await searchIssueContent(" 100%_laser ", "2025-01-01");
+
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("status", "published");
+    expect(storiesBuilder.ilike).toHaveBeenCalledWith("title", "%100\\%\\_laser%");
+    expect(storiesBuilder.gte).toHaveBeenCalledWith("published_at", "2025-01-01");
+    expect(found.map((r) => [r.kind, r.id])).toEqual([["video", "v1"], ["story", "s1"]]);
+  });
+
+  it("searchIssueContent ignores a malformed date and an empty term", async () => {
+    const storiesBuilder = queryBuilder(dbOk([]));
+    db({ stories: () => storiesBuilder, videos: () => queryBuilder(dbOk([])) });
+
+    await searchIssueContent("", "yesterday");
+
+    expect(storiesBuilder.ilike).not.toHaveBeenCalled();
+    expect(storiesBuilder.gte).not.toHaveBeenCalled();
+  });
+
+  it("searchIssueContent requires the console", async () => {
+    requireConsole.mockRejectedValueOnce(new Error("NEXT_REDIRECT:/login"));
+    await expect(searchIssueContent("laser", "")).rejects.toThrow("NEXT_REDIRECT:/login");
   });
 });
 

@@ -197,6 +197,23 @@
     link, without the title above it — LinkedIn and Facebook show the title in the link
     preview anyway. Tell us if you want the title back on top.
 
+31. **Newsletter layout: one size to confirm, and what's changed (21 Oct).** The
+    issue now looks like the issues you send from Mailchimp today: the SMI logo with
+    the "In association with" sponsor beside it, the lead story at full width, then
+    the stories two to a row under "Sheeting Hot News", with adverts between the rows.
+    The SOP's extras (sponsored story, events diary, supplier directory, UTM tags and
+    a per-issue report) come next.
+    - **"In association with" logo size.** We sell it as 250×60, but the logos in
+      your recent issues are 372×110. Which should we ask advertisers for?
+    - **Advert sizes stay at 560×300**, the size we sell and the one your live issues
+      use. The SOP's 600×200 / 600×300 / 600×400 aren't used, so the SOP may want
+      updating.
+    - **Adverts are now labelled "Sponsored"**, as the SOP asks. The live issues have
+      no label.
+    - **Not being built for now:** the A/B subject-line test (we're not sure Resend
+      can do it) and the link to a Bigin "Advertising" pipeline. Tell us if either
+      matters to you.
+
 ## Data validation
 
 - sent to Jas on oct 4th

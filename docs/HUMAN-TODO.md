@@ -164,6 +164,12 @@ through Proof and approval first.
 - [ ] **2.9 — Re-run the static pages:** `pnpm seed:prod -- --pages-only`. It
       overwrites console edits to those pages, so copy any real edits into
       `scripts/lib/static-page-content.ts` first.
+- [ ] **2.10 — Check for an edited newsletter shell:**
+      `select kind, updated_at from email_templates where kind = '_newsletter_shell';`
+      An edited shell keeps its own markup, so the new layout (gap review area
+      5) loses its masthead, preview text and phone stacking. If a row comes
+      back, open `/console/email-templates/_newsletter_shell` and reset it, or
+      add `{{masthead}}` and `{{preheader}}` by hand.
 
 ---
 
@@ -217,6 +223,12 @@ through Proof and approval first.
 - [ ] **3.7 — Story sources, after the first week.** Review the "Blocked",
       "News page gone" and "Nothing readable found" filters. Cancel ChangeTower
       only after that: about 20% of sources still need checking by hand.
+- [ ] **3.8 — Newsletter layout in real inboxes.** Before the first issue in the
+      new layout goes out, send a test (issue page → "Send me a test") to a
+      Gmail, an Outlook desktop and a phone inbox. Check the masthead logos, the
+      two-up cards (Outlook desktop may keep them side by side on a phone-sized
+      window, which is acceptable), the "Sponsored" banners between rows, and
+      that the preview text shows under the subject.
 
 ---
 

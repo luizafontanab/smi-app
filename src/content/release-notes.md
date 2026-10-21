@@ -10,6 +10,15 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-21 — Newsletter laid out like the Mailchimp issues
+- Each newsletter issue now opens with the SMI logo, and an "In association with" sponsor logo beside it when one is attached (one per issue).
+- The first story or video is the lead, at full width; the rest sit two to a row under "Sheeting Hot News", one under another on phones.
+- Adverts now sit between the stories instead of all at the end, labelled "Sponsored". Left on auto, the first goes after item 3 and the last just before the footer; type a number in "After item" to place one yourself.
+- Stories and videos are now one list on the issue page: use the arrows to set the order, and whatever is first becomes the lead story.
+- To add something older than the latest 20, search by title or pick a "Published since" date.
+- There's a new "Preview text" field for the line inboxes show under the subject, and both it and the subject show a character count; going over the suggested length is only a warning.
+- The issue's page on the website now shows the same layout, including videos and adverts.
+
 ## 2026-10-21 — Newsletter proof and approval before sending
 - Each newsletter issue now has a "Proof and approval" section with the full proof checklist from the newsletter SOP, saved as you tick it.
 - "Send me a test" emails the issue, exactly as subscribers will see it, to your own address, marked [TEST].

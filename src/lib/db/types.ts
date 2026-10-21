@@ -1821,16 +1821,19 @@ export type Database = {
       newsletter_ads: {
         Row: {
           advert_id: string
+          after_item: number | null
           issue_id: string
           position: number
         }
         Insert: {
           advert_id: string
+          after_item?: number | null
           issue_id: string
           position: number
         }
         Update: {
           advert_id?: string
+          after_item?: number | null
           issue_id?: string
           position?: number
         }
@@ -1867,6 +1870,7 @@ export type Database = {
           last_test_sent_by: string | null
           number: number
           opens_count: number
+          preview_text: string | null
           proof_checks: Json
           provider_broadcast_id: string | null
           scheduled_at: string | null
@@ -1892,6 +1896,7 @@ export type Database = {
           last_test_sent_by?: string | null
           number: number
           opens_count?: number
+          preview_text?: string | null
           proof_checks?: Json
           provider_broadcast_id?: string | null
           scheduled_at?: string | null
@@ -1917,6 +1922,7 @@ export type Database = {
           last_test_sent_by?: string | null
           number?: number
           opens_count?: number
+          preview_text?: string | null
           proof_checks?: Json
           provider_broadcast_id?: string | null
           scheduled_at?: string | null

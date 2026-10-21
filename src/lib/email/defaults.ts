@@ -663,20 +663,24 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
     // The stories and adverts themselves are NOT authored here: they are built
     // in code from `newsletter_items` and `newsletter_ads`, including the
     // /visit/[id] click routing an advert needs to bill correctly (GAPS A5.4).
-    // They arrive as finished markup in {{items}} and {{adverts}}.
+    // They arrive as finished markup in {{items}}, adverts already placed
+    // between the stories; {{adverts}} is kept, always empty, for old edits.
     bodyHtml: `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{subject}}</title></head>
+<title>{{subject}}</title>
+<style>@media (max-width:520px){.smi-col{display:block!important;width:100%!important;padding:0 0 20px!important;}}</style></head>
 <body style="margin:0;padding:0;background:#f4f5f6;">
+  {{preheader}}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f6;padding:24px 12px;">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid ${LINE};border-radius:6px;overflow:hidden;font-family:'League Spartan',Helvetica,Arial,sans-serif;">
-        <tr><td style="background:${CHROME};padding:20px 28px;">
+        <tr><td style="padding:20px 28px;border-bottom:1px solid ${LINE};">{{masthead}}</td></tr>
+        <tr><td style="background:${CHROME};padding:16px 28px;">
           <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:${BRAND};">SMI Monthly · Issue {{issue_number}}</p>
           <p style="margin:6px 0 0;font-size:21px;font-weight:700;color:#ffffff;">{{subject}}</p>
           <p style="margin:8px 0 0;font-size:15px;line-height:1.5;color:#ffffff;opacity:0.8;">{{intro}}</p>
         </td></tr>
-        <tr><td style="padding:8px 28px 24px;">
+        <tr><td style="padding:0 28px 24px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">{{items}}{{adverts}}</table>
         </td></tr>
         <tr><td style="border-top:1px solid ${LINE};padding:18px 28px;">
@@ -695,15 +699,27 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
       { token: "subject", description: "The issue's subject line, as set on the issue itself.", sample: "Laser cutting, five ways" },
       { token: "intro", description: "The issue's intro. The paragraph disappears when the issue has none.", sample: "What we've been reading this month." },
       {
+        token: "masthead",
+        description: "The SMI logo, and the “In association with” sponsor logo when the issue has one.",
+        sample: `<p style="margin:0;font-size:15px;font-weight:700;color:${INK};">Sheet Metal Industries</p>`,
+        raw: true,
+      },
+      {
+        token: "preheader",
+        description: "The issue's preview text, hidden in the email and shown by the inbox under the subject. Nothing when the issue has none.",
+        sample: "",
+        raw: true,
+      },
+      {
         token: "items",
-        description: "The stories and videos in this issue, already laid out.",
+        description: "The lead story, the story cards and the adverts between them, already laid out.",
         sample: `<tr><td style="padding:16px 0;border-bottom:1px solid ${LINE};"><p style="margin:0;font-size:17px;font-weight:700;color:${INK};">Laser cutting, five ways</p><p style="margin:4px 0 0;font-size:14px;color:${GRAPHITE};">An example story, so this preview has something in it.</p></td></tr>`,
         raw: true,
       },
       {
         token: "adverts",
-        description: "The booked advert slots, already laid out.",
-        sample: `<tr><td style="padding:16px 0;"><p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:${GRAPHITE};">Advertisement</p></td></tr>`,
+        description: "Always empty now: adverts are placed between the stories inside {{items}}. Kept so a template that still uses it keeps working.",
+        sample: "",
         raw: true,
       },
       { token: "items_text", description: "The same stories and videos as a plain list, for the text version.", sample: "- Laser cutting, five ways\n  https://sheetmetalindustries.com/news/laser-cutting", raw: true },

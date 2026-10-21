@@ -672,13 +672,22 @@ describe("newsletterBySlug", () => {
     expect(from).not.toHaveBeenCalledWith("newsletter_items");
   });
 
-  it("merges the issue's items in position order", async () => {
+  it("merges the issue's items and adverts in position order", async () => {
+    const adsBuilder = queryBuilder(dbOk([{ position: 0, after_item: 2, advert: { id: "ad1" } }]));
     db({
       newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 4 })),
       newsletter_items: () => queryBuilder(dbOk([{ position: 1, story: { slug: "s1" } }])),
+      newsletter_ads: () => adsBuilder,
     });
 
-    expect(await newsletterBySlug("aug-2026")).toEqual({ id: "iss1", number: 4, items: [{ position: 1, story: { slug: "s1" } }] });
+    expect(await newsletterBySlug("aug-2026")).toEqual({
+      id: "iss1", number: 4,
+      items: [{ position: 1, story: { slug: "s1" } }],
+      ads: [{ position: 0, after_item: 2, advert: { id: "ad1" } }],
+    });
+    // Adverts have no anon policy: read with the service role, for this sent issue only.
+    expect(serviceDb).toHaveBeenCalled();
+    expect(adsBuilder.eq).toHaveBeenCalledWith("issue_id", "iss1");
   });
 });
 

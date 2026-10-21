@@ -2,6 +2,7 @@ import { allRows } from "../db/all-rows";
 import { serviceDb } from "../db/server";
 import { mediaUrl } from "../db/server";
 import { siteUrl } from "../site-url";
+import { issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "../newsletter-layout";
 import { EmailSendError } from "./email";
 
 /**
@@ -82,6 +83,28 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** The issue's content column: the shell's 600px less its 28px gutters. */
+const LEAD_IMAGE_WIDTH = 544;
+/** Half the column less the 16px gap — the live issues' two-up card width. */
+const CARD_IMAGE_WIDTH = 264;
+/** Gap review area 5: the SOP's label for paid placements. */
+const AD_LABEL = "Sponsored";
+
+type IssueCard = { href: string; title: string; summary: string | null; image: string | null; kicker: string | null; cta: string };
+
+/** One story or video: image, uppercase headline, summary, link — the live issues' card. */
+function cardHtml(card: IssueCard, imageWidth: number, titleSize: number): string {
+  const href = escapeHtml(card.href);
+  const image = card.image
+    ? `<a href="${href}"><img src="${escapeHtml(card.image)}" width="${imageWidth}" alt="${escapeHtml(card.title)}" style="display:block;width:100%;max-width:${imageWidth}px;height:auto;border:0;border-radius:4px;"></a>`
+    : "";
+  return `${image}
+    ${card.kicker ? `<p style="margin:10px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5a6068;">${escapeHtml(card.kicker)}</p>` : ""}
+    <p style="margin:10px 0 0;font-size:${titleSize}px;line-height:1.25;font-weight:700;text-transform:uppercase;color:#111418;"><a href="${href}" style="color:#111418;text-decoration:none;">${escapeHtml(card.title)}</a></p>
+    ${card.summary ? `<p style="margin:6px 0 0;font-size:14px;line-height:1.5;color:#5a6068;">${escapeHtml(card.summary)}</p>` : ""}
+    <p style="margin:8px 0 0;font-size:13px;font-weight:700;"><a href="${href}" style="color:#ff8200;text-decoration:none;">${escapeHtml(card.cta)} &rarr;</a></p>`;
+}
+
 /**
  * Build the issue's HTML from its stories and advert slots.
  *
@@ -105,7 +128,7 @@ export async function renderIssueHtml(
 
   const { data: issue } = await db
     .from("newsletter_issues")
-    .select("id, number, subject, intro, web_slug")
+    .select("id, number, subject, intro, preview_text, web_slug")
     .eq("id", issueId)
     .single();
   if (!issue) return null;
@@ -115,65 +138,79 @@ export async function renderIssueHtml(
       // excerpt = the story_summary computed field: the author's summary, else the body's opening
       .select("position, story:stories(slug, title, excerpt:story_summary, cover_path), video:videos(slug, title, thumbnail_path)")
       .eq("issue_id", issueId).order("position"),
-    db.from("newsletter_ads").select("position, advert:adverts(id, name, desktop_path, mobile_path, link_url)").eq("issue_id", issueId).order("position"),
+    db.from("newsletter_ads")
+      .select("position, after_item, advert:adverts(id, name, format, desktop_path, mobile_path)")
+      .eq("issue_id", issueId).order("position"),
   ]);
 
   // Stories and videos are rendered in the same position order they were
   // added, rather than stories-then-videos, so the composer's picked order
   // is what a reader actually sees.
-  const stories = (items ?? []).flatMap((item) => (item.story ? [item.story] : []));
-  const storyHtml = (items ?? [])
-    .map((item) => {
-      if (item.story) {
-        const story = item.story;
-        const href = `${base}/news/${story.slug}`;
-        const image = story.cover_path
-          ? `<img src="${escapeHtml(mediaUrl(story.cover_path) ?? "")}" width="112" alt="" style="display:block;border-radius:4px;">`
-          : "";
-        return `<tr><td style="padding:12px 0;border-bottom:1px solid #e4e6e9;">
-        <a href="${escapeHtml(href)}" style="text-decoration:none;color:#111418;">
-          ${image}
-          <p style="margin:8px 0 0;font-size:17px;font-weight:700;color:#111418;">${escapeHtml(story.title)}</p>
-          ${story.excerpt ? `<p style="margin:4px 0 0;font-size:14px;color:#5a6068;">${escapeHtml(story.excerpt)}</p>` : ""}
-        </a></td></tr>`;
+  const cards = (items ?? []).flatMap((item): IssueCard[] => {
+    if (item.story) {
+      const s = item.story;
+      return [{ href: `${base}/news/${s.slug}`, title: s.title, summary: s.excerpt, image: mediaUrl(s.cover_path), kicker: null, cta: "Read article" }];
+    }
+    if (item.video) {
+      const v = item.video;
+      return [{ href: `${base}/video/${v.slug}`, title: v.title, summary: null, image: mediaUrl(v.thumbnail_path), kicker: "Video", cta: "Watch video" }];
+    }
+    return [];
+  });
+
+  // Routed through /visit/[id] rather than the raw link_url, so a newsletter
+  // ad click generates the same ad_click event a web ad slot click does
+  // (A5.4/A5.7) — /visit/[id] already falls back to the advertiser's own
+  // member page when there's no link_url.
+  const visit = (advertId: string) => `${base}/visit/${advertId}?src=newsletter`;
+  const placed = (ads ?? []).flatMap((slot) => (slot.advert ? [{ ...slot.advert, after_item: slot.after_item }] : []));
+  const { sponsor, banners } = splitMastheadSponsor(placed);
+
+  const body = issueBlocks(cards, banners)
+    .map((block) => {
+      switch (block.kind) {
+        case "lead":
+          return `<tr><td style="padding:20px 0 4px;">${cardHtml(block.item, LEAD_IMAGE_WIDTH, 22)}</td></tr>`;
+        case "heading":
+          return `<tr><td style="padding:20px 0 4px;border-top:3px solid #ff8200;"><p style="margin:0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#111418;">${escapeHtml(STORY_SECTION_HEADING)}</p></td></tr>`;
+        case "row":
+          if (block.items.length === 1) return `<tr><td style="padding:12px 0;">${cardHtml(block.items[0], LEAD_IMAGE_WIDTH, 18)}</td></tr>`;
+          return `<tr><td style="padding:12px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td class="smi-col" width="50%" valign="top" style="padding:0 8px 0 0;">${cardHtml(block.items[0], CARD_IMAGE_WIDTH, 16)}</td>
+          <td class="smi-col" width="50%" valign="top" style="padding:0 0 0 8px;">${cardHtml(block.items[1], CARD_IMAGE_WIDTH, 16)}</td>
+        </tr></table></td></tr>`;
+        case "ad": {
+          // The mobile creative, not the desktop one: this column is 600px at
+          // its widest and narrower than that on a phone, which is what the
+          // mobile artwork is cut for (560×300, the size sold).
+          const image = mediaUrl(block.ad.mobile_path) ?? mediaUrl(block.ad.desktop_path);
+          if (!image) return "";
+          return `<tr><td style="padding:16px 0;">
+          <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5a6068;">${escapeHtml(AD_LABEL)}</p>
+          <a href="${escapeHtml(visit(block.ad.id))}"><img src="${escapeHtml(image)}" width="${LEAD_IMAGE_WIDTH}" alt="${escapeHtml(block.ad.name ?? AD_LABEL)}" style="display:block;width:100%;max-width:${LEAD_IMAGE_WIDTH}px;height:auto;border:0;border-radius:4px;"></a>
+        </td></tr>`;
+        }
       }
-      if (item.video) {
-        const video = item.video;
-        const href = `${base}/video/${video.slug}`;
-        const image = video.thumbnail_path
-          ? `<img src="${escapeHtml(mediaUrl(video.thumbnail_path) ?? "")}" width="112" alt="" style="display:block;border-radius:4px;">`
-          : "";
-        return `<tr><td style="padding:12px 0;border-bottom:1px solid #e4e6e9;">
-        <a href="${escapeHtml(href)}" style="text-decoration:none;color:#111418;">
-          ${image}
-          <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5a6068;">Video</p>
-          <p style="margin:4px 0 0;font-size:17px;font-weight:700;color:#111418;">${escapeHtml(video.title)}</p>
-        </a></td></tr>`;
-      }
-      return "";
     })
     .join("");
 
-  const adHtml = (ads ?? [])
-    .flatMap((slot) => (slot.advert ? [slot.advert] : []))
-    .map((advert) => {
-      // The mobile creative, not the desktop one: this column is 600px at its
-      // widest and narrower than that on a phone, which is what the mobile
-      // artwork is cut for. Worth confirming with Jas when the first issue with
-      // a booked slot goes out.
-      const image = mediaUrl(advert.mobile_path) ?? mediaUrl(advert.desktop_path);
-      if (!image) return "";
-      const inner = `<img src="${escapeHtml(image)}" alt="${escapeHtml(advert.name ?? "Advertisement")}" style="display:block;max-width:100%;border-radius:4px;">`;
-      // Routed through /visit/[id] rather than the raw link_url, so a
-      // newsletter ad click generates the same ad_click event a web ad slot
-      // click does (A5.4/A5.7) — /visit/[id] already falls back to the
-      // advertiser's own member page when there's no link_url.
-      return `<tr><td style="padding:16px 0;">
-        <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#5a6068;">Advertisement</p>
-        <a href="${escapeHtml(`${base}/visit/${advert.id}?src=newsletter`)}">${inner}</a>
-      </td></tr>`;
-    })
-    .join("");
+  const sponsorImage = sponsor ? mediaUrl(sponsor.desktop_path) ?? mediaUrl(sponsor.mobile_path) : null;
+  const masthead = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+    <td valign="middle"><a href="${escapeHtml(base)}"><img src="${escapeHtml(`${base}/logo-stacked.png`)}" width="160" alt="Sheet Metal Industries" style="display:block;width:160px;height:auto;border:0;"></a></td>
+    ${sponsor && sponsorImage
+      ? `<td valign="middle" align="right">
+      <p style="margin:0 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#5a6068;">In association with</p>
+      <a href="${escapeHtml(visit(sponsor.id))}"><img src="${escapeHtml(sponsorImage)}" width="186" alt="${escapeHtml(sponsor.name ?? "Sponsor")}" style="display:block;width:186px;max-width:100%;height:auto;border:0;margin-left:auto;"></a>
+    </td>`
+      : ""}
+  </tr></table>`;
+
+  // Hidden in the body, shown by the inbox as the line under the subject. The
+  // trailing spacer stops clients padding the preview with the masthead's alt
+  // text and the first headline.
+  const preheader = issue.preview_text?.trim()
+    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#ffffff;">${escapeHtml(issue.preview_text.trim())}${"&#8199;&#65279;&#847; ".repeat(30)}</div>`
+    : "";
 
   // The wrapper is editable in /console/email-templates (fix-list 63); the
   // story and advert markup above is not, because it is generated from
@@ -188,18 +225,19 @@ export async function renderIssueHtml(
     import("../email/templates"),
     import("../email/store"),
   ]);
-  const videos = (items ?? []).flatMap((item) => (item.video ? [item.video] : []));
   const rendered = renderNewsletterShell(
     {
       issue_number: String(issue.number),
       subject: issue.subject,
       intro: issue.intro ?? "",
-      items: storyHtml,
-      adverts: adHtml,
-      items_text: [
-        ...stories.map((story) => `- ${story.title}\n  ${base}/news/${story.slug}`),
-        ...videos.map((video) => `- ${video.title}\n  ${base}/video/${video.slug}`),
-      ].join("\n"),
+      preheader,
+      masthead,
+      items: body,
+      // The adverts are placed between the items now, so they arrive inside
+      // {{items}}. The token stays, empty, so a shell edited in the console
+      // before this still validates and renders.
+      adverts: "",
+      items_text: cards.map((card) => `- ${card.title}\n  ${card.href}`).join("\n"),
       online_link: issue.web_slug
         ? ` · <a href="${escapeHtml(base)}/newsletters/${escapeHtml(issue.web_slug)}" style="color:#5a6068;">Read this issue online</a>`
         : "",

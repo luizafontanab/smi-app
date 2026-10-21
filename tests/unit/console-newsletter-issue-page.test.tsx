@@ -18,7 +18,7 @@ const props = { params: Promise.resolve({ id: ISSUE_ID }), searchParams: Promise
 const row = (id: string, title: string, status = "published") => ({ id, title, published_at: "2026-01-05T09:00:00Z", status });
 
 describe("/console/newsletter/[id] story picker", () => {
-  it("gives every picked item a ticked checkbox, even one outside the latest 20", async () => {
+  it("lists every picked item in issue order, lead first, even one outside the latest 20", async () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
       from: fromByTable({
         newsletter_issues: () => queryBuilder(dbOk({
@@ -37,13 +37,17 @@ describe("/console/newsletter/[id] story picker", () => {
       }),
     })));
 
-    render(await IssueDetail(props));
+    const { container } = render(await IssueDetail(props));
 
-    expect(screen.getByRole("checkbox", { name: /Older story/ })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Newer story/ })).not.toBeChecked();
-    const gone = screen.getByRole("checkbox", { name: /Withdrawn video/ });
-    expect(gone).toBeChecked();
-    expect(gone.closest("label")).toHaveTextContent("not live");
+    // Posted in order, so a save keeps both, the old one as the lead.
+    const posted = [...container.querySelectorAll<HTMLInputElement>('input[type="hidden"][name="items"]')].map((i) => i.value);
+    expect(posted).toEqual(["story:old", "video:gone"]);
+    expect(screen.getByRole("button", { name: "Move Older story up" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move Withdrawn video down" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove Withdrawn video" }).closest("li")).toHaveTextContent("not live");
+    // The recent one is offered to add, not already in.
+    expect(screen.getByRole("button", { name: "Add Newer story" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add Older story" })).toBeNull();
   });
 });
 

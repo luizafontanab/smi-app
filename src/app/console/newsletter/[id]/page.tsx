@@ -5,10 +5,13 @@ import { serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { renderIssueHtml } from "@/lib/adapters/newsletter";
-import { pickerOptions, type PickerItem } from "@/lib/newsletter-picker";
+import type { IssueContentResult } from "@/lib/newsletter-picker";
+import { PREVIEW_TEXT_SOFT_MAX, SUBJECT_SOFT_MAX } from "@/lib/newsletter-layout";
 import { audienceDrift, missingChecks, PROOF_CHECKLIST, tickedKeys } from "@/lib/newsletter-proof";
-import { approveIssue, attachNewsletterAd, detachNewsletterAd, saveProofChecks, sendTestIssue, updateIssue, withdrawApproval } from "../../actions";
+import { approveIssue, attachNewsletterAd, detachNewsletterAd, placeNewsletterAd, saveProofChecks, searchIssueContent, sendTestIssue, updateIssue, withdrawApproval } from "../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { CountedInput } from "@/components/console/CountedInput";
+import { IssueItemsPicker } from "@/components/console/IssueItemsPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +31,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
   if (!UUID_RE.test(id)) notFound();
   const issue = await must(
     db.from("newsletter_issues")
-      .select("id, number, subject, intro, status, sent_count, opens_count, clicks_count, proof_checks, last_test_sent_at, last_test_sent_by, approved_at, approved_by, approved_recipients")
+      .select("id, number, subject, intro, preview_text, status, sent_count, opens_count, clicks_count, proof_checks, last_test_sent_at, last_test_sent_by, approved_at, approved_by, approved_recipients")
       .eq("id", id).maybeSingle(),
     "console/newsletter issue",
   );
@@ -38,7 +41,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
 
   const [items, ads, eligible, allStories, allVideos, preview] = await Promise.all([
     must(db.from("newsletter_items").select("position, story_id, video_id, story:stories(id, title, published_at, status), video:videos(id, title, published_at, status)").eq("issue_id", id).order("position"), "console/newsletter items"),
-    must(db.from("newsletter_ads").select("advert_id, advert:adverts(id, name, format, member:members(name))").eq("issue_id", id).order("position"), "console/newsletter ads"),
+    must(db.from("newsletter_ads").select("advert_id, after_item, advert:adverts(id, name, format, member:members(name))").eq("issue_id", id).order("position"), "console/newsletter ads"),
     must(db.from("adverts").select("id, name, format, member:members(name)").in("format", NEWSLETTER_FORMATS).order("created_at", { ascending: false }), "console/newsletter eligible adverts"),
     must(db.from("stories").select("id, title, published_at, status").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter all stories"),
     must(db.from("videos").select("id, title, published_at, status").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter all videos"),
@@ -70,16 +73,16 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
   const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" });
   const attachedIds = new Set((ads ?? []).map((a) => a.advert_id));
   const available = (eligible ?? []).filter((a) => !attachedIds.has(a.id));
-  // Every picked item gets a checkbox, however old: saving replaces the whole
-  // list, so an item missing from it would be dropped (lib/newsletter-picker).
-  const storyOptions = pickerOptions(
-    (items ?? []).flatMap((it): PickerItem[] => (it.story ? [it.story] : [])),
-    allStories ?? [],
+  // Every picked item is listed, however old: saving replaces the whole list,
+  // so an item missing from it would be dropped (lib/newsletter-picker).
+  const pickedItems = (items ?? []).flatMap((it): IssueContentResult[] =>
+    it.story ? [{ ...it.story, kind: "story" }] : it.video ? [{ ...it.video, kind: "video" }] : [],
   );
-  const videoOptions = pickerOptions(
-    (items ?? []).flatMap((it): PickerItem[] => (it.video ? [it.video] : [])),
-    allVideos ?? [],
-  );
+  const recentItems: IssueContentResult[] = [
+    ...(allStories ?? []).map((s) => ({ ...s, kind: "story" as const })),
+    ...(allVideos ?? []).map((v) => ({ ...v, kind: "video" as const })),
+  ].sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""));
+  const hasMastheadLogo = (ads ?? []).some((a) => a.advert?.format === "association_logo");
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -108,7 +111,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
         <h2 className="font-bold text-ink">Content ({(items ?? []).length})</h2>
         <ul className="mt-2 space-y-1 text-sm text-graphite">
           {(items ?? []).map((it, i) => (
-            <li key={i}>{it.story?.title ?? (it.video && `${it.video.title} (video)`)}</li>
+            <li key={i}>{i === 0 && <span className="text-xs font-bold uppercase text-ink">Lead · </span>}{it.story?.title ?? (it.video && `${it.video.title} (video)`)}</li>
           ))}
         </ul>
       </section>
@@ -119,31 +122,16 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
           <form action={updateIssue} className="mt-3 space-y-3 text-sm">
             <UnsavedChangesGuard />
             <input type="hidden" name="id" value={id} />
-            <input name="subject" defaultValue={issue.subject} required className="w-full rounded border px-3 py-2" />
-            <textarea name="intro" defaultValue={issue.intro ?? ""} placeholder="Intro paragraph" rows={2} className="w-full rounded border px-3 py-2" />
-            <p className="text-xs uppercase tracking-wide text-graphite">Stories</p>
-            <div className="max-h-56 space-y-1 overflow-y-auto rounded border p-2">
-              {storyOptions.map((s) => (
-                <label key={s.id} className="flex items-center gap-2">
-                  <input type="checkbox" name="stories" value={s.id} defaultChecked={s.picked} />
-                  <span>{s.title}</span>
-                  <span className="text-xs text-graphite">{s.published_at?.slice(0, 10)}</span>
-                  {s.status !== "published" && <span className="text-xs text-danger">not live</span>}
-                </label>
-              ))}
-            </div>
-            <p className="text-xs uppercase tracking-wide text-graphite">Video (optional)</p>
-            <div className="max-h-40 space-y-1 overflow-y-auto rounded border p-2">
-              {videoOptions.map((v) => (
-                <label key={v.id} className="flex items-center gap-2">
-                  <input type="checkbox" name="videos" value={v.id} defaultChecked={v.picked} />
-                  <span>{v.title}</span>
-                  <span className="text-xs text-graphite">{v.published_at?.slice(0, 10)}</span>
-                  {v.status !== "published" && <span className="text-xs text-danger">not live</span>}
-                </label>
-              ))}
-              {!videoOptions.length && <p className="text-xs text-graphite">No published videos yet.</p>}
-            </div>
+            <CountedInput name="subject" label="Subject" softMax={SUBJECT_SOFT_MAX} defaultValue={issue.subject} required />
+            <CountedInput
+              name="preview_text"
+              label="Preview text"
+              softMax={PREVIEW_TEXT_SOFT_MAX}
+              defaultValue={issue.preview_text ?? ""}
+              hint="The line inboxes show under the subject. Hidden in the email itself."
+            />
+            <textarea name="intro" defaultValue={issue.intro ?? ""} placeholder="Intro paragraph" aria-label="Intro paragraph" rows={2} className="w-full rounded border px-3 py-2" />
+            <IssueItemsPicker initial={pickedItems} recent={recentItems} search={searchIssueContent} />
             <button className="rounded bg-ink px-4 py-2 text-white">Save changes</button>
             {(issue.approved_at || issue.last_test_sent_at) && (
               <p className="text-xs text-graphite">
@@ -257,9 +245,25 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
 
       <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Advert slots ({(ads ?? []).length} · ~2–3 recommended)</h2>
+        <p className="mt-1 text-xs text-graphite">
+          Banners sit between the stories, labelled “Sponsored”. Left on auto, the first goes after item 3 (the lead and the first row), the last just before the footer, and any others between. An “In association with” logo goes in the masthead, one per issue.
+        </p>
         {(ads ?? []).map((a) => (
-          <div key={a.advert_id} className="mt-2 flex items-center justify-between border-t pt-2 text-sm">
+          <div key={a.advert_id} className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
             <span>{a.advert?.name} — {a.advert?.member?.name} <span className="text-graphite">({a.advert?.format.replace(/_/g, " ")})</span></span>
+            {a.advert?.format === "association_logo" ? (
+              <span className="text-xs text-graphite">In the masthead</span>
+            ) : editable ? (
+              <form action={placeNewsletterAd} className="flex items-center gap-1 text-xs">
+                <input type="hidden" name="issue_id" value={id} />
+                <input type="hidden" name="advert_id" value={a.advert_id} />
+                <label htmlFor={`after-${a.advert_id}`} className="text-graphite">After item</label>
+                <input id={`after-${a.advert_id}`} name="after_item" type="number" min={1} defaultValue={a.after_item ?? ""} placeholder="auto" className="w-16 rounded border px-2 py-0.5" />
+                <button className="rounded border px-2 py-0.5">Set</button>
+              </form>
+            ) : (
+              <span className="text-xs text-graphite">{a.after_item ? `After item ${a.after_item}` : "Placed automatically"}</span>
+            )}
             {editable && (
               <form action={detachNewsletterAd}>
                 <input type="hidden" name="issue_id" value={id} />
@@ -274,7 +278,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
         {editable && (
           <>
             <h3 className="mt-4 text-xs font-bold uppercase text-graphite">Add</h3>
-            {available.map((a) => (
+            {available.filter((a) => !(hasMastheadLogo && a.format === "association_logo")).map((a) => (
               <div key={a.id} className="mt-2 flex items-center justify-between border-t pt-2 text-sm">
                 <span>{a.name} — {a.member?.name} <span className="text-graphite">({a.format.replace(/_/g, " ")})</span></span>
                 <form action={attachNewsletterAd}>

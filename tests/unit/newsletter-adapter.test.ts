@@ -116,6 +116,111 @@ describe("renderIssueHtml", () => {
     expect(rendered!.html).toContain("?src=newsletter");
   });
 
+  describe("the live-issue layout (gap review area 5)", () => {
+    const story = (n: number) => ({
+      position: n,
+      story: { slug: `story-${n}`, title: `Story ${n}`, excerpt: `Summary ${n}`, cover_path: `cover-${n}.jpg` },
+      video: null,
+    });
+    const banner = (id: string, after_item: number | null = null, name = `Advert ${id}`) => ({
+      position: 0, after_item, advert: { id, name, format: "newsletter_banner", desktop_path: null, mobile_path: `${id}.jpg` },
+    });
+    function issue(fields: Record<string, unknown>, items: unknown[], ads: unknown[]) {
+      db({
+        newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 50, subject: "November", intro: null, preview_text: null, web_slug: null, ...fields })),
+        newsletter_items: () => queryBuilder(dbOk(items)),
+        newsletter_ads: () => queryBuilder(dbOk(ads)),
+      });
+    }
+    const order = (html: string, needles: string[]) => needles.map((n) => html.indexOf(n));
+
+    it("draws the first item as the full-width lead and the rest two to a row under the heading", async () => {
+      issue({}, [1, 2, 3, 4].map(story), []);
+      const { html } = (await renderIssueHtml("iss1"))!;
+
+      expect(html).toContain('width="544" alt="Story 1"');
+      expect(html).toContain('width="264" alt="Story 2"');
+      expect(html.match(/class="smi-col"/g)).toHaveLength(2); // one two-up row (2+3); story 4 sits alone
+      expect(html).toContain('width="544" alt="Story 4"');
+      const [lead, heading, second] = order(html, ["Story 1", "Sheeting Hot News", "Story 2"]);
+      expect(lead).toBeLessThan(heading);
+      expect(heading).toBeLessThan(second);
+    });
+
+    it("gives every card image its title as alt text — the live issues have none", async () => {
+      issue({}, [story(1)], []);
+      expect((await renderIssueHtml("iss1"))!.html).not.toContain('alt=""');
+    });
+
+    it("places adverts between the rows, labelled Sponsored, with newsletter click tracking", async () => {
+      issue({}, [1, 2, 3, 4, 5, 6, 7].map(story), [banner("a1"), banner("a2")]);
+      const { html } = (await renderIssueHtml("iss1"))!;
+
+      const [s3, a1, s4, s7, a2] = order(html, ["Story 3", "a1.jpg", "Story 4", "Story 7", "a2.jpg"]);
+      expect(s3).toBeLessThan(a1);
+      expect(a1).toBeLessThan(s4);
+      expect(s7).toBeLessThan(a2);
+      expect(html).toContain("/visit/a1?src=newsletter");
+      expect(html).toContain(">Sponsored<");
+      expect(html).not.toContain("Advertisement");
+    });
+
+    it("honours an advert's own place", async () => {
+      issue({}, [1, 2, 3, 4, 5].map(story), [banner("a1", 1)]);
+      const { html } = (await renderIssueHtml("iss1"))!;
+      const [s1, a1, s2] = order(html, ["Story 1", "a1.jpg", "Story 2"]);
+      expect(s1).toBeLessThan(a1);
+      expect(a1).toBeLessThan(s2);
+    });
+
+    it("escapes an advert's name into its alt text", async () => {
+      issue({}, [story(1)], [banner("a1", null, 'Acme "Laser" <Ltd>')]);
+      const { html } = (await renderIssueHtml("iss1"))!;
+      expect(html).toContain('alt="Acme &quot;Laser&quot; &lt;Ltd&gt;"');
+    });
+
+    it("puts the association logo in the masthead, not between the stories", async () => {
+      issue({}, [1, 2, 3, 4].map(story), [
+        { position: 0, after_item: null, advert: { id: "logo1", name: "Greenfield", format: "association_logo", desktop_path: "logo1.png", mobile_path: null } },
+      ]);
+      const { html } = (await renderIssueHtml("iss1"))!;
+
+      expect(html).toContain("In association with");
+      expect(html).toContain("/visit/logo1?src=newsletter");
+      expect(html.indexOf("logo1.png")).toBeLessThan(html.indexOf("Story 1"));
+      expect(html).not.toContain(">Sponsored<");
+      expect(html).toContain("/logo-stacked.png");
+    });
+
+    it("has no sponsor block without an association logo", async () => {
+      issue({}, [story(1)], []);
+      expect((await renderIssueHtml("iss1"))!.html).not.toContain("In association with");
+    });
+
+    it("renders the preview text as a hidden preheader, escaped", async () => {
+      issue({ preview_text: "Laser <news> & more" }, [story(1)], []);
+      const { html } = (await renderIssueHtml("iss1"))!;
+      expect(html).toContain('<div style="display:none;');
+      expect(html).toContain("Laser &lt;news&gt; &amp; more");
+      expect(html.indexOf("Laser &lt;news&gt;")).toBeLessThan(html.indexOf("Story 1"));
+    });
+
+    it("leaves no preheader when the issue has no preview text", async () => {
+      issue({ preview_text: "  " }, [story(1)], []);
+      expect((await renderIssueHtml("iss1"))!.html).not.toContain("display:none");
+    });
+
+    it("lists items in the composer's order in the text version, videos mixed in", async () => {
+      issue({}, [
+        { position: 0, story: null, video: { slug: "demo", title: "Demo video", thumbnail_path: null } },
+        story(1),
+      ], []);
+      const { text } = (await renderIssueHtml("iss1"))!;
+      expect(text.indexOf("Demo video")).toBeLessThan(text.indexOf("Story 1"));
+      expect(text).toContain("/video/demo");
+    });
+  });
+
   it("includes the read-online link only when the issue has a web_slug", async () => {
     db({
       newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: "aug-2026" })),

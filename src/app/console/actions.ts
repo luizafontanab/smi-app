@@ -47,6 +47,7 @@ import { activationBlocked, MEMBER_STATUSES, type MemberStatus } from "@/lib/mem
 import { sanitizeRichText } from "@/lib/sanitize";
 import { siteUrl } from "@/lib/site-url";
 import { missingChecks, PROOF_KEYS } from "@/lib/newsletter-proof";
+import { parseIssueItems, type IssueContentResult, type IssueItemRef } from "@/lib/newsletter-picker";
 import { isVariant, SITE_VARIANT_KEY, VARIANT_COOKIE } from "@/lib/variant";
 import { HOME_SECTION_IDS, HOME_SECTIONS_KEY, LOCKED_VISIBLE, moveHomeSection, resolveHomeSections, type HomeSectionId } from "@/lib/home-sections";
 import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
@@ -2328,13 +2329,18 @@ export async function declineInterest(formData: FormData) {
 
 /* ---------- newsletter ---------- */
 
-/** Turns the composer's picked stories/videos into position-ordered newsletter_items rows, stories first. */
-function newsletterItemRows(issueId: string, storyIds: string[], videoIds: string[]) {
-  return [
-    ...storyIds.map((story_id, i) => ({ issue_id: issueId, story_id, position: i })),
-    ...videoIds.map((video_id, i) => ({ issue_id: issueId, video_id, position: storyIds.length + i })),
-  ];
+/** Turns the composer's ordered picks into newsletter_items rows; position 0 is the lead story. */
+function newsletterItemRows(issueId: string, refs: IssueItemRef[]) {
+  return refs.map((ref, position) =>
+    ref.kind === "story" ? { issue_id: issueId, story_id: ref.id, position } : { issue_id: issueId, video_id: ref.id, position },
+  );
 }
+
+/** The create form still has two checklists; its picks start as stories then videos, and are reordered on the issue page. */
+const createFormItems = (formData: FormData): IssueItemRef[] => [
+  ...formData.getAll("stories").map((id) => ({ kind: "story" as const, id: String(id) })),
+  ...formData.getAll("videos").map((id) => ({ kind: "video" as const, id: String(id) })),
+];
 
 export async function createIssue(formData: FormData) {
   const user = await requireConsole();
@@ -2345,7 +2351,7 @@ export async function createIssue(formData: FormData) {
   const { data } = await db.from("newsletter_issues").insert({
     number, subject, intro: String(formData.get("intro") ?? ""), web_slug: `issue-${number}`, created_by: user.userId,
   }).select("id").single();
-  const rows = newsletterItemRows(data!.id, formData.getAll("stories").map(String), formData.getAll("videos").map(String));
+  const rows = newsletterItemRows(data!.id, createFormItems(formData));
   if (rows.length) await db.from("newsletter_items").insert(rows);
   revalidatePath("/console/newsletter");
 }
@@ -2418,10 +2424,14 @@ export async function updateIssue(formData: FormData) {
   await db.from("newsletter_issues").update({
     subject: String(formData.get("subject") ?? ""),
     intro: String(formData.get("intro") ?? ""),
+    preview_text: String(formData.get("preview_text") ?? "").trim() || null,
   }).eq("id", id);
 
   await db.from("newsletter_items").delete().eq("issue_id", id);
-  const rows = newsletterItemRows(id, formData.getAll("stories").map(String), formData.getAll("videos").map(String));
+  // One ordered list (gap review area 5), so stories and videos mix and the
+  // first is the lead. Every picked item is posted however old, so a save
+  // can't drop one (lib/newsletter-picker).
+  const rows = newsletterItemRows(id, parseIssueItems(formData.getAll("items").map(String)));
   if (rows.length) await db.from("newsletter_items").insert(rows);
   await markIssueEdited(db, id, user.userId);
 
@@ -2440,6 +2450,14 @@ export async function attachNewsletterAd(formData: FormData) {
   const db = serviceDb();
   const issueId = String(formData.get("issue_id"));
   const advertId = String(formData.get("advert_id"));
+  // The masthead has room for one "In association with" logo (area 5).
+  const { data: advert } = await db.from("adverts").select("format").eq("id", advertId).maybeSingle();
+  if (advert?.format === "association_logo") {
+    const { data: attached } = await db.from("newsletter_ads").select("advert:adverts(format)").eq("issue_id", issueId);
+    if ((attached ?? []).some((row) => row.advert?.format === "association_logo")) {
+      issueFail(issueId, "This issue already has an “In association with” logo. Remove it first to use another.");
+    }
+  }
   const { count } = await db.from("newsletter_ads").select("*", { count: "exact", head: true }).eq("issue_id", issueId);
   await db.from("newsletter_ads").insert({ issue_id: issueId, advert_id: advertId, position: count ?? 0 });
   await markIssueEdited(db, issueId, user.userId);
@@ -2456,6 +2474,53 @@ export async function detachNewsletterAd(formData: FormData) {
   await markIssueEdited(db, issueId, user.userId);
   revalidatePath(`/console/newsletter/${issueId}`);
   revalidatePath("/console/newsletter");
+}
+
+/**
+ * Where an attached advert sits: "after item N", or blank for the automatic
+ * rule (lib/newsletter-layout). A number past the issue's end is kept and
+ * clamped at render time, so removing a story never invalidates it.
+ */
+export async function placeNewsletterAd(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const issueId = String(formData.get("issue_id"));
+  const advertId = String(formData.get("advert_id"));
+  const raw = String(formData.get("after_item") ?? "").trim();
+  const afterItem = raw === "" ? null : Number(raw);
+  if (afterItem !== null && (!Number.isInteger(afterItem) || afterItem < 1)) {
+    issueFail(issueId, "An advert's place is a whole number of items, 1 or more — or blank to place it automatically.");
+  }
+  const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", issueId).single();
+  if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) issueFail(issueId, "This issue can no longer be edited.");
+  await db.from("newsletter_ads").update({ after_item: afterItem }).eq("issue_id", issueId).eq("advert_id", advertId);
+  await markIssueEdited(db, issueId, user.userId);
+  revalidatePath(`/console/newsletter/${issueId}`);
+  revalidatePath("/console/newsletter");
+}
+
+/**
+ * The issue editor's picker search (gap review area 5): published stories and
+ * videos by title, optionally since a date, instead of only the latest 20.
+ * Returns at most 25 of each, newest first.
+ */
+export async function searchIssueContent(query: string, since: string): Promise<IssueContentResult[]> {
+  await requireConsole();
+  const db = serviceDb();
+  const term = query.trim().slice(0, 100);
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(since) ? since : null;
+  const pattern = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const search = (table: "stories" | "videos") => {
+    let q = db.from(table).select("id, title, published_at, status").eq("status", "published");
+    if (term) q = q.ilike("title", pattern);
+    if (from) q = q.gte("published_at", from);
+    return q.order("published_at", { ascending: false }).limit(25);
+  };
+  const [stories, videos] = await Promise.all([search("stories"), search("videos")]);
+  return [
+    ...(stories.data ?? []).map((row) => ({ ...row, kind: "story" as const })),
+    ...(videos.data ?? []).map((row) => ({ ...row, kind: "video" as const })),
+  ].sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""));
 }
 
 /** Ticks on the proof checklist (lib/newsletter-proof). Saved on their own, so a half-done proof isn't lost. */

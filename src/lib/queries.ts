@@ -803,12 +803,23 @@ export async function newsletterBySlug(slug: string) {
     .eq("web_slug", slug)
     .single();
   if (!issue) return null;
-  const { data: items } = await publicDb()
-    .from("newsletter_items")
-    .select("position, story:stories(slug, title, excerpt:story_summary, cover_path, cover_focus)")
-    .eq("issue_id", issue.id)
-    .order("position");
-  return { ...issue, items: items ?? [] };
+  const [{ data: items }, { data: ads }] = await Promise.all([
+    publicDb()
+      .from("newsletter_items")
+      .select("position, story:stories(slug, title, excerpt:story_summary, cover_path, cover_focus), video:videos(slug, title, thumbnail_path)")
+      .eq("issue_id", issue.id)
+      .order("position"),
+    // Gap review area 5: the web version carries the issue's adverts too.
+    // adverts and newsletter_ads have no anon policy, so this one read is the
+    // service role — scoped to an issue already confirmed sent through the
+    // anon client above, and to the columns the emailed issue itself exposes.
+    serviceDb()
+      .from("newsletter_ads")
+      .select("position, after_item, advert:adverts(id, name, format, desktop_path, mobile_path)")
+      .eq("issue_id", issue.id)
+      .order("position"),
+  ]);
+  return { ...issue, items: items ?? [], ads: ads ?? [] };
 }
 
 export async function staticPage(slug: string) {

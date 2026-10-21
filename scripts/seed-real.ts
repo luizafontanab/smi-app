@@ -493,6 +493,7 @@ async function seedDemoRows(): Promise<void> {
     web_slug: `smi-monthly-${47 - n}`,
     sent_at: monthsAgo(n + 1),
     intro: "Sample issue seeded for local development: the month's news, new machinery and the events worth your time.",
+    preview_text: "The month's news, new machinery and the events worth your time.",
   }));
 
   const { data: written, error: nlErr } = await db

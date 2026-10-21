@@ -470,6 +470,7 @@ async function main() {
       number: n + 47, subject: `SMI Monthly — ${["June", "July"][n]} 2026`, status: "sent",
       web_slug: `issue-${n + 47}`, sent_at: sentAt.toISOString(),
       intro: faker.lorem.paragraph(),
+      preview_text: faker.lorem.sentence().slice(0, 90),
       sent_count: [104, 108][n],
       approved_at: new Date(sentAt.getTime() - 24 * 3_600_000).toISOString(),
       approved_recipients: [104, 108][n],
