@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addContact, addDirectoryMember, approveIssue, attachNewsletterAd, createIssue, placeNewsletterAd, previewBiginPull, runBiginSync, saveContact, saveProofChecks, scheduleIssue,
+  addContact, addDirectoryMember, approveIssue, attachNewsletterAd, createIssue, placeNewsletterAd, previewBiginPull, runBiginSync, saveContact, saveNewsletterFooter, saveProofChecks, scheduleIssue,
   removeDirectoryMember, searchBiginCompanies, searchIssueContent, sendIssue, sendTestIssue, unscheduleIssue, updateIssue, withdrawApproval,
 } from "@/app/console/actions";
 import { PROOF_KEYS } from "@/lib/newsletter-proof";
@@ -31,7 +31,7 @@ const { renderIssueHtml, emailSend } = vi.hoisted(() => ({
   emailSend: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/adapters/newsletter", () => ({ renderIssueHtml }));
-vi.mock("@/lib/adapters/email", () => ({ getEmailSender: () => ({ send: emailSend }) }));
+vi.mock("@/lib/adapters/email", () => ({ getEmailSender: () => ({ send: emailSend }), newsletterFrom: () => "Sheet Metal Industries <news@smi.local>" }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
 vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => crm), syncContactToCrm, saveLastRun, firstImportDone, readLastRun }));
@@ -482,8 +482,20 @@ describe("sendTestIssue", () => {
     await expect(sendTestIssue(form({ id: "iss1" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?tested=1");
 
     expect(renderIssueHtml).toHaveBeenCalledWith("iss1", { unsubscribeUrl: expect.stringMatching(/\/unsubscribe$/) });
-    expect(emailSend).toHaveBeenCalledWith({ to: "jas@smi.local", subject: "[TEST] October", html: "<p>hi</p>", text: "hi" });
+    // From the newsletter's sender, not the transactional one, so the proof shows the real name.
+    expect(emailSend).toHaveBeenCalledWith({ to: "jas@smi.local", from: "Sheet Metal Industries <news@smi.local>", subject: "[TEST] October", html: "<p>hi</p>", text: "hi" });
     expect(issuesBuilder.update).toHaveBeenCalledWith({ last_test_sent_at: expect.any(String), last_test_sent_by: "admin1" });
+  });
+
+  it("refuses while the edited newsletter template is missing a footer placeholder, sending nothing", async () => {
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ status: "draft" })),
+      email_templates: () => queryBuilder(dbOk([{ kind: "_newsletter_shell", subject: null, label: null, body_html: "<p>{{items}}</p>{{unsubscribe_url}}", body_text: null, cta_label: null }])),
+    });
+    renderIssueHtml.mockResolvedValue({ subject: "October", html: "<p>hi</p>", text: "hi" });
+
+    await expect(sendTestIssue(form({ id: "iss1" }))).rejects.toThrow(/\?error=.*postal_address/);
+    expect(emailSend).not.toHaveBeenCalled();
   });
 
   it("records nothing when the email provider refuses", async () => {
@@ -587,6 +599,26 @@ describe("saveContact", () => {
     expect(updates[2]).not.toHaveProperty("bigin_company_id"); // no picker on the form → link untouched
   });
 
+  // Gap review area 6: putting someone on the list from the console is a recorded opt-in.
+  it("records a console opt-in when a contact goes onto the list, and nothing when they were already on it", async () => {
+    const offBuilder = queryBuilder(dbOk({ id: "c1", email: "a@example.com", name: null, subscribed: false, unsubscribed_at: null }));
+    db({ contacts: () => offBuilder });
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", newsletter: "subscribed" }))).rejects.toThrow("NEXT_REDIRECT");
+    expect(offBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ subscribed: true, opt_in_at: expect.any(String), opt_in_source: "console", opt_in_wording: null }));
+
+    const onBuilder = queryBuilder(dbOk({ id: "c1", email: "a@example.com", name: null, subscribed: true, unsubscribed_at: null }));
+    db({ contacts: () => onBuilder });
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", newsletter: "subscribed" }))).rejects.toThrow("NEXT_REDIRECT");
+    expect((onBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty("opt_in_at");
+  });
+
+  it("records an explicit re-opt-in as a console opt-in", async () => {
+    const builder = queryBuilder(dbOk({ id: "c1", email: "a@example.com", name: null, subscribed: false, unsubscribed_at: "2026-01-01T00:00:00Z" }));
+    db({ contacts: () => builder });
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", newsletter: "subscribed", re_opt_in: "on" }))).rejects.toThrow("NEXT_REDIRECT");
+    expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ opt_in_source: "console" }));
+  });
+
   it("reports a race-lost unique-email conflict in the same friendly words", async () => {
     type Contact = { id: string; email: string; subscribed: boolean; unsubscribed_at: string | null };
     const contactsBuilder: ReturnType<typeof queryBuilder<Contact>> = queryBuilder<Contact>(() => {
@@ -599,6 +631,28 @@ describe("saveContact", () => {
 
     await expect(saveContact(form({ id: "c1", email: "same@example.com", newsletter: "subscribed" })))
       .rejects.toThrow(/already%20on%20another%20contact/);
+  });
+});
+
+describe("saveNewsletterFooter", () => {
+  it("stores the address and reason line in one settings row", async () => {
+    const settings = queryBuilder(dbOk(null));
+    db({ settings: () => settings });
+    await expect(saveNewsletterFooter(form({ postal_address: "SMI\n1 High St", reason_line: "Because." })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/newsletter?footer=saved#footer");
+    expect(settings.upsert).toHaveBeenCalledWith({ key: "newsletter_footer", value: { postal_address: "SMI\n1 High St", reason_line: "Because." } });
+  });
+
+  it("refuses an over-long address without writing", async () => {
+    const settings = queryBuilder(dbOk(null));
+    db({ settings: () => settings });
+    await expect(saveNewsletterFooter(form({ postal_address: "x".repeat(400), reason_line: "" }))).rejects.toThrow(/footer_error=/);
+    expect(settings.upsert).not.toHaveBeenCalled();
+  });
+
+  it("requires the console", async () => {
+    requireConsole.mockRejectedValueOnce(new Error("NEXT_REDIRECT:/login"));
+    await expect(saveNewsletterFooter(form({}))).rejects.toThrow("NEXT_REDIRECT:/login");
   });
 });
 
@@ -625,7 +679,10 @@ describe("addContact", () => {
 
     await addContact(form({ email: "new@example.com", name: " Ada Byron ", company: "Acme" }));
 
-    expect(contactsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ email: "new@example.com", name: "Ada Byron", company: "Acme", source: "console" }));
+    expect(contactsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
+      email: "new@example.com", name: "Ada Byron", company: "Acme", source: "console",
+      opt_in_at: expect.any(String), opt_in_source: "console", opt_in_wording: null,
+    }));
     expect(syncContactToCrm).toHaveBeenCalledWith("c-new");
   });
 });
@@ -685,5 +742,43 @@ describe("Bigin console actions", () => {
   it("runBiginSync reports a failure on the page instead of throwing it", async () => {
     crm.sync.mockRejectedValueOnce(new Error("1 of 1 pending pushes failed"));
     await expect(runBiginSync()).rejects.toThrow(/console\/crm\?error=Bigin%20sync%20finished%20with%20a%20problem/);
+  });
+});
+
+// Gap review area 7: a hard bounce belongs to the address, and isn't an opt-in change.
+describe("saveContact — bounces", () => {
+  const bounced = { id: "c1", email: "a@example.com", name: null, subscribed: true, unsubscribed_at: null, bounced_at: "2026-10-01T00:00:00Z" };
+
+  it("clears a bounce when the admin ticks that the address is fixed", async () => {
+    const builder = queryBuilder(dbOk(bounced));
+    db({ contacts: () => builder });
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", newsletter: "subscribed", clear_bounce: "on" }))).rejects.toThrow("NEXT_REDIRECT");
+    expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ bounced_at: null }));
+  });
+
+  it("clears a bounce when the email changes", async () => {
+    let call = 0;
+    const builder = queryBuilder(() => dbOk(call++ === 1 ? null : bounced)); // second read is the clash lookup: none
+    db({ contacts: () => builder });
+    await expect(saveContact(form({ id: "c1", email: "fixed@example.com", newsletter: "subscribed" }))).rejects.toThrow("NEXT_REDIRECT");
+    expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ email: "fixed@example.com", bounced_at: null }));
+  });
+
+  it("compares the address case-insensitively, so a stored capital doesn't read as a change on every save", async () => {
+    // Were it read as a change, the clash lookup would get this same row back
+    // and refuse the save — and the bounce would clear with nothing ticked.
+    const builder = queryBuilder(dbOk({ ...bounced, email: "Jas@Example.com" }));
+    db({ contacts: () => builder });
+    await expect(saveContact(form({ id: "c1", email: "jas@example.com", newsletter: "subscribed" }))).rejects.toThrow("NEXT_REDIRECT:/console/crm?saved=1");
+    expect((builder.update as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty("bounced_at");
+  });
+
+  it("keeps the bounce on an unrelated edit, and records no opt-in for it", async () => {
+    const builder = queryBuilder(dbOk(bounced));
+    db({ contacts: () => builder });
+    await expect(saveContact(form({ id: "c1", email: "a@example.com", name: "Ada", newsletter: "subscribed" }))).rejects.toThrow("NEXT_REDIRECT");
+    const patch = (builder.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(patch).not.toHaveProperty("bounced_at");
+    expect(patch).not.toHaveProperty("opt_in_at");
   });
 });

@@ -5,7 +5,9 @@ import { siteUrl } from "../site-url";
 import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "../newsletter-layout";
 import { issueExtras } from "../newsletter-extras";
 import { newsletterParams } from "../newsletter-tracking";
-import { EmailSendError } from "./email";
+import { addressLine, readNewsletterFooter } from "../newsletter-footer";
+import { SMI_SOCIAL_URLS, SOCIAL_CHANNELS } from "../social";
+import { EmailSendError, newsletterFrom } from "./email";
 
 /**
  * NewsletterSender adapter (TECH-DECISIONS #7).
@@ -60,10 +62,15 @@ const readContacts = <T>(what: string, query: (from: number, to: number) => Prom
     return { data };
   });
 
-/** Contacts we are allowed to mail: subscribed and never unsubscribed. */
+/**
+ * Contacts we are allowed to mail: subscribed, never unsubscribed, and not
+ * hard-bounced. A bounce isn't an opt-out (gap review area 7, migration
+ * 20261021000005) but its address doesn't take mail, so it's left out until
+ * the address changes or an admin clears it.
+ */
 function subscribedContacts() {
   return readContacts<{ email: string; name: string | null }>("subscribed contacts", (from, to) =>
-    serviceDb().from("contacts").select("email, name").eq("subscribed", true).is("unsubscribed_at", null).order("id").range(from, to),
+    serviceDb().from("contacts").select("email, name").eq("subscribed", true).is("unsubscribed_at", null).is("bounced_at", null).order("id").range(from, to),
   );
 }
 
@@ -209,7 +216,10 @@ export async function renderIssueHtml(
     })
     .join("");
 
-  const extras = await issueExtras(issue.id, issue.scheduled_at ?? issue.sent_at);
+  const [extras, footer] = await Promise.all([
+    issueExtras(issue.id, issue.scheduled_at ?? issue.sent_at),
+    readNewsletterFooter(db),
+  ]);
   const diaryHtml = extras.events.length
     ? `<tr><td style="padding:24px 0 4px;border-top:3px solid #ff8200;"><p style="margin:0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#111418;">${escapeHtml(DIARY_HEADING)}</p></td></tr>
       ${extras.events.map((event) => `<tr><td style="padding:8px 0;border-bottom:1px solid #e4e6e9;">
@@ -279,6 +289,11 @@ export async function renderIssueHtml(
         ? ` · <a href="${escapeHtml(base)}/newsletters/${escapeHtml(issue.web_slug)}" style="color:#5a6068;">Read this issue online</a>`
         : "",
       unsubscribe_url: opts.unsubscribeUrl ?? UNSUBSCRIBE_URL,
+      base,
+      // Code-owned like the site footer's (lib/social.ts), so they can't drift apart.
+      social_links: SOCIAL_CHANNELS.map((c) => ` · <a href="${escapeHtml(SMI_SOCIAL_URLS[c.key])}" style="color:#5a6068;">${escapeHtml(c.label)}</a>`).join(""),
+      reason_line: footer.reason_line,
+      postal_address: addressLine(footer.postal_address),
     },
     await loadEmailTemplates(),
   );
@@ -303,11 +318,21 @@ class LoggingNewsletterStub implements NewsletterSender {
   }
 }
 
+/**
+ * Provider backpressure, not a bad contact — let jobs.ts's rateLimitPauseMs
+ * recognise this and back off, instead of counting every throttled contact
+ * toward the job's max_attempts.
+ */
+function throttled(res: { status: number; body: string; retryAfterMs?: number }, what: string) {
+  if (res.status === 429) throw new EmailSendError(`Resend rate-limited ${what}: ${res.body.slice(0, 200)}`, 429, res.retryAfterMs);
+}
+
 class ResendNewsletterSender implements NewsletterSender {
   constructor(
     private apiKey: string,
     private segmentId: string,
     private from: string,
+    private replyTo?: string,
   ) {}
 
   private async api(
@@ -357,19 +382,24 @@ class ResendNewsletterSender implements NewsletterSender {
    * contact updates it — so without this an unsubscribe made here might never
    * reach Resend, and the next broadcast would go to them.
    *
-   * Removals count as pushes, so the job's numbers stay `{ pushed, failed }`.
+   * For the same reason the listing also drives the other direction: a
+   * subscribed contact whose create came back 409 and who isn't in the
+   * segment — pruned when they bounced or went "not subscribed", and since
+   * cleared or put back — is added to it, since the create can't.
+   *
+   * Removals and additions count as pushes, so the job's numbers stay
+   * `{ pushed, failed }`.
    */
   async syncContacts(): Promise<{ pushed: number; failed: number }> {
     const [subscribed, unsubscribed] = await Promise.all([subscribedContacts(), unsubscribedContacts()]);
     let pushed = 0;
     let failed = 0;
-    // Provider backpressure, not a bad contact — let jobs.ts's rateLimitPauseMs
-    // recognise this and back off, instead of counting every throttled contact
-    // toward the job's max_attempts.
-    const throttled = (res: { status: number; body: string; retryAfterMs?: number }, what: string) => {
-      if (res.status === 429) throw new EmailSendError(`Resend rate-limited ${what}: ${res.body.slice(0, 200)}`, 429, res.retryAfterMs);
-    };
 
+    // Subscribed contacts Resend already had. A create for them changes
+    // nothing — in particular it doesn't put them back in the segment — so
+    // the prune below adds any of them the segment is missing (hard-bounced
+    // and since cleared, "not subscribed" and put back on).
+    const existing = new Set<string>();
     const push = async (email: string, isUnsubscribed: boolean) => {
       const res = await this.api("/contacts", {
         email,
@@ -378,8 +408,13 @@ class ResendNewsletterSender implements NewsletterSender {
         // not bare ids (resend.com/docs/api-reference/contacts/create-contact).
         segments: [{ id: this.segmentId }],
       });
+      if (res.ok) { pushed++; return; }
       // A duplicate is the expected steady state, not a failure.
-      if (res.ok || res.status === 409) { pushed++; return; }
+      if (res.status === 409) {
+        pushed++;
+        if (!isUnsubscribed) existing.add(email);
+        return;
+      }
       throttled(res, "/contacts");
       failed++;
     };
@@ -387,15 +422,50 @@ class ResendNewsletterSender implements NewsletterSender {
     for (const contact of subscribed) await push(contact.email, false);
     for (const contact of unsubscribed) await push(contact.email, true);
 
+    const pruned = await this.pruneSegment(subscribed, unsubscribed, existing);
+    // couldn't list it — nothing pruned, and the job says so
+    if (!pruned.listed) return { pushed, failed: failed + 1 };
+    return { pushed: pushed + pruned.pushed, failed: failed + pruned.failed };
+  }
+
+  /**
+   * The segment half of the reconcile: take out every address that isn't
+   * mailable (left `contacts`, "not subscribed", hard-bounced), and mark our
+   * unsubscribes unsubscribed at Resend where it still has them subscribed.
+   * `listed` is false when the segment couldn't be read, in which case
+   * nothing was touched.
+   *
+   * Also run on its own right before every broadcast (sendIssue), because the
+   * full reconcile is daily: without it, someone who unsubscribed or bounced
+   * here since the last run would still be in the segment the broadcast goes
+   * to. Opt-outs made at Resend's end need nothing — Resend suppresses them.
+   *
+   * `readd` is the daily reconcile's other direction: subscribed contacts
+   * Resend already had (their create came back 409) that the segment turns out
+   * not to hold — removed by an earlier prune when they bounced or went "not
+   * subscribed", and since cleared or put back — are added to it. Only the
+   * reconcile passes it; the pre-send check removes and never adds, so a
+   * failure there can only ever hold an issue back for the right reason.
+   */
+  private async pruneSegment(
+    subscribed: { email: string }[],
+    unsubscribed: { email: string }[],
+    readd: ReadonlySet<string> = new Set(),
+  ): Promise<{ pushed: number; failed: number; listed: boolean }> {
+    let pushed = 0;
+    let failed = 0;
     const norm = (email: string) => email.trim().toLowerCase();
     const mailable = new Set(subscribed.map((c) => norm(c.email)));
     const optedOut = new Set(unsubscribed.map((c) => norm(c.email)));
     const members = await this.segmentMembers();
-    if (members === null) return { pushed, failed: failed + 1 }; // couldn't list it — nothing pruned, and the job says so
+    if (members === null) return { pushed, failed, listed: false };
     for (const { email, unsubscribed: offAtResend } of members) {
       if (mailable.has(norm(email))) continue;
       if (optedOut.has(norm(email))) {
-        if (offAtResend !== false) continue; // already suppressed there
+        // Only an explicit true is "already suppressed there". The listing's
+        // shape is unverified against a live account; if it omits the flag,
+        // the PATCH is a harmless repeat, whereas skipping it would mail them.
+        if (offAtResend === true) continue;
         const res = await this.api(`/contacts/${encodeURIComponent(email)}`, { unsubscribed: true }, undefined, "PATCH");
         if (res.ok) { pushed++; continue; }
         throttled(res, "unsubscribe update");
@@ -408,7 +478,19 @@ class ResendNewsletterSender implements NewsletterSender {
       throttled(res, "segment removal");
       failed++;
     }
-    return { pushed, failed };
+    // The mirror of the removal above (POST where that is DELETE), and like
+    // the listing, unverified against a live account: check on the first
+    // real sync that a cleared bounce reaches the segment (HUMAN-TODO §3).
+    const inSegment = new Set(members.map((m) => norm(m.email)));
+    for (const email of readd) {
+      if (inSegment.has(norm(email))) continue;
+      const res = await this.api(`/contacts/${encodeURIComponent(email)}/segments/${encodeURIComponent(this.segmentId)}`, undefined, undefined, "POST");
+      // 409: already in it — the state we wanted
+      if (res.ok || res.status === 409) { pushed++; continue; }
+      throttled(res, "segment add");
+      failed++;
+    }
+    return { pushed, failed, listed: true };
   }
 
   /**
@@ -445,8 +527,33 @@ class ResendNewsletterSender implements NewsletterSender {
     const content = await renderIssueHtml(issueId);
     if (!content) return { ok: false, error: "Issue not found." };
 
-    const recipients = (await subscribedContacts()).length;
+    // An edited wrapper that predates a required footer token renders without
+    // complaint and would send without it. Refuse instead; the issue page has
+    // been saying so (lib/email/templates newsletterTemplateProblem).
+    const [{ newsletterTemplateProblem }, { loadEmailTemplates }] = await Promise.all([
+      import("../email/templates"),
+      import("../email/store"),
+    ]);
+    const templateProblem = newsletterTemplateProblem(await loadEmailTemplates());
+    if (templateProblem) return { ok: false, error: templateProblem };
+
+    const [subscribed, unsubscribed] = await Promise.all([subscribedContacts(), unsubscribedContacts()]);
+    const recipients = subscribed.length;
     if (!recipients) return { ok: false, error: "No subscribed contacts — nothing to send." };
+
+    // Gap review area 7: the segment is only reconciled daily, so bring it up
+    // to date with every opt-out and bounce made here since, and refuse to
+    // send if that can't be done (Luiza, 21 Oct) — mailing someone who
+    // unsubscribed this morning is the one failure a delayed issue is better
+    // than. Before the broadcast, so a refusal leaves nothing half-sent; a
+    // rate limit throws, and the job retries later.
+    const pruned = await this.pruneSegment(subscribed, unsubscribed);
+    if (!pruned.listed) {
+      return { ok: false, error: "Couldn't read the Resend segment to remove recent unsubscribes and bounces, so nothing was sent. Try again shortly." };
+    }
+    if (pruned.failed) {
+      return { ok: false, error: `Couldn't remove ${pruned.failed} recent unsubscribe(s) or bounce(s) from the Resend segment, so nothing was sent. Try again shortly.` };
+    }
 
     // Created with send:true so there is no window where a broadcast exists in
     // Resend but our status says otherwise. The idempotency key is the queue
@@ -458,6 +565,7 @@ class ResendNewsletterSender implements NewsletterSender {
       {
         segment_id: this.segmentId,
         from: this.from,
+        ...(this.replyTo ? { reply_to: this.replyTo } : {}),
         subject: content.subject,
         html: content.html,
         text: content.text,
@@ -491,7 +599,7 @@ export function getNewsletterSender(): NewsletterSender {
     }
     return new LoggingNewsletterStub();
   }
-  return new ResendNewsletterSender(key, segmentId, process.env.EMAIL_FROM?.trim() || "SMI <noreply@sheetmetalindustries.com>");
+  return new ResendNewsletterSender(key, segmentId, newsletterFrom(), process.env.EMAIL_REPLY_TO?.trim() || undefined);
 }
 
 /** True when a real provider is wired, so callers can tell a stub run apart. */

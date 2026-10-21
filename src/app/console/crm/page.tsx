@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { newsletterChoiceOf } from "@/lib/contacts";
+import { OPT_IN_SOURCE_LABELS, type OptInSource } from "@/lib/newsletter-consent";
 import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { pagedList } from "../paged-list";
@@ -31,7 +32,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   const contactsQuery = (from: number, to: number) => {
     let query = db
       .from("contacts")
-      .select("id, email, name, company, member_id, subscribed, unsubscribed_at, member:members(name), last_synced_at, bigin_id, bigin_company_name, crm_dirty_at", { count: "exact" })
+      .select("id, email, name, company, member_id, subscribed, unsubscribed_at, bounced_at, member:members(name), last_synced_at, bigin_id, bigin_company_name, crm_dirty_at", { count: "exact" })
       .order("created_at", { ascending: false });
     if (term) query = query.or(`name.ilike.%${term}%,email.ilike.%${term}%,company.ilike.%${term}%`);
     return query.range(from, to);
@@ -45,7 +46,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
     // reach Postgres as 22P02 and, now that must() throws, take the whole page
     // down. Treat an unparseable id as "no contact selected", as before.
     contactId && UUID_RE.test(contactId)
-      ? must(db.from("contacts").select("id, email, name, company, member_id, subscribed, unsubscribed_at, bigin_company_id, bigin_company_name").eq("id", contactId).maybeSingle(), "console/crm contact")
+      ? must(db.from("contacts").select("id, email, name, company, member_id, subscribed, unsubscribed_at, bounced_at, bigin_company_id, bigin_company_name, opt_in_at, opt_in_source, opt_in_wording").eq("id", contactId).maybeSingle(), "console/crm contact")
       : Promise.resolve(null),
     crm.live ? firstImportDone() : Promise.resolve(false),
     readLastRun(),
@@ -112,10 +113,22 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
               <option value="not_subscribed">not subscribed</option>
               <option value="unsubscribed">unsubscribed</option>
             </select>
+            <p className="text-xs text-graphite sm:col-span-2">
+              {/* Gap review area 6: the consent record, read-only. */}
+              {editing.opt_in_at
+                ? <>Opted in {editing.opt_in_at.slice(0, 10)}: {OPT_IN_SOURCE_LABELS[editing.opt_in_source as OptInSource] ?? editing.opt_in_source ?? "route not recorded"}.{editing.opt_in_wording && <> They saw: &ldquo;{editing.opt_in_wording}&rdquo;</>}</>
+                : "No opt-in record: added before consent was recorded."}
+            </p>
             {editing.unsubscribed_at && (
               <label className="flex items-center gap-2 text-xs text-graphite sm:col-span-2">
                 <input type="checkbox" name="re_opt_in" />
                 They have asked to go back on the list — unsubscribes are permanent without this.
+              </label>
+            )}
+            {editing.bounced_at && (
+              <label className="flex items-center gap-2 text-xs text-graphite sm:col-span-2">
+                <input type="checkbox" name="clear_bounce" />
+                Hard-bounced {editing.bounced_at.slice(0, 10)}, so not mailed. Tick if the address is fixed (changing the email clears it too).
               </label>
             )}
             <BiginCompanyPicker
@@ -156,6 +169,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
                     {c.unsubscribed_at
                       ? <span className="text-xs text-danger">unsubscribed {c.unsubscribed_at.slice(0, 10)} (permanent)</span>
                       : c.subscribed ? <span className="text-xs text-success">subscribed</span> : <span className="text-xs text-graphite">no</span>}
+                    {c.bounced_at && <span className="block text-xs text-danger">bounced {c.bounced_at.slice(0, 10)}, not mailed</span>}
                   </td>
                   <td className="text-xs">
                     {c.crm_dirty_at

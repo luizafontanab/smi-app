@@ -19,6 +19,7 @@ import { assertSeedTarget } from "./lib/target-guard";
 import { INDUSTRY_ROWS } from "./lib/industries";
 import { runIndustryBackfill } from "./lib/industry-backfill";
 import { newsTopics } from "./lib/news-topics";
+import { signupWording } from "@/lib/newsletter-consent";
 
 faker.seed(42);
 
@@ -491,6 +492,9 @@ async function main() {
     const inBigin = i % 10 !== 9;
     const dirty = i % 10 === 8;
     const company = faker.company.name();
+    // Consent evidence (gap review area 6): every route the CRM page labels,
+    // plus some with no record at all, as older rows have in production.
+    const optInSource = unsub || i % 4 === 3 ? null : (["site_form", "console", "bigin"] as const)[i % 3];
     return {
       email: faker.internet.email().toLowerCase(), name: faker.person.fullName(), company,
       member_id: i < 30 ? activeMembers[i % activeMembers.length].id : null,
@@ -502,6 +506,9 @@ async function main() {
       crm_dirty_at: dirty ? new Date().toISOString() : null,
       source: faker.helpers.arrayElement(["newsletter", "trade-show", "linkedin", "member"]),
       last_synced_at: inBigin ? new Date().toISOString() : null,
+      opt_in_at: optInSource ? faker.date.past({ years: 2 }).toISOString() : null,
+      opt_in_source: optInSource,
+      opt_in_wording: optInSource === "site_form" ? signupWording("footer") : null,
     };
   })));
 

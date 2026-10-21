@@ -10,7 +10,16 @@ vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 vi.mock("@/lib/auth", () => ({ requireConsole: vi.fn(async () => ({ userId: "admin1", role: "admin" })) }));
 vi.mock("@/lib/adapters/newsletter", () => ({ renderIssueHtml: vi.fn(async () => null) }));
 
-afterEach(() => resetDbServerMocks());
+// The newsletter_footer settings row (gap review area 6); null = never saved.
+let settingsValue: { value: unknown } | null = null;
+// Stored email_templates rows; empty = the wrapper has never been edited.
+let templateRows: Record<string, unknown>[] = [];
+
+afterEach(() => {
+  resetDbServerMocks();
+  settingsValue = null;
+  templateRows = [];
+});
 
 const ISSUE_ID = "11111111-1111-4111-8111-111111111111";
 const props = { params: Promise.resolve({ id: ISSUE_ID }), searchParams: Promise.resolve({}) } as never;
@@ -36,6 +45,8 @@ describe("/console/newsletter/[id] story picker", () => {
         contacts: () => queryBuilder({ data: null, error: null, count: 0 }),
         newsletter_directory: () => queryBuilder(dbOk([])),
         members: () => queryBuilder(dbOk([])),
+        settings: () => queryBuilder(dbOk(settingsValue)),
+        email_templates: () => queryBuilder(dbOk(templateRows)),
       }),
     })));
 
@@ -73,6 +84,8 @@ describe("/console/newsletter/[id] proof and approval", () => {
         contacts: () => queryBuilder({ data: null, error: null, count: 120 }),
         newsletter_directory: () => queryBuilder(dbOk([])),
         members: () => queryBuilder(dbOk([])),
+        settings: () => queryBuilder(dbOk(settingsValue)),
+        email_templates: () => queryBuilder(dbOk(templateRows)),
         profiles: () => queryBuilder(dbOk([{ user_id: "admin1", display_name: "Jas" }])),
       }),
     })));
@@ -87,6 +100,32 @@ describe("/console/newsletter/[id] proof and approval", () => {
     expect(screen.getByText(/Still needed: a test send and 17 unticked proof items/)).toBeInTheDocument();
     // 120 against 100 is 20% off: flagged, not blocked.
     expect(screen.getByText(/\+20\.0% vs issue #48/)).toHaveTextContent("More than 5% off last month");
+  });
+
+  // Gap review area 6: warn, never block, while the footer has no postal address.
+  it("warns that the footer has no postal address, without holding approval back for it", async () => {
+    stubIssue({}, null);
+    render(await IssueDetail(props));
+    expect(screen.getByText(/The footer has no postal address yet/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add it under Footer" })).toHaveAttribute("href", "/console/newsletter#footer");
+  });
+
+  it("drops the warning once an address is set", async () => {
+    settingsValue = { value: { postal_address: "SMI, 1 High St", reason_line: "" } };
+    stubIssue({}, null);
+    render(await IssueDetail(props));
+    expect(screen.queryByText(/The footer has no postal address yet/)).toBeNull();
+    expect(screen.queryByText(/needs fixing before this issue can send/)).toBeNull();
+  });
+
+  // The wrapper is editable under Email templates, and an edit saved before
+  // the footer tokens were required would send without them.
+  it("warns when the edited newsletter template is missing a footer placeholder, with a way to fix it", async () => {
+    templateRows = [{ kind: "_newsletter_shell", subject: null, label: null, body_html: '<p>{{items}}</p><a href="{{unsubscribe_url}}">Unsubscribe</a>', body_text: null, cta_label: null }];
+    stubIssue({}, null);
+    render(await IssueDetail(props));
+    expect(screen.getByText(/needs fixing before this issue can send/)).toHaveTextContent("{{postal_address}}, {{reason_line}}");
+    expect(screen.getByRole("link", { name: "Fix the template" })).toHaveAttribute("href", "/console/email-templates/_newsletter_shell");
   });
 
   it("shows who approved it and when, with a way to withdraw", async () => {
@@ -121,6 +160,8 @@ describe("/console/newsletter/[id] per-issue report (gap review area 5)", () => 
         contacts: () => queryBuilder({ data: null, error: null, count: 0 }),
         newsletter_directory: () => queryBuilder(dbOk([])),
         members: () => queryBuilder(dbOk([])),
+        settings: () => queryBuilder(dbOk(settingsValue)),
+        email_templates: () => queryBuilder(dbOk(templateRows)),
       }),
       rpc: vi.fn(() => queryBuilder(dbOk([{ kind: "story_view", story_id: "s1", advert_id: null, path: null, clicks: 12, visitors: 9 }]))),
     })));

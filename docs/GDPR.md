@@ -450,7 +450,8 @@ address to which the recipient … may send a request that such communications c
 - **Sole traders and ordinary partnerships are "individuals":** they need consent or the soft opt-in.
   The ~2,700 Bigin contacts aren't tagged by company type (G9).
 - The newsletter is opt-in through the site form, which is fine. We don't record what the person
-  saw when they signed up, so we can't *prove* the consent (Art 7(1)) (G9).
+  saw when they signed up, so we can't *prove* the consent (Art 7(1)) (G9). *Since 21 Oct new
+  signups record it (GAPS B5.11); earlier ones still can't be proved.*
 - Unsubscribes already sync back to Bigin and stick (`requirements/05-platform-layer.md:11`).
 
 ---
@@ -694,7 +695,7 @@ the rest are open. Jas's questions are ask-jas 27; the production push is HUMAN-
 | **G6** | **Fixed 20 Oct.** Email addresses were written to Vercel logs. The Resend webhook now logs the contact id, and the dev email senders log a masked address (`maskEmail()`, `j…@acme.co.uk`). | Arts 5(1)(c), 32 | — |
 | **G7** | No two-factor authentication for admin accounts. | Art 32; ICO outcome B.2 | Medium |
 | **G8** | No documented process for subject access, erasure, objection or complaints. No breach register. No way to export or delete one person across Supabase, Resend and Bigin. | Arts 12–21, 33(5); DPA s.164A | **High**: complaints duty in force since 19 Jun 2026 |
-| **G9** | Newsletter consent isn't evidenced (no wording or time recorded beyond `created_at`). The Bigin import isn't tagged for sole traders. | Art 7(1); PECR reg 22 | Medium |
+| **G9** | ~~Newsletter consent isn't evidenced (no wording or time recorded beyond `created_at`).~~ Since 21 Oct (GAPS B5.11) new opt-ins record time, route and, for site signups, the form's wording (`contacts.opt_in_*`); older site/console rows have none, and Bigin rows carry their import date, not a consent date. The Bigin import isn't tagged for sole traders, and stays in the audience by Luiza's decision (21 Oct). | Art 7(1); PECR reg 22 | Medium |
 | **G10** | The ICO fee, retention periods and controller identity are unanswered. Old ask-jas §10 was deleted in `97975e6` without an answer, and fix-list 69 still points to it. | DPA 2018 fee regs; Art 13(1)(a) | **High**: blocks G1 |
 | **G11** | The database region isn't confirmed or recorded (README names the old Canada project). No processor DPAs are on file. | Arts 28, 44A | Medium |
 | **G12** | No LIAs, no record of processing, no DPIA. | Arts 5(2), 30, 35 | Medium |

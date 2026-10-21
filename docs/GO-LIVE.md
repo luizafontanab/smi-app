@@ -78,6 +78,17 @@ his list, and his mapping from the other two onto it.
 - [ ] **2.3 — Confirm which members are live.** The import carries the WP
       `active` flag; anyone lapsed, renamed or merged since the export needs
       correcting before the directory goes public.
+- [ ] **2.4 — Final Mailchimp export at cutover** (gap review area 7, GAPS
+      B5.13). The WordPress signup form keeps adding people to the agency's
+      Mailchimp list, and people keep unsubscribing there, until the day the new
+      site goes live. On that day, after the form has switched over and before
+      the first newsletter from the new system, get a fresh full export
+      (subscribed, unsubscribed and cleaned) and run
+      `pnpm contacts:import-mailchimp:prod <dir>` as a dry run, then `--apply`.
+      **Check:** the dry run's "now unsubscribed" and "new contacts" counts are
+      small and make sense to Jas against what he knows of the last month.
+      **If wrong:** don't apply. A big "now unsubscribed" figure means the
+      earlier import (HUMAN-TODO 3.9) never ran.
 
 ## 3 · Known gaps to accept or fix before launch
 

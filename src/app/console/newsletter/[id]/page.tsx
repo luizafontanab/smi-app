@@ -14,6 +14,10 @@ import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { CountedInput } from "@/components/console/CountedInput";
 import { IssueItemsPicker } from "@/components/console/IssueItemsPicker";
 import { summariseIssueClicks } from "@/lib/newsletter-tracking";
+import { readNewsletterFooter } from "@/lib/newsletter-footer";
+import { NEWSLETTER_SHELL_KIND } from "@/lib/email/defaults";
+import { loadEmailTemplates } from "@/lib/email/store";
+import { newsletterTemplateProblem } from "@/lib/email/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +75,8 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
   const namedIds = [issue.approved_by, issue.last_test_sent_by].filter((v): v is string => Boolean(v));
   // Gap review area 4: the audience check compares against the most recent
   // other issue that recorded how many it went to.
-  const [{ count: subscribers }, lastSent, people] = await Promise.all([
-    mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null), "console/newsletter subscriber count"),
+  const [{ count: subscribers }, lastSent, people, footer, templateProblem] = await Promise.all([
+    mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null).is("bounced_at", null), "console/newsletter subscriber count"),
     must(
       db.from("newsletter_issues").select("number, sent_count").eq("status", "sent").not("sent_count", "is", null).neq("id", id)
         .order("sent_at", { ascending: false }).limit(1).maybeSingle(),
@@ -81,6 +85,10 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
     namedIds.length
       ? must(db.from("profiles").select("user_id, display_name").in("user_id", namedIds), "console/newsletter approvers")
       : Promise.resolve([]),
+    readNewsletterFooter(db),
+    // An edit to the wrapper from before a footer token became required; the
+    // send refuses it, so say so here, where it can be fixed.
+    loadEmailTemplates().then(newsletterTemplateProblem),
   ]);
   const nameOf = (userId: string | null) => (people ?? []).find((p) => p.user_id === userId)?.display_name ?? "an admin";
   const ticked = tickedKeys(issue.proof_checks);
@@ -207,6 +215,19 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
         <p className="mt-1 text-xs text-graphite">
           Nothing sends until every item is ticked, a test has gone out since the last change, and the issue is approved to send.
         </p>
+        {editable && !footer.postal_address && (
+          // Warn, never block (Luiza, 21 Oct): the address waits on Jas.
+          <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">
+            The footer has no postal address yet, so this issue would go out without one.{" "}
+            <Link href="/console/newsletter#footer" className="underline">Add it under Footer</Link>.
+          </p>
+        )}
+        {editable && templateProblem && (
+          <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">
+            {templateProblem}{" "}
+            <Link href={`/console/email-templates/${NEWSLETTER_SHELL_KIND}`} className="underline">Fix the template</Link>.
+          </p>
+        )}
 
         <div className="mt-3 text-sm">
           {issue.last_test_sent_at ? (

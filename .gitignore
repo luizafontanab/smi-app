@@ -70,3 +70,7 @@ next-env.d.ts
 # Client feedback PDFs stay local: they can carry screenshots of client data,
 # and at several MB each they bloat every clone.
 docs/*.pdf
+
+# A Stripe backup code was found sitting here on 21 Oct 2026. Never committed;
+# it belongs in a password manager, not the tree (HUMAN-TODO 6.8).
+docs/stripe_backup_code.txt

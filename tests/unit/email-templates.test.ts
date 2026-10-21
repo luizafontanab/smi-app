@@ -6,6 +6,7 @@ import {
   type EmailTemplateMap,
   allowedTokensFor,
   isNotificationKind,
+  newsletterTemplateProblem,
   notificationLabel,
   renderAdminEmail,
   renderNotification,
@@ -14,7 +15,7 @@ import {
   sampleVarsFor,
   validateEmailTemplate,
 } from "@/lib/email/templates";
-import { EMAIL_DEFAULTS, REPLY_KIND } from "@/lib/email/defaults";
+import { EMAIL_DEFAULTS, NEWSLETTER_SHELL_KIND, REPLY_KIND } from "@/lib/email/defaults";
 
 /**
  * The ternary this replaced let `machine_live` and `machine_rejected` sit for a
@@ -382,6 +383,31 @@ describe("reply to an inbox enquiry", () => {
     // Without {{body}} the email goes out as a greeting and a sign-off, and Jas
     // is told it sent.
     expect(validateEmailTemplate(REPLY_KIND, { body_html: "<p>Hi {{name}},</p>" })).toContain("{{body}}");
+  });
+
+  // Save-time validation can't reach an edit stored before a token became
+  // required, so the stored wrapper is checked again on the way out.
+  describe("newsletterTemplateProblem", () => {
+    it("is null with no edit, or an edit that keeps every required placeholder", () => {
+      expect(newsletterTemplateProblem(undefined)).toBeNull();
+      expect(newsletterTemplateProblem({})).toBeNull();
+      const reworded = EMAIL_DEFAULTS[NEWSLETTER_SHELL_KIND].bodyHtml.replace("Update your details", "Change your details");
+      expect(newsletterTemplateProblem({ [NEWSLETTER_SHELL_KIND]: { body_html: reworded } })).toBeNull();
+    });
+
+    it("names the footer placeholders an older edit leaves out, per version — the shipped text body doesn't cover an HTML edit", () => {
+      const problem = newsletterTemplateProblem({ [NEWSLETTER_SHELL_KIND]: { body_html: '<p>{{items}}</p><a href="{{unsubscribe_url}}">Unsubscribe</a>' } });
+      expect(problem).toContain("needs fixing before this issue can send");
+      expect(problem).toContain("The HTML body is missing {{postal_address}}, {{reason_line}}.");
+
+      const textOnly = newsletterTemplateProblem({ [NEWSLETTER_SHELL_KIND]: { body_text: "{{items_text}}\n\nUnsubscribe: {{unsubscribe_url}}" } });
+      expect(textOnly).toContain("The plain-text body is missing {{postal_address}}, {{reason_line}}.");
+    });
+
+    it("reports a placeholder the newsletter doesn't have, as a save would", () => {
+      expect(newsletterTemplateProblem({ [NEWSLETTER_SHELL_KIND]: { body_text: "{{items_text}} {{reason_line}} {{postal_address}} {{unsubscribe_url}} {{ends_onn}}" } }))
+        .toContain("{{ends_onn}}");
+    });
   });
 
   it("is not one of the emails that go TO Jas", () => {

@@ -18,7 +18,8 @@
  *     dead-letters into "Needs You Today", which is the visible failure we want.
  */
 
-export type OutgoingEmail = { to: string; subject: string; text: string; html?: string };
+/** `from` overrides the sender's own address, for the newsletter's test send (see `newsletterFrom`). */
+export type OutgoingEmail = { to: string; subject: string; text: string; html?: string; from?: string };
 
 /** `idempotencyKey`, when given, is passed to the provider so a retried job can't cause a second send. */
 export type SendOptions = { idempotencyKey?: string };
@@ -66,7 +67,7 @@ class MailpitSender implements EmailSender {
   ) {}
 
   async send(mail: OutgoingEmail): Promise<void> {
-    const from = parseAddress(this.from);
+    const from = parseAddress(mail.from ?? this.from);
     // Mailpit's HTTP send API rather than SMTP: it keeps this adapter
     // dependency-free, matching every other adapter in this directory. Mailpit
     // has no idempotency concept, and dev-only duplicate mail is harmless.
@@ -143,6 +144,17 @@ class ResendSender implements EmailSender {
       res.status === 429 ? retryAfterMs(res) : undefined,
     );
   }
+}
+
+/**
+ * Who the newsletter comes from (gap review area 6: the SOP wants "Sheet Metal
+ * Industries"). Its own `NEWSLETTER_FROM`, so the newsletter can carry that
+ * name without renaming every receipt and login email; unset, it is the same
+ * sender as everything else. The broadcast and the issue's test send both use
+ * it, so the proof shows the real sender.
+ */
+export function newsletterFrom(): string {
+  return process.env.NEWSLETTER_FROM?.trim() || process.env.EMAIL_FROM?.trim() || DEFAULT_FROM;
 }
 
 export function getEmailSender(): EmailSender {

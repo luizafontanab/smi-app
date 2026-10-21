@@ -179,6 +179,15 @@ describe("reconcile", () => {
     expect(r).toMatchObject({ kind: "insert", row: { subscribed: false, unsubscribed_at: "2026-09-01T08:00:00.000Z" } });
   });
 
+  // Gap review area 6: "bigin" as the opt-in route means "date of import, no consent record".
+  it("stamps an imported subscriber's opt-in as the import, with no wording, and an opt-out with none", () => {
+    expect(reconcile(record(), null, NOW)).toMatchObject({
+      row: { opt_in_at: NOW.toISOString(), opt_in_source: "bigin", opt_in_wording: null },
+    });
+    const out = reconcile(record({ Email_Opt_Out: true }), null, NOW);
+    expect(out.kind === "insert" && out.row).not.toHaveProperty("opt_in_at");
+  });
+
   it("lowercases the email so it matches the rows the app writes", () => {
     expect(reconcile(record({ Email: " Ada@B.com " }), null, NOW)).toMatchObject({ row: { email: "ada@b.com" } });
   });
@@ -189,6 +198,14 @@ describe("reconcile", () => {
   it("lowercases and trims an email Bigin changed, too", () => {
     const r = reconcile(record({ Email: "  Ada.New@B.COM " }), local({ bigin_id: "500" }), NOW);
     expect(r).toMatchObject({ kind: "update", patch: { email: "ada.new@b.com" } });
+  });
+
+  // Gap review area 7: a hard bounce belongs to the old address.
+  it("clears a bounce when Bigin changes the email, and keeps it otherwise", () => {
+    const changed = reconcile(record({ Email: "ada.new@b.com" }), local({ bigin_id: "500" }), NOW);
+    expect(changed).toMatchObject({ kind: "update", patch: { email: "ada.new@b.com", bounced_at: null } });
+    const same = reconcile(record({ Email: "a@b.com" }), local({ bigin_id: "500" }), NOW);
+    expect(same.kind === "update" && "bounced_at" in same.patch).toBe(false);
   });
 
   it("links an existing local contact found by email", () => {

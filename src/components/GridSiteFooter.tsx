@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SMI_SOCIAL_URLS, SOCIAL_CHANNELS } from "@/lib/social";
 import { CookieSettingsLink } from "@/components/CookieSettingsLink";
 import { NewsletterSignup } from "@/components/NewsletterSignup";
+import { SIGNUP_SURFACES } from "@/lib/newsletter-consent";
 
 /**
  * The grid design's footer, from comp v2: a charcoal band under the page's
@@ -82,12 +83,12 @@ export function GridSiteFooter() {
         </nav>
 
         <div>
-          <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">Monthly newsletter</p>
+          <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">{SIGNUP_SURFACES.grid_footer.heading}</p>
           <p className="mt-3 text-sm leading-relaxed text-white/70">
-            UK sheet metal news, machinery launches and event dates, for free.
+            {SIGNUP_SURFACES.grid_footer.blurb}
           </p>
           <div className="mt-4">
-            <NewsletterSignup />
+            <NewsletterSignup surface="grid_footer" />
           </div>
         </div>
       </div>

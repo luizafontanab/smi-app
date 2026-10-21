@@ -3,7 +3,8 @@ import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
 import { monthGrid, parseMonth } from "@/lib/calendar";
-import { createIssue, scheduleIssue, sendIssue, unscheduleIssue } from "../actions";
+import { createIssue, saveNewsletterFooter, scheduleIssue, sendIssue, unscheduleIssue } from "../actions";
+import { DEFAULT_REASON_LINE, POSTAL_ADDRESS_MAX, readNewsletterFooter, REASON_LINE_MAX } from "@/lib/newsletter-footer";
 import { CalendarView, type CalendarIssue } from "./CalendarView";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
   const db = serviceDb();
 
   const { start, end } = monthGrid(month);
-  const [issues, stories, videos, { count: subscribers }] = await Promise.all([
+  const [issues, stories, videos, { count: subscribers }, footer] = await Promise.all([
     must(
       view === "calendar"
         ? db.from("newsletter_issues").select(ISSUE_SELECT).or(
@@ -45,7 +46,8 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
     must(db.from("stories").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter stories"),
     must(db.from("videos").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter videos"),
     // head:true — the count is the only thing this one returns.
-    mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null), "console/newsletter subscriber count"),
+    mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null).is("bounced_at", null), "console/newsletter subscriber count"),
+    readNewsletterFooter(db),
   ]);
 
   const byStatus = (s: string) => (issues ?? []).filter((x) => x.status === s);
@@ -173,6 +175,33 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
           })}
         </div>
       )}
+
+      <section id="footer" className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-ink">Footer</h2>
+        <p className="mt-1 text-xs text-graphite">
+          Every issue&apos;s footer carries these, with the website, contact and social links, &quot;Update your details&quot; and the unsubscribe link. Changes reach every unsent issue; sent ones stay as they went.
+        </p>
+        {sp.footer === "saved" && <p className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Footer saved.</p>}
+        {typeof sp.footer_error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.footer_error}</p>}
+        {!footer.postal_address && (
+          <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">
+            No postal address yet, so issues go out without one. The SOP (and PECR) expects it in every footer.
+          </p>
+        )}
+        <form action={saveNewsletterFooter} className="mt-3 space-y-3 text-sm">
+          <label className="block">
+            Postal address
+            <textarea name="postal_address" rows={3} maxLength={POSTAL_ADDRESS_MAX} defaultValue={footer.postal_address} placeholder={"Sheet Metal Industries\nStreet\nTown, Postcode"} className="mt-1 w-full rounded border px-3 py-2" />
+            <span className="text-xs text-graphite">One part per line; the email shows it on one line, comma-separated.</span>
+          </label>
+          <label className="block">
+            Why they&apos;re receiving it
+            <textarea name="reason_line" rows={2} maxLength={REASON_LINE_MAX} defaultValue={footer.reason_line} className="mt-1 w-full rounded border px-3 py-2" />
+            <span className="text-xs text-graphite">Left blank, it goes back to: &quot;{DEFAULT_REASON_LINE}&quot;</span>
+          </label>
+          <button className="rounded bg-ink px-4 py-2 text-white">Save footer</button>
+        </form>
+      </section>
     </div>
   );
 }

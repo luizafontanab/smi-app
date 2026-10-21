@@ -14,12 +14,14 @@ import { cancelSocialPush, queueSocialPush, rescheduleSocialPush, socialFieldsFr
 import { parseLondonInput } from "@/lib/london-time";
 import type { SocialChannels } from "@/lib/social-channels";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
+import { optInEvidence } from "@/lib/newsletter-consent";
+import { NEWSLETTER_FOOTER_KEY, newsletterFooterFromForm } from "@/lib/newsletter-footer";
 import { meetsWcagAA } from "@/lib/contrast";
 import { serviceDb } from "@/lib/db/server";
 import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } from "@/lib/dev-tasks";
 import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
-import { safeInternalPath, UUID_RE } from "@/lib/validate";
+import { EMAIL_RE, safeInternalPath, UUID_RE } from "@/lib/validate";
 import { canMoveStory, isMemberDraft } from "@/lib/story-board";
 import { enqueueStoryLive, replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
 import { canMoveEvent } from "@/lib/event-board";
@@ -2414,9 +2416,9 @@ async function clearApproval(db: ReturnType<typeof serviceDb>, id: string, statu
   }).eq("id", id);
 }
 
-/** Who the issue would go to right now: subscribed and never unsubscribed, as the sender counts them. */
+/** Who the issue would go to right now: subscribed, never unsubscribed and not bounced, as the sender counts them. */
 async function subscriberCount(db: ReturnType<typeof serviceDb>): Promise<number> {
-  const { count } = await db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null);
+  const { count } = await db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null).is("bounced_at", null);
   return count ?? 0;
 }
 
@@ -2588,9 +2590,28 @@ export async function saveProofChecks(formData: FormData) {
 }
 
 /**
+ * Gap review area 6: the footer's postal address and reason-for-receiving
+ * line, one `settings` row (lib/newsletter-footer.ts). Every unsent issue picks
+ * the change up on its next render; nothing already sent changes.
+ */
+export async function saveNewsletterFooter(formData: FormData) {
+  await requireConsole();
+  const parsed = newsletterFooterFromForm(formData);
+  if ("error" in parsed) redirect(`/console/newsletter?footer_error=${encodeURIComponent(parsed.error)}#footer`);
+  const { error } = await serviceDb().from("settings").upsert({ key: NEWSLETTER_FOOTER_KEY, value: parsed.value });
+  if (error) {
+    logError({ source: "server", area: "action:saveNewsletterFooter", error });
+    redirect(`/console/newsletter?footer_error=${encodeURIComponent("The footer couldn't be saved. Try again in a minute.")}#footer`);
+  }
+  revalidatePath("/console/newsletter", "layout");
+  redirect("/console/newsletter?footer=saved#footer");
+}
+
+/**
  * SOP Step 2, round 1: a test email of the issue as it stands, to the signed-in
  * admin only (Luiza, 20 Oct). Same render as the real send, sent as a single
- * email through the transactional sender — Mailpit in dev.
+ * email through the transactional sender — Mailpit in dev — but from the
+ * newsletter's own sender, so the proof's sender check sees the real name.
  */
 export async function sendTestIssue(formData: FormData) {
   const user = await requireConsole();
@@ -2598,14 +2619,21 @@ export async function sendTestIssue(formData: FormData) {
   const id = String(formData.get("id"));
   const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", id).single();
   if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) return issueFail(id, "This issue has been sent; there's nothing left to test.");
-  const [{ renderIssueHtml }, { getEmailSender }] = await Promise.all([
+  const [{ renderIssueHtml }, { getEmailSender, newsletterFrom }] = await Promise.all([
     import("@/lib/adapters/newsletter"),
     import("@/lib/adapters/email"),
   ]);
   const content = await renderIssueHtml(id, { unsubscribeUrl: `${siteUrl()}/unsubscribe` });
   if (!content) return issueFail(id, "This issue couldn't be built for a test.");
+  // The same refusal the real send makes, so the test can't pass a wrapper the broadcast will reject.
+  const [{ newsletterTemplateProblem }, { loadEmailTemplates }] = await Promise.all([
+    import("@/lib/email/templates"),
+    import("@/lib/email/store"),
+  ]);
+  const templateProblem = newsletterTemplateProblem(await loadEmailTemplates());
+  if (templateProblem) return issueFail(id, templateProblem);
   try {
-    await getEmailSender().send({ to: user.email, subject: `[TEST] ${content.subject}`, html: content.html, text: content.text });
+    await getEmailSender().send({ to: user.email, from: newsletterFrom(), subject: `[TEST] ${content.subject}`, html: content.html, text: content.text });
   } catch (error) {
     logError({ source: "server", area: "action:sendTestIssue", error, context: { issue_id: id } });
     return issueFail(id, "The test email couldn't be sent. Nothing was recorded; try again in a minute.");
@@ -2702,8 +2730,6 @@ export async function unscheduleIssue(formData: FormData) {
 
 /* ---------- CRM ---------- */
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
 const contactsFail = (message: string): never =>
   redirect(`/console/crm?error=${encodeURIComponent(message)}`);
 
@@ -2714,12 +2740,15 @@ export async function saveContact(formData: FormData) {
   if (!id) return;
   const db = serviceDb();
   const { data: contact } = await db.from("contacts")
-    .select("id, email, name, subscribed, unsubscribed_at").eq("id", id).single();
+    .select("id, email, name, subscribed, unsubscribed_at, bounced_at").eq("id", id).single();
   if (!contact) return;
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return contactsFail("That is not a valid email address.");
-  if (email !== contact.email) {
+  // Compared normalised: a stored address with capitals (an older row, a
+  // Mailchimp import) must not read as "changed" on every save.
+  const emailChanged = email !== contact.email.trim().toLowerCase();
+  if (emailChanged) {
     const { data: clash } = await db.from("contacts").select("id").eq("email", email).neq("id", id).maybeSingle();
     if (clash) return contactsFail(`${email} is already on another contact.`);
   }
@@ -2741,12 +2770,21 @@ export async function saveContact(formData: FormData) {
       bigin_company_name: String(formData.get("bigin_company_name") ?? "").trim() || null,
     }
     : {};
+  // Gap review area 6: an admin putting someone (back) on the list is an
+  // opt-in by the console route. Staying subscribed restamps nothing.
+  const optedIn = optIn.subscribed && (!contact.subscribed || !!contact.unsubscribed_at);
+  // Gap review area 7: a hard bounce belongs to the address, so a new address
+  // clears it, as does the admin saying the address is fixed. Not an opt-in
+  // change, so nothing about it goes to Bigin.
+  const clearBounce = !!contact.bounced_at && (emailChanged || formData.get("clear_bounce") === "on");
   // last_synced_at means "reconciled with Bigin", not "edited here" — leave it
   const { error } = await db.from("contacts").update({
     email, name, company,
     member_id: String(formData.get("member_id") ?? "") || null,
     ...biginCompany,
     ...optIn,
+    ...(optedIn ? optInEvidence("console") : {}),
+    ...(clearBounce ? { bounced_at: null } : {}),
   }).eq("id", id);
   if (error) return contactsFail(error.code === "23505" ? `${email} is already on another contact.` : dbProblem("action:saveContact", error));
 
@@ -2772,6 +2810,8 @@ export async function addContact(formData: FormData) {
       name: String(formData.get("name") ?? "").trim() || null,
       company: String(formData.get("company") ?? "").trim() || null,
       source: "console",
+      // subscribed defaults to true, so adding a contact is a console opt-in
+      ...optInEvidence("console"),
     }).select("id").single();
     if (created) {
       // write-through to Bigin — the whole row, not just the email

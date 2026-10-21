@@ -1,6 +1,7 @@
 "use server";
 
 import { applyOptIn } from "@/lib/contacts";
+import { optInEvidence, signupWording } from "@/lib/newsletter-consent";
 import { serviceDb } from "@/lib/db/server";
 import { ADMIN_EMAIL } from "@/lib/notify-admin";
 import { allowRequest, HOUR } from "@/lib/rate-limit";
@@ -14,14 +15,16 @@ export async function subscribeNewsletter(_prev: { message: string }, formData: 
   const db = serviceDb();
 
   // opt-outs are permanent: never re-subscribe an unsubscribed contact silently
-  const { data: existing } = await db.from("contacts").select("id, subscribed, unsubscribed_at").eq("email", email).maybeSingle();
+  const { data: existing } = await db.from("contacts").select("id, subscribed, unsubscribed_at, opt_in_at, opt_in_source").eq("email", email).maybeSingle();
   if (existing?.unsubscribed_at) {
     return { message: "This address previously unsubscribed — contact us to re-opt-in." };
   }
   await db.from("newsletter_signups").insert({ email });
+  // Gap review area 6: the time, route and wording this person signed up against.
+  const evidence = optInEvidence("site_form", signupWording(formData.get("surface")));
   let contactId = existing?.id ?? null;
   if (!existing) {
-    const { data: created } = await db.from("contacts").insert({ email, source: "newsletter", subscribed: true }).select("id").single();
+    const { data: created } = await db.from("contacts").insert({ email, source: "newsletter", subscribed: true, ...evidence }).select("id").single();
     contactId = created?.id ?? null;
   } else if (!existing.subscribed) {
     // Known but never on the list — a member's contact, a CRM import (GAPS
@@ -30,12 +33,20 @@ export async function subscribeNewsletter(_prev: { message: string }, formData: 
     // audience requires. applyOptIn keeps the permanence rule in one place —
     // unsubscribed_at is null here, so it can only ever turn the flag on.
     const { error } = await db.from("contacts")
-      .update(applyOptIn(existing, { newsletter: "subscribed", reOptIn: false }))
+      .update({ ...applyOptIn(existing, { newsletter: "subscribed", reOptIn: false }), ...evidence })
       .eq("id", existing.id).is("unsubscribed_at", null);
     if (error) {
       console.error("[newsletter] could not opt in an existing contact:", error.message);
       return { message: "Something went wrong — please try again in a moment." };
     }
+  } else if (!existing.opt_in_at || existing.opt_in_source === "bigin") {
+    // Already on the list, but with no consent record (a row older than the
+    // record) or only Bigin's import date, which isn't one. This signup is,
+    // so it replaces that. A contact with real evidence keeps it: staying
+    // subscribed restamps nothing, as in the console. They are subscribed
+    // either way, so a failure here is logged, not shown.
+    const { error } = await db.from("contacts").update(evidence).eq("id", existing.id);
+    if (error) console.error("[newsletter] could not record consent for an existing contact:", error.message);
   }
   // Write-through to Bigin (GAPS B6.2). Never throws: the signup is already
   // recorded above, and a CRM outage must not cost a visitor their

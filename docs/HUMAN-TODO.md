@@ -28,7 +28,11 @@ Each service is independent; do them in any order.
 - [ ] **1.3 — Verify a staging subdomain** (e.g. `staging-mail.`) and set a
       domain-restricted, sending-only key in the Preview scope. Resend has no test mode.
 - [ ] **1.4 — Choose and set `EMAIL_REPLY_TO`**, a monitored inbox. Without it,
-      replies go to `noreply@`.
+      replies go to `noreply@`. Since 21 Oct (GAPS B5.11) this is the newsletter's
+      reply-to too, which the SOP requires.
+- [ ] **1.4a — Set `NEWSLETTER_FROM`** to `Sheet Metal Industries <…@sheetmetalindustries.com>`
+      (an address on the verified domain, 1.2). The SOP wants that sender name;
+      unset, the newsletter comes from `EMAIL_FROM` like every other email.
 - [ ] **1.5 — Create the subscriber segment** and set `RESEND_SEGMENT_ID`.
       Without it, newsletters stay unsent.
 - [ ] **1.6 — Register the webhook** `https://<domain>/api/webhooks/resend`
@@ -113,7 +117,7 @@ Each service is independent; do them in any order.
 `supabase db push` applies every pending migration in one go; you can't push
 just one. Deploy the `staging` code at the same moment: old code against the new
 schema breaks member profiles, the directory and the CRM page. Pending, as far
-as this repo knows: `20261004000002` through `20261020000005`. Confirm with
+as this repo knows: `20261004000002` through `20261021000005`. Confirm with
 `supabase migration list --linked`. From `20261020000005` on, nothing sends
 until it is approved in the console: any newsletter issue already *scheduled*
 when it lands is marked approved so it still goes out, but a draft must go
@@ -169,7 +173,12 @@ through Proof and approval first.
       An edited shell keeps its own markup, so the new layout (gap review area
       5) loses its masthead, preview text and phone stacking. If a row comes
       back, open `/console/email-templates/_newsletter_shell` and reset it, or
-      add `{{masthead}}` and `{{preheader}}` by hand.
+      add `{{masthead}}` and `{{preheader}}` by hand. Since 21 Oct (gap review
+      area 6) it also lacks the new footer, and a re-save needs `{{postal_address}}`
+      and `{{reason_line}}`, so resetting it is simpler.
+- [ ] **2.11 — Fill in the newsletter footer** under `/console/newsletter` →
+      Footer once Jas has given the postal address (ask-jas 32). Until then every
+      issue goes out without one, and the issue page says so.
 
 ---
 
@@ -185,6 +194,16 @@ through Proof and approval first.
       - Before the first `newsletter_sync`, compare the Resend segment with the
         subscribed contacts. The sync removes addresses that aren't subscribed
         contacts.
+      - `bounced@resend.dev` must show "bounced, not mailed" on its CRM contact,
+        **not** unsubscribed (since 21 Oct, GAPS B5.12).
+      - Every send now reads the segment first and refuses if it can't (GAPS
+        B5.12). If the first issue fails with "Couldn't read the Resend
+        segment", the listing endpoint's shape is the suspect
+        (`segmentMembers` in `src/lib/adapters/newsletter.ts`).
+      - Tick "address fixed" on the `bounced@resend.dev` contact, run
+        `newsletter_sync`, and check the address is back in the Resend segment.
+        The add call (`POST /contacts/{email}/segments/{id}`) mirrors the
+        documented removal and has never run against a live account.
 - [ ] **3.2 — Stripe.**
       - One test subscription and one declined card. `invoice.payment_failed`
         must find the member.
@@ -229,6 +248,18 @@ through Proof and approval first.
       two-up cards (Outlook desktop may keep them side by side on a phone-sized
       window, which is acceptable), the "Sponsored" banners between rows, and
       that the preview text shows under the subject.
+- [ ] **3.9 — Get the agency's Mailchimp export and reconcile it, after 3.4 and
+      before the first newsletter** (gap review area 7, GAPS B5.13). The list
+      is Formation Media's Mailchimp audience, not SMI's, so Jas has to ask them
+      for the **full audience export: subscribed, unsubscribed and cleaned**, the
+      zip Mailchimp gives you under Audience → Export. Without it, anyone who
+      unsubscribed in Mailchimp but never in Bigin gets the first issue from
+      here, which is a PECR breach. Unzip it **outside the project**, then run
+      `pnpm contacts:import-mailchimp:prod <dir>` (a dry run). Check the column
+      names were recognised (no "no Email Address column" lines) and the counts
+      look right, then re-run with `--apply`. Delete the export afterwards: it's
+      personal data. New contacts and opt-outs reach Bigin 50 per `crm_sync` run.
+      The cutover top-up is GO-LIVE 2.4.
 
 ---
 
@@ -297,6 +328,11 @@ through Proof and approval first.
       for them (see `tests/visual/manifest.ts`).
 - [ ] **6.7 — Set `CRON_SECRET` in `.env.local`** if you want the local job
       runner (`scripts/job-runner.ts`).
+- [ ] **6.8 — Move `docs/stripe_backup_code.txt` out of the repository** and
+      into a password manager, then delete it here. Found untracked and
+      unignored in the tree on 21 Oct (code review); it is gitignored now so it
+      can't be committed by accident, but it shouldn't live on disk in a
+      project folder either.
 
 ---
 

@@ -60,7 +60,7 @@ describe("syncContacts — pruning the segment", () => {
     const spy = resend([{ data: [
       { id: "r1", email: "old@b.com" }, // the contact's previous address
       { id: "r2", email: "New@B.com" }, // still a contact — case doesn't matter
-      { id: "r3", email: "out@b.com" }, // unsubscribed: stays, so Resend keeps suppressing it
+      { id: "r3", email: "out@b.com", unsubscribed: true }, // unsubscribed, and Resend knows: stays, suppressed
     ], has_more: false }]);
 
     const result = await getNewsletterSender().syncContacts();
@@ -84,6 +84,15 @@ describe("syncContacts — pruning the segment", () => {
     expect(patches.map(([u]) => String(u))).toEqual(["https://api.resend.com/contacts/out%40b.com"]);
     expect(JSON.parse(String(patches[0][1]!.body))).toEqual({ unsubscribed: true });
     expect(removed(spy)).toEqual([]); // unsubscribed contacts stay in the segment, suppressed
+  });
+
+  it("marks an unsubscribe whose listing row has no flag at all — unverified shape, so missing never means suppressed", async () => {
+    live();
+    contacts(dbOk([]), dbOk([{ email: "out@b.com" }]));
+    const spy = resend([{ data: [{ id: "r1", email: "out@b.com" }], has_more: false }]);
+
+    expect(await getNewsletterSender().syncContacts()).toEqual({ pushed: 2, failed: 0 }); // the push + the patch
+    expect(spy.mock.calls.filter(([, i]) => i?.method === "PATCH").map(([u]) => String(u))).toEqual(["https://api.resend.com/contacts/out%40b.com"]);
   });
 
   it("follows the listing's pages with `after` the last id", async () => {
@@ -139,9 +148,10 @@ describe("syncContacts — reading and pushing contacts", () => {
     live();
     const page1 = Array.from({ length: 1000 }, (_, i) => ({ email: `p${i}@b.com`, name: null }));
     let call = 0;
-    // subscribed: two pages; then unsubscribed: empty
+    // The subscribed and unsubscribed reads run concurrently and interleave a
+    // page at a time: subscribed page 1, unsubscribed (empty), subscribed page 2.
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
-      from: () => queryBuilder(() => [dbOk(page1), dbOk([{ email: "last@b.com", name: null }]), dbOk([])][Math.min(call++, 2)]),
+      from: () => queryBuilder(() => [dbOk(page1), dbOk([]), dbOk([{ email: "last@b.com", name: null }])][Math.min(call++, 2)]),
     })));
     const spy = resend([{ data: [{ id: "r1", email: "last@b.com" }], has_more: false }]);
 

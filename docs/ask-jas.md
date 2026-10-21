@@ -220,6 +220,24 @@
       can do it) and the link to a Bigin "Advertising" pipeline. Tell us if either
       matters to you.
 
+32. **Newsletter footer: your postal address and the "why you're getting this" line
+    (21 Oct).** The SOP asks for both in every footer. We need:
+    - **The postal address** to print. Until you give it, issues go out without one
+      and the issue page warns you. You can type it in yourself under
+      Newsletter → Footer.
+    - **The wording for why people receive it.** We've drafted: "You're receiving
+      this because you signed up for SMI Monthly at sheetmetalindustries.com, or
+      because your business is in contact with Sheet Metal Industries." Change it
+      there too, or send us yours.
+    - **Who gets it.** For now, everyone in Bigin who hasn't opted out stays on the
+      list, as today. That's fine for company addresses, but sole traders and
+      partnerships need to have opted in themselves, and Bigin doesn't tell us
+      which contacts those are. Tell us if you'd rather mail only contacts marked
+      "Subscribed" in Bigin.
+    - We now record when, how, and against what wording each person joins the list.
+      We haven't built double opt-in (a confirmation email before someone is added);
+      UK law doesn't require it, and fewer people finish signing up with it.
+
 ## Data validation
 
 - sent to Jas on oct 4th

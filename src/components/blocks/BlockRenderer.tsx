@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
 import { JoinCta } from "@/components/JoinCta";
 import { NewsletterSignup } from "@/components/NewsletterSignup";
+import { SIGNUP_SURFACES } from "@/lib/newsletter-consent";
 import { StoryCard } from "@/components/StoryCard";
 import type { LiveAdvert } from "@/lib/adverts";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
@@ -92,8 +93,8 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
           case "newsletter_signup":
             return (
               <section key={block.id} className="my-10 rounded-xl bg-graphite/10 p-6">
-                <h2 className="font-bold text-ink">The monthly round-up, straight to your inbox</h2>
-                <div className="mt-3 max-w-md"><NewsletterSignup /></div>
+                <h2 className="font-bold text-ink">{SIGNUP_SURFACES.page_block.heading}</h2>
+                <div className="mt-3 max-w-md"><NewsletterSignup surface="page_block" /></div>
               </section>
             );
           case "supplier_logos":

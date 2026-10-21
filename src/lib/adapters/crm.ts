@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { serviceDb } from "../db/server";
 import type { Json, TablesInsert } from "../db/types";
 import { applyOptIn } from "../contacts";
+import { optInEvidence } from "../newsletter-consent";
 import { siteUrl } from "../site-url";
 import { mockBaseUrl } from "./mock-base-url";
 
@@ -203,6 +204,9 @@ export function reconcile(record: BiginContact, local: LocalContact | null, now:
         subscribed: !optOut,
         unsubscribed_at: optOut ? stamp.toISOString() : null,
         source: "bigin",
+        // Gap review area 6: the date is the import, not a consent record —
+        // which is what opt_in_source "bigin" means (migration 20261021000004).
+        ...(optOut ? {} : optInEvidence("bigin", null, now)),
         ...bookkeeping,
       },
     };
@@ -214,7 +218,8 @@ export function reconcile(record: BiginContact, local: LocalContact | null, now:
 
   if (!local.crm_dirty_at) {
     if (name && name !== local.name) patch.name = name;
-    if (email !== local.email) patch.email = email;
+    // A bounce belongs to the old address (gap review area 7).
+    if (email !== local.email) Object.assign(patch, { email, bounced_at: null });
     if ((account?.id ?? null) !== local.bigin_company_id || (account && account.name !== local.bigin_company_name)) {
       patch.bigin_company_id = account?.id ?? null;
       patch.bigin_company_name = account?.name || null;

@@ -281,6 +281,39 @@ describe("renderIssueHtml", () => {
     });
   });
 
+  describe("the footer (gap review area 6)", () => {
+    const issue = () => queryBuilder(dbOk({ id: "iss1", number: 9, subject: "s", intro: null, web_slug: null }));
+
+    it("carries the postal address on one line, the reason line, the site, contact and social links, in both versions", async () => {
+      db({
+        newsletter_issues: issue,
+        settings: () => queryBuilder(dbOk({ value: { postal_address: "SMI Ltd,\n1 High St\nLeamington Spa  CV31 1AA", reason_line: "You asked for this & more." } })),
+      });
+
+      const rendered = await renderIssueHtml("iss1");
+
+      expect(rendered!.html).toContain("SMI Ltd, 1 High St, Leamington Spa  CV31 1AA");
+      expect(rendered!.html).toContain("You asked for this &amp; more.");
+      expect(rendered!.html).toMatch(/href="[^"]+\/contact"[^>]*>Contact us</);
+      expect(rendered!.html).toMatch(/href="[^"]+\/contact"[^>]*>Update your details</);
+      expect(rendered!.html).toContain('href="https://www.linkedin.com/company/sheet-metal-industries/"');
+      expect(rendered!.html).toContain('<meta name="color-scheme" content="light">');
+      expect(rendered!.text).toContain("You asked for this & more.\nSMI Ltd, 1 High St, Leamington Spa  CV31 1AA");
+      expect(rendered!.text).toMatch(/Update your details: \S+\/contact\nUnsubscribe: /);
+    });
+
+    it("leaves the address line out while none is set, and uses the drafted reason line", async () => {
+      db({ newsletter_issues: issue });
+
+      const rendered = await renderIssueHtml("iss1");
+
+      expect(rendered!.html).toContain("You're receiving this because you signed up for SMI Monthly");
+      // no empty paragraph left where the address would be
+      expect(rendered!.html).not.toMatch(/<p[^>]*>\s*<\/p>/);
+      expect(rendered!.text).toMatch(/Sheet Metal Industries\.\n\nUpdate your details/);
+    });
+  });
+
   it("includes the read-online link only when the issue has a web_slug", async () => {
     db({
       newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: "aug-2026" })),
@@ -340,6 +373,9 @@ describe("ResendNewsletterSender", () => {
     vi.stubEnv("RESEND_API_KEY", "re_123");
     vi.stubEnv("RESEND_SEGMENT_ID", "seg_1");
   }
+  /** sendIssue reads the segment first (gap review area 7), so find the broadcast by its URL. */
+  const broadcastCall = (spy: { mock: { calls: [RequestInfo | URL, RequestInit?][] } }) =>
+    spy.mock.calls.find(([url]) => String(url) === "https://api.resend.com/broadcasts");
 
   it("sendIssue fails cleanly when the issue no longer exists", async () => {
     liveEnv();
@@ -374,9 +410,45 @@ describe("ResendNewsletterSender", () => {
     const result = await getNewsletterSender().sendIssue("iss1", "job-42");
 
     expect(result).toEqual({ ok: true, recipients: 1 });
-    const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("https://api.resend.com/broadcasts");
+    const [, init] = broadcastCall(fetchSpy)!;
     expect((init?.headers as Record<string, string>)["Idempotency-Key"]).toBe("job-42");
+  });
+
+  // Gap review area 6: the SOP's "Sheet Metal Industries" sender and a monitored reply-to.
+  it("sends from NEWSLETTER_FROM with EMAIL_REPLY_TO as the reply-to", async () => {
+    liveEnv();
+    vi.stubEnv("EMAIL_FROM", "SMI <noreply@smi.test>");
+    vi.stubEnv("NEWSLETTER_FROM", "Sheet Metal Industries <news@smi.test>");
+    vi.stubEnv("EMAIL_REPLY_TO", "editorial@smi.test");
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: null })),
+      contacts: () => queryBuilder(dbOk([{ email: "a@example.com" }])),
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+
+    await getNewsletterSender().sendIssue("iss1");
+
+    const body = JSON.parse(broadcastCall(fetchSpy)![1]?.body as string);
+    expect(body.from).toBe("Sheet Metal Industries <news@smi.test>");
+    expect(body.reply_to).toBe("editorial@smi.test");
+  });
+
+  it("falls back to EMAIL_FROM and sends no reply_to when neither is set", async () => {
+    liveEnv();
+    vi.stubEnv("EMAIL_FROM", "SMI <noreply@smi.test>");
+    vi.stubEnv("NEWSLETTER_FROM", "");
+    vi.stubEnv("EMAIL_REPLY_TO", "");
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: null })),
+      contacts: () => queryBuilder(dbOk([{ email: "a@example.com" }])),
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+
+    await getNewsletterSender().sendIssue("iss1");
+
+    const body = JSON.parse(broadcastCall(fetchSpy)![1]?.body as string);
+    expect(body.from).toBe("SMI <noreply@smi.test>");
+    expect(body).not.toHaveProperty("reply_to");
   });
 
   it("sendIssue reports the provider's rejection", async () => {
@@ -387,10 +459,134 @@ describe("ResendNewsletterSender", () => {
       newsletter_ads: () => queryBuilder(dbOk([])),
       contacts: () => queryBuilder(dbOk([{ email: "a@example.com" }])),
     });
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("domain not verified", { status: 403 }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input).includes("/segments/")
+        ? new Response(JSON.stringify({ has_more: false, data: [] }), { status: 200 })
+        : new Response("domain not verified", { status: 403 }));
 
     const result = await getNewsletterSender().sendIssue("iss1");
     expect(result).toEqual({ ok: false, error: expect.stringContaining("403") });
+  });
+
+  describe("the pre-send segment check (gap review area 7)", () => {
+    /** subscribedContacts() then unsubscribedContacts(), both on "contacts", in that order. */
+    function contactsDb(subscribed: { email: string }[], unsubscribed: { email: string }[]) {
+      let call = 0;
+      const builders: ReturnType<typeof queryBuilder>[] = [];
+      db({
+        newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: null })),
+        contacts: () => {
+          const b = queryBuilder(dbOk(call++ === 0 ? subscribed : unsubscribed));
+          builders.push(b);
+          return b;
+        },
+      });
+      return builders;
+    }
+    const listing = (data: { id: string; email: string; unsubscribed?: boolean }[]) =>
+      new Response(JSON.stringify({ object: "list", has_more: false, data }), { status: 200 });
+
+    it("takes a recent unsubscribe and a bounced address out of the segment before broadcasting", async () => {
+      liveEnv();
+      contactsDb([{ email: "keep@example.com" }], [{ email: "gone@example.com" }]);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url.includes("/segments/seg_1/contacts?")) {
+          return listing([
+            { id: "c1", email: "keep@example.com", unsubscribed: false },
+            { id: "c2", email: "gone@example.com", unsubscribed: false }, // unsubscribed here this morning
+            { id: "c3", email: "bounced@example.com", unsubscribed: false }, // bounced: neither list
+          ]);
+        }
+        if (init?.method === "PATCH" || init?.method === "DELETE") return new Response("{}", { status: 200 });
+        if (url.endsWith("/broadcasts")) return new Response(JSON.stringify({ id: "b1" }), { status: 200 });
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      const result = await getNewsletterSender().sendIssue("iss1");
+
+      expect(result).toEqual({ ok: true, recipients: 1, providerBroadcastId: "b1" });
+      const calls = fetchSpy.mock.calls.map(([url, init]) => `${init?.method ?? "GET"} ${String(url)}`);
+      const patched = calls.findIndex((c) => c === "PATCH https://api.resend.com/contacts/gone%40example.com");
+      const removed = calls.findIndex((c) => c === "DELETE https://api.resend.com/contacts/bounced%40example.com/segments/seg_1");
+      const broadcast = calls.findIndex((c) => c.endsWith("/broadcasts"));
+      expect(patched).toBeGreaterThan(-1);
+      expect(removed).toBeGreaterThan(-1);
+      expect(broadcast).toBeGreaterThan(Math.max(patched, removed));
+      expect(calls.some((c) => c.includes("keep%40example.com"))).toBe(false);
+    });
+
+    it("refuses to send when the segment can't be read", async () => {
+      liveEnv();
+      contactsDb([{ email: "keep@example.com" }], []);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+        String(input).includes("/segments/") ? new Response("boom", { status: 500 }) : new Response("{}", { status: 200 }));
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await getNewsletterSender().sendIssue("iss1");
+
+      expect(result).toEqual({ ok: false, error: expect.stringContaining("nothing was sent") });
+      expect(broadcastCall(fetchSpy)).toBeUndefined();
+    });
+
+    it("refuses to send when an unsubscribe can't be pushed", async () => {
+      liveEnv();
+      contactsDb([{ email: "keep@example.com" }], [{ email: "gone@example.com" }]);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        if (String(input).includes("/segments/")) return listing([{ id: "c2", email: "gone@example.com", unsubscribed: false }]);
+        if (init?.method === "PATCH") return new Response("nope", { status: 500 });
+        return new Response("{}", { status: 200 });
+      });
+
+      const result = await getNewsletterSender().sendIssue("iss1");
+
+      expect(result).toEqual({ ok: false, error: expect.stringContaining("Couldn't remove 1 recent unsubscribe(s) or bounce(s)") });
+      expect(broadcastCall(fetchSpy)).toBeUndefined();
+    });
+
+    it("marks an unsubscribe at Resend unless the listing says it's already suppressed there", async () => {
+      liveEnv();
+      contactsDb([{ email: "keep@example.com" }], [{ email: "gone@example.com" }, { email: "done@example.com" }]);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        if (String(input).includes("/segments/")) {
+          // The listing's shape is unverified: a missing flag must not read as "already suppressed".
+          return listing([{ id: "c1", email: "keep@example.com" }, { id: "c2", email: "gone@example.com" }, { id: "c3", email: "done@example.com", unsubscribed: true }]);
+        }
+        return new Response(JSON.stringify({ id: "b1" }), { status: 200 });
+      });
+
+      const result = await getNewsletterSender().sendIssue("iss1");
+
+      expect(result).toMatchObject({ ok: true });
+      const patched = fetchSpy.mock.calls.filter(([, init]) => init?.method === "PATCH").map(([url]) => String(url));
+      expect(patched).toEqual(["https://api.resend.com/contacts/gone%40example.com"]);
+    });
+
+    it("refuses while the edited newsletter template is missing a footer placeholder, before touching Resend", async () => {
+      liveEnv();
+      db({
+        newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: null })),
+        email_templates: () => queryBuilder(dbOk([{ kind: "_newsletter_shell", subject: null, label: null, body_html: "<p>{{items}}</p>{{unsubscribe_url}}", body_text: null, cta_label: null }])),
+        contacts: () => queryBuilder(dbOk([{ email: "a@example.com" }])),
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+
+      const result = await getNewsletterSender().sendIssue("iss1");
+
+      expect(result).toEqual({ ok: false, error: expect.stringContaining("{{postal_address}}") });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("counts only contacts that haven't hard-bounced", async () => {
+      liveEnv();
+      const builders = contactsDb([{ email: "keep@example.com" }], []);
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+        String(input).includes("/segments/") ? listing([]) : new Response("{}", { status: 200 }));
+
+      await getNewsletterSender().sendIssue("iss1");
+
+      expect(builders[0].is).toHaveBeenCalledWith("bounced_at", null);
+    });
   });
 
   it("syncContacts pushes subscribed as active and unsubscribed as opted-out, counting a 409 as pushed", async () => {
@@ -418,6 +614,33 @@ describe("ResendNewsletterSender", () => {
       .map(([, init]) => JSON.parse(init?.body as string));
     expect(bodies[0]).toMatchObject({ email: "sub@example.com", unsubscribed: false });
     expect(bodies[1]).toMatchObject({ email: "unsub@example.com", unsubscribed: true });
+  });
+
+  // A create for a contact Resend already has (409) doesn't put them back in
+  // the segment, so a cleared bounce or a "not subscribed" put back on would
+  // otherwise never be mailed again.
+  it("syncContacts puts a subscribed contact Resend already had back into the segment when it's missing, and leaves a new one alone", async () => {
+    liveEnv();
+    let call = 0;
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: () => queryBuilder(() => (call++ === 0 ? dbOk([{ email: "fixed@example.com", name: "F" }, { email: "new@example.com", name: "N" }]) : dbOk([]))),
+    })));
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/contacts") && init?.method === "POST") {
+        const { email } = JSON.parse(init.body as string);
+        return new Response("{}", { status: email === "fixed@example.com" ? 409 : 200 });
+      }
+      if (url.includes("/segments/seg_1/contacts?")) return new Response(JSON.stringify({ has_more: false, data: [] }), { status: 200 });
+      if (init?.method === "POST" && url.endsWith("/segments/seg_1")) return new Response("{}", { status: 200 });
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const result = await getNewsletterSender().syncContacts();
+
+    expect(result).toEqual({ pushed: 3, failed: 0 });
+    const added = fetchSpy.mock.calls.filter(([url]) => String(url).endsWith("/segments/seg_1")).map(([url, init]) => `${init?.method} ${String(url)}`);
+    expect(added).toEqual(["POST https://api.resend.com/contacts/fixed%40example.com/segments/seg_1"]);
   });
 
   it("syncContacts throws a rate-limit-shaped error on a 429, rather than counting it as a failed contact", async () => {

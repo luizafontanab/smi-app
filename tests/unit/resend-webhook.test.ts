@@ -51,9 +51,9 @@ describe.skipIf(!KEY)("/api/webhooks/resend", () => {
     syncContactToCrm.mockClear();
   });
 
-  async function makeContact(email: string, opts?: { unsubscribed_at?: string }) {
+  async function makeContact(email: string, opts?: { unsubscribed_at?: string; bounced_at?: string }) {
     emails.push(email);
-    await db.from("contacts").insert({ email, subscribed: true, unsubscribed_at: opts?.unsubscribed_at ?? null });
+    await db.from("contacts").insert({ email, subscribed: true, unsubscribed_at: opts?.unsubscribed_at ?? null, bounced_at: opts?.bounced_at ?? null });
   }
 
   it("rejects when RESEND_WEBHOOK_SECRET is not set", async () => {
@@ -94,11 +94,13 @@ describe.skipIf(!KEY)("/api/webhooks/resend", () => {
     expect(syncContactToCrm).toHaveBeenCalledWith(data?.id);
   });
 
-  it("unsubscribes on a hard bounce but not a soft one", async () => {
+  // Gap review area 7: a hard bounce is its own state, not an unsubscribe.
+  it("marks a hard bounce bounced, leaves opt-in state alone and tells Bigin nothing; ignores a soft one", async () => {
     const soft = `webhook-soft-${Date.now()}@test.local`;
     const hard = `webhook-hard-${Date.now()}@test.local`;
     await makeContact(soft);
     await makeContact(hard);
+    syncContactToCrm.mockClear();
     const { POST } = await import("@/app/api/webhooks/resend/route");
 
     const softBody = JSON.stringify({ type: "email.bounced", data: { to: [soft], bounce: { type: "Transient" } } });
@@ -106,12 +108,26 @@ describe.skipIf(!KEY)("/api/webhooks/resend", () => {
     const hardBody = JSON.stringify({ type: "email.bounced", data: { to: [hard], bounce: { type: "Permanent" } } });
     await POST(request(hardBody, signedHeaders(hardBody, { id: "msg_hard" })));
 
-    const { data: softRow } = await db.from("contacts").select("unsubscribed_at").eq("email", soft).single();
-    const { data: hardRow } = await db.from("contacts").select("unsubscribed_at").eq("email", hard).single();
+    const { data: softRow } = await db.from("contacts").select("subscribed, unsubscribed_at, bounced_at").eq("email", soft).single();
+    const { data: hardRow } = await db.from("contacts").select("subscribed, unsubscribed_at, bounced_at").eq("email", hard).single();
     // A full mailbox or a temporary server hiccup must not cost a member their
-    // contact record — only a permanent failure does.
-    expect(softRow?.unsubscribed_at).toBeNull();
-    expect(hardRow?.unsubscribed_at).not.toBeNull();
+    // place on the list — only a permanent failure stops mail.
+    expect(softRow).toMatchObject({ unsubscribed_at: null, bounced_at: null });
+    expect(hardRow?.bounced_at).not.toBeNull();
+    expect(hardRow).toMatchObject({ subscribed: true, unsubscribed_at: null });
+    expect(syncContactToCrm).not.toHaveBeenCalled();
+  });
+
+  it("keeps the first bounce's date", async () => {
+    const email = `webhook-rebounce-${Date.now()}@test.local`;
+    const first = "2026-01-01T00:00:00+00:00";
+    await makeContact(email, { bounced_at: first });
+    const { POST } = await import("@/app/api/webhooks/resend/route");
+    const body = JSON.stringify({ type: "email.bounced", data: { to: [email], bounce: { type: "Permanent" } } });
+    await POST(request(body, signedHeaders(body)));
+
+    const { data } = await db.from("contacts").select("bounced_at").eq("email", email).single();
+    expect(new Date(data!.bounced_at!).toISOString()).toBe(new Date(first).toISOString());
   });
 
   it("never restamps an already-unsubscribed contact", async () => {

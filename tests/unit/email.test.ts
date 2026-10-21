@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * sent. These tests exist to stop that regressing.
  */
 
-const ENV_KEYS = ["RESEND_API_KEY", "MAILPIT_URL", "EMAIL_FROM", "EMAIL_REPLY_TO"] as const;
+const ENV_KEYS = ["RESEND_API_KEY", "MAILPIT_URL", "EMAIL_FROM", "EMAIL_REPLY_TO", "NEWSLETTER_FROM"] as const;
 const saved: Record<string, string | undefined> = {};
 
 async function freshSender() {
@@ -149,6 +149,15 @@ describe("MailpitSender", () => {
     expect(body.HTML).toBe("<p>hi</p>");
   });
 
+  it("lets one email name its own sender — the newsletter's test send", async () => {
+    process.env.EMAIL_FROM = "SMI <noreply@sheetmetalindustries.com>";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response('{"ID":"x"}', { status: 200 }));
+
+    await (await freshSender()).send({ ...MAIL, from: "Sheet Metal Industries <news@sheetmetalindustries.com>" });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).From).toEqual({ Email: "news@sheetmetalindustries.com", Name: "Sheet Metal Industries" });
+  });
+
   it("degrades to a log instead of throwing when Mailpit is down", async () => {
     // Dev convenience: unlike Resend, a stopped mail catcher must never break a
     // local flow. Only the production path is allowed to fail the job.
@@ -174,5 +183,22 @@ describe("maskEmail (GDPR.md G6)", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining("to=j…@acme.co.uk"));
     expect(log).not.toHaveBeenCalledWith(expect.stringContaining("jane.smith@"));
     log.mockRestore();
+  });
+});
+
+describe("newsletterFrom (gap review area 6)", () => {
+  async function newsletterFrom() {
+    vi.resetModules();
+    return (await import("@/lib/adapters/email")).newsletterFrom();
+  }
+
+  it("uses NEWSLETTER_FROM, then EMAIL_FROM, then the default", async () => {
+    process.env.NEWSLETTER_FROM = "Sheet Metal Industries <news@smi.test>";
+    process.env.EMAIL_FROM = "SMI <noreply@smi.test>";
+    expect(await newsletterFrom()).toBe("Sheet Metal Industries <news@smi.test>");
+    process.env.NEWSLETTER_FROM = "  ";
+    expect(await newsletterFrom()).toBe("SMI <noreply@smi.test>");
+    delete process.env.EMAIL_FROM;
+    expect(await newsletterFrom()).toBe("SMI <noreply@sheetmetalindustries.com>");
   });
 });

@@ -10,6 +10,21 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-21 — Bounced addresses, and a last check before each newsletter
+- An address that bounces permanently is now marked "bounced, not mailed" on its CRM contact instead of being unsubscribed. It's left out of newsletters, but nothing is recorded in Bigin as an opt-out.
+- When you correct a bounced contact's email address, or tick "address fixed" when editing it, they go back on the list from the next daily contact sync.
+- Just before each newsletter goes out, anyone who unsubscribed or bounced since the last daily sync is taken off the sending list. If that can't be done, the issue isn't sent: it shows as failed with the reason, and you can send it again.
+- The subscriber counts on the newsletter pages now leave out bounced addresses.
+
+## 2026-10-21 — Newsletter footer, sender and sign-up records
+- Every newsletter footer now has links to the website, the contact page and SMI's social accounts, a line saying why the reader is getting it, your postal address, an "Update your details" link and the unsubscribe link. The plain-text version has them too.
+- Set the postal address and the "why you're getting this" line under Newsletter → Footer. Until there's an address, issues go out without one and the issue page warns you; it doesn't stop you approving.
+- If the newsletter template under Email templates was edited before these footer lines existed, it won't have them. The issue page says so with a link to fix it, and a test send or a real send refuses until it's fixed.
+- When someone already on the list signs up again on the website, that sign-up now becomes their consent record if they had none, or only a Bigin import date.
+- Replies to the newsletter now go to the monitored inbox set for replies, and the newsletter can have its own sender name, "Sheet Metal Industries", without changing other emails. "Send me a test" uses the same sender, so you can check it.
+- Every new subscriber now has a record of when they joined, how (a website sign-up form, added in the console, or imported from Bigin) and, for website sign-ups, the wording the form showed. You can see it when you edit a contact in the CRM.
+- Contacts already imported from Bigin show their import date as the date they joined. That's when we got them, not a record of their consent, and the CRM says so. Older website and console sign-ups have no record.
+
 ## 2026-10-21 — Clicks counted per newsletter issue
 - A sent issue's page now shows its five most-clicked stories and videos, and how many clicks each advert in it got, including any that got none.
 - Advert links in the newsletter now carry the UTM tags from the newsletter SOP (source, medium, the issue's month and the advertiser's slot), so advertisers can see newsletter visits in their own analytics. A tag the advertiser already put in their link is kept.

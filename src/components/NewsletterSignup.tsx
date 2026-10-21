@@ -1,6 +1,7 @@
 "use client";
 import { useActionState } from "react";
 import { subscribeNewsletter } from "@/app/(public)/actions";
+import type { SignupSurface } from "@/lib/newsletter-consent";
 
 /**
  * `tone` is the submit button only — the form is otherwise surface-agnostic.
@@ -13,10 +14,15 @@ const BUTTON_TONES = {
   dark: "bg-ink text-white",
 } as const;
 
-export function NewsletterSignup({ tone = "brand" }: { tone?: keyof typeof BUTTON_TONES }) {
+/**
+ * `surface` says which copy surrounds this form (lib/newsletter-consent), so
+ * the signup records the wording the person actually saw (gap review area 6).
+ */
+export function NewsletterSignup({ surface, tone = "brand" }: { surface: SignupSurface; tone?: keyof typeof BUTTON_TONES }) {
   const [state, formAction, pending] = useActionState(subscribeNewsletter, { message: "" });
   return (
     <form action={formAction} className="flex gap-2">
+      <input type="hidden" name="surface" value={surface} />
       <label htmlFor="newsletter-email" className="sr-only">Email address</label>
       <input
         id="newsletter-email"

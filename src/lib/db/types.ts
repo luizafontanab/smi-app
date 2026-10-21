@@ -808,6 +808,7 @@ export type Database = {
           bigin_company_name: string | null
           bigin_id: string | null
           bigin_modified_at: string | null
+          bounced_at: string | null
           company: string | null
           created_at: string
           crm_dirty_at: string | null
@@ -816,6 +817,9 @@ export type Database = {
           last_synced_at: string | null
           member_id: string | null
           name: string | null
+          opt_in_at: string | null
+          opt_in_source: string | null
+          opt_in_wording: string | null
           social: Json
           source: string | null
           subscribed: boolean
@@ -826,6 +830,7 @@ export type Database = {
           bigin_company_name?: string | null
           bigin_id?: string | null
           bigin_modified_at?: string | null
+          bounced_at?: string | null
           company?: string | null
           created_at?: string
           crm_dirty_at?: string | null
@@ -834,6 +839,9 @@ export type Database = {
           last_synced_at?: string | null
           member_id?: string | null
           name?: string | null
+          opt_in_at?: string | null
+          opt_in_source?: string | null
+          opt_in_wording?: string | null
           social?: Json
           source?: string | null
           subscribed?: boolean
@@ -844,6 +852,7 @@ export type Database = {
           bigin_company_name?: string | null
           bigin_id?: string | null
           bigin_modified_at?: string | null
+          bounced_at?: string | null
           company?: string | null
           created_at?: string
           crm_dirty_at?: string | null
@@ -852,6 +861,9 @@ export type Database = {
           last_synced_at?: string | null
           member_id?: string | null
           name?: string | null
+          opt_in_at?: string | null
+          opt_in_source?: string | null
+          opt_in_wording?: string | null
           social?: Json
           source?: string | null
           subscribed?: boolean

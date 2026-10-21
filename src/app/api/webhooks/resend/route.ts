@@ -16,6 +16,10 @@ import { applyOptIn } from "@/lib/contacts";
  * Spam complaints are treated exactly like unsubscribes: continuing to mail
  * someone who pressed "this is spam" is both a deliverability problem and,
  * under PECR, not a choice we get to make.
+ *
+ * A hard bounce is not (gap review area 7): it stamps `bounced_at`, which
+ * keeps the address out of sends without recording an opt-out the person never
+ * made, here or in Bigin, and clears when the address is fixed.
  */
 
 /** Reject anything older than this, so a captured request can't be replayed. */
@@ -94,6 +98,23 @@ async function unsubscribe(email: string, why: string): Promise<void> {
   await syncContactToCrm(contact.id);
 }
 
+/**
+ * Stamp a contact's address as hard-bounced. Not an unsubscribe: opt-in state
+ * is left alone and nothing is pushed to Bigin, whose only field for this is
+ * the general Email_Opt_Out (migration 20261021000005).
+ */
+async function markBounced(email: string): Promise<void> {
+  const db = serviceDb();
+  const { data: contact } = await db
+    .from("contacts")
+    .select("id, bounced_at")
+    .eq("email", email.toLowerCase())
+    .maybeSingle();
+  if (!contact || contact.bounced_at) return; // keep the first bounce's date
+  await db.from("contacts").update({ bounced_at: new Date().toISOString() }).eq("id", contact.id);
+  console.log(`[resend-webhook] marked contact ${contact.id} bounced`);
+}
+
 export async function POST(request: NextRequest) {
   const secret = process.env.RESEND_WEBHOOK_SECRET?.trim();
   if (!secret) {
@@ -133,7 +154,7 @@ export async function POST(request: NextRequest) {
       // server problem, and dropping someone off the list for that would lose a
       // paying member's contact over a bad afternoon.
       if (event.data?.bounce?.type === "Permanent") {
-        await unsubscribe(String(email), "hard bounce");
+        await markBounced(String(email));
       }
       break;
     case "email.opened":

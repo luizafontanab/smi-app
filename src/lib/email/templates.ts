@@ -33,6 +33,7 @@ import {
   dropEmptyParagraphs,
   escapeHtml,
   interpolate,
+  tokensIn,
   validateTemplate,
   type TemplateVars,
 } from "./render";
@@ -440,6 +441,35 @@ export function renderAdminEmail(
   if (!authored) return { subject, text };
   return { subject, text, html: dropEmptyParagraphs(interpolate(tpl.bodyHtml, vars, { escape: true, raw })) };
 }
+
+/**
+ * Whether the stored newsletter wrapper still carries everything an issue
+ * can't go out without. `validateEmailTemplate` only runs when an edit is
+ * saved, so an edit saved before a token became required — the footer's
+ * reason line and postal address (gap review area 6) — resolves untouched and
+ * the issue would send without them. Checked on the issue page, before a test
+ * send and before a broadcast, so that can't happen quietly. Null when there
+ * is no edit, or the edit is sound.
+ */
+export function newsletterTemplateProblem(overrides?: EmailTemplateMap): string | null {
+  if (!overrides?.[NEWSLETTER_SHELL_KIND]) return null;
+  const tpl = resolveTemplate(NEWSLETTER_SHELL_KIND, overrides);
+  const fields = { [FIELD_LABELS.body_html]: tpl.bodyHtml, [FIELD_LABELS.body_text]: tpl.bodyText };
+  const prefix = "The newsletter template has been edited and needs fixing before this issue can send.";
+  const structural = validateTemplate({ allowed: allowedTokensFor(NEWSLETTER_SHELL_KIND), required: tpl.required, fields });
+  if (structural) return `${prefix} ${structural}`;
+  // The save-time check accepts a token in either version. The footer lines
+  // are a legal requirement of each one: an edited HTML body over the shipped
+  // text body still mails most readers an email without them.
+  for (const [label, source] of Object.entries(fields)) {
+    const missing = NEWSLETTER_FOOTER_TOKENS.filter((token) => !tokensIn(source).includes(token));
+    if (missing.length) return `${prefix} The ${label} is missing ${missing.map((t) => `{{${t}}}`).join(", ")}.`;
+  }
+  return null;
+}
+
+/** The PECR/SOP footer lines every version of an issue carries, in the order a message lists them. */
+const NEWSLETTER_FOOTER_TOKENS = ["postal_address", "reason_line", "unsubscribe_url"] as const;
 
 /** The wrapper around a newsletter issue. Its stories and adverts arrive as finished markup. */
 export function renderNewsletterShell(

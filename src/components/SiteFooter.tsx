@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SMI_SOCIAL_URLS, SOCIAL_CHANNELS } from "@/lib/social";
 import { CookieSettingsLink } from "./CookieSettingsLink";
 import { NewsletterSignup } from "./NewsletterSignup";
+import { SIGNUP_SURFACES } from "@/lib/newsletter-consent";
 
 export function SiteFooter() {
   return (
@@ -40,8 +41,8 @@ export function SiteFooter() {
           </ul>
         </div>
         <div>
-          <p className="mb-2 text-sm font-semibold">Monthly newsletter</p>
-          <NewsletterSignup />
+          <p className="mb-2 text-sm font-semibold">{SIGNUP_SURFACES.footer.heading}</p>
+          <NewsletterSignup surface="footer" />
         </div>
       </div>
       <div className="border-t border-white/10 py-4 text-center text-xs text-white/70">

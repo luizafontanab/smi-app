@@ -667,8 +667,9 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
     // between the stories; {{adverts}} is kept, always empty, for old edits.
     bodyHtml: `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">
 <title>{{subject}}</title>
-<style>@media (max-width:520px){.smi-col{display:block!important;width:100%!important;padding:0 0 20px!important;}}</style></head>
+<style>:root{color-scheme:light;supported-color-schemes:light;}@media (max-width:520px){.smi-col{display:block!important;width:100%!important;padding:0 0 20px!important;}}</style></head>
 <body style="margin:0;padding:0;background:#f4f5f6;">
   {{preheader}}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f6;padding:24px 12px;">
@@ -684,16 +685,20 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">{{items}}{{adverts}}</table>
         </td></tr>
         <tr><td style="border-top:1px solid ${LINE};padding:18px 28px;">
-          <p style="margin:0;font-size:13px;line-height:1.6;color:${GRAPHITE};">
-            Sheet Metal Industries{{online_link}}<br>
-            <a href="{{unsubscribe_url}}" style="color:${GRAPHITE};">Unsubscribe</a>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:${GRAPHITE};">Sheet Metal Industries{{online_link}}</p>
+          <p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:${GRAPHITE};"><a href="{{base}}" style="color:${GRAPHITE};">sheetmetalindustries.com</a> · <a href="{{base}}/contact" style="color:${GRAPHITE};">Contact us</a>{{social_links}}</p>
+          <p style="margin:8px 0 0;font-size:12px;line-height:1.6;color:${GRAPHITE};">{{reason_line}}</p>
+          <p style="margin:4px 0 0;font-size:12px;line-height:1.6;color:${GRAPHITE};">{{postal_address}}</p>
+          <p style="margin:8px 0 0;font-size:12px;line-height:1.6;color:${GRAPHITE};">
+            <a href="{{base}}/contact" style="color:${GRAPHITE};">Update your details</a> · <a href="{{unsubscribe_url}}" style="color:${GRAPHITE};">Unsubscribe</a>
           </p>
         </td></tr>
       </table>
     </td></tr>
   </table>
 </body></html>`,
-    bodyText: "SMI Monthly — Issue {{issue_number}}\n{{subject}}\n{{intro}}\n\n{{items_text}}\n\nUnsubscribe: {{unsubscribe_url}}",
+    bodyText:
+      "SMI Monthly — Issue {{issue_number}}\n{{subject}}\n{{intro}}\n\n{{items_text}}\n\n{{reason_line}}\n{{postal_address}}\n\nUpdate your details: {{base}}/contact\nUnsubscribe: {{unsubscribe_url}}",
     tokens: [
       { token: "issue_number", description: "The issue number.", sample: "48" },
       { token: "subject", description: "The issue's subject line, as set on the issue itself.", sample: "Laser cutting, five ways" },
@@ -729,6 +734,23 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
         sample: "",
         raw: true,
       },
+      { token: "base", description: "The site's web address, with no trailing slash.", sample: "https://sheetmetalindustries.com" },
+      {
+        token: "social_links",
+        description: "SMI's social accounts (LinkedIn, X, Facebook and the rest), each a link, after the website and contact links.",
+        sample: ` · <a href="https://www.linkedin.com/company/sheet-metal-industries/" style="color:${GRAPHITE};">LinkedIn</a>`,
+        raw: true,
+      },
+      {
+        token: "reason_line",
+        description: "Why the reader is getting this email. Set under Newsletter → Footer. A legal requirement, so it can't be left out.",
+        sample: "You're receiving this because you signed up for SMI Monthly at sheetmetalindustries.com.",
+      },
+      {
+        token: "postal_address",
+        description: "SMI's postal address, on one line. Set under Newsletter → Footer; the line is left out while it is empty.",
+        sample: "Sheet Metal Industries, 1 Example Street, Leamington Spa, CV31 1AA",
+      },
       {
         // Resend swaps this for a per-recipient link at send time. Leaving it
         // out is a PECR problem, not a cosmetic one, hence the required check.
@@ -738,7 +760,10 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
         raw: true,
       },
     ],
-    required: ["items", "unsubscribe_url"],
+    // The address and reason line are PECR/SOP footer requirements, so an edit
+    // can't drop the tokens; the address's *value* may still be empty until
+    // Jas supplies it (lib/newsletter-footer.ts).
+    required: ["items", "unsubscribe_url", "postal_address", "reason_line"],
   },
 };
 

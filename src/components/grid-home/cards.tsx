@@ -7,6 +7,7 @@ import { youtubeId } from "@/lib/hero";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
 import type { MachineCardData, VideoCardData } from "@/components/cards";
 import { NewsletterSignup } from "@/components/NewsletterSignup";
+import { SIGNUP_SURFACES } from "@/lib/newsletter-consent";
 import { MemberBadge } from "@/components/StoryCard";
 import { FeaturedMembersCarousel } from "./FeaturedMembersCarousel";
 import { MoreNewsScroller } from "./MoreNewsScroller";
@@ -493,13 +494,13 @@ export function GhLogoBand({ adverts, showPlaceholders = false }: { adverts: Liv
 export function GhNewsletterPanel() {
   return (
     <div className="flex h-full flex-col justify-center rounded-[var(--gh-radius)] bg-brand p-6 text-ink">
-      <h2 className="font-heading text-xl font-extrabold">Get the SMI newsletter</h2>
+      <h2 className="font-heading text-xl font-extrabold">{SIGNUP_SURFACES.home_card.heading}</h2>
       <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink/80">
-        UK sheet metal manufacturing news, machinery launches and event dates, for free.
+        {SIGNUP_SURFACES.home_card.blurb}
       </p>
       {/* tone="dark": the default orange button would vanish on this panel. */}
       <div className="mt-4">
-        <NewsletterSignup tone="dark" />
+        <NewsletterSignup surface="home_card" tone="dark" />
       </div>
     </div>
   );

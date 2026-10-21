@@ -19,7 +19,7 @@ afterEach(() => {
 describe("NewsletterSignup", () => {
   it("renders an email field and a subscribe button", () => {
     subscribeNewsletter.mockResolvedValue({ message: "" });
-    render(<NewsletterSignup />);
+    render(<NewsletterSignup surface="footer" />);
     const email = screen.getByPlaceholderText("you@company.co.uk");
     expect(email).toHaveAttribute("type", "email");
     expect(email).toBeRequired();
@@ -30,7 +30,7 @@ describe("NewsletterSignup", () => {
     // The live region has to exist in the initial DOM or a screen reader has
     // nothing to announce into when the result lands.
     subscribeNewsletter.mockResolvedValue({ message: "" });
-    render(<NewsletterSignup />);
+    render(<NewsletterSignup surface="footer" />);
     const status = document.getElementById("newsletter-status");
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(status).toHaveClass("sr-only");
@@ -42,7 +42,7 @@ describe("NewsletterSignup", () => {
       () => new Promise<{ message: string }>((resolve) => { resolveAction = resolve; }),
     );
 
-    render(<NewsletterSignup />);
+    render(<NewsletterSignup surface="footer" />);
     // The email field is required, so an empty form never fires submit at all.
     fireEvent.change(screen.getByPlaceholderText("you@company.co.uk"), {
       target: { value: "reader@fabricators.test" },

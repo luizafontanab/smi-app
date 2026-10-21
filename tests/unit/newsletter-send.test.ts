@@ -64,6 +64,8 @@ describe.skipIf(!KEY)("newsletter_send idempotency", () => {
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : (input as Request).url;
+      // the pre-send segment check (gap review area 7): an empty segment, nothing to remove
+      if (url.includes("api.resend.com/segments/")) return new Response('{"data":[],"has_more":false}', { status: 200 });
       if (url.includes("api.resend.com/broadcasts")) {
         const headers = new Headers(init?.headers);
         seenKeys.push(headers.get("Idempotency-Key"));
@@ -118,6 +120,8 @@ describe.skipIf(!KEY)("newsletter_send idempotency", () => {
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : (input as Request).url;
+      // the pre-send segment check (gap review area 7): an empty segment, nothing to remove
+      if (url.includes("api.resend.com/segments/")) return new Response('{"data":[],"has_more":false}', { status: 200 });
       if (url.includes("api.resend.com/broadcasts")) return new Response("domain not verified", { status: 403 });
       return realFetch(input, init);
     });

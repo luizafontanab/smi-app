@@ -7,9 +7,10 @@
  * keys are what `newsletter_issues.proof_checks` stores, so never rename one —
  * a renamed key reads as unticked on every issue.
  *
- * Some items can't honestly be ticked until later areas land (postal address
- * and reason-for-receiving line, "Sheet Metal Industries" as sender, UTM tags,
- * the "Sponsored" label). That is intended: approval waits for them.
+ * Items that needed later areas (footer address and reason line, sender
+ * name and reply-to, UTM tags, the "Sponsored" label) are built as of area 6.
+ * The postal address still waits on Jas; the issue page warns while it is
+ * empty, and ticking the item is his call.
  */
 
 export type ProofItem = { key: string; label: string };
