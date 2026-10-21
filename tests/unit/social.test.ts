@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeSocial, parseStoryPosts, SMI_SOCIAL_URLS, socialHandle, socialHref, socialLinks, storyPostLinks, storyPostUrl } from "@/lib/social";
+import { keepUntouchedPosts, mergeSocial, parseStoryPosts, SMI_SOCIAL_URLS, socialHandle, socialHref, socialLinks, storyPostLinks, storyPostUrl } from "@/lib/social";
 
 /** Shorthand: the pair the profile card actually renders. */
 const render = (key: string, value: string) => {
@@ -242,5 +242,26 @@ describe("storyPostLinks", () => {
   it("copes with nothing stored at all", () => {
     expect(storyPostLinks(null)).toHaveLength(3);
     expect(storyPostLinks([])).toHaveLength(3);
+  });
+});
+
+// The post links are filled from Buffer in the background (21 Oct); saving an
+// editor opened before that must not wipe them.
+describe("keepUntouchedPosts", () => {
+  const LI = "https://www.linkedin.com/feed/update/urn:li:share:1";
+  const was = (m: Record<string, string>) => (k: string) => m[k] ?? null;
+
+  it("keeps a link filled in since the form opened when the field wasn't touched", () => {
+    expect(keepUntouchedPosts({}, { linkedin: LI }, was({ linkedin: "", facebook: "", x: "" }))).toEqual({ linkedin: LI });
+  });
+
+  it("takes what the editor changed — a new link, or clearing one", () => {
+    const FB = "https://www.facebook.com/smi/posts/1";
+    expect(keepUntouchedPosts({ linkedin: LI, facebook: FB }, { linkedin: LI }, was({ linkedin: LI, facebook: "", x: "" }))).toEqual({ linkedin: LI, facebook: FB });
+    expect(keepUntouchedPosts({}, { linkedin: LI }, was({ linkedin: LI, facebook: "", x: "" }))).toEqual({});
+  });
+
+  it("without the form's record of what it showed, the submitted values stand", () => {
+    expect(keepUntouchedPosts({}, { linkedin: LI }, () => null)).toEqual({});
   });
 });

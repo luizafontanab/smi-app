@@ -33,12 +33,13 @@ import { readSocialChannels } from "../social-channels";
 const BUFFER_API = "https://api.buffer.com";
 
 /**
- * Our own queue owns the timing: `publish_scheduled` enqueues `social_push` at
- * +caps.delay_minutes and `social_push` defers past the daily cap itself
+ * Our own queue owns the timing: every publish path queues `social_push` for
+ * the item's own `social_at`, or publication + caps.delay_minutes
+ * (`social-push.ts`), and `social_push` defers past the daily cap itself
  * (`jobs.ts`). Buffer must therefore post at the moment we call and add no
  * schedule of its own — a queue-shaped mode would stack Buffer's delay on top
- * of ours, break the "live → posted ~30 min later" expectation, and make the
- * cap accounting fiction (it counts jobs that handed off, not posts that went out).
+ * of ours, make the time the editor shows untrue, and make the cap accounting
+ * fiction (it counts `social_posted_at`, stamped when this call returns).
  * For the same reason we send no `dueAt`.
  *
  * ⚠ UNVERIFIED: these two enum literals have not been checked against a live
@@ -52,10 +53,24 @@ const CREATE_POST = `
   mutation CreatePost($input: CreatePostInput!) {
     createPost(input: $input) {
       __typename
-      ... on PostActionSuccess { post { id } }
+      ... on PostActionSuccess { post { id channelService status externalLink } }
       ... on MutationError { message }
     }
   }`;
+
+/**
+ * One sent post, looked up later for its live URL. `externalLink` is "the
+ * external URL of the post at the destination service" (Buffer's reference),
+ * filled once the post is `sent`; `status` runs sending → sent, or error.
+ * ⚠ UNVERIFIED against a live account, like the enums above.
+ */
+const GET_POST = `
+  query GetPost($input: PostInput!) {
+    post(input: $input) { id channelService status externalLink }
+  }`;
+
+/** A post Buffer accepted: its id, which network it went to, and its live URL once Buffer has one. */
+export type SentPost = { id: string; service: string; status: string; link: string | null };
 
 export type SocialPost = {
   text: string;
@@ -74,7 +89,10 @@ export type SocialPost = {
 export const MAX_EXTRA_TAGGED_MEMBERS = 4;
 
 export interface SocialPublisher {
-  publish(post: SocialPost): Promise<void>;
+  /** One entry per channel Buffer accepted — so the live links can be collected afterwards. */
+  publish(post: SocialPost): Promise<SentPost[]>;
+  /** Re-reads posts by id for their status and live URL. Ids Buffer can't find are left out. */
+  postLinks(ids: string[]): Promise<SentPost[]>;
 }
 
 /**
@@ -104,9 +122,14 @@ function formatTags(post: Pick<SocialPost, "tagHandles" | "extraTagHandles">): s
 }
 
 class LoggingSocialStub implements SocialPublisher {
-  async publish(post: SocialPost): Promise<void> {
+  async publish(post: SocialPost): Promise<SentPost[]> {
     const tags = formatTags(post);
     console.log(`[social] would post (${tags || "no tags"}): ${post.text.split("\n")[0].slice(0, 80)}`);
+    return [];
+  }
+
+  async postLinks(): Promise<SentPost[]> {
+    return [];
   }
 }
 
@@ -127,7 +150,7 @@ type ChannelInput = {
 class BufferPublisher implements SocialPublisher {
   constructor(private token: string) {}
 
-  async publish(post: SocialPost): Promise<void> {
+  async publish(post: SocialPost): Promise<SentPost[]> {
     const { channelIds, legacyProfileIds } = await bufferChannels();
     if (!channelIds.length) {
       // Fail closed rather than let Buffer reject a channel-less request with a
@@ -151,12 +174,14 @@ class BufferPublisher implements SocialPublisher {
     // per {story_id, channel_id}), so a retry is scoped to the channel that
     // failed. Out of scope here; recorded in GAPS B4.4.
     const failures: string[] = [];
+    const sent: SentPost[] = [];
     for (const channelId of channelIds) {
       const input: ChannelInput = { text, channelId, mode: SHARE_MODE, schedulingType: SCHEDULING_TYPE };
       if (image) input.assets = [{ image: { url: image } }];
 
       const result = await this.publishToChannel(input);
       if (!result.ok) failures.push(`${channelId}: ${result.error}`);
+      else if (result.post) sent.push(result.post);
     }
 
     if (failures.length) {
@@ -165,13 +190,37 @@ class BufferPublisher implements SocialPublisher {
         `[social] Buffer publish failed for ${failures.length} of ${channelIds.length} channel(s) — ${failures.join("; ")}`,
       );
     }
+    return sent;
+  }
+
+  async postLinks(ids: string[]): Promise<SentPost[]> {
+    const out: SentPost[] = [];
+    for (const id of ids) {
+      // Same transport/HTTP/GraphQL checks as a publish, condensed: any failure
+      // just leaves this id out, and the caller asks again later.
+      try {
+        const res = await fetch(BUFFER_API, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ query: GET_POST, variables: { input: { id } } }),
+        });
+        if (!res.ok) continue;
+        const body = (await res.json()) as { data?: { post?: RawPost | null }; errors?: unknown[] };
+        if (body.errors?.length || !body.data?.post) continue;
+        const post = sentPost(body.data.post);
+        if (post) out.push(post);
+      } catch (e) {
+        console.error("[social] buffer post lookup failed:", e);
+      }
+    }
+    return out;
   }
 
   /**
    * Five distinct failure modes, in order. Only the last two are new with
    * GraphQL, and they are the ones the old `!res.ok` check could not see.
    */
-  private async publishToChannel(input: ChannelInput): Promise<{ ok: true } | { ok: false; error: string }> {
+  private async publishToChannel(input: ChannelInput): Promise<{ ok: true; post: SentPost | null } | { ok: false; error: string }> {
     let res: Response;
     try {
       res = await fetch(BUFFER_API, {
@@ -195,7 +244,7 @@ class BufferPublisher implements SocialPublisher {
 
     // 3. Body isn't JSON at all — an HTML error page from a proxy must not read
     //    as success just because it parsed to undefined.
-    let body: { data?: { createPost?: { __typename?: string; message?: string } }; errors?: { message?: string }[] };
+    let body: { data?: { createPost?: { __typename?: string; message?: string; post?: RawPost } }; errors?: { message?: string }[] };
     try {
       body = await res.json();
     } catch {
@@ -220,8 +269,30 @@ class BufferPublisher implements SocialPublisher {
       return { ok: false, error };
     }
 
-    return { ok: true };
+    // The post itself is a bonus — a success without it is still a success.
+    return { ok: true, post: payload.post ? sentPost(payload.post) : null };
   }
+}
+
+type RawPost = { id?: unknown; channelService?: unknown; status?: unknown; externalLink?: unknown };
+
+function sentPost(raw: RawPost): SentPost | null {
+  if (typeof raw.id !== "string" || !raw.id) return null;
+  return {
+    id: raw.id,
+    service: typeof raw.channelService === "string" ? raw.channelService : "",
+    status: typeof raw.status === "string" ? raw.status : "",
+    link: typeof raw.externalLink === "string" && raw.externalLink ? raw.externalLink : null,
+  };
+}
+
+/**
+ * True when posts really go to Buffer. Without a token the logging stub
+ * "publishes", and the item must not then be marked as posted — the editor
+ * would claim a post that never happened.
+ */
+export function isSocialLive(): boolean {
+  return !!process.env.BUFFER_ACCESS_TOKEN;
 }
 
 export function getSocialPublisher(): SocialPublisher {

@@ -22,7 +22,7 @@ const TABS = [
   { view: "calendar", label: "Calendar" },
 ] as const;
 
-const ISSUE_SELECT = "id, number, subject, status, scheduled_at, sent_at, web_slug, send_error";
+const ISSUE_SELECT = "id, number, subject, status, scheduled_at, sent_at, web_slug, send_error, approved_at";
 
 export default async function NewsletterPage(props: PageProps<"/console/newsletter">) {
   await requireConsole();
@@ -126,25 +126,26 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
                         <Link href={`/newsletters/${i.web_slug}`} className="mt-1 block text-xs text-graphite hover:underline">web version</Link>
                       )}
 
-                      {i.status === "draft" && (
+                      {i.status === "draft" && !i.approved_at && (
+                        // Gap review area 4: nothing sends or schedules unapproved.
+                        <Link href={`/console/newsletter/${i.id}`} className="mt-2 block text-xs font-semibold text-ink underline">
+                          Needs proof and approval →
+                        </Link>
+                      )}
+                      {i.status === "draft" && i.approved_at && (
                         <div className="mt-2 space-y-2">
-                          <form action={sendIssue}>
+                          <p className="text-xs text-success">Approved to send</p>
+                          <SendNowForm id={i.id} label="Send now" />
+                          <form action={scheduleIssue} className="flex flex-wrap items-center gap-1.5">
                             <input type="hidden" name="id" value={i.id} />
-                            <button className="rounded bg-brand px-2.5 py-1 text-xs font-semibold text-ink">Send now</button>
-                          </form>
-                          <form action={scheduleIssue} className="flex items-center gap-1.5">
-                            <input type="hidden" name="id" value={i.id} />
-                            <input type="datetime-local" name="scheduled_at" aria-label="Schedule send time" required className="rounded border px-1.5 py-1 text-xs" />
+                            <input type="datetime-local" name="scheduled_at" aria-label="Schedule send time" required className="max-w-full rounded border px-1.5 py-1 text-xs" />
                             <button className="rounded border px-2.5 py-1 text-xs">Schedule</button>
                           </form>
                         </div>
                       )}
                       {i.status === "scheduled" && (
-                        <div className="mt-2 flex gap-2">
-                          <form action={sendIssue}>
-                            <input type="hidden" name="id" value={i.id} />
-                            <button className="rounded bg-brand px-2.5 py-1 text-xs font-semibold text-ink">Send now</button>
-                          </form>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <SendNowForm id={i.id} label="Send now" />
                           <form action={unscheduleIssue}>
                             <input type="hidden" name="id" value={i.id} />
                             <button className="rounded border px-2.5 py-1 text-xs text-graphite">Unschedule</button>
@@ -154,10 +155,13 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
                       {i.status === "send_failed" && (
                         <div className="mt-2 space-y-2">
                           {i.send_error && <p className="rounded bg-danger/10 p-1.5 text-xs text-danger">{i.send_error}</p>}
-                          <form action={sendIssue}>
-                            <input type="hidden" name="id" value={i.id} />
-                            <button className="rounded bg-brand px-2.5 py-1 text-xs font-semibold text-ink">Try again</button>
-                          </form>
+                          {i.approved_at ? (
+                            <SendNowForm id={i.id} label="Try again" />
+                          ) : (
+                            <Link href={`/console/newsletter/${i.id}`} className="block text-xs font-semibold text-ink underline">
+                              Needs proof and approval →
+                            </Link>
+                          )}
                         </div>
                       )}
                     </div>
@@ -170,5 +174,19 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
         </div>
       )}
     </div>
+  );
+}
+
+/** Mails the whole list, so it takes the ticked "confirm" a delete does (checked server-side too). */
+function SendNowForm({ id, label }: { id: string; label: string }) {
+  return (
+    <form action={sendIssue} className="flex items-center gap-1.5">
+      <input type="hidden" name="id" value={id} />
+      <label className="flex items-center gap-1 text-xs text-graphite">
+        <input type="checkbox" name="confirm" value="1" required />
+        confirm
+      </label>
+      <button className="rounded bg-brand px-2.5 py-1 text-xs font-semibold text-ink">{label}</button>
+    </form>
   );
 }

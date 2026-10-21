@@ -356,3 +356,52 @@ describe("setVideoStatus", () => {
     await expect(setVideoStatus(form({ id: "v1", status: "awaiting_approval", return_to: "https://evil.example" }))).resolves.toBeUndefined();
   });
 });
+
+// Area 3: videos get the same per-item social post and UK-time handling as stories.
+describe("per-video social posts", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("publishing now queues the post at the configured delay, not a hard-coded 30 minutes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-01T12:00:00Z"));
+    db({
+      videos: () => queryBuilder(dbOk({ member_id: null, status: "draft", social_at: null, social_posted_at: null, published_at: null })),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
+    });
+
+    await expect(scheduleVideo(form({ id: "v1", mode: "now" }))).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(enqueue).toHaveBeenCalledWith("social_push", { video_id: "v1" }, new Date("2026-07-01T12:45:00Z"));
+  });
+
+  it("reads the publish time as UK time", async () => {
+    const videos = queryBuilder(dbOk({ member_id: null, status: "draft" }));
+    db({ videos: () => videos });
+
+    await expect(scheduleVideo(form({ id: "v1", scheduled_at: "2026-07-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(videos.update).toHaveBeenCalledWith(expect.objectContaining({ scheduled_at: "2026-07-01T09:00:00.000Z" }));
+  });
+
+  it("saving writes the lead-in, post time and opt-out", async () => {
+    const videos = queryBuilder(dbOk({ id: "v1" }));
+    db({ videos: () => videos, jobs: () => queryBuilder(dbOk([])) });
+
+    await expect(saveVideo(form({
+      id: "v1", title: "T", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      social_at: "", social_text: "Watch the new line run.", social_text_default: "Description.",
+    }))).rejects.toThrow("NEXT_REDIRECT:/console/videos/v1?saved=1");
+
+    expect(videos.update).toHaveBeenCalledWith(expect.objectContaining({ social_text: "Watch the new line run.", social_at: null, social_skip: false }));
+  });
+
+  it("taking a live video off the site drops its waiting post", async () => {
+    const jobs = queryBuilder(dbOk(null));
+    db({ videos: () => queryBuilder(dbOk({ id: "v1", status: "published", member_id: null, source: "manual" })), jobs: () => jobs });
+
+    expect(await moveVideo({ id: "v1", to: "draft" })).toEqual({ ok: true });
+
+    expect(jobs.delete).toHaveBeenCalled();
+    expect(jobs.filter).toHaveBeenCalledWith("payload->>video_id", "eq", "v1");
+  });
+});

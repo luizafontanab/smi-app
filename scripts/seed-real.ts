@@ -860,6 +860,8 @@ async function main() {
     if (i === 0) console.log("— waiting for storage API…");
     await new Promise((r) => setTimeout(r, 2000));
   }
+  // The buckets come from migration 20261020000004 (and 20261016000070); these
+  // calls only cover a database the migrations haven't reached yet.
   await db.storage.createBucket("media", { public: true }).catch(() => {});
   // Invoices are private: served via signed URLs only (lib/invoice-pdf.ts).
   await db.storage.createBucket("invoices", { public: false }).catch(() => {});
@@ -1126,7 +1128,9 @@ async function main() {
     // extract has always listed it in member_wp_ids (485/485, checked 14 Oct),
     // but the invariant shouldn't rest on that — add it if a re-extract drops it.
     // stories.social_posts (20261015000002) is deliberately left at '{}': the
-    // export has no record of SMI's own social posts.
+    // export has no record of SMI's own social posts. The per-story social
+    // columns (20261020000003) keep their defaults too: none of these stories
+    // is queued for social, and nothing marks them as posted.
     const memberLinks = data!.flatMap((st) => {
       const src = rows.find((r) => r.slug === st.slug)!;
       const wpIds = [...new Set([...(src.wp_member_id != null ? [src.wp_member_id] : []), ...(src.member_wp_ids ?? [])])];

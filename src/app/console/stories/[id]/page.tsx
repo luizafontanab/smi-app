@@ -19,6 +19,10 @@ import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Badge } from "@/components/console/ui";
 import { STORY_STATUS_LABELS, isMemberDraft, parseStoryListFilters, storyListHref } from "@/lib/story-board";
+import { SocialPostFields } from "@/components/console/SocialPostFields";
+import { latestSocialJob, readSocialCaps, socialStatusLine } from "@/lib/social-push";
+import { isSocialLive } from "@/lib/adapters/social";
+import { formatLondon, londonInputValue } from "@/lib/london-time";
 
 export const dynamic = "force-dynamic";
 
@@ -39,16 +43,18 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   // Keep a malformed id a 404 rather than an invalid-uuid throw from must().
   if (!isNew && !UUID_RE.test(id)) notFound();
 
-  const [story, cats, allMembers, inds] = await Promise.all([
+  const [story, cats, allMembers, inds, socialCaps, socialJob] = await Promise.all([
     isNew
       ? Promise.resolve(null)
-      : must(db.from("stories").select("*, member:members!stories_member_id_fkey(name, logo_path, slug, status, archived_at, industry_id), categories:story_categories(category:categories(slug, name))").eq("id", id).maybeSingle(), "console/stories editor"),
+      : must(db.from("stories").select("*, summary:story_summary, member:members!stories_member_id_fkey(name, logo_path, slug, status, archived_at, industry_id), categories:story_categories(category:categories(slug, name))").eq("id", id).maybeSingle(), "console/stories editor"),
     must(db.from("categories").select("id, name").order("name"), "console/stories categories"),
     // Every member, filtered below: the pickers offer the ones with a public
     // page, plus anyone this story already names whatever their state — a
     // select whose saved value has no option posts "" and silently un-tags them.
     must(db.from("members").select("id, name, status, archived_at").order("name"), "console/stories members"),
     must(db.from("industries").select("id, name").order("sort_order"), "console/stories industries"),
+    readSocialCaps(db),
+    isNew ? Promise.resolve(null) : latestSocialJob(db, { story_id: id }),
   ]);
   // A member's unsubmitted draft is private to them until they submit it.
   if (!isNew && (!story || isMemberDraft(story))) notFound();
@@ -83,6 +89,9 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const storedPosts = (story?.social_posts && typeof story.social_posts === "object" && !Array.isArray(story.social_posts)
     ? story.social_posts
     : {}) as Partial<Record<string, string>>;
+  const socialStatus = story
+    ? socialStatusLine({ ...story, job: socialJob, caps: socialCaps, live: isSocialLive() })
+    : undefined;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -165,13 +174,15 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           </div>
         </fieldset>
         <CoverField cover={cover} focus={focus} hint="Landscape works best: at least 1200×675px (16:9), JPG/PNG/WebP, max 8MB. Leaving this empty keeps the current image. The crop fixes lost heads — it applies on the story page, the news cards and the homepage." />
+        <SocialPostFields item={story} fallback={story?.summary ?? story?.title ?? ""} fallbackName="summary" caps={socialCaps} status={socialStatus} />
         {/* Jas 13/10 item 8: the story page links readers to SMI's own post of
-            the story rather than offering share buttons. Buffer never hands back
-            the live post's URL, so it's pasted here once the post has gone out. */}
+            the story rather than offering share buttons. Filled from Buffer once
+            it has sent the post (social_links job); still editable, for a post
+            made outside Buffer or a link to correct. */}
         <fieldset>
           <legend className="text-sm font-medium">SMI&apos;s posts of this story</legend>
           <p className="mt-0.5 text-xs text-graphite">
-            Paste each post&apos;s full link once Buffer has published it. Any left empty link to SMI&apos;s page on that network instead.
+            Filled in automatically once Buffer has posted the story. Only paste a link for a post made outside Buffer. Any left empty link to SMI&apos;s page on that network instead.
           </p>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
             {STORY_POST_CHANNELS.map((network) => {
@@ -179,6 +190,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               return (
                 <div key={network}>
                   <label htmlFor={`post_${network}`} className="text-xs font-medium">{ch.label} post</label>
+                  {/* what it held when this page rendered: saving an untouched field keeps a link filled in since */}
+                  {!isNew && <input type="hidden" name={`post_${network}_was`} value={storedPosts[network] ?? ""} />}
                   <input
                     id={`post_${network}`}
                     name={`post_${network}`}
@@ -212,6 +225,9 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
             {isPinned && <Badge tone="brand">Pinned to headline</Badge>}
           </div>
           <p className="mt-1 text-sm text-graphite">{statusNext(story)}</p>
+          <p className="mt-0.5 text-sm text-graphite">
+            {socialStatus} <a href="#social" className="underline">Change the social post</a>
+          </p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           {/* Ready to review (Jas's flow chart, 16 Oct): approve, then schedule.
               Approving for a time is the main path; publishing now is the
@@ -223,8 +239,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="return_to" value={backTo} />
-                <label htmlFor="approve_at" className="sr-only">Publish at</label>
-                <input id="approve_at" type="datetime-local" name="scheduled_at" required defaultValue={story.scheduled_at?.slice(0, 16) ?? ""} className="rounded border bg-white px-3 py-1.5 text-sm" />
+                <label htmlFor="approve_at" className="sr-only">Publish at (UK time)</label>
+                <input id="approve_at" type="datetime-local" name="scheduled_at" required defaultValue={londonInputValue(story.scheduled_at)} className="rounded border bg-white px-3 py-1.5 text-sm" />
                 <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</button>
               </form>
               <form action={decideStory} className="mt-2">
@@ -233,7 +249,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 <button className="rounded border border-ink bg-white px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</button>
               </form>
               <p className="mt-2 text-xs text-graphite">
-                Social push follows publication after the configured delay; daily cap applies. Pinning to the headline is a separate choice once it&apos;s live.
+                Times are UK time. The social post follows its own time, set under Social post above. Pinning to the headline is a separate choice once it&apos;s live.
               </p>
               {story.source === "member" ? (
                 <form action={decideStory} className="mt-4 flex gap-2 border-t border-black/5 pt-3">
@@ -258,12 +274,13 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="return_to" value={backTo} />
-                <input type="datetime-local" name="scheduled_at" defaultValue={story.scheduled_at?.slice(0, 16) ?? ""} className="rounded border bg-white px-3 py-1.5 text-sm" />
+                <label htmlFor="schedule_at" className="sr-only">Publish at (UK time)</label>
+                <input id="schedule_at" type="datetime-local" name="scheduled_at" defaultValue={londonInputValue(story.scheduled_at)} className="rounded border bg-white px-3 py-1.5 text-sm" />
                 <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>
                 <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
               </form>
               <p className="mt-2 text-xs text-graphite">
-                Social push follows publication after the configured delay; daily cap applies.
+                Times are UK time. The social post follows its own time, set under Social post above.
               </p>
               {/* Optional (Luiza, 20 Oct): a draft can still be scheduled
                   directly; this parks it for a second look first. */}
@@ -287,7 +304,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <h2 className="font-bold text-ink">Pin to headline <span className="font-normal text-graphite">(optional)</span></h2>
               <p className="mt-1 text-xs text-graphite">
                 {isPinned
-                  ? `Pinned until ${new Date(story.pinned_until!).toLocaleString("en-GB")}: it holds the homepage headline until then.`
+                  ? `Pinned until ${formatLondon(story.pinned_until!)}: it holds the homepage headline until then.`
                   : "Not pinned. The homepage headline shows the newest story unless one is pinned; pin this one to hold the slot for a few days."}
               </p>
               <form action={pinStory} className="mt-3 flex flex-wrap items-center gap-2 text-sm">
@@ -380,8 +397,7 @@ const STATUS_TONE: Record<string, "neutral" | "brand" | "green" | "red"> = {
 
 /** One line under the status: where the story stands and what can happen next. */
 function statusNext(story: { status: string; source: string; scheduled_at: string | null; published_at: string | null }): string {
-  const when = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  const when = (iso: string | null) => (iso ? formatLondon(iso) : "");
   switch (story.status) {
     case "awaiting_approval":
       return story.source === "member"

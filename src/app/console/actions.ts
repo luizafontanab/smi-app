@@ -9,7 +9,9 @@ import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
 import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
-import { parseStoryPosts } from "@/lib/social";
+import { keepUntouchedPosts, parseStoryPosts } from "@/lib/social";
+import { cancelSocialPush, queueSocialPush, rescheduleSocialPush, socialFieldsFromForm } from "@/lib/social-push";
+import { parseLondonInput } from "@/lib/london-time";
 import type { SocialChannels } from "@/lib/social-channels";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
 import { meetsWcagAA } from "@/lib/contrast";
@@ -44,6 +46,7 @@ import { recordRename } from "@/lib/redirects";
 import { activationBlocked, MEMBER_STATUSES, type MemberStatus } from "@/lib/membership";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { siteUrl } from "@/lib/site-url";
+import { missingChecks, PROOF_KEYS } from "@/lib/newsletter-proof";
 import { isVariant, SITE_VARIANT_KEY, VARIANT_COOKIE } from "@/lib/variant";
 import { HOME_SECTION_IDS, HOME_SECTIONS_KEY, LOCKED_VISIBLE, moveHomeSection, resolveHomeSections, type HomeSectionId } from "@/lib/home-sections";
 import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
@@ -98,14 +101,24 @@ export async function saveStory(formData: FormData) {
   if ("error" in posts) {
     redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(posts.error)}`);
   }
+  // Its own social post time, lead-in and opt-out (Area 3) — same reason.
+  const social = socialFieldsFromForm(formData);
+  if ("error" in social) {
+    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(social.error)}`);
+  }
 
   // The existence check runs before the upload, so a stale or member-owned id
   // doesn't leave an orphaned cover in storage.
   let prevCover: string | null = null;
+  let socialPosts = posts.value;
   if (id) {
-    const { data: prev } = await db.from("stories").select("cover_path, member_draft").eq("id", id).single();
+    const { data: prev } = await db.from("stories").select("cover_path, member_draft, social_posts").eq("id", id).single();
     if (!prev || isMemberDraft(prev)) redirect(`/console/stories?error=${encodeURIComponent("That story isn't available to edit.")}`);
     prevCover = prev.cover_path;
+    // SMI's post links are filled from Buffer in the background (social_links).
+    // A field the editor didn't touch keeps whatever is stored now, so saving a
+    // form opened before the link arrived doesn't wipe it.
+    socialPosts = keepUntouchedPosts(posts.value, prev.social_posts, (n) => formData.get(`post_${n}_was`));
   }
 
   let cover_path: string | null = null;
@@ -122,7 +135,8 @@ export async function saveStory(formData: FormData) {
     member_id: primaryId,
     is_member_news: formData.get("is_member_news") === "on",
     industry_id: Number(formData.get("industry_id")) || null,
-    social_posts: posts.value,
+    social_posts: socialPosts,
+    ...social.value,
     updated_at: new Date().toISOString(),
     cover_focus: formData.get("focus_x")
       ? { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) }
@@ -140,6 +154,8 @@ export async function saveStory(formData: FormData) {
       redirect(`/console/stories/${id}?error=${encodeURIComponent("The story couldn't be saved — try again.")}`);
     }
     if (cover_path && prevCover && prevCover !== cover_path) await removeMedia(prevCover);
+    // A push already waiting moves to the edited time; none is ever created here.
+    await rescheduleSocialPush(db, { story_id: id });
   } else {
     const { data, error } = await db.from("stories").insert({
       ...values,
@@ -180,14 +196,20 @@ export async function scheduleStory(formData: FormData) {
   // "Publish now" on a member's unsubmitted draft would skip their approval.
   if (story && isMemberDraft(story)) redirect("/console/stories");
   const wasAwaitingApproval = story?.status === "awaiting_approval";
-  if (formData.get("mode") === "now") {
-    // urgent override — publish immediately, social push follows on its delay
+  const now = formData.get("mode") === "now";
+  // The editor's time is UK wall-clock; read on the server it was UTC, an hour out all summer.
+  const at = when && !now ? parseLondonInput(when) : null;
+  if (when && !now && !at) {
+    redirect(`/console/stories/${id}?error=${encodeURIComponent("That publish time isn't a date and time we can read.")}`);
+  }
+  if (now) {
+    // urgent override — publish immediately, social push follows at its own time or the delay
     await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", id);
-    await enqueue("social_push", { story_id: id }, new Date(Date.now() + 30 * 60_000));
+    await queueSocialPush(db, { story_id: id }, enqueue);
     // every member the story features hears it's live (Jas 13/10 item 12)
     if (story) await enqueueStoryLive(db, { id, member_id: story.member_id }, enqueue);
-  } else if (when) {
-    await db.from("stories").update({ status: "scheduled", scheduled_at: new Date(when).toISOString() }).eq("id", id);
+  } else if (at) {
+    await db.from("stories").update({ status: "scheduled", scheduled_at: at.toISOString() }).eq("id", id);
   }
   // scheduling from awaiting_approval is also an approval — record it same as decideStory's approve branch
   if (wasAwaitingApproval) {
@@ -211,7 +233,7 @@ export async function decideStory(formData: FormData) {
 
   if (decision === "approve") {
     await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", id);
-    await enqueue("social_push", { story_id: id }, new Date(Date.now() + 30 * 60_000));
+    await queueSocialPush(db, { story_id: id }, enqueue);
     await enqueueStoryLive(db, { id, member_id: story.member_id }, enqueue);
   } else if (story.source === "member") {
     // working assumption #1: member is notified with a reason
@@ -266,7 +288,7 @@ export async function moveStory(input: { id: string; to: string }): Promise<{ ok
     // "your story is live" emails for a story that never published.
     const { error } = await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", input.id);
     if (error) return { ok: false, error: "The story couldn't be published — try again." };
-    await enqueue("social_push", { story_id: input.id }, new Date(Date.now() + 30 * 60_000));
+    await queueSocialPush(db, { story_id: input.id }, enqueue);
     await enqueueStoryLive(db, { id: input.id, member_id: story.member_id }, enqueue);
     if (story.status === "awaiting_approval") {
       // mirror decideStory's approve branch so the audit trail is identical
@@ -282,6 +304,8 @@ export async function moveStory(input: { id: string; to: string }): Promise<{ ok
       ...(story.status === "published" ? { published_at: null } : {}),
     }).eq("id", input.id);
     if (error) return { ok: false, error: "The story couldn't be moved — try again." };
+    // Taken down before its post went out: drop the post (the job re-checks too).
+    if (story.status === "published") await cancelSocialPush(db, { story_id: input.id });
     if (story.status === "awaiting_approval" && input.to === "draft") {
       // mirror decideStory's "not yet" so the review leaves the same trail either way
       await db.from("approvals").insert({ kind: "story", subject_id: input.id, decision: "rejected", reason: null, decided_by: user.userId });
@@ -330,6 +354,9 @@ export async function saveVideo(formData: FormData) {
   // YouTube-only (USE-CASES gap 23): anything youtubeId() can't read would
   // save, publish and then render as a card with no player.
   if (!youtubeId(url)) redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(YOUTUBE_ONLY_ERROR)}`);
+  // Its own social post time, lead-in and opt-out (Area 3), as saveStory.
+  const social = socialFieldsFromForm(formData);
+  if ("error" in social) redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(social.error)}`);
 
   let thumbnail_path: string | null = null;
   try {
@@ -344,6 +371,7 @@ export async function saveVideo(formData: FormData) {
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     member_id: String(formData.get("member_id") ?? "") || null,
     industry_id: Number(formData.get("industry_id")) || null,
+    ...social.value,
     updated_at: new Date().toISOString(),
     ...(thumbnail_path ? { thumbnail_path } : {}),
   };
@@ -351,6 +379,8 @@ export async function saveVideo(formData: FormData) {
   let videoId = id;
   if (id) {
     await db.from("videos").update(values).eq("id", id);
+    // A push already waiting moves to the edited time; none is ever created here.
+    await rescheduleSocialPush(db, { video_id: id });
   } else {
     const { data } = await db.from("videos").insert({
       ...values,
@@ -372,13 +402,19 @@ export async function scheduleVideo(formData: FormData) {
   const db = serviceDb();
   const { data: video } = await db.from("videos").select("member_id, status").eq("id", id).single();
   const wasAwaitingApproval = video?.status === "awaiting_approval";
-  if (formData.get("mode") === "now") {
-    // urgent override — publish immediately, social push follows on its delay
+  const now = formData.get("mode") === "now";
+  // UK wall-clock, as scheduleStory.
+  const at = when && !now ? parseLondonInput(when) : null;
+  if (when && !now && !at) {
+    redirect(`/console/videos/${id}?error=${encodeURIComponent("That publish time isn't a date and time we can read.")}`);
+  }
+  if (now) {
+    // urgent override — publish immediately, social push follows at its own time or the delay
     await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
-    await enqueue("social_push", { video_id: id }, new Date(Date.now() + 30 * 60_000));
+    await queueSocialPush(db, { video_id: id }, enqueue);
     if (video?.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: id });
-  } else if (when) {
-    await db.from("videos").update({ status: "scheduled", scheduled_at: new Date(when).toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
+  } else if (at) {
+    await db.from("videos").update({ status: "scheduled", scheduled_at: at.toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
   }
   // scheduling from awaiting_approval is also an approval — record it same as decideVideo's approve branch
   if (wasAwaitingApproval) {
@@ -400,7 +436,7 @@ export async function decideVideo(formData: FormData) {
 
   if (decision === "approve") {
     await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
-    await enqueue("social_push", { video_id: id }, new Date(Date.now() + 30 * 60_000));
+    await queueSocialPush(db, { video_id: id }, enqueue);
     if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: id });
   } else if (video.source === "member") {
     await db.from("videos").update({ status: "rejected", rejected_reason: reason, updated_at: new Date().toISOString() }).eq("id", id);
@@ -445,7 +481,7 @@ export async function moveVideo(input: { id: string; to: string }): Promise<{ ok
   }
   if (input.to === "published") {
     await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", input.id);
-    await enqueue("social_push", { video_id: input.id }, new Date(Date.now() + 30 * 60_000));
+    await queueSocialPush(db, { video_id: input.id }, enqueue);
     if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: input.id });
     if (video.status === "awaiting_approval") {
       // mirror decideVideo's approve branch so the audit trail is identical
@@ -461,6 +497,8 @@ export async function moveVideo(input: { id: string; to: string }): Promise<{ ok
       updated_at: new Date().toISOString(),
       ...(video.status === "published" ? { published_at: null } : {}),
     }).eq("id", input.id);
+    // Taken down before its post went out: drop the post (the job re-checks too).
+    if (video.status === "published") await cancelSocialPush(db, { video_id: input.id });
     if (video.status === "awaiting_approval" && input.to === "draft") {
       await db.from("approvals").insert({ kind: "video", subject_id: input.id, decision: "rejected", reason: null, decided_by: user.userId });
     }
@@ -2299,13 +2337,13 @@ function newsletterItemRows(issueId: string, storyIds: string[], videoIds: strin
 }
 
 export async function createIssue(formData: FormData) {
-  await requireConsole();
+  const user = await requireConsole();
   const db = serviceDb();
   const { data: last } = await db.from("newsletter_issues").select("number").order("number", { ascending: false }).limit(1).single();
   const number = (last?.number ?? 46) + 1;
   const subject = String(formData.get("subject") ?? `SMI Monthly — issue ${number}`);
   const { data } = await db.from("newsletter_issues").insert({
-    number, subject, intro: String(formData.get("intro") ?? ""), web_slug: `issue-${number}`,
+    number, subject, intro: String(formData.get("intro") ?? ""), web_slug: `issue-${number}`, created_by: user.userId,
   }).select("id").single();
   const rows = newsletterItemRows(data!.id, formData.getAll("stories").map(String), formData.getAll("videos").map(String));
   if (rows.length) await db.from("newsletter_items").insert(rows);
@@ -2313,6 +2351,54 @@ export async function createIssue(formData: FormData) {
 }
 
 const ISSUE_EDITABLE_STATUSES = new Set(["draft", "scheduled", "send_failed"]);
+
+const issueFail = (id: string, message: string): never =>
+  redirect(`/console/newsletter/${id}?error=${encodeURIComponent(message)}`);
+
+/** Drops the issue's queued send, so a pending job can't fire after it was pulled back. */
+async function cancelPendingIssueSend(db: ReturnType<typeof serviceDb>, id: string) {
+  await db.from("jobs").delete().eq("kind", "newsletter_send").eq("status", "pending").filter("payload->>issue_id", "eq", id);
+}
+
+/**
+ * Gap review area 4: any change to an issue's content withdraws its approval
+ * and its test-send stamp, because what was proofed is no longer what would
+ * go out. The checklist ticks stay — the SOP's second round re-checks only
+ * what changed. A scheduled issue is pulled back to draft, since it is no
+ * longer approved to send.
+ */
+async function markIssueEdited(db: ReturnType<typeof serviceDb>, id: string, userId: string) {
+  const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", id).single();
+  const unschedule = issue?.status === "scheduled";
+  if (unschedule) await cancelPendingIssueSend(db, id);
+  await db.from("newsletter_issues").update({
+    last_edited_by: userId,
+    last_edited_at: new Date().toISOString(),
+    approved_at: null,
+    approved_by: null,
+    approved_recipients: null,
+    last_test_sent_at: null,
+    last_test_sent_by: null,
+    ...(unschedule ? { status: "draft", scheduled_at: null } : {}),
+  }).eq("id", id);
+}
+
+/** Takes an issue's approval away; a scheduled one goes back to draft, since it can no longer send. */
+async function clearApproval(db: ReturnType<typeof serviceDb>, id: string, status: string) {
+  if (status === "scheduled") await cancelPendingIssueSend(db, id);
+  await db.from("newsletter_issues").update({
+    approved_at: null,
+    approved_by: null,
+    approved_recipients: null,
+    ...(status === "scheduled" ? { status: "draft", scheduled_at: null } : {}),
+  }).eq("id", id);
+}
+
+/** Who the issue would go to right now: subscribed and never unsubscribed, as the sender counts them. */
+async function subscriberCount(db: ReturnType<typeof serviceDb>): Promise<number> {
+  const { count } = await db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null);
+  return count ?? 0;
+}
 
 /**
  * B5.3: no way to edit an issue after creation — subject/intro and the
@@ -2322,7 +2408,7 @@ const ISSUE_EDITABLE_STATUSES = new Set(["draft", "scheduled", "send_failed"]);
  * reconciling adds/removes.
  */
 export async function updateIssue(formData: FormData) {
-  await requireConsole();
+  const user = await requireConsole();
   const db = serviceDb();
   const id = String(formData.get("id"));
   const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", id).single();
@@ -2337,6 +2423,7 @@ export async function updateIssue(formData: FormData) {
   await db.from("newsletter_items").delete().eq("issue_id", id);
   const rows = newsletterItemRows(id, formData.getAll("stories").map(String), formData.getAll("videos").map(String));
   if (rows.length) await db.from("newsletter_items").insert(rows);
+  await markIssueEdited(db, id, user.userId);
 
   revalidatePath(`/console/newsletter/${id}`);
   revalidatePath("/console/newsletter");
@@ -2349,30 +2436,123 @@ export async function updateIssue(formData: FormData) {
  * duplicate a row.
  */
 export async function attachNewsletterAd(formData: FormData) {
-  await requireConsole();
+  const user = await requireConsole();
   const db = serviceDb();
   const issueId = String(formData.get("issue_id"));
   const advertId = String(formData.get("advert_id"));
   const { count } = await db.from("newsletter_ads").select("*", { count: "exact", head: true }).eq("issue_id", issueId);
   await db.from("newsletter_ads").insert({ issue_id: issueId, advert_id: advertId, position: count ?? 0 });
+  await markIssueEdited(db, issueId, user.userId);
   revalidatePath(`/console/newsletter/${issueId}`);
+  revalidatePath("/console/newsletter");
 }
 
 export async function detachNewsletterAd(formData: FormData) {
-  await requireConsole();
+  const user = await requireConsole();
   const db = serviceDb();
   const issueId = String(formData.get("issue_id"));
   const advertId = String(formData.get("advert_id"));
   await db.from("newsletter_ads").delete().eq("issue_id", issueId).eq("advert_id", advertId);
+  await markIssueEdited(db, issueId, user.userId);
   revalidatePath(`/console/newsletter/${issueId}`);
+  revalidatePath("/console/newsletter");
+}
+
+/** Ticks on the proof checklist (lib/newsletter-proof). Saved on their own, so a half-done proof isn't lost. */
+export async function saveProofChecks(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { data: issue } = await db.from("newsletter_issues").select("status, approved_at").eq("id", id).single();
+  if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) return issueFail(id, "This issue has been sent; its proof can no longer change.");
+  const ticked = new Set(formData.getAll("checks").map(String));
+  const proof_checks = Object.fromEntries(PROOF_KEYS.filter((key) => ticked.has(key)).map((key) => [key, true]));
+  await db.from("newsletter_issues").update({ proof_checks }).eq("id", id);
+  // Unticking something on an approved issue means the proof no longer holds.
+  if (issue.approved_at && missingChecks(proof_checks).length) await clearApproval(db, id, issue.status);
+  revalidatePath(`/console/newsletter/${id}`);
+  revalidatePath("/console/newsletter");
+}
+
+/**
+ * SOP Step 2, round 1: a test email of the issue as it stands, to the signed-in
+ * admin only (Luiza, 20 Oct). Same render as the real send, sent as a single
+ * email through the transactional sender — Mailpit in dev.
+ */
+export async function sendTestIssue(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", id).single();
+  if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) return issueFail(id, "This issue has been sent; there's nothing left to test.");
+  const [{ renderIssueHtml }, { getEmailSender }] = await Promise.all([
+    import("@/lib/adapters/newsletter"),
+    import("@/lib/adapters/email"),
+  ]);
+  const content = await renderIssueHtml(id, { unsubscribeUrl: `${siteUrl()}/unsubscribe` });
+  if (!content) return issueFail(id, "This issue couldn't be built for a test.");
+  try {
+    await getEmailSender().send({ to: user.email, subject: `[TEST] ${content.subject}`, html: content.html, text: content.text });
+  } catch (error) {
+    logError({ source: "server", area: "action:sendTestIssue", error, context: { issue_id: id } });
+    return issueFail(id, "The test email couldn't be sent. Nothing was recorded; try again in a minute.");
+  }
+  await db.from("newsletter_issues").update({ last_test_sent_at: new Date().toISOString(), last_test_sent_by: user.userId }).eq("id", id);
+  redirect(`/console/newsletter/${id}?tested=1`);
+}
+
+/**
+ * SOP Step 2, "Approved to send": only once every checklist item is ticked and
+ * a test has gone out since the last edit (edits clear the stamp). The audience
+ * count is recorded with it. A count more than 5% off last month is shown, not
+ * blocked — the SOP says investigate.
+ */
+export async function approveIssue(formData: FormData) {
+  const user = await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { data: issue } = await db.from("newsletter_issues").select("status, proof_checks, last_test_sent_at").eq("id", id).single();
+  if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) return issueFail(id, "This issue has been sent; it can't be approved again.");
+  const missing = missingChecks(issue.proof_checks);
+  if (missing.length) return issueFail(id, `Not approved: ${missing.length} proof ${missing.length === 1 ? "item is" : "items are"} still unticked.`);
+  if (!issue.last_test_sent_at) return issueFail(id, "Not approved: send a test since the last change first.");
+  await db.from("newsletter_issues").update({
+    approved_at: new Date().toISOString(),
+    approved_by: user.userId,
+    approved_recipients: await subscriberCount(db),
+  }).eq("id", id);
+  revalidatePath(`/console/newsletter/${id}`);
+  revalidatePath("/console/newsletter");
+}
+
+export async function withdrawApproval(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", id).single();
+  if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) return issueFail(id, "This issue has been sent; its approval can't be withdrawn.");
+  await clearApproval(db, id, issue.status);
+  revalidatePath(`/console/newsletter/${id}`);
+  revalidatePath("/console/newsletter");
+}
+
+/** Refuses an issue nobody approved (gap review area 4). The send job checks again. */
+async function requireApprovedIssue(db: ReturnType<typeof serviceDb>, id: string) {
+  const { data: issue } = await db.from("newsletter_issues").select("approved_at").eq("id", id).single();
+  if (!issue?.approved_at) issueFail(id, "This issue isn't approved to send yet — finish the proof and approve it first.");
 }
 
 export async function sendIssue(formData: FormData) {
   await requireConsole();
   const id = String(formData.get("id"));
+  const db = serviceDb();
+  // Mails the whole list at once, so it takes the same ticked "confirm" a
+  // delete does — server-side too, since a form can be posted without it.
+  if (formData.get("confirm") !== "1") return issueFail(id, "Tick \"confirm\" to send to the whole list.");
+  await requireApprovedIssue(db, id);
   // Doubles as the retry for a failed send: clear the previous error and drop
   // back to draft so the board doesn't show a stale failure while it reruns.
-  await serviceDb()
+  await db
     .from("newsletter_issues")
     .update({ status: "draft", send_error: null })
     .eq("id", id)
@@ -2389,6 +2569,7 @@ export async function scheduleIssue(formData: FormData) {
   if (!when) return;
   const at = new Date(when);
   const db = serviceDb();
+  await requireApprovedIssue(db, id);
   await db.from("newsletter_issues").update({ status: "scheduled", scheduled_at: at.toISOString() }).eq("id", id);
   await enqueue("newsletter_send", { issue_id: id }, at);
   revalidatePath("/console/newsletter");
@@ -2399,9 +2580,9 @@ export async function unscheduleIssue(formData: FormData) {
   const id = String(formData.get("id"));
   const db = serviceDb();
   // the pending job would otherwise still fire at the original time — reverting
-  // the row to draft alone doesn't stop it, since the job's only guard is
-  // "is it already sent" (src/lib/jobs.ts)
-  await db.from("jobs").delete().eq("kind", "newsletter_send").eq("status", "pending").filter("payload->>issue_id", "eq", id);
+  // the row to draft alone doesn't stop it (src/lib/jobs.ts). Approval stays:
+  // the content hasn't changed, only the timing.
+  await cancelPendingIssueSend(db, id);
   await db.from("newsletter_issues").update({ status: "draft", scheduled_at: null }).eq("id", id);
   revalidatePath("/console/newsletter");
 }

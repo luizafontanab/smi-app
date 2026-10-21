@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getSocialPublisher, MAX_EXTRA_TAGGED_MEMBERS, type SocialPost } from "@/lib/adapters/social";
+import { getSocialPublisher, isSocialLive, MAX_EXTRA_TAGGED_MEMBERS, type SocialPost } from "@/lib/adapters/social";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -258,5 +258,82 @@ describe("formatTags with co-featured members", () => {
     await publisher.publish(post({ tagHandles: {}, extraTagHandles: extras }));
     const line = String(logSpy.mock.calls[0][0]);
     expect(line.match(/x:@member/g)).toHaveLength(MAX_EXTRA_TAGGED_MEMBERS);
+  });
+});
+
+// Area 3: social_push stamps social_posted_at only for a real post, so the
+// editor never says "Posted" for what the logging stub swallowed.
+describe("isSocialLive", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("is true only when a Buffer token is configured", () => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "");
+    expect(isSocialLive()).toBe(false);
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "test-not-a-real-token");
+    expect(isSocialLive()).toBe(true);
+  });
+});
+
+// The story page's post links are filled from Buffer, not pasted (21 Oct).
+describe("Buffer — the live links of SMI's posts", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  const reply = (data: unknown) => new Response(JSON.stringify({ data }), { status: 200 });
+
+  beforeEach(() => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetDbServerMocks();
+    fetchSpy?.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it("returns each accepted post's id, network, status and link, asking createPost for them", async () => {
+    withChannels(["channel-1", "channel-2"]);
+    let n = 0;
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply({ createPost: {
+      __typename: "PostActionSuccess",
+      post: n++ === 0
+        ? { id: "p1", channelService: "linkedin", status: "sent", externalLink: "https://www.linkedin.com/feed/update/urn:li:share:1" }
+        : { id: "p2", channelService: "twitter", status: "sending", externalLink: null },
+    } }));
+
+    const sent = await getSocialPublisher().publish(post());
+
+    expect(JSON.parse(fetchSpy.mock.calls[0][1]?.body as string).query).toContain("externalLink");
+    expect(sent).toEqual([
+      { id: "p1", service: "linkedin", status: "sent", link: "https://www.linkedin.com/feed/update/urn:li:share:1" },
+      { id: "p2", service: "twitter", status: "sending", link: null },
+    ]);
+  });
+
+  it("still counts a success that came back without its post", async () => {
+    withChannels(["channel-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply({ createPost: { __typename: "PostActionSuccess" } }));
+
+    await expect(getSocialPublisher().publish(post())).resolves.toEqual([]);
+  });
+
+  it("looks posts up by id, leaving out any it can't read", async () => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const { id } = JSON.parse((init as RequestInit).body as string).variables.input;
+      if (id === "gone") return reply({ post: null });
+      if (id === "broken") return new Response("nope", { status: 500 });
+      return reply({ post: { id, channelService: "facebook", status: "sent", externalLink: "https://www.facebook.com/smi/posts/1" } });
+    });
+
+    const found = await getSocialPublisher().postLinks(["p1", "gone", "broken"]);
+
+    expect(found).toEqual([{ id: "p1", service: "facebook", status: "sent", link: "https://www.facebook.com/smi/posts/1" }]);
+  });
+
+  it("the local stub sends nothing and finds nothing", async () => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await expect(getSocialPublisher().publish(post())).resolves.toEqual([]);
+    await expect(getSocialPublisher().postLinks(["p1"])).resolves.toEqual([]);
   });
 });

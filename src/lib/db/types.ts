@@ -1853,12 +1853,21 @@ export type Database = {
       }
       newsletter_issues: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
+          approved_recipients: number | null
           clicks_count: number
           created_at: string
+          created_by: string | null
           id: string
           intro: string | null
+          last_edited_at: string | null
+          last_edited_by: string | null
+          last_test_sent_at: string | null
+          last_test_sent_by: string | null
           number: number
           opens_count: number
+          proof_checks: Json
           provider_broadcast_id: string | null
           scheduled_at: string | null
           send_error: string | null
@@ -1869,12 +1878,21 @@ export type Database = {
           web_slug: string | null
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_recipients?: number | null
           clicks_count?: number
           created_at?: string
+          created_by?: string | null
           id?: string
           intro?: string | null
+          last_edited_at?: string | null
+          last_edited_by?: string | null
+          last_test_sent_at?: string | null
+          last_test_sent_by?: string | null
           number: number
           opens_count?: number
+          proof_checks?: Json
           provider_broadcast_id?: string | null
           scheduled_at?: string | null
           send_error?: string | null
@@ -1885,12 +1903,21 @@ export type Database = {
           web_slug?: string | null
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_recipients?: number | null
           clicks_count?: number
           created_at?: string
+          created_by?: string | null
           id?: string
           intro?: string | null
+          last_edited_at?: string | null
+          last_edited_by?: string | null
+          last_test_sent_at?: string | null
+          last_test_sent_by?: string | null
           number?: number
           opens_count?: number
+          proof_checks?: Json
           provider_broadcast_id?: string | null
           scheduled_at?: string | null
           send_error?: string | null
@@ -1900,7 +1927,36 @@ export type Database = {
           subject?: string
           web_slug?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "newsletter_issues_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "newsletter_issues_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "newsletter_issues_last_edited_by_fkey"
+            columns: ["last_edited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "newsletter_issues_last_test_sent_by_fkey"
+            columns: ["last_test_sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       newsletter_items: {
         Row: {
@@ -2453,7 +2509,11 @@ export type Database = {
           scheduled_at: string | null
           search_tsv: unknown
           slug: string
+          social_at: string | null
+          social_posted_at: string | null
           social_posts: Json
+          social_skip: boolean
+          social_text: string | null
           source: string
           status: Database["public"]["Enums"]["content_status"]
           submitted_by: string | null
@@ -2478,7 +2538,11 @@ export type Database = {
           scheduled_at?: string | null
           search_tsv?: unknown
           slug: string
+          social_at?: string | null
+          social_posted_at?: string | null
           social_posts?: Json
+          social_skip?: boolean
+          social_text?: string | null
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
           submitted_by?: string | null
@@ -2502,7 +2566,11 @@ export type Database = {
           scheduled_at?: string | null
           search_tsv?: unknown
           slug?: string
+          social_at?: string | null
+          social_posted_at?: string | null
           social_posts?: Json
+          social_skip?: boolean
+          social_text?: string | null
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
           submitted_by?: string | null
@@ -2605,6 +2673,10 @@ export type Database = {
           rejected_reason: string | null
           scheduled_at: string | null
           slug: string
+          social_at: string | null
+          social_posted_at: string | null
+          social_skip: boolean
+          social_text: string | null
           source: string
           status: Database["public"]["Enums"]["content_status"]
           submitted_by: string | null
@@ -2624,6 +2696,10 @@ export type Database = {
           rejected_reason?: string | null
           scheduled_at?: string | null
           slug: string
+          social_at?: string | null
+          social_posted_at?: string | null
+          social_skip?: boolean
+          social_text?: string | null
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
           submitted_by?: string | null
@@ -2643,6 +2719,10 @@ export type Database = {
           rejected_reason?: string | null
           scheduled_at?: string | null
           slug?: string
+          social_at?: string | null
+          social_posted_at?: string | null
+          social_skip?: boolean
+          social_text?: string | null
           source?: string
           status?: Database["public"]["Enums"]["content_status"]
           submitted_by?: string | null

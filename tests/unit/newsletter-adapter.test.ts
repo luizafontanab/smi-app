@@ -55,6 +55,20 @@ describe("renderIssueHtml", () => {
     expect(rendered!.text).toContain("Unsubscribe: {{{RESEND_UNSUBSCRIBE_URL}}}");
   });
 
+  it("swaps Resend's unsubscribe tag for a real link when asked — a test send isn't a broadcast", async () => {
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 9, subject: "s", intro: null, web_slug: null })),
+      newsletter_items: () => queryBuilder(dbOk([])),
+      newsletter_ads: () => queryBuilder(dbOk([])),
+    });
+
+    const rendered = await renderIssueHtml("iss1", { unsubscribeUrl: "https://smi.test/unsubscribe" });
+
+    expect(rendered!.html).toContain('href="https://smi.test/unsubscribe"');
+    expect(rendered!.text).toContain("Unsubscribe: https://smi.test/unsubscribe");
+    expect(rendered!.html + rendered!.text).not.toContain("RESEND_UNSUBSCRIBE_URL");
+  });
+
   it("renders through the editable wrapper, so the console can reword the chrome", async () => {
     db({
       newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 9, subject: "Autumn issue", intro: null, web_slug: null })),

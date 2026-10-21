@@ -1,1080 +1,299 @@
 # Human to-do — things Claude can't do
 
-Actions that need a person: external accounts, DNS, hosted-dashboard settings,
-restarting shared services, and decisions that are someone's to make. Everything
-here is **blocking real behaviour** — the code for each item is written and
-merged, but inert until the step is done.
+Steps that need a person: external accounts, keys, hosted-dashboard settings,
+production data, and decisions. The code for each is written and merged.
 
-Created 31 Aug 2026 alongside the Resend email work (`GAPS.md` B3, B5, C3,
-A4.1). Add to it rather than starting a second list.
+**How this list works.** Ordered by when things happen: set up the services,
+push to production, check each service the first time it runs for real, then
+the decisions. Finished items are deleted, and git keeps the history.
+Renumbered on 20 Oct 2026. Older references (GAPS, code comments, migrations,
+commits) use the previous numbers, which are in `git show d89aee9:docs/HUMAN-TODO.md`.
 
-**Finished items are collapsed** (since 5 Oct 2026, as in `GAPS.md`). Each
-section ends with a **Done:** line naming its closed IDs. The full notes,
-including how each push was run and what was checked, are in git:
-`git show ba9d35f:docs/HUMAN-TODO.md`. Items finished on 4–5 Oct were collapsed
-before their notes were committed, so their Done entries carry the essentials.
-Numbers are permanent and never reused. Only `fix-list.md` keeps ticked `[x]`
-items; every other list collapses them.
-
-> **Pushing migrations to production: read §28 first.** `supabase db push` applies
-> every pending migration at once, so the separate "push X" items below (§7.6, §23.1,
-> §24.1, §25.1, §26.1, §27.1) all happen in the same push. §28 gives the one order
-> that's safe.
-
-> Creating external accounts, pushing code off-machine, deploying, **sending
-> real email** and calling paid APIs are all explicitly approval-gated in
-> [`BUILD-PLAN.md`](../../requirements/BUILD-PLAN.md). That is why these are
-> parked here rather than done.
+Creating accounts, deploying, sending real email and calling paid APIs need
+approval (`../requirements/BUILD-PLAN.md`).
 
 ---
 
-## 1 · Resend account and sending domain — blocks all email
+## 1 · Set up the services
 
-Nothing in the app sends mail until this is done. Member notifications still
-land in the `notifications` table and enquiries still land in the console inbox,
-so **nothing is lost** — but nobody is told anything: no approvals, no advert
-notices, no password reset, no newsletter.
+Each service is independent; do them in any order.
 
-Do these in order; later steps depend on earlier ones.
+### Email — Resend
 
-- [ ] **1.1 — Create the Resend account, owned by SMI.** Not an agency account:
-      `TECH-DECISIONS.md:41` requires Vercel, Supabase, GitHub, Buffer and Resend
-      to all end up SMI-owned. The free tier (3k emails/month) covers current
-      volume.
-- [ ] **1.2 — Verify the sending domain** for `sheetmetalindustries.com` and
-      publish the **SPF, DKIM and DMARC** records Resend gives you. Until this is
-      done every send returns 403 `validation_error`. The app surfaces that as a
-      dead job in "Needs You Today" rather than failing silently, so you will see
-      it — but it is better not to hit it.
-- [ ] **1.3 — Verify a separate staging subdomain** (e.g. `staging-mail.`) and
-      issue a **second, domain-restricted, sending-only** API key for it.
-      Resend has **no sandbox or test-mode key** — a domain-restricted key on its
-      own subdomain is the only real isolation, and it means a staging mistake
-      cannot damage the production domain's reputation.
-- [ ] **1.4 — Set the production env vars in Vercel** (production and preview
-      scopes separately — preview should get the staging key from 1.3):
+- [ ] **1.1 — Confirm the Resend account is SMI-owned**, not an agency's.
+      `RESEND_API_KEY`, `EMAIL_FROM` and `ADMIN_EMAIL` are already set in production
+      (5 Oct).
+- [ ] **1.2 — Verify the sending domain** `sheetmetalindustries.com` (SPF, DKIM,
+      DMARC). Until then, mail reaches only the Resend account owner.
+- [ ] **1.3 — Verify a staging subdomain** (e.g. `staging-mail.`) and set a
+      domain-restricted, sending-only key in the Preview scope. Resend has no test mode.
+- [ ] **1.4 — Choose and set `EMAIL_REPLY_TO`**, a monitored inbox. Without it,
+      replies go to `noreply@`.
+- [ ] **1.5 — Create the subscriber segment** and set `RESEND_SEGMENT_ID`.
+      Without it, newsletters stay unsent.
+- [ ] **1.6 — Register the webhook** `https://<domain>/api/webhooks/resend`
+      (contact updates, bounces, complaints) and set `RESEND_WEBHOOK_SECRET`.
+      Without it, unsubscribes made at Resend never reach `contacts`.
 
-      ```
-      RESEND_API_KEY=          # from 1.2 / 1.3
-      EMAIL_FROM=              # e.g. "SMI <noreply@sheetmetalindustries.com>"
-      EMAIL_REPLY_TO=          # a monitored inbox — see 1.5
-      ADMIN_EMAIL=             # where enquiries and the daily digest go
-      ```
+### Hosted Supabase auth (dashboard only, never `supabase config push`)
 
-      Full commentary on every variable is in [`.env.example`](../.env.example).
-      **5 Oct 2026 (Luiza):** `RESEND_API_KEY`, `EMAIL_FROM` and `ADMIN_EMAIL`
-      are set in production, and a test send worked. Still to do:
-      `EMAIL_REPLY_TO` (1.5) and the preview-scope key (1.3). Not yet confirmed:
-      that the account is SMI-owned (1.1). Still blocked on 1.2: without a
-      verified domain, sends to anyone but the account owner are refused.
-- [ ] **1.5 — Decide the reply-to address.** Without `EMAIL_REPLY_TO`, replies go
-      to `noreply@` and reach nobody — including a member answering "your advert
-      needs a change before it runs", which is a message that invites a reply.
-- [ ] **1.6 — Smoke-test before pointing it at real people.** Send to Resend's
-      test addresses, which exercise the real API and webhooks:
-      `delivered@resend.dev`, `bounced@resend.dev`, `complained@resend.dev`
-      (labels work: `delivered+reset@resend.dev`). **They count against quota.**
-      Do not use `@example.com` or `@test.com` — those bounce.
+- [ ] **1.7 — Auth settings in the hosted dashboard.** `config push` would
+      overwrite them with the local values.
+      - SMTP via Resend: `smtp.resend.com:465`, user `resend`, password the API
+        key. Needs 1.2 first.
+      - Raise the auth email rate limit (the default is 2 an hour).
+      - Site URL: the real domain. Redirect allow-list: `/reset/confirm` and
+        `/account/email/confirm`.
+      - Turn on **Secure email change**. Optionally, switch the "Change email
+        address" template to a `{{ .TokenHash }}` link to
+        `/account/email/confirm?token_hash=…`, so the link works on any device.
+      - Check how long the auth audit log keeps sign-ins. If it keeps them,
+        note it in `GDPR.md` §16.
 
-**Done:** 1.7 "Send a test" no longer inert: the key is set (1.4), so it sends for real, but only to the account owner until 1.2.
+### Payments — Stripe
 
-## 2 · Supabase — password reset delivery
+- [ ] **1.8 — Create the SMI-owned Stripe account** and the £40/month
+      subscription Price, then set `STRIPE_PRICE_ID`.
+- [ ] **1.9 — Register the webhook** `https://<domain>/api/stripe/webhook`
+      (`checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+      `invoice.payment_failed`), then set `STRIPE_WEBHOOK_SECRET`.
+- [ ] **1.10 — Set `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`**:
+      test-mode keys in Preview, live keys in Production. Advert payments need
+      both. The publishable key is baked in at build time, so redeploy after
+      setting it.
+- [ ] **1.11 — Leave `MOCK_INTEGRATIONS` unset on Preview** and use Stripe's
+      test-mode keys there instead. The flag mocks Stripe *and* Bigin together,
+      so with it on, 1.12's test account is never called.
 
-- [ ] **2.1 — Set Resend SMTP in the *hosted* Supabase dashboard**, so auth mail
-      (password recovery) leaves via Resend rather than Supabase's shared,
-      rate-limited mailer:
+### CRM — Bigin
 
-      ```
-      host: smtp.resend.com   port: 465   user: resend   pass: <RESEND_API_KEY>
-      ```
+- [ ] **1.12 — Start with a throwaway Bigin account** on the free plan (5,000
+      API calls a day). Bigin has no test mode: real keys write to real
+      contacts. Do 1.13–1.14 for it, put its keys in **Preview** only, and run
+      3.3 against it.
+- [ ] **1.13 — Create the SMI-owned Bigin account** and an OAuth client in the
+      Zoho API Console. Note its data centre: the code defaults to EU
+      (`accounts.zoho.eu` / `www.zohoapis.eu`); Canada's accounts host is
+      `accounts.zohocloud.ca`.
+- [ ] **1.14 — Generate a refresh token.** In the Zoho API Console, use a Self
+      Client → Generate Code → portal **Bigin**, then exchange the code within
+      its 3–10 minutes. Scopes:
+      `ZohoBigin.modules.contacts.ALL,ZohoBigin.modules.accounts.READ,ZohoSearch.securesearch.READ,ZohoBigin.notifications.ALL`
+- [ ] **1.15 — Set the Production variables:** `BIGIN_CLIENT_ID`,
+      `BIGIN_CLIENT_SECRET`, `BIGIN_REFRESH_TOKEN`, `BIGIN_WEBHOOK_TOKEN` (any
+      random string ≤ 50 characters), plus `BIGIN_ACCOUNTS_BASE` /
+      `BIGIN_API_BASE` if the account isn't in the EU.
 
-      ⚠ **Do this in the dashboard, never in `config.toml`.** Per
-      [`README.md`](../README.md), `supabase config push` would overwrite hosted
-      auth settings with the local ones — `site_url = 127.0.0.1`,
-      `enable_confirmations = false`, and a 2-emails/hour rate limit.
-      **5 Oct:** the key now exists (1.4), but the sender address must be on a
-      verified domain, so this still waits on 1.2.
-- [ ] **2.2 — Raise the hosted auth rate limit.** The CLI default is 2 emails per
-      hour, which is fine for the built-in mailer and far too low once real
-      members are resetting passwords.
-- [ ] **2.3 — Check `site_url` and the redirect allow-list in the hosted
-      dashboard** point at the real domain and include `/reset/confirm`. These
-      are separate from the local values in `config.toml` and were not touched —
-      a recovery link is only as good as the allow-list that permits it.
+### Social — Buffer
 
-## 3 · Newsletter — after §1
+- [ ] **1.16 — Create a Buffer API key** (organisation owners only) and set
+      `BUFFER_ACCESS_TOKEN` in the **Production scope only**. On Preview it
+      would post preview links to SMI's real accounts.
+- [ ] **1.17 — Enter the Buffer channel ids** at `/console/stories` → "Buffer
+      channels". Until then, every post fails closed.
 
-- [ ] **3.1 — Create the Resend Audience/Segment** that holds subscribers and set
-      `RESEND_SEGMENT_ID`. Without it the newsletter falls back to the logging
-      stub (and says so in the logs); issues are left unsent rather than being
-      marked sent.
-- [ ] **3.2 — Register the webhook** at `https://<domain>/api/webhooks/resend`
-      and set `RESEND_WEBHOOK_SECRET`. Subscribe to contact updates, bounces and
-      complaints. Without it the route fails closed with 503 and unsubscribes
-      made at Resend's end never reach our `contacts` table — the list would go
-      quietly stale, which is a compliance problem as much as a data one.
-- [ ] **3.3 — Watch the first real send closely.** `ResendNewsletterSender` is
-      written against Resend's *documented* Broadcasts/Contacts API but has never
-      run against a live account. Resend moved contacts from
-      `/audiences/{id}/contacts` to a global `/contacts` with segments, so
-      confirm the request shapes on the first send. A failure is visible rather
-      than silent — the issue goes to `send_failed` with the error stored, shown
-      on the newsletter board and at the top of "Needs You Today".
-- [ ] **3.4 — Confirm the advert creative choice with Jas.** Booked newsletter
-      slots render the **mobile** artwork, since the email column is ≤600px and
-      narrower on a phone. Reasonable, but it is Jas's rate card.
-- [ ] **3.5 — Confirm Resend broadcast open tracking is actually on.**
-      `ResendNewsletterSender.sendIssue()` (`src/lib/adapters/newsletter.ts`)
-      posts to `POST /broadcasts` with no `open_tracking`/`click_tracking` field
-      — whether Resend injects an open-tracking pixel by default per-account, or
-      needs an explicit flag or a dashboard toggle, is unconfirmed. If it's off,
-      `newsletter_issues.opens_count` (A5.4) silently stays at 0 forever, and so
-      does the "Newsletter" series on the member stats page's Advert-impressions
-      chart (`/dashboard/stats`). Same "confirm on first live send" caution as
-      §3.3.
+### Vercel
 
-## 4 · The deliverability gate — still open
-
-Resend is wired for the newsletter **as the candidate to test with, not as the
-decision**. Jas's gate stands: if MailChimp beats it on corporate-firewall
-penetration and open rates, MailChimp wins and we keep it
-(`DESIGN-QUOTES.md:941-951`, `05-platform-layer.md:11`). The `NewsletterSender`
-adapter exists so that outcome costs one class, not a rewrite.
-
-- [ ] **4.1 — Run the actual test**, once §1 and §3 are done. It needs a real
-      send to real trade addresses behind real corporate mail filters — a
-      `@resend.dev` smoke test cannot answer it. Compare against MailChimp on the
-      two things Jas named: **does it get through the firewall**, and **open
-      rates**.
-- [ ] **4.2 — Take the result back to Jas**, and only then amend
-      `TECH-DECISIONS.md` #7 from "candidate under test" to a decision. If
-      MailChimp wins, the work is a `MailchimpNewsletterSender` behind the same
-      interface — nothing else in the app changes.
-
-## 5 · Decisions for you (small, but not mine to make)
-
-- [ ] **5.1 — `tests/e2e/join.spec.ts` may not pass as a whole run.** It signs up
-      several times against `allowRequest("join", 3, HOUR)`
-      (`src/app/(public)/join/account/actions.ts:34`). Either the spec drops a
-      signup or the limiter changes, and the limiter is a security control, so
-      that is a real choice. **5 Oct:** the second half of this item, the
-      `console-members.spec.ts` route typo, is fixed (it uses
-      `/console/members/`), and GAPS A8.1 (28 Sep) reports that spec passing in
-      full and join's promo path passing. Whether the whole join spec passes in
-      one run under the limiter has not been re-checked.
-- [ ] **5.2 — `CRON_SECRET` is not set locally.** `/api/cron` fails closed with
-      503 and `scripts/job-runner.ts` refuses to start, so no background job —
-      and therefore no email — runs locally without it. Add it to `.env.local` if
-      you want the local queue working.
-- [ ] **5.5 — Confirm the lapsed-member backlink policy (`GAPS.md` A4.4).** When
-      a member lapses, their published stories now stay live with the
-      SMI-directory backlink hidden (rather than unpublishing the story) —
-      implemented as a working assumption, not a confirmed product decision.
-      Confirm with Jas whether a lapsed member's content should stay live at
-      all, or come down with them.
-- [ ] **5.6 — Upload real brand-pack assets (`GAPS.md` A4.16).** `/console/resources`
-      is live but starts with zero rows — logo variants, brand guidelines, or
-      whatever else should be in the member resources library needs sourcing
-      and uploading through the new console page before `/dashboard/resources`
-      shows anything beyond the existing generated "proud member" graphic.
-
-**Done:** 5.3 console inbox exists (`/console/messages`) · 5.4 advert rotation decided 4 Oct: an **in-page carousel**. Each banner position cycles its 3 adverts every 6 s on one shared timer (`src/components/AdCarousel.tsx`), pausing on hover/focus, and each frame counts its own impression after 1 s on screen. That raises impression figures (23.2).
-
-## 6 · Stripe — blocks real payments
-
-The code is written and merged (`GAPS.md` B1.1–B1.4) but inert until this is
-done. Without it, `/dashboard/pay` still simulates a paid subscription with
-nothing charged — the copy now says so honestly (C5), but no money moves.
-
-- [ ] **6.1 — Create the Stripe account, SMI-owned** (`TECH-DECISIONS.md:41`).
-      Create the £40/mo subscription Price and note its id.
-- [ ] **6.2 — Register the webhook** at `https://<domain>/api/stripe/webhook`,
-      subscribed to `checkout.session.completed` and `invoice.payment_failed`,
-      and set `STRIPE_WEBHOOK_SECRET` from what Stripe gives you. Without it
-      the route fails closed with 503 and no payment or failed-card event ever
-      reaches `applyPaymentResult`/`applyPaymentFailure`.
-- [ ] **6.3 — Set the production env vars in Vercel** (production and preview
-      scopes separately):
-
-      ```
-      STRIPE_SECRET_KEY=       # test mode key first
-      STRIPE_PRICE_ID=         # from 6.1
-      STRIPE_WEBHOOK_SECRET=   # from 6.2
-      ```
-
-      Full commentary on every variable is in [`.env.example`](../.env.example).
-- [ ] **6.4 — Watch the first real payment closely.** `StripePayments` and
-      `/api/stripe/webhook` are written against Stripe's *documented* API but
-      have never run against a live account — the invoice-to-member-reference
-      lookup in particular (`webhook/route.ts`'s `memberIdFromSubscription`)
-      depends on a field whose shape has moved between Stripe API versions.
-      Confirm with a real test-mode subscription and a real declined card
-      before trusting `invoice.payment_failed` in production.
-- [ ] **6.5 — Enable `MOCK_INTEGRATIONS=1` on the Vercel Preview environment
-      scope only, never Production.** This redirects the adapter above to
-      `/api/mock/stripe/*` on the same deployment (see `.env.example` and
-      `lib/adapters/mock-base-url.ts`), so a Preview build can be paid for and
-      declined without touching the real Stripe account.
-- [ ] **6.6 — TECH-DECISIONS #16 constraint (`GAPS.md` B1.6):** whatever
-      Stripe subscriptions already exist from the old site must never be
-      touched by this integration. Confirm nothing here reaches them before
-      going live.
-
-## 7 · Bigin/Zoho CRM — blocks the two-way contact sync
-
-The code is written (`GAPS.md` B6.4–B6.8, 7 Oct) but inert until this is
-done. Without it, contacts only live in the app's own `contacts` table —
-nothing is lost, but Bigin never hears about a new contact or an unsubscribe,
-and nothing added in Bigin shows up here. Order matters: **7.6 before the code
-is deployed, 7.7 before the next newsletter goes out.**
-
-- [ ] **7.1 — Create the Bigin account, SMI-owned**, and register an OAuth
-      client (client id + secret) in the Zoho API console.
-- [ ] **7.2 — Generate a refresh token** with a **Self Client** in the Zoho API
-      Console (Generate Code tab → portal **Bigin** → the SMI org), then
-      exchange the code (`grant_type=authorization_code`) for a refresh token
-      and set `BIGIN_REFRESH_TOKEN`. Scopes, comma-separated:
-
-      ```
-      ZohoBigin.modules.contacts.ALL,ZohoBigin.modules.accounts.READ,ZohoSearch.securesearch.READ,ZohoBigin.notifications.ALL
-      ```
-
-      `ZohoSearch.securesearch.READ` is easy to miss and every duplicate check
-      fails without it. Zoho access tokens expire hourly; the refresh token is
-      what makes this unattended. The code lives 3–10 minutes, so exchange it
-      straight away.
-- [ ] **7.3 — Confirm the account's data centre** and set `BIGIN_ACCOUNTS_BASE`
-      / `BIGIN_API_BASE` accordingly if it isn't the EU one
-      (`accounts.zoho.eu` / `www.zohoapis.eu`, the defaults) — Zoho pins an
-      account to a data centre at creation and the wrong host rejects every
-      call. Each data centre also has its own client secret. Canada's
-      accounts host is `accounts.zohocloud.ca`.
-- [ ] **7.4 — Set the production env vars in Vercel**:
-
-      ```
-      BIGIN_CLIENT_ID=
-      BIGIN_CLIENT_SECRET=
-      BIGIN_REFRESH_TOKEN=     # from 7.2
-      BIGIN_ACCOUNTS_BASE=     # only if not the EU default
-      BIGIN_API_BASE=          # only if not the EU default
-      BIGIN_WEBHOOK_TOKEN=     # any random string ≤ 50 chars, e.g. `openssl rand -hex 24`
-      ```
-
-      `BIGIN_WEBHOOK_TOKEN` switches on live updates from Bigin
-      (`/api/webhooks/bigin`). Without it everything still syncs, just only
-      when `crm_sync` runs — which is **once a day** while production cron is
-      daily (GAPS A3.1, §13.1).
-- [ ] **7.5 — Watch the first real run closely.** `BiginCrmSync` is written
-      against Bigin's *documented* v2 API but has never run against a live
-      account. On the first push (add a contact in `/console/crm`) and the
-      first import (7.7), check:
-      - the contact appears in Bigin with the right name, company and
-        email opt-out;
-      - the duplicate check works: adding a contact Bigin already has must
-        update it, not create a second one;
-      - a contact who unsubscribes here shows as *Email Opt Out* in Bigin;
-      - after the first sync with `BIGIN_WEBHOOK_TOKEN` set, the "Last sync"
-        line on `/console/crm` doesn't report a *live updates* error, and an
-        edit made in Bigin shows up here within a minute or so.
-
-      Unconfirmed in Bigin's docs, and written defensively: whether search
-      answers "no match" with 204 or an empty list (both handled); whether
-      `Unsubscribed_Time` is filled alongside `Email_Opt_Out` (used as the
-      opt-out date when present); whether re-registering the same webhook
-      channel needs the update call (the code tries create, then update).
-- [ ] **7.6 — Push `20261007000001_contacts_bigin_sync.sql` to production
-      before deploying this code** (`pnpm db:push:prod`, or `supabase db push
-      --linked` as in 19.4). It only adds four nullable columns and an index to
-      `contacts`, but `/console/crm` and every push read them, so the code
-      without the migration breaks the CRM page and every contact write-through.
-- [ ] **7.7 — Run the first import from `/console/crm`, with Jas, before the
-      next newsletter send.** Nothing is pulled from Bigin until someone does:
-      click **Preview import**, read the counts (how many would be added, how
-      many are opted out in Bigin, how many have no email or are duplicates),
-      then **Run first import**. Imported contacts are **subscribed unless
-      they opted out in Bigin** — that mirrors today's Bigin → MailChimp list,
-      but it means subscriber counts jump, the daily `newsletter_sync` copies
-      them into Resend, and the next issue goes to them. If Bigin still feeds
-      MailChimp, our unsubscribes now reach MailChimp through it too.
+- [ ] **1.18 — Set the remaining variables.**
+      - `SITE_URL=https://sheetmetalindustries.com` (Production).
+      - `UNSUBSCRIBE_SECRET`, at least 32 characters (Production and Preview).
+      - `DEVELOPER_EMAILS`, your login email (otherwise `/console/errors` 404s).
+      - `DEV_ALERT_EMAIL`, where error alerts go.
+- [ ] **1.19 — Turn on Deployment Protection for Preview deployments.**
+- [ ] **1.20 — Decide the production cron schedule.** `vercel.json` runs
+      `/api/cron` once a day at 03:00. Per-minute or hourly needs the Pro plan,
+      so check which plan the project is on. Everything queued waits for the
+      next run: notifications, scheduled publishing, social posts, story-source
+      checks.
 
 ---
 
-## 8 · Security hardening (1 Sep) — production follow-through
-
-The pre-delivery security pass closed several holes locally; two of the fixes
-are inert in production until these steps run.
-
-- [ ] **8.2 — Create the private `invoices` bucket in the hosted Supabase
-      dashboard** (Storage → New bucket → name `invoices`, public **off**).
-      New invoice PDFs upload there; without the bucket, PDF generation fails
-      soft (invoice rows still record, `pdf_path` stays null).
-      **5 Oct, probably already done, not checked in the dashboard:** the
-      24 Sep full `seed:prod` into the new project runs
-      `createBucket("invoices", { public: false })` (`scripts/seed-real.ts:895`)
-      on the same path that created `media`, which demonstrably exists. One
-      look at Storage in the dashboard closes this.
-- [ ] **8.4 — CSP nonce migration stays deferred** (documented in
-      `next.config.ts`): `script-src 'unsafe-inline'` is accepted for now.
-      When the nonce work happens, the JSON-LD `<script>` tags added for SEO
-      must carry the nonce too.
-
-**Done:** 8.1 `20260901000014` lock-down migration applied (1 Sep) · 8.3 moot: it was about the old project's `media` bucket, and the new project (§17) was imported fresh.
-
----
-
-## 9 · Member-area rework (3 Sep) — production follow-through
-
-**Done:** 9.1 `members.testimonials` dropped on production (6 Sep).
-
----
-
-## 10 · Fix-list pass (3 Sep) — production follow-through
-
-- [ ] **10.4 — Upload real example images for the six advert formats** at
-      `/console/adverts/spots` (new per-format upload). Cards on `/advertising`
-      show no image until one is uploaded.
-
-**Done:** 10.1 three migrations applied (6 Sep) · 10.2 FAQ/terms/Policies seeded: overtaken by the 24 Sep full `seed:prod`, which upserts every authored static page (`seed-real.ts:1222`); the 28 Sep copy still needs 19.1, and the terms-page warning has moved there · 10.3 folded into 19.1 (the authored Policies row is now `collapsible: true`) · 10.5 event map pins · 10.6 "For you" consent gate noted · 10.7 member-profile layout without adverts · 10.8 real news topics on production: overtaken by §12 (44 categories from WordPress tags) and §22 (pruned to 36).
-
----
-
-## 11 · Visual regression suite (9 Sep) — decisions for you
-
-The suite is built and working (`tests/visual/`, `pnpm visual`). 79 baselines are
-committed. Baseline reviews from later passes are gathered in 19.3.
-
-- [ ] **11.2 — Plain git or LFS for the baseline PNGs.** `tests/visual/baseline/`
-      is **24 MB** (79 full-page PNGs plus their element maps), and git keeps
-      every generation forever. Plain git is fine for now and is what is set up.
-      If re-baselining becomes frequent, LFS is the alternative — but it adds a
-      tool every clone and CI checkout needs. No action needed today; just know
-      the number.
-- [ ] **11.3 — Six routes have no coverage because the local database has no
-      content for them**, and they are marked `skip` with a reason in
-      `tests/visual/manifest.ts`: the four member submission editors
-      (`/dashboard/{story,video,event,equipment}/[id]/edit` — member1 has no
-      submissions), `/console/newsletter/[id]` and `/console/adverts/bundles/[id]`
-      (the indexes are empty), plus `/newsletters/[slug]`. A seed that creates
-      one of each would let them be unskipped and pinned. Not urgent — they are
-      listed in every report, so they cannot be forgotten.
-
-Also worth knowing: **a reseed invalidates every baseline** (they are photographs
-of specific content). That is expected — run `pnpm visual`, look, then
-`pnpm visual:accept --changed`.
-
-**Done:** 11.1 first baselines reviewed and accepted by Luiza, 22 Sep (`54a6d84`).
-
----
-
-## 12 · Industries refactor (10 Sep) — production follow-through
-
-Industries became their own table and content gained a direct `industry_id`
-(migration `20260909000002`). **Done on production, 22 Sep**; before re-running
-any of it, read the full notes in git. Two lessons from that run:
-- **A `--dry-run` predicts 455 `member_services`, and the live pass produces 483.**
-  That's correct behaviour, not a shortfall.
-- **`automation-robotics` is in both `industries` and `services`**, under slightly
-  different names, so the Services vocabulary carries a term that is also an
-  industry facet. That question has since left ask-jas (it was §11).
-
-**Done:** 12.1 industries migration applied (22 Sep, backup first; three other pending migrations went with it) · 12.2 taxonomy backfill run (114 of 123 members with an industry, 483 `member_services`, 90 `member_membership_types`). · 12.3 and 12.4 superseded 12 Oct by §26: the industries and the mapping are now Jas's, and stories take an industry from their news topics too (that was 12.4's "revisit the decision"), so content is no longer almost empty.
-
----
-
-## 13 · Fix-list pass (13 Sep) — production follow-through
-
-- [ ] **13.1 — Decide the production cron schedule.** `vercel.json` runs
-      `/api/cron` **once a day at 03:00** (`"schedule": "0 3 * * *"`). Everything
-      the job queue does inherits that delay in production: member notifications
-      and their emails, scheduled publishing, social pushes, and all ten daily
-      sweeps. A video approved at 10am notifies the member at 03:00 the next
-      morning; a story scheduled for 10am goes live the next night.
-
-      This is what produced fix-list item 49 ("member did not get notified of
-      video approval") — the notification was correct and queued, it just ran
-      about 21 hours later. Note `src/lib/jobs.ts:8` already documents the
-      intended behaviour as *"Prod: Vercel Cron hits /api/cron every minute"*,
-      so the code comment and `vercel.json` currently disagree.
-
-      **To change it:** set `"schedule": "* * * * *"` in `vercel.json` and
-      redeploy. **Before doing that, check the Vercel plan** — Hobby permits
-      only one cron invocation per day, which is very likely why it is set this
-      way; per-minute needs Pro. Decide with Jas whether the notification delay
-      justifies the plan, or whether a middle cadence (hourly, `"0 * * * *"`) is
-      enough. Left unchanged deliberately: it is a hosting-cost and deploy
-      decision, not an engineering one.
-      **28 Sep:** still held. Luiza is not sure which plan the project is on,
-      so `vercel.json` is unchanged (GAPS A3.1). First step: check the plan in
-      the Vercel dashboard.
-
-      Local development is unaffected either way — since 13 Sep a due job runs
-      as soon as the response is sent (`runDueJobInlineInDev`), so the member
-      area reflects an action immediately without `scripts/job-runner.ts`. That
-      runner is still needed locally for the time-based sweeps.
-
----
-
-## 14 · Grid homepage restyle (16 Sep) — decisions for you
-
-The `grid` design's homepage was moved onto the palette from the designer comps
-(`docs/Sheet Metal Industries Home v1.png` / `v2.png`), with its own light
-header and footer. Code-complete; these two need a person.
-
-- [ ] **14.1 — Confirm the social-reach figure, or drop the stat.** The closing
-      stats band shows three numbers. Two are real and live: published articles
-      (the count already returned by `publishedStories`) and member companies
-      (`memberCount`). The third, "social media reach", has **no source in the
-      database** — it ships as `SOCIAL_REACH = 347_000` in
-      `src/components/grid-home/cards.tsx`, taken from comp v1's artwork. Either
-      give me the real number (and say whether it should be editable, which
-      needs a `settings` row and a console field), or say drop it and the band
-      becomes two stats. It is presented to readers as fact today, so this is
-      worth answering before the design goes anywhere near production.
-      **5 Oct:** grid is the design going live, so this is now due. Same
-      question as `GAPS.md` D5.
-- [ ] **14.3 — Ten advert positions are still removed from the homepage.**
-      The 16-17 Sep layout passes took out both side rails and then, at the
-      client's direction, the holding row and the supplier-logo band that had
-      been carrying their contents. The grid homepage has **three** advert
-      positions — `home_1`, `home_2` and `home_3`, all of them the full-width
-      1280×170 banner — and nothing else. Still gone from the page: the
-      eight `home_rail_1…8` logo slots, the `home_mpu_1` box, the supplier-logo
-      wall, and — new since 18 Sep — `home_2_narrow`, the one-day-old narrow
-      slot that `home_2` replaced again (fix-list 64, and see §14.5). They
-      render nowhere and report no
-      impressions (`components/AdCreative.tsx` → `/api/seen`), so **a live
-      booking against any of them shows a reader nothing today**. The inventory
-      has to come back somewhere, or be withdrawn from sale. Worth knowing
-      while deciding: `home_rail_1…8` were never registered in `advert_slots`
-      (no `cap` row, no presence in `/console/adverts/spots`) — they existed
-      only as string literals in the view, so this is also the moment to decide
-      whether they should be real, capped slots.
-      `tests/unit/home-grid.test.tsx` asserts the current three so the count
-      cannot drift unnoticed.
-      **Partly closed 17 Sep:** the **featured-member placement is back**, as
-      the "Featured members" box down the left of the Latest videos band
-      (fix-list 61). A live `featured_member` placement renders again. ~~Note it
-      is a static list, not the carousel that `src/lib/visibility-products.ts`
-      and the rate card both promise — see §14.6.~~ It became a real carousel on
-      20 Sep (14.6).
-      **4 Oct, narrows this item:** bookings are now dealt **by format, not by
-      slot** (`liveBookings()` in `src/lib/adverts.ts`), so a `banner` booking
-      renders in every banner position on the site. What remains is formats
-      with no position on any page, such as the rail logos, the MPU and
-      `banner_narrow` (14.5): a booking in one of those still shows a reader
-      nothing. Which formats render on non-homepage routes was not re-checked
-      on 5 Oct.
-- [ ] **14.4 — "Featured event" is editorial, not sellable.** The new second
-      placement card on the fold shows whichever event `upcomingEvents()`
-      returns first. It cannot be booked: `placement_kind`
-      (`supabase/migrations/20260808000002_commerce.sql`) has `featured_member`,
-      `featured_machine`, `grid_block` and `takeover` but no `featured_event`.
-      The client's wireframe labels that position "Advert — Featured Event". If
-      it is meant to be sold, it needs a new enum value and console support —
-      say the word and I will write the migration.
-- [ ] **14.5 — Do not sell the 830×170 banner: it renders nowhere.** This item
-      used to ask you to publish the narrow artwork spec. **It is withdrawn** —
-      on 18 Sep the client asked for every homepage banner to be the same size,
-      so the grid homepage's second position went back to the full-width
-      `home_2` slot (fix-list 64) and nothing on the site renders
-      `banner_narrow` any more.
-      What is left behind, all of it live in the database and the console:
-      the `banner_narrow` value in the `advert_format` enum and the
-      `home_2_narrow` row in `advert_slots`
-      (`supabase/migrations/20260917000001`); the "Banner — narrow (830×170
-      desktop / 370×280 mobile)" option in the console's advert and spot
-      pickers; a `banner_narrow` advert and a "Homepage banner (narrow)"
-      product in both seeds; ~~and £650/month in `ADVERT_FORMAT_PENNIES`
-      (`src/lib/pricing.ts`)~~ (that constant went on 16 Oct, when the revenue
-      figure moved to paid invoices). None of it was ripped out, because ~~a Postgres
-      enum value cannot be dropped cleanly~~ the format may yet find a home.
-      **Correction (4 Oct):** `adverts.format` is a text column with a CHECK
-      constraint (`20260917000001`), not an enum, so `banner_narrow` *can* be
-      dropped by a migration that rewrites the constraint. **Update (4 Oct):**
-      the `home_2_narrow` row is gone with the whole `advert_slots` table
-      (`20261004000002_banner_spots.sql`, §23.1). The format half is unchanged.
-      Two things for a person:
-      **(a) A booking against `home_2_narrow` shows a reader nothing.** Same
-      problem as §14.3's removed slots. Nothing has been sold against it as far
-      as the code can tell, but check before assuming.
-      **(b) Decide whether it goes or stays.** If it stays, it needs a position
-      on a page; if it goes, say so and I will strip the console options, the
-      price, the seed rows and the slot row in one pass. It never reached the
-      public rate card (`DEFAULT_AD_FORMATS` in `src/lib/advert-formats.ts`
-      still offers "Desktop 1280×170px" only) and it was never on the member's
-      own advert form, so no advertiser has been told the size exists — which
-      makes this cheap to reverse in either direction, today.
-
-**Done:** 14.2 `home@grid` baseline accepted 22 Sep (`54a6d84`); later moves are in 19.3 · 14.6 Featured Member is a real carousel on grid, and the cap went 4 → 8 (`FEATURED_SLOTS`, a commercial call worth confirming). Its "forge unchanged" caveat is moot now grid is going live; the "higher directory ranking" half of the product is still unchecked.
-
----
-
-## 15 · Buffer social posting (17 Sep) — blocks every auto-post
-
-The publisher was ported off Buffer's v1 REST API, which has been closed to new
-developer credentials since 2019, onto their current GraphQL API (`GAPS.md`
-B4.4). The code is written and tested; nothing has ever run against the real
-Buffer, because no key has ever existed. Until these are done, every scheduled
-story and video still publishes on the site but its social push only logs.
-
-- [ ] **15.1 — Create the Buffer API key.** Buffer → Settings → API. **Only an
-      organisation owner can create one** — a member account will be prompted to
-      switch orgs and cannot proceed. Set it as `BUFFER_ACCESS_TOKEN`. Note this
-      is a *personal API key* on the current API, not a v1 developer app
-      credential; those are the ones Buffer stopped issuing, which is why the
-      old code path could never have worked. Quota is per plan (Free: 3,000
-      requests / 30 days) and we spend one request **per channel per post**, so
-      three posts a day across two channels is ~180/month.
-- [ ] **15.2 — Set the channel ids** at `/console/stories` → "Buffer channels".
-      Until this is filled in, the adapter fails closed on every post by design.
-      ⚠ If that field already shows a warning about "v1 profile ids", the stored
-      values are from the old API and must be replaced — we deliberately do not
-      convert them, because a v1 profile id and a GraphQL channel id are not
-      known to be the same value and guessing could post to the wrong account.
-- [ ] **15.3 — Confirm two enum literals against the live schema**, by
-      introspection or one test post. `SHARE_MODE` and `SCHEDULING_TYPE` at the
-      top of `src/lib/adapters/social.ts` are currently `"shareNow"` / `"custom"`
-      and are **unverified**. They must mean *post now*: our own job queue
-      already applies the +30 min delay and the daily cap, so a queue-shaped
-      mode would stack Buffer's scheduling on top of ours, break the "posted
-      ~30 min after publish" expectation, and make the cap accounting fiction.
-      A wrong literal here is the one failure mode the tests cannot catch.
-- [ ] **15.4 — Check the first real post's image actually rendered.** Media is
-      passed as a public URL, not an upload. In production that resolves to the
-      Supabase public `media` bucket and should be fine; locally it resolves to
-      `127.0.0.1` and will legitimately fail, which is not a bug.
-
----
-
-## 16 · Fix-list pass (23 Sep) — production follow-through
-
-Both of this pass's migrations are on production: 19.4's `migration list` on
-1 Oct showed none pending. The two post-push checks below were never recorded
-as run.
-
-- [ ] **16.2 — Know that `20260923000002` REPLACES an RLS policy.** It drops and
-      recreates `public_read_active_members` so it also requires
-      `archived_at is null`. That policy is the only thing standing between anon
-      and the whole `members` table (`20260808000006_grants.sql` grants anon full
-      DML), so if the push half-applies, check the policy exists before assuming
-      the site is fine. Verify after pushing:
-      `select polname from pg_policy where polrelid = 'members'::regclass;`
-- [ ] **16.3 — The inbox backfill is text-matched and runs once.** It reclassifies
-      existing `inbox_messages` rows into `message` / `notification` by matching
-      the eight machine-written message bodies. It ran clean locally (132 rows
-      reclassified, real messages untouched), but production has different rows.
-      **After pushing, check nothing real was misfiled** — anything unmatched
-      stays a `message`, which is the safe direction, so the failure mode is a
-      stray notice in the inbox, not a lost enquiry:
-      `select category, kind, count(*) from inbox_messages group by 1,2;`
-
-**Done:** 16.1 `20260923000001`/`000002` on production (confirmed by 19.4's migration list, 1 Oct) · 16.4 folded into 19.3.
-
----
-
-## 17 · WordPress migration to the new project (24 Sep) — production follow-through
-
-The full export was imported into the new Supabase project
-(`bvyxeujhecxulzwvpxfr`): 123 members, 1,992 stories, 387 videos, 53 events,
-2,643 media objects. Verify any of it with `pnpm verify:prod`, which compares the
-live database against `handover-extract/seed/` and names every difference.
-
-- [ ] **17.2 — Storage buckets exist only in the seed script, not in a
-      migration.** `media` (public) and `invoices` (private) are created by
-      `seed-real.ts` at lines 893-895. A schema-only deploy — `db:push:prod` with
-      no seed — leaves a project with no buckets and every image 404ing. There
-      are also no storage RLS policies anywhere in the repo. Worth deciding
-      whether bucket setup should become a migration rather than staying
-      tribal knowledge in a seed script.
-- [ ] **17.6 — Redeploy Vercel from `97975e6` or later.** That commit carries
-      the PGRST201 fix — `story_members` had made every `member:members(...)`
-      embed on a stories query ambiguous, which rendered the news page empty
-      with no error anywhere, because `queries.ts` discards `error` on every
-      read. Until the deployment is rebuilt from it, the live site is still
-      serving the broken embed. The same commit adds request logging, so any
-      remaining fault will name itself in the Vercel runtime logs rather than
-      showing as blank content.
-- [ ] **17.8 — Decide how `handover-extract/` gets version-controlled.** It is
-      not a git repository and never has been, so the extraction pipeline — the
-      code that decides what the migration actually produces — exists only on
-      one disk with no history. This session added the `link_a_member`
-      unserialization, the event-type mapping, a vitest harness and a golden
-      fixture there, all unversioned. If it gets a repo, `json/` and `seed/`
-      should stay ignored: they hold member contact details and full article
-      bodies, and git history is forever.
-      **Update (27 Sep):** the extract now also has an adverts step (17.11) and
-      two new tested helpers in `scripts/lib.ts` — more unversioned pipeline.
-- [ ] **17.11 — Import the old site's real adverts, then have Jas approve them.**
-      Run `pnpm seed:prod -- --legacy-adverts-only` (idempotent — a re-run
-      imports nothing; no backup needed, it only inserts). The inventory was
-      never migrated because it lives in `wp_options` as an ACF options page,
-      where the extract never looked; it is now extracted to
-      `handover-extract/json/adverts.json` and shaped to `seed/adverts.seed.json`.
-      What it creates, per Luiza's decisions on 27 Sep:
-      - **9 in-date runs → `awaiting_approval`** — 5 banners (Prima Power,
-        Compass, Bruderer, Greenfield, MMMA) and 4 supplier logos (White Cross,
-        Bystronic, Yorgrip, Greenfield). Nothing renders until Jas approves each.
-      - **4 lapsed runs → artwork only, no booking** — Kerf, Bystronic and HPC
-        Laser banners (ended 31 Aug–2 Sep) and the Prima Power logo (2 Sep).
-        Rebookable from the artwork page without chasing files.
-      - **No product linked**, so approval raises **no invoice** — these were
-        paid for on the old system.
-
-      Before Jas approves, three things worth knowing: **approval emails the
-      member twice** ("scheduled", then "live" from the sweep) about an advert
-      they believe never stopped; **White Cross, Yorgrip and HPC Laser are
-      lapsed members**; and the White Cross and Yorgrip "logos" are really
-      560×300 newsletter banners someone put in the logo slot on the old site,
-      so they will look wrong in the logo band. Not imported: slot B's two
-      featured members (both ended 5 Aug) and slot C's Durma takeover (ended
-      12 Nov 2025) — `placements` has no approval state to hold them anyway.
-      After the run, `pnpm verify:prod` should show `legacy adverts imported
-      13 / 13`.
-      **Import done 27 Sep 2026** — 13 adverts, 9 bookings awaiting approval,
-      21 artwork files; re-run imports 0; `verify:prod` shows 13 / 13 and media
-      2664 / 2664. **Left open for the approval half:** the 9 are in the Command
-      Centre's pending-adverts list for Jas.
-- [ ] **17.12 — Delete the two manual test logins before launch.**
-      `admin@smi.test` (role=admin) and `member@smi.test` (role=member, owning
-      the draft company `smi-test-company`) were created on production on
-      27 Sep at Luiza's request, via `pnpm accounts:test:prod`. They share one
-      known password, so the same objection as 17.1 applies — the difference is
-      that these are deliberate and currently in use.
-      `pnpm audit:test-rows` deliberately does **not** match them: its patterns
-      cover `@test.local` and `@smi.local`, not `@smi.test`, so `--delete`
-      cannot sweep away accounts someone is testing with. That safety is why
-      they need removing by hand instead. The company row is `draft`, so it
-      stays out of the public directory, search and sitemap in the meantime.
-
-**Done:** 17.1 the five `@smi.local` fixture logins (including the admin whose password is in the repo) are gone from `bvyxeujhecxulzwvpxfr`, confirmed by Luiza 5 Oct; this settles the 27 Sep "still open" note, and production auth holds only 17.12's two accounts · 17.3 paid Supabase plan (24 Sep) · 17.4 CLI reaches the new project: `supabase/.temp/project-ref` is `bvyxeujhecxulzwvpxfr` and 19.4's `db push --linked` worked with `SUPABASE_ACCESS_TOKEN` from `.env.production.local`. The stored login may still be the old account, so still **don't `supabase logout`** · 17.5 legacy event types (25 Sep) · 17.7 folded into 19.3 · 17.9 77 test rows the suites wrote to production removed (27 Sep; `tests/setup.ts` now refuses remote targets) · 17.10 SAMPLE adverts and the invented rate card removed (27 Sep): Jas must enter real products in `/console/adverts/spots` before a booking can carry a price. *(Superseded 6 Oct, fix-list 77: there is no rate card any more — the price goes on each booking, see §24.1.)*
-
-## 18 · Admin release notes (28 Sep) — for you
-
-`/console/releases` ("What's new", in the admin account menu) renders
-`src/content/release-notes.md`. Members never see the link and are bounced
-from the page.
-
-- [ ] **18.1 — Review every entry's wording before it ships.** The first three
-      were drafted from the 20–25 Sep commits. Seven more (dated 25 Sep to 16 Oct)
-      were added on 16 Oct, catching up on fix-list 71–93, the GAPS A8/A9 pass and
-      the 16 Oct review fixes. They describe **everything on staging**, so most of
-      it is ahead of production until §28 deploys: either ship them with that
-      deploy or keep Jas on staging until then. Check that nothing reads as a
-      promise you don't want to make, especially these lines:
-      - Online payment (6 Oct): "switches on once Stripe is set up", see §25.
-      - Uploads over 4.5 MB (16 Oct): "will be checked on the live site", see §28.12.
-      - Impressions rising (4 Oct): this is §23.2.
-      Two things were left out on purpose. The lead-gen panels still run on sample
-      data (GAPS A8.3), and the login-email change has never been checked end to
-      end (§19.6). *(Working tree, uncommitted.)*
-- [ ] **18.3 — Add an entry with each deploy.** Nothing generates it. The
-      format is in the comment at the top of the file, and a malformed edit
-      fails `pnpm check` (`tests/unit/release-notes.test.ts`).
-
-**Done:** 18.2 folded into 19.3.
-
-## 19 · GAPS A8/A9 pass (28 Sep) — production follow-through
-
-- [ ] **19.1 — Push the regrouped FAQ and collapsible policies with the same
-      `--pages-only` run as 10.2.** The FAQ is now grouped under Membership /
-      News / Members / Events / Advertising / Account, with seven new answers
-      (social sharing, YouTube-only videos, how readers find you, what's on a
-      company page, how page edits are reviewed, listing an event, exhibiting
-      at a show). Policies and Membership terms now open as collapsible
-      sections. **Two warnings.** First, the run overwrites any edit made to
-      these pages in `/console/content-pages` since the last run, because the
-      authored copy wins on slug. Check the console first and fold any real
-      edits back into `scripts/lib/static-page-content.ts`. Second, the terms
-      pages (`terms`, `membership-terms`, `advertising-terms`) carry six
-      `[SMI TO CONFIRM]` markers (VAT, registered company details, refunds,
-      artwork deadline, advertising cancellation, governing law), and they render
-      **verbatim on the live page**. The FAQ itself carries none, and a test
-      keeps it that way.
-      **5 Oct, inferred from code, not checked on production:** the terms pages
-      are **probably already on production with those markers.** The 24 Sep
-      full `seed:prod` upserts every authored static page, not just under
-      `--pages-only` (`scripts/seed-real.ts:1222`). Since 28 Sep the footer
-      links `membership-terms` on every page. The markers are still in the
-      source today, and the questions behind them were in ask-jas §9, which
-      left that file on 28 Sep with no answers recorded. Check
-      `/pages/membership-terms` on whatever production serves before launch.
-- [ ] **19.2 — The WordPress agency's liquidation and hosting takeover
-      (USE-CASES gap 26).** It's external and time-sensitive, and nothing in
-      this repo can do it. Hosting has to move out of the agency's fee
-      (estimated £30–70/month, and Jas wants a fixed plan). The staffer posting
-      ~10 stories a week can only cover the next 1–2 months. Terms depend on
-      Jas's follow-up call with the agency.
-- [ ] **19.3 — Look at the moved visual baselines.** Every public route's
-      footer gained a "Membership terms" link, and the FAQ, Policies and
-      Membership terms pages changed shape. So did the member company page
-      (video section), `/featured-machine` (video + seller logo), both lead-gen
-      pages (job titles, disclaimer), `/dashboard/advertising/*` (a fourth tab)
-      and `/console/pages` (Homepage design card). `/dashboard/advertising/assets`
-      is a **new** route with no baseline at all, so `pnpm visual` exits 2 on it
-      until someone looks. Review, then accept each route with
-      `pnpm visual:accept <route-id>`. Not run.
-      **Also covers (folded in 5 Oct), so one `pnpm visual` pass clears all of
-      them:**
-      - 16.4: the four content editors' Save banner, and the adverts nav row on
-        every console route (23 Sep).
-      - 17.7: the grid homepage's supplier logo row (24 Sep).
-      - 18.2: `console_releases`, a new route with no baseline.
-
-      Every route has also moved since the last acceptance (22 Sep), because
-      grid became the default design (5 Oct), and so did §23's banner carousel.
-      Never `--all`: accepting a baseline asserts you looked at it.
-- [ ] **19.5 — Restart local Supabase so it picks up `config.toml`.** The
-      running auth container still has `GOTRUE_SITE_URL=http://127.0.0.1:3000`
-      and an allow-list of only `https://127.0.0.1:3000`; `config.toml` has had
-      3100 for weeks. Every auth email link locally (**password reset** and the
-      new **login-email change**) redirects to a dead port. Run
-      `supabase stop && supabase start`. That keeps the data (it is not
-      `db reset`), but it restarts a shared service other sessions use, so pick
-      a quiet moment. Then check `docker exec supabase_auth_app printenv
-      GOTRUE_SITE_URL` shows `:3100`.
-- [ ] **19.6 — Hosted Supabase settings for the login-email change (GAPS
-      A4.12).** In the hosted dashboard, never via `config push`:
-      (a) add `https://<domain>/account/email/confirm` to the redirect
-      allow-list; (b) confirm **Secure email change** is on; (c) optionally
-      switch the "Change email address" template to a `{{ .TokenHash }}` link to
-      `/account/email/confirm?token_hash=…`, so the link works on any device
-      (the default PKCE link only works in the browser that asked). Then do one
-      real change end to end: confirm whether one link or both are needed, and
-      that the member lands back in Settings. Neither could be confirmed locally
-      (19.5).
-
-**Done:** 19.4 this pass's migrations (`20260928000001`–`000005`, plus `20260929000001` and `20261001000001`) pushed 1 Oct; none pending (68 total).
-
-## 20 · Homepage advert positions (29 Sep) — production follow-through
-
-**Done:** 20.1 `20260929000001_home_banner_slots.sql` pushed 4 Oct (with 22.1, one `supabase db push --db-url`) · 20.2 moot 4 Oct: banners are sold as one sitewide pool of spots, not per position, so per-position slots are gone (§23.1).
-
-## 21 · Error logging, Phase 1 (1 Oct) — switches it on
-
-See `docs/logging.md`. The code records errors as soon as it deploys; these
-steps decide who hears about them.
-
-- [ ] **21.2 — Set `DEVELOPER_EMAILS` in Vercel** to your own login email.
-      Unset, `/console/errors` 404s for everyone, you included.
-- [ ] **21.3 — Set `DEV_ALERT_EMAIL` in Vercel** to where error alerts and the
-      daily digest should go. Unset, errors are recorded but nobody is emailed.
-      Alerts also need the Resend key (§1, GAPS B3.3): until then they're inert
-      in production. Locally they arrive in Mailpit. **5 Oct:** the key is set
-      (1.4), so alerts send once this variable is set, but until the domain is
-      verified (1.2) only to the Resend account owner's address.
-
-**Done:** 21.1 `20261001000001_error_log.sql` on production (in 19.4's 1 Oct push).
-
-## 22 · Junk news topics (4 Oct) — production follow-through
-
-**Done:** 22.1 `20261004000001_prune_junk_categories.sql` pushed 4 Oct by Luiza (with 20.1): 8 junk WordPress tags deleted by slug, taking `categories` from 44 to 36 (`exhibitions` kept); the seeds skip the same slugs (`scripts/lib/news-topics.ts`).
-
-## 23 · Banner spots and carousel (4 Oct) — production follow-through
-
-- [ ] **23.1 — Push `20261004000002_banner_spots.sql` to production**
-      (`pnpm db:push:prod`). It adds the `banner_spots` setting (`{"count": 8}`,
-      kept as-is if the row already exists) and **drops `advert_slots`** — the
-      per-position caps nothing ever read. The drop loses only those labels and
-      caps, and can't be undone short of recreating the table. Until it runs,
-      Console → Adverts → Inventory still works (the count falls back to 8 if
-      the row is missing) but production carries the dead table. Afterwards,
-      check Inventory shows "Spots we sell: 8" and the next-six-months table.
-      *(Committed in `4f14b9b`.)*
-- [ ] **23.2 — Tell Jas the impression figures will step up.** Each banner
-      position now cycles 3 adverts in-page (§5.4), and each one counts its own
-      impression once it has been on screen for a second. The 30-day stat on
-      Console → Adverts and members' own dashboards rise from deploy day; the
-      definition of an impression didn't change, only how many get shown.
-
----
-
-## 24 · Fix-list 75–79 (6 Oct) — production follow-through
-
-- [ ] **24.1 — Push `20261006000001_advert_booking_price.sql` to production.** Adds
-      `advert_bookings.price_pennies` and copies any rate-card product's rate onto the
-      bookings sold under it. Until it's applied, the new Bookings / Supplier Logos price
-      fields and approval invoicing fail on production (the column doesn't exist), and
-      the Command Centre revenue query errors. Additive and idempotent:
-      `pnpm db:push:prod` (or `supabase db push --linked`, as 19.4). Ship it **with** the
-      code, not after.
-- [ ] **24.2 — Look at the new console screenshots before accepting them.** `pnpm visual`
-      has new ids `console_adverts_banners`, `console_adverts_suppliers`,
-      `console_stories_list`, `console_featured_member_id`, `console_banner_run_id` and
-      `console_supplier_logo_id` (no baselines, so they hard-fail until accepted), and every console baseline moves
-      with the nav (Adverts & Banners, + Supplier Logos). `console_adverts_spots` and
-      `console_adverts_spots_new` are orphaned. `console_takeover_id` is skipped until a
-      takeover is booked locally.
-
-## 25 · Online payment for advertising (6 Oct) — switches it on
-
-Built and tested locally in "simulated" mode: a priced run, bundle, supplier logo,
-Featured Member slot or takeover is **held** (not on the site) until the member pays
-its invoice from `/dashboard/pay/invoice/…`, then released. Without the keys below,
-production behaves exactly as before: nothing is held, invoices are issued and Jas
-collects by hand. It has **never run against real Stripe** — 25.4 is the first time.
-
-- [ ] **25.1 — Push `20261006000002_advert_payments.sql` to production**, with or
-      after 24.1 (`pnpm db:push:prod`). Adds the invoice links, `paid_at`, the
-      `awaiting_payment` booking status, and the placements price and hold flag.
-      Additive. The code reads these columns, so ship it **with** the code.
-- [ ] **25.2 — Set `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`** (the `pk_…` key) in Vercel,
-      production and preview, beside §6.3's `STRIPE_SECRET_KEY`. Advert payments go
-      live only with **both** set. It's a `NEXT_PUBLIC_` variable, so it is baked in
-      at build time: redeploy after setting it.
-- [ ] **25.3 — Add `checkout.session.async_payment_succeeded`** to the webhook
-      endpoint's events (§6.2). `checkout.session.completed` already covers cards;
-      this one settles delayed methods such as bank debits if they're ever enabled.
-- [ ] **25.4 — Test one payment end to end in Stripe test mode** before going live:
-      book a priced run for a test member, pay it with card `4242 4242 4242 4242`,
-      and confirm three things: the run turns "scheduled", the invoice says "paid"
-      on both the console and the member's billing page, and the webhook delivery
-      shows 200 in the Stripe dashboard. Also try `4000 0025 0000 3155` (3-D
-      Secure): it opens a frame from `hooks.stripe.com`, which the CSP allows.
-- [ ] **25.5 — Decide (Jas):** an unpaid hold keeps its dates reserved until its
-      term ends, and is then ended as "unpaid" with the invoice voided. Nothing
-      chases it in between: no reminder email, and no earlier expiry. If either is
-      wanted, it's a small follow-up in the `advert_lifecycle` sweep.
-
-## 26 · Jas's industries (12 Oct) — production follow-through
-
-Jas's ten industries replace ours, a member can be in several (with one
-primary), and every member, story, video and event gets its industry from his
-mapping of Services and news categories (`scripts/lib/industry-map.ts`).
-Migration `20261012000001_industries_jas_member_industries.sql` swaps the list
-and **clears every existing assignment**. The backfill then re-derives them all
-from the `member_services` and `story_categories` already on the target. It
-needs no WordPress export. Industry slugs change (`/industry/welding` →
-`/industry/welding-joining` and so on), with no redirects because the site isn't
-public yet. *(Committed in `4f14b9b`.)*
-
-- [ ] **26.1 — Push the migration, then run the backfill straight away.**
-      `pnpm db:push:prod`, then `pnpm industries:backfill:prod -- --dry-run`
-      (compare against the full-export simulation: primaries Automation 23 ·
-      Welding 22 · Machinery 18 · Bending 16 · Inspection 10 · Software 7 ·
-      Grinding 6 · Subcontractor 6 · Processing 5 · Events 2 · none 8), then
-      `pnpm industries:backfill:prod`.
-      Until the backfill runs, **nothing has an industry**: the `/industry/*`
-      pages are empty and the directory's industry filter matches no one.
-      Ship the code **with** the migration. Code that reads `member_industries`
-      before it exists, or the old code reading members' industry without the
-      `members_industry_id_fkey` hint once it does, fails silently (PGRST201):
-      member profiles 404 and the directory renders empty. Run
-      `pnpm verify:prod` afterwards. Its "member directory query" and "primary
-      industry ∈ set" lines prove both halves.
-      The backfill refuses to run a second time without `--overwrite`, because
-      after launch the links are curated data. Pending profile revisions lose
-      their proposed industry; the rest of each revision survives.
-- [ ] **26.2 — Send Jas the "no industry" report** (GO-LIVE 1.1):
-      `pnpm industries:backfill:prod -- --dry-run --report` prints every member
-      and story left without one, as tab-separated rows.
-- [ ] **26.3 — Accept the moved visual baselines.** Two causes, both expected:
-      `tests/visual/manifest.ts`'s `industry_slug` route is now
-      `/industry/welding-joining`; and the industry strip changed on **every
-      public route**: two balanced, centred rows from `lg` up (three on a
-      tablet, still one scrolling row on phones) to fit Jas's longer names, and
-      on grid it is now a very light grey band (`bg-shade`) instead of white. Run `pnpm visual`, look, then accept each route:
-      `pnpm visual:accept <route-id>`.
-
-## 27 · Jas's Story Engine feedback (13 Oct) — production follow-through
-
-Fix-list 80–93. Four migrations, all additive and idempotent:
-`20261015000001_story_member_drafts.sql` (`stories.member_draft`),
-`20261015000002_story_social_posts.sql` (`stories.social_posts`) and
-`20261015000003_story_members_tagging.sql` (backfills every story's primary
-member into `story_members`, adds a story-views index on `analytics_events`,
-and narrows `story_members`' public read to published stories), and
-`20261015000004_story_summary.sql` (the `story_summary` computed field). All four were
-applied locally with `supabase migration up`; no reset. *(Committed in `4f14b9b`.)*
-
-- [ ] **27.1 — Push the four migrations with the code, not after it.**
-      `pnpm db:push:prod`. The code reads `member_draft`, `social_posts`,
-      `story_members` and `story_summary` straight away: without the columns, saving a story fails
-      and member profiles lose their story lists. The `analytics_events` index
-      is built on the partitioned parent, so it locks every partition while it
-      builds. Run it outside traffic once there is real traffic.
-- [ ] **27.2 — Jas pastes SMI's post links after Buffer posts.** Each story in the
-      console has three new fields, "SMI's posts of this story" (LinkedIn,
-      Facebook, X). Buffer never returns the live post's URL, so nothing fills
-      them automatically. Any left empty link to SMI's page on that network, so
-      the story page is never broken, just less specific. Worth telling him in
-      the reply to his feedback.
-- [ ] **27.3 — Look at the visual baselines for the story route and every
-      rich-text surface.** Run `pnpm visual`, look, then accept each route:
-      `pnpm visual:accept <route-id>`. Expected changes:
-      - The story page is wider from `lg`, with a member sidebar.
-      - The share buttons became an icon row.
-      - The member box became tiles.
-      - Every `.story-body` (profiles, events, videos, machines, static pages)
-        gained a float-clearing `::after` for the new image alignment.
-
-## 28 · Code-review fixes (16 Oct) — production follow-through, and the one push order
-
-The 16 Oct review pass added migrations `20261016000001`–`20261016000070` on top of the
-ones §7.6, §23.1, §24.1, §25.1, §26.1 and §27.1 already ask for. **`supabase db push`
-applies every pending migration in one go** — there is no pushing just one — so
-those items can't be done separately: following §7.6 alone would also run §26.1's
-`delete from industries`, before its backfill and before the code that reads
-`member_industries`. Do them together, once, in this order.
-
-- [ ] **28.1 — Check what reads the production database first.** Any deployment still
-      running code older than this branch breaks the moment the push lands: member
-      profiles 404 and the directory empties (§26.1's ambiguous industries embed),
-      `/console/crm` and every contact write-through fail (§7.6), and the directory
-      filter calls `members_in_taxonomies`, which old code doesn't. So the deploy of
-      this code and the push have to happen together, or nothing may be reading
-      production in between. Confirm a Supabase backup from today exists (Dashboard
-      → Database → Backups) before going on.
-- [ ] **28.2 — Run the pre-checks against production** and resolve anything they
-      return. Each migration named below refuses to apply (or would change rows)
-      otherwise:
+## 2 · Push to production
+
+`supabase db push` applies every pending migration in one go; you can't push
+just one. Deploy the `staging` code at the same moment: old code against the new
+schema breaks member profiles, the directory and the CRM page. Pending, as far
+as this repo knows: `20261004000002` through `20261020000005`. Confirm with
+`supabase migration list --linked`. From `20261020000005` on, nothing sends
+until it is approved in the console: any newsletter issue already *scheduled*
+when it lands is marked approved so it still goes out, but a draft must go
+through Proof and approval first.
+
+- [ ] **2.1 — Take a Supabase backup** (Dashboard → Database → Backups).
+- [ ] **2.2 — Run the pre-checks and resolve what they return.** Void duplicate
+      issued invoices (keep the newest), withdraw duplicate renewals, and merge
+      colliding contacts by hand.
       ```sql
-      -- 20261016000001: at most one issued invoice per booking / bundle / placement
+      -- one issued invoice per booking / bundle / placement
       select 'booking' k, advert_booking_id, string_agg(number, ', ') from invoices where status='issued' and advert_booking_id is not null group by 2 having count(*)>1
       union all select 'bundle', bundle_id, string_agg(number, ', ') from invoices where status='issued' and bundle_id is not null group by 2 having count(*)>1
       union all select 'placement', placement_id, string_agg(number, ', ') from invoices where status='issued' and placement_id is not null group by 2 having count(*)>1;
       select number, id from invoices where num_nonnulls(advert_booking_id, bundle_id, placement_id) > 1;
-      -- 20261016000033: bundle parts it will un-price (expected: none)
+      -- bundle parts that will be un-priced (expected: none)
       select b.id, b.bundle_id, b.price_pennies from advert_bookings b
        where b.bundle_id is not null and b.price_pennies is not null
          and not exists (select 1 from invoices i where i.advert_booking_id = b.id);
-      -- 20261016000034: addresses it will lowercase, and pairs it leaves for a person
+      -- contacts whose emails collide once lowercased
       select count(*) from contacts where email <> lower(btrim(email));
       select lower(btrim(email)) addr, array_agg(id), array_agg(email) from contacts group by 1 having count(*) > 1;
-      -- 20261016000061: at most one pending member renewal per run
+      -- one pending member renewal per run
       select renewed_from, count(*) from advert_bookings
        where renewed_from is not null and status = 'awaiting_approval' and source = 'member'
        group by 1 having count(*) > 1;
       ```
-      Void duplicate issued invoices by hand (keep the newest), withdraw or decide a
-      duplicate renewal, and merge colliding contact pairs by hand.
-- [ ] **28.3 — Deploy this code and push, together** (`pnpm db:push:prod`). Deploying
-      is approval-gated. Then **straight away**, §26.1's backfill:
-      `pnpm industries:backfill:prod -- --dry-run`, compare it with §26.1's expected
-      counts, then `pnpm industries:backfill:prod`. (That script now passes `--remote`
-      itself; the plain `industries:backfill` refuses a non-local target.) Until it
-      runs, nothing has an industry.
-- [ ] **28.4 — Finish the contact clean-up:** after merging any pairs from 28.2, run
-      `select * from normalise_contact_emails();` in the SQL editor. It lowercases
-      what it can, never merges, and warns about anything left.
-- [ ] **28.5 — Check the push:** `pnpm verify:prod`. Its story↔member check now
-      passes when a story has *extra* tags; a ✗ means a member the WordPress export
-      tagged is missing.
-- [ ] **28.6 — Set `UNSUBSCRIBE_SECRET`** in Vercel (Production and Preview), at
-      least 32 characters: `openssl rand -base64 32`. Without it the typed-address
-      form on `/unsubscribe` is off and points people at the newsletter's own link.
-      Rotating it invalidates confirmation links already sent (they last 72h).
-- [ ] **28.7 — Turn on Vercel Deployment Protection for Preview deployments.**
-      With `MOCK_INTEGRATIONS=1` a Preview serves mock Stripe/Bigin routes. They
-      now need a deployment-derived key header, but a protected Preview is the real
-      fix.
-- [ ] **28.8 — On the first live advert payment, check two things Stripe's docs
-      don't settle:** that re-opening the pay page reuses the open Checkout Session
-      (one session per invoice, not one per page load), and that a payment Stripe
-      takes for an invoice that was cancelled or already paid shows up in the
-      console inbox as "payment taken" — that one needs a refund by hand in Stripe.
-- [ ] **28.9 — Before the first live `newsletter_sync`, compare the Resend segment
-      with the subscribed contacts.** The sync now *removes* segment addresses that
-      aren't subscribed contacts (old addresses, deleted or "not subscribed"
-      contacts), and pushes all ~2,700 subscribers rather than the first 1,000. If
-      the segment holds people who signed up somewhere SMI doesn't know about,
-      import them as contacts first or they'll be removed. Also confirm what
-      Resend does when a contact that already exists is created again (the 409
-      case); unsubscribes no longer depend on it.
-- [ ] **28.10 — On the first live Bigin run (with §7.5):** check the error body Bigin
-      returns for a PUT to a deleted contact id (the adapter confirms with a GET
-      before unlinking, so a different shape fails safe), and that deleting a
-      race-created duplicate with `?wf_trigger=false` works with the granted scope.
-- [ ] **28.11 — Look at the changed screens, then accept them per route** (`pnpm
-      visual`, then `pnpm visual:accept <route-id>`). Expected changes:
-      - `/unsubscribe`: new copy and an "Email me a link" button.
-      - Every page with a rotating banner: a pause/play control beside the dots.
-      - Story bodies: small images no longer stretched to the column.
-      - Every upload field: a progress line under the file input while it
-        uploads, and "Waiting for upload…" on the save button.
-      - Console: the overview's page-edits card (now "Page edits to review", with a
-        link instead of Approve/Reject), the member page's list of proposed changes,
-        Raise invoice / Cancel cards and new price help text on the booking,
-        banner, supplier, bundle, Featured Member and takeover pages, the approve
-        button's label, and the stories page's error banner.
-
-- [ ] **28.12 — After the deploy, upload two big files on the live site.** Uploads
-      now go straight from the browser to Supabase Storage (a private
-      `upload-staging` bucket, migration `20261016000070`), because Vercel refuses
-      a function request over 4.5 MB. Until that migration is pushed, every upload
-      fails with "The upload didn't go through". Then, on the Vercel deployment,
-      save a phone photo over 4.5 MB as a story cover and a PDF over 4.5 MB in
-      Resources. Locally both work. What can't be tested locally is whether hosted
-      Supabase's gateway accepts the browser's direct upload (CORS and the
-      `apikey` header). If it refuses, every upload made with JavaScript on
-      fails with an error message — the old route isn't tried as a fallback —
-      so check this the same day.
-
-- [ ] **28.13 — Undo two requests counted in production's `consent_stats` on 15 Oct.**
-      While checking a keyboard-focus bug (GAPS A6.14), Claude ran the production
-      build locally with `next start -p 3200`. In production mode Next loads
-      `.env.production.local`, so that server talked to the **live** Supabase
-      project, not the local stack — a check made before starting it would
-      have caught this. It served `GET /member` twice before it was stopped.
-      Each render calls `requestContext()`, which bumps the cookie-consent
-      counter; nothing else on that page writes on a GET (the page-view
-      insert is dropped for a visitor without consent). To correct the count:
-      ```sql
-      update consent_stats set total_requests = total_requests - 2
-       where day = '2026-10-15';
-      ```
-      (`consented_requests` was not touched.) To stop it recurring: a local
-      `next start` against `.env.production.local` is always production. Either
-      keep that file out of the project folder except when you're about to run a
-      `:prod` script, or add a guard to `next start` — your call; it touches
-      the scripts in `package.json`.
-
-## 29 · Data protection pass (20 Oct) — production follow-through
-
-[`GDPR.md`](GDPR.md) is the reference. Jas's decisions are ask-jas 27, not here.
-
-- [ ] **29.1 — Push migration `20261020000001_audit_events`** with the §28 push. It
-      only adds a table and a function, so it's safe at any point in §28's order. Until
-      it's pushed, every audit write fails: sign-in, view-as and member edits still
-      work, but nothing is recorded, and each failure lands in the error log as
-      `audit:<action>`, alerting the developer.
-- [ ] **29.2 — Check Supabase's own auth audit log** (Dashboard → Authentication →
-      Logs) and how long it's kept. If it already holds sign-ins, say so in
-      GDPR.md §16, so the privacy policy doesn't promise two copies.
-- [ ] **29.3 — Expect a step in "site users this year".** The visitor pseudonym is
-      now a keyed HMAC (GDPR.md G2). Every visitor gets a new identifier, so anyone
-      who visited before the deploy counts twice in the Command Centre's 12-month
-      figure until their old rows age out. Analytics only.
-
-## 30 · Story sources (20 Oct) — switches the ChangeTower replacement on
-
-[`story-sources.md`](story-sources.md) is the reference. Until these are done
-`/console/sources` exists but is empty, and nothing is checked.
-
-- [ ] **30.1 — Push migration `20261020000002_content_sources`** with the §28 push.
-      It only adds two tables, so it's safe anywhere in that order.
-- [ ] **30.2 — Import the list:** `pnpm sources:import:prod`, after 30.1. It adds
-      the 724 sources from `scripts/seed-assets/content-sources.csv` and fetches
-      nothing itself. Safe to re-run; existing sources are left alone.
-- [ ] **30.3 — Decide the cron cadence (§13.1) with this in mind.** The
-      `source_watch` job checks a time-boxed batch per run. With today's
-      once-a-day cron it reaches one batch a day (roughly 100–300 sources), so
-      the full list is covered only every few days. Hourly covers it daily.
-- [ ] **30.4 — Watch the first week.** The first check of each source is a
-      silent baseline, so suggestions start on its second check. After a few
-      days, look at the "Blocked", "News page gone" and "Nothing readable found"
-      filters, and update or pause sources there (ask-jas 28).
-- [ ] **30.5 — Replace ChangeTower only after that first week**, once the
-      suggestions look right (TECH-DECISIONS lists it among the tools being
-      cancelled, ~£17). Keep it until then: about 20% of the list can't be read
-      automatically, and those sites still need checking by hand.
+- [ ] **2.3 — Deploy and push together:** `pnpm db:push:prod`. Once there is
+      real traffic, push outside busy hours: one migration builds an index on
+      `analytics_events` that locks every partition while it runs.
+- [ ] **2.4 — Run the industries backfill straight away.** The migration clears
+      every industry assignment. Run `pnpm industries:backfill:prod -- --dry-run`
+      and compare the primaries with: Automation 23 · Welding 22 · Machinery 18 ·
+      Bending 16 · Inspection 10 · Software 7 · Grinding 6 · Subcontractor 6 ·
+      Processing 5 · Events 2 · none 8. If they match, run
+      `pnpm industries:backfill:prod`.
+- [ ] **2.5 — Normalise contact emails:** `select * from normalise_contact_emails();`.
+- [ ] **2.6 — Import the story sources:** `pnpm sources:import:prod` (724 sources;
+      safe to re-run).
+- [ ] **2.7 — Check the result:** run `pnpm verify:prod`, then two SQL checks.
+      - `select polname from pg_policy where polrelid = 'members'::regclass;`
+        must include `public_read_active_members`.
+      - `select category, kind, count(*) from inbox_messages group by 1,2;`
+        must show no real enquiry filed as a notification.
+- [ ] **2.8 — Upload a photo over 4.5 MB as a story cover, and a PDF over 4.5 MB
+      in Resources**, on the live site, the same day. Hosted Supabase must accept
+      the browser's direct upload. If it doesn't, every upload fails.
+- [ ] **2.9 — Re-run the static pages:** `pnpm seed:prod -- --pages-only`. It
+      overwrites console edits to those pages, so copy any real edits into
+      `scripts/lib/static-page-content.ts` first.
 
 ---
 
-## Not in this list
+## 3 · First live run — check each service once
 
-Other approval-gated externals — MaxMind/GeoLite2, the
-GitHub/Vercel/Supabase ownership transfers, and the London-region Supabase
-project — are tracked in [`README.md`](../README.md) under "Outstanding" and in
-`GAPS.md` Part B. Stripe, Bigin and Buffer moved into §6/§7/§15 above once their
-adapters were built. Everything else that needs a person (accounts, production
-pushes, dashboard settings, decisions, visual baselines) is above.
+- [ ] **3.1 — Resend.**
+      - Send to `delivered@resend.dev`, `bounced@resend.dev` and
+        `complained@resend.dev` before any real address (they count against
+        quota).
+      - The first newsletter: if the request shape is wrong, the issue shows
+        `send_failed` with the error.
+      - Check opens are tracked; otherwise `opens_count` stays 0.
+      - Before the first `newsletter_sync`, compare the Resend segment with the
+        subscribed contacts. The sync removes addresses that aren't subscribed
+        contacts.
+- [ ] **3.2 — Stripe.**
+      - One test subscription and one declined card. `invoice.payment_failed`
+        must find the member.
+      - One advert payment with `4242 4242 4242 4242`, and one 3-D Secure
+        payment with `4000 0025 0000 3155`. Check: the run is "scheduled", the
+        invoice is "paid" on both sides, and the webhook answers 200.
+      - Re-opening the pay page must reuse the same Checkout Session.
+      - A payment taken for a cancelled or already-paid invoice must appear in
+        the console inbox; refund it by hand.
+      - The old site's existing subscriptions must stay untouched.
+- [ ] **3.3 — Bigin** (on the throwaway account first, 1.12).
+      - An added contact appears with the right name, company and opt-out.
+      - Adding a contact Bigin already has updates it rather than duplicating it.
+      - Unsubscribing here sets *Email Opt Out* there.
+      - An edit made in Bigin arrives here within a minute.
+      - The "Last sync" line shows no live-updates error.
+      - A PUT to a deleted contact fails safely.
+      - Deleting a race-created duplicate (`?wf_trigger=false`) works with the
+        granted scopes.
+- [ ] **3.4 — First Bigin import, with Jas, before the next newsletter.** In
+      `/console/crm`, click **Preview import**, read the counts, then **Run first
+      import**. Imported contacts are subscribed unless they opted out in Bigin,
+      so the next issue goes to them.
+- [ ] **3.5 — Buffer.**
+      - Confirm `SHARE_MODE` / `SCHEDULING_TYPE` (`"shareNow"` / `"custom"` in
+        `src/lib/adapters/social.ts`) mean *post now*: introspect the schema,
+        or make one test post.
+      - Check the first post's image rendered.
+      - Check the story's LinkedIn / Facebook / X post links fill in on their own
+        within a few cron runs (GAPS B4.6). They come from Buffer's
+        `externalLink`, which is in its API reference but has never been seen on a
+        live response. If they stay empty, look at the `social_links` jobs; a link
+        can still be pasted by hand meanwhile.
+- [ ] **3.6 — Login-email change.** Do one end to end after 1.7. Check whether
+      one link or both are needed, and that the member lands back in Settings.
+- [ ] **3.7 — Story sources, after the first week.** Review the "Blocked",
+      "News page gone" and "Nothing readable found" filters. Cancel ChangeTower
+      only after that: about 20% of sources still need checking by hand.
+
+---
+
+## 4 · Decisions for Jas
+
+- [ ] **4.1 — Newsletter deliverability.** Run a real send to trade addresses,
+      compared with MailChimp on getting through firewalls and on open rates.
+      Then record the winner in TECH-DECISIONS #7.
+- [ ] **4.2 — Terms pages.** Six `[SMI TO CONFIRM]` markers show on the live
+      pages: VAT, company details, refunds, artwork deadline, advertising
+      cancellation, governing law.
+- [ ] **4.3 — Social reach figure.** "347,000" is hard-coded in the grid
+      homepage stats band (`src/components/grid-home/cards.tsx`). Give the real
+      number, or drop the stat.
+- [ ] **4.4 — Featured event:** editorial or sellable? Selling it needs a new
+      placement kind and console support.
+- [ ] **4.5 — Unpaid advert holds** keep their dates until the term ends, with
+      no reminder. Should there be a reminder or an earlier expiry?
+- [ ] **4.6 — Lapsed members' stories** stay live, without the directory
+      backlink. Confirm, or take them down.
+- [ ] **4.7 — Newsletter adverts use the mobile artwork.** Confirm.
+- [ ] **4.8 — Approve the 9 imported legacy adverts** (Command Centre). Before
+      approving, know that:
+      - each member gets two emails;
+      - White Cross, Yorgrip and HPC Laser are lapsed members;
+      - the White Cross and Yorgrip "logos" are really banners.
+- [ ] **4.9 — The WordPress agency's liquidation and the hosting takeover.**
+      Depends on Jas's call with the agency.
+- [ ] **4.10 — Send Jas the "no industry" report** after 2.4:
+      `pnpm industries:backfill:prod -- --dry-run --report`.
+- [ ] **4.11 — Tell Jas, with the deploy:**
+      - banner impressions step up (three adverts rotate per position);
+      - "site users this year" double-counts returning visitors until old rows
+        age out;
+      - SMI's own post links on each story now fill in from Buffer; there is
+        nothing to paste (a pasted link is never replaced).
+
+## 5 · Content to upload
+
+- [ ] **5.1 — Brand-pack assets** at `/console/resources`. The library starts
+      empty.
+- [ ] **5.2 — Example images for the advert formats** at `/console/advertising`.
+      The `/advertising` cards show none until then.
+
+---
+
+## 6 · Yours
+
+- [ ] **6.1 — Before launch, delete the test logins** `admin@smi.test` and
+      `member@smi.test` (and the draft company `smi-test-company`).
+- [ ] **6.2 — Correct production's `consent_stats`** for two requests made by a
+      local production build on 15 Oct:
+      `update consent_stats set total_requests = total_requests - 2 where day = '2026-10-15';`
+      Then decide how to stop a local `next start` from loading
+      `.env.production.local`.
+- [ ] **6.3 — Review the release notes** (`src/content/release-notes.md`,
+      uncommitted edits) before they ship. Add an entry with each deploy.
+- [ ] **6.4 — Version-control `handover-extract/`.** The migration pipeline has
+      no history. Keep `json/` and `seed/` out of git: they hold personal data.
+- [ ] **6.5 — `tests/e2e/join.spec.ts` against the join rate limit** (3 per
+      hour). Either the spec signs up less often, or the limiter changes.
+- [ ] **6.6 — Review and accept the visual baselines.** Last accepted 22 Sep;
+      every route has moved since, and new routes hard-fail until accepted.
+      Run `pnpm visual`, look, then `pnpm visual:accept <route-id>` per route,
+      never `--all`. Eight routes are skipped until the local data has content
+      for them (see `tests/visual/manifest.ts`).
+- [ ] **6.7 — Set `CRON_SECRET` in `.env.local`** if you want the local job
+      runner (`scripts/job-runner.ts`).
+
+---
+
+## Notes (no action)
+
+- `script-src 'unsafe-inline'` stays for now (`next.config.ts`). When nonces
+  arrive, the JSON-LD tags need them too.
+- The visual baselines are about 24 MB in plain git. Git LFS is the option if
+  re-baselining gets frequent.
+- Outside this list: MaxMind/GeoLite2, the GitHub/Vercel/Supabase ownership
+  transfers and the London-region Supabase project are tracked in `README.md`
+  ("Outstanding") and `GAPS.md` Part B.

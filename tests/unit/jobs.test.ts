@@ -1,17 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { enqueue, runDueJobs, runJobById, type JobKind } from "@/lib/jobs";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { SendResult } from "@/lib/adapters/newsletter";
+import type { SentPost } from "@/lib/adapters/social";
+import { siteUrl } from "@/lib/site-url";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const send = vi.fn(async () => {});
 vi.mock("@/lib/adapters/email", () => ({ getEmailSender: vi.fn(() => ({ send })) }));
 
-const publish = vi.fn(async () => {});
-vi.mock("@/lib/adapters/social", () => ({ getSocialPublisher: vi.fn(() => ({ publish })) }));
+const publish = vi.fn<() => Promise<SentPost[]>>(async () => []);
+const postLinks = vi.fn<(ids: string[]) => Promise<SentPost[]>>(async () => []);
+const socialLive = vi.fn(() => false);
+vi.mock("@/lib/adapters/social", () => ({ getSocialPublisher: vi.fn(() => ({ publish, postLinks })), isSocialLive: () => socialLive() }));
 
 const crmSync = vi.fn(async () => {});
 const crmPush = vi.fn(async () => {});
@@ -38,7 +42,10 @@ afterEach(() => {
   resetDbServerMocks();
   vi.restoreAllMocks();
   send.mockReset().mockResolvedValue(undefined);
-  publish.mockReset().mockResolvedValue(undefined);
+  publish.mockReset().mockResolvedValue([]);
+  postLinks.mockReset().mockResolvedValue([]);
+  socialLive.mockReset().mockReturnValue(false);
+  vi.useRealTimers();
   crmSync.mockReset().mockResolvedValue(undefined);
   syncContacts.mockReset().mockResolvedValue({ pushed: 3, failed: 0 });
   sendIssue.mockReset().mockResolvedValue({ ok: true, recipients: 10 });
@@ -275,33 +282,93 @@ describe("runJob kinds", () => {
     expect(kinds.filter((k) => k === "notify_member")).toHaveLength(2); // both ready items have a member_id
   });
 
-  it("social_push (story) — publishes and tags from the CRM-stored handles", async () => {
-    const j = job("social_push", { payload: { story_id: "s1" } });
-    // select → claim → daily-cap count (0 so far today) → done
-    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 0)), queryBuilder(dbOk(null))], {
-      stories: () => queryBuilder(dbOk({
-        id: "s1", title: "Acme wins award", slug: "acme-wins-award", excerpt: "", cover_path: "c.jpg",
-        member: { name: "Acme", social: { x: "acme" } },
-      })),
+  /** A live story as social_push reads it; override what the test is about. */
+  const liveStory = (o: Record<string, unknown> = {}) => ({
+    id: "s1", title: "Acme wins award", slug: "acme-wins-award", cover_path: "c.jpg", member_id: null,
+    status: "published", social_at: null, social_text: null, social_skip: false, social_posted_at: null,
+    summary: "Acme took the top prize at the awards.", member: null, ...o,
+  });
+  /** select → claim → done: the daily cap is counted from stories/videos now, not from jobs. */
+  const socialJob = (payload: Record<string, unknown>) => {
+    const j = job("social_push", { payload });
+    return [j, [queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))]] as const;
+  };
+
+  it("social_push (story) — posts the lead-in and the story's link on this site, and tags from the CRM-stored handles", async () => {
+    const [j, jobs] = socialJob({ story_id: "s1" });
+    dbFor([...jobs], {
+      stories: () => queryBuilder(dbOk(liveStory({ member: { name: "Acme", social: { x: "acme" } } }))),
       settings: () => queryBuilder(dbOk({ value: { per_day: 3 } })),
     });
 
     await runJobById(j.id);
 
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({
-      text: expect.stringContaining("acme-wins-award"),
+      text: `Acme took the top prize at the awards.\n\n${siteUrl()}/news/acme-wins-award`,
       tagHandles: { x: "acme" },
     }));
   });
 
+  it("social_push (story) — the editor's lead-in wins over the summary, and the title is the last resort", async () => {
+    for (const [row, lead] of [
+      [{ social_text: "Our own words." }, "Our own words."],
+      [{ summary: null }, "Acme wins award"],
+    ] as const) {
+      publish.mockClear();
+      const [j, jobs] = socialJob({ story_id: "s1" });
+      dbFor([...jobs], { stories: () => queryBuilder(dbOk(liveStory(row))) });
+      await runJobById(j.id);
+      expect(publish).toHaveBeenCalledWith(expect.objectContaining({ text: `${lead}\n\n${siteUrl()}/news/acme-wins-award` }));
+    }
+  });
+
+  // Area 3: re-checked when the job runs, not when it was queued.
+  it.each([
+    ["taken off the site inside the delay", { status: "draft" }],
+    ["“don't post” ticked", { social_skip: true }],
+    ["already posted", { social_posted_at: "2026-10-20T09:00:00Z" }],
+  ])("social_push (story) — doesn't post when %s", async (_why, row) => {
+    const [j, jobs] = socialJob({ story_id: "s1" });
+    const stories = queryBuilder(dbOk(liveStory(row)));
+    dbFor([...jobs], { stories: () => stories });
+
+    await runJobById(j.id);
+
+    expect(publish).not.toHaveBeenCalled();
+    expect(stories.update).not.toHaveBeenCalled();
+  });
+
+  it("social_push — waits for a post time moved later after it was queued", async () => {
+    const later = new Date(Date.now() + 3 * 3_600_000).toISOString();
+    const j = job("social_push", { payload: { story_id: "s1" } });
+    const jobsTail = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
+      stories: () => queryBuilder(dbOk(liveStory({ social_at: later }))),
+    });
+
+    await runJobById(j.id);
+
+    expect(publish).not.toHaveBeenCalled();
+    expect(callsOf(jobsTail.insert)[0]?.[0]).toEqual(expect.objectContaining({ kind: "social_push", due_at: later }));
+  });
+
+  it("social_push — marks the item posted only when Buffer is really connected", async () => {
+    for (const live of [false, true]) {
+      socialLive.mockReturnValue(live);
+      const [j, jobs] = socialJob({ story_id: "s1" });
+      const stories = queryBuilder(dbOk(liveStory()));
+      dbFor([...jobs], { stories: () => stories });
+      await runJobById(j.id);
+      const stamped = callsOf(stories.update).some(([v]) => !!(v as { social_posted_at?: string }).social_posted_at);
+      expect(stamped).toBe(live);
+    }
+  });
+
   // Jas 13/10 item 12: every member the story features is tagged, not only the primary.
   it("social_push (story) — also tags the members featured alongside the primary", async () => {
-    const j = job("social_push", { payload: { story_id: "s1" } });
-    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 0)), queryBuilder(dbOk(null))], {
-      stories: () => queryBuilder(dbOk({
-        id: "s1", title: "Southern Manufacturing", slug: "southern", excerpt: "", cover_path: null, member_id: "m1",
-        member: { name: "Acme", social: { x: "acme" } },
-      })),
+    const [j, jobs] = socialJob({ story_id: "s1" });
+    dbFor([...jobs], {
+      stories: () => queryBuilder(dbOk(liveStory({ member_id: "m1", member: { name: "Acme", social: { x: "acme" } } }))),
       story_members: () => queryBuilder(dbOk([
         { member: { id: "m1", slug: "acme", name: "Acme", logo_path: null, social: { x: "acme" }, status: "active", archived_at: null } },
         { member: { id: "m2", slug: "blm", name: "BLM", logo_path: null, social: { x: "blmgroup" }, status: "active", archived_at: null } },
@@ -320,12 +387,9 @@ describe("runJob kinds", () => {
   // Review finding 12 (ask-jas 14 still open): no tag for a member without a
   // public page — archived, or lapsed — primary or extra alike.
   it("social_push (story) — tags no member who isn't linkable, primary or extra", async () => {
-    const j = job("social_push", { payload: { story_id: "s1" } });
-    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 0)), queryBuilder(dbOk(null))], {
-      stories: () => queryBuilder(dbOk({
-        id: "s1", title: "Southern Manufacturing", slug: "southern", excerpt: "", cover_path: null, member_id: "m1",
-        member: { name: "Acme", social: { x: "acme" }, status: "lapsed", archived_at: null },
-      })),
+    const [j, jobs] = socialJob({ story_id: "s1" });
+    dbFor([...jobs], {
+      stories: () => queryBuilder(dbOk(liveStory({ member_id: "m1", member: { name: "Acme", social: { x: "acme" }, status: "lapsed", archived_at: null } }))),
       story_members: () => queryBuilder(dbOk([
         { member: { id: "m1", slug: "acme", name: "Acme", logo_path: null, social: { x: "acme" }, status: "lapsed", archived_at: null } },
         { member: { id: "m2", slug: "blm", name: "BLM", logo_path: null, social: { x: "blmgroup" }, status: "active", archived_at: "2026-10-01T00:00:00Z" } },
@@ -342,11 +406,12 @@ describe("runJob kinds", () => {
     }));
   });
 
-  it("social_push (video) — doesn't tag an archived member", async () => {
-    const j = job("social_push", { payload: { video_id: "v1" } });
-    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 0)), queryBuilder(dbOk(null))], {
+  it("social_push (video) — leads with its description, links to /video, and doesn't tag an archived member", async () => {
+    const [j, jobs] = socialJob({ video_id: "v1" });
+    dbFor([...jobs], {
       videos: () => queryBuilder(dbOk({
-        id: "v1", title: "Laser demo", slug: "laser-demo", thumbnail_path: null,
+        id: "v1", title: "Laser demo", slug: "laser-demo", thumbnail_path: null, description: "<p>The new <b>6kW</b> laser cutting 20mm plate.</p>",
+        status: "published", social_at: null, social_text: null, social_skip: false, social_posted_at: null,
         member: { name: "Acme", social: { x: "acme" }, status: "active", archived_at: "2026-10-01T00:00:00Z" },
       })),
       settings: () => queryBuilder(dbOk({ value: { per_day: 3 } })),
@@ -354,7 +419,24 @@ describe("runJob kinds", () => {
 
     await runJobById(j.id);
 
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ tagHandles: {} }));
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+      text: `The new 6kW laser cutting 20mm plate.\n\n${siteUrl()}/video/laser-demo`,
+      tagHandles: {},
+    }));
+  });
+
+  it("social_push (video) — doesn't post a video that isn't live", async () => {
+    const [j, jobs] = socialJob({ video_id: "v1" });
+    dbFor([...jobs], {
+      videos: () => queryBuilder(dbOk({
+        id: "v1", title: "Laser demo", slug: "laser-demo", thumbnail_path: null, description: null,
+        status: "withdrawn", social_at: null, social_text: null, social_skip: false, social_posted_at: null, member: null,
+      })),
+    });
+
+    await runJobById(j.id);
+
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it("publish_scheduled — tells each co-featured member their story is live", async () => {
@@ -380,12 +462,97 @@ describe("runJob kinds", () => {
     expect(notices).toEqual(["m1:story_live", "m2:story_featured"]); // the archived m3 is skipped
   });
 
+  it("publish_scheduled — queues the social post for the story's own post time", async () => {
+    const at = new Date(Date.now() + 5 * 3_600_000).toISOString();
+    const j = job("publish_scheduled");
+    const jobsTail = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
+      // ready list → publish update → queueSocialPush's read of the row
+      stories: sequence<unknown>(dbOk([{ id: "s1", member_id: null }]), dbOk(null), dbOk({ social_at: at, social_posted_at: null, published_at: new Date().toISOString() })),
+      videos: () => queryBuilder(dbOk([])),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 30 } })),
+    });
+
+    await runJobById(j.id);
+
+    const push = callsOf(jobsTail.insert).map(([row]) => row as { kind: string; due_at: string }).find((r) => r.kind === "social_push");
+    expect(push?.due_at).toBe(at);
+  });
+
+  // 21 Oct: the story's post-link fields are filled from Buffer, not pasted.
+  const LI = "https://www.linkedin.com/feed/update/urn:li:share:1";
+  const FB = "https://www.facebook.com/smi/posts/1";
+
+  it("social_push (story) — writes the links Buffer already has, and looks up the rest later", async () => {
+    publish.mockResolvedValue([
+      { id: "p1", service: "linkedin", status: "sent", link: LI },
+      { id: "p2", service: "twitter", status: "sending", link: null },
+      { id: "p3", service: "instagram", status: "sending", link: null }, // no field for it
+    ]);
+    const j = job("social_push", { payload: { story_id: "s1" } });
+    const jobsTail = queryBuilder(dbOk(null));
+    const stories = queryBuilder(dbOk(liveStory({ social_posts: {} })));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], { stories: () => stories });
+
+    await runJobById(j.id);
+
+    expect(stories.update).toHaveBeenCalledWith({ social_posts: { linkedin: LI } });
+    const follow = callsOf(jobsTail.insert).map(([r]) => r as { kind: string; payload: unknown }).find((r) => r.kind === "social_links");
+    expect(follow?.payload).toEqual({ story_id: "s1", post_ids: ["p2"], tries: 0 });
+  });
+
+  it("social_push (story) — never overwrites a link someone pasted", async () => {
+    publish.mockResolvedValue([{ id: "p1", service: "linkedin", status: "sent", link: LI }]);
+    const [j, jobs] = socialJob({ story_id: "s1" });
+    const stories = queryBuilder(dbOk(liveStory({ social_posts: { linkedin: "https://www.linkedin.com/posts/pasted" } })));
+    dbFor([...jobs], { stories: () => stories });
+
+    await runJobById(j.id);
+
+    expect(stories.update).not.toHaveBeenCalledWith(expect.objectContaining({ social_posts: expect.anything() }));
+  });
+
+  it("social_links — fills the links Buffer now has and asks again about the rest, later each time", async () => {
+    postLinks.mockResolvedValue([
+      { id: "p1", service: "facebook", status: "sent", link: FB },
+      { id: "p2", service: "twitter", status: "sending", link: null },
+    ]);
+    const j = job("social_links", { payload: { story_id: "s1", post_ids: ["p1", "p2", "p3"], tries: 0 } });
+    const jobsTail = queryBuilder(dbOk(null));
+    const stories = queryBuilder(dbOk({ social_posts: { linkedin: LI } }));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], { stories: () => stories });
+    const before = Date.now();
+
+    await runJobById(j.id);
+
+    expect(postLinks).toHaveBeenCalledWith(["p1", "p2", "p3"]);
+    expect(stories.update).toHaveBeenCalledWith({ social_posts: { linkedin: LI, facebook: FB } });
+    const [row] = callsOf(jobsTail.insert)[0] as [{ kind: string; payload: { post_ids: string[]; tries: number }; due_at: string }];
+    expect(row.kind).toBe("social_links");
+    expect(row.payload.post_ids.sort()).toEqual(["p2", "p3"]); // still sending, and not found this time
+    expect(row.payload.tries).toBe(1);
+    expect(new Date(row.due_at).getTime()).toBeGreaterThanOrEqual(before + 10 * 60_000);
+  });
+
+  it("social_links — stops asking after the last try, and drops a post Buffer failed to send", async () => {
+    postLinks.mockResolvedValue([{ id: "p1", service: "twitter", status: "error", link: null }]);
+    const j = job("social_links", { payload: { story_id: "s1", post_ids: ["p1", "p2"], tries: 4 } });
+    const jobsTail = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], { stories: () => queryBuilder(dbOk({ social_posts: {} })) });
+
+    await runJobById(j.id);
+
+    expect(callsOf(jobsTail.insert).some(([r]) => (r as { kind: string }).kind === "social_links")).toBe(false);
+  });
+
   it("social_push — defers past the daily cap to tomorrow morning instead of posting", async () => {
     const j = job("social_push", { payload: { story_id: "s1" } });
     const jobsTail = queryBuilder(dbOk(null));
-    // select → claim → daily-cap count (already at 3/3) → the re-enqueue insert (and anything after)
-    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 3)), jobsTail], {
-      stories: () => queryBuilder(dbOk({ id: "s1", title: "t", slug: "t", excerpt: "", cover_path: null, member: null })),
+    // select → claim → tomorrow's pending count → the re-enqueue insert (and anything after)
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 0)), jobsTail], {
+      // the row, then today's posted count: 2 stories + 1 video = the cap of 3
+      stories: sequence<unknown>(dbOk(liveStory()), dbOk(null, 2)),
+      videos: () => queryBuilder(dbOk(null, 1)),
       settings: () => queryBuilder(dbOk({ value: { per_day: 3 } })),
     });
 
@@ -396,21 +563,23 @@ describe("runJob kinds", () => {
     expect(kinds).toContain("social_push"); // re-enqueued for tomorrow
   });
 
-  it("social_push — spaces a second same-day overflow item later than the first instead of stacking both at 09:00", async () => {
+  it("social_push — spaces a second overflow item past 09:00 UK time tomorrow, whatever the server's zone", async () => {
+    // 23:30 UTC on 1 July is already 00:30 on 2 July in London: "tomorrow" is 3 July, 09:00 BST = 08:00Z.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-01T23:30:00Z"));
     const j = job("social_push", { payload: { story_id: "s1" } });
     const jobsTail = queryBuilder(dbOk(null));
-    // select → claim → daily-cap count (at cap) → tomorrow-queued count (1 already pending) → the re-enqueue insert
-    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 3)), queryBuilder(dbOk(null, 1)), jobsTail], {
-      stories: () => queryBuilder(dbOk({ id: "s1", title: "t", slug: "t", excerpt: "", cover_path: null, member: null })),
+    // select → claim → tomorrow-queued count (1 already pending) → the re-enqueue insert
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null, 1)), jobsTail], {
+      stories: sequence<unknown>(dbOk(liveStory()), dbOk(null, 3)),
+      videos: () => queryBuilder(dbOk(null, 0)),
       settings: () => queryBuilder(dbOk({ value: { per_day: 3, delay_minutes: 30 } })),
     });
 
     await runJobById(j.id);
 
     const [row] = callsOf(jobsTail.insert)[0] as [{ due_at: string }];
-    const due = new Date(row.due_at);
-    const nineAm = new Date(); nineAm.setDate(nineAm.getDate() + 1); nineAm.setHours(9, 0, 0, 0);
-    expect(due.getTime()).toBeGreaterThanOrEqual(nineAm.getTime() + 30 * 60_000); // spaced past 09:00, not stacked on it
+    expect(row.due_at).toBe("2026-07-03T08:30:00.000Z"); // 09:00 BST plus one delay for the item ahead of it
   });
 
   it("notify_member — never emails a member with no contact address, but still records the in-app notification", async () => {
@@ -917,7 +1086,7 @@ describe("runJob kinds", () => {
 
   it("newsletter_send — marks the issue sent on a successful broadcast", async () => {
     const j = job("newsletter_send", { payload: { issue_id: "iss1" } });
-    const issuesBuilder = queryBuilder(dbOk({ id: "iss1", number: 4, subject: "August roundup", status: "queued" }));
+    const issuesBuilder = queryBuilder(dbOk({ id: "iss1", number: 4, subject: "August roundup", status: "queued", approved_at: "2026-08-31T09:00:00Z" }));
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], { newsletter_issues: () => issuesBuilder });
 
     await runJobById(j.id);
@@ -928,13 +1097,25 @@ describe("runJob kinds", () => {
 
   it("newsletter_send — records the failure and throws so it dead-letters visibly", async () => {
     const j = job("newsletter_send", { payload: { issue_id: "iss1" }, attempts: 2, max_attempts: 3 });
-    const issuesBuilder = queryBuilder(dbOk({ id: "iss1", number: 4, subject: "August roundup", status: "queued" }));
+    const issuesBuilder = queryBuilder(dbOk({ id: "iss1", number: 4, subject: "August roundup", status: "queued", approved_at: "2026-08-31T09:00:00Z" }));
     sendIssue.mockResolvedValueOnce({ ok: false, error: "Resend rejected the send (500)" });
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], { newsletter_issues: () => issuesBuilder });
 
     await runJobById(j.id);
 
-    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "send_failed" }));
+    expect(sendIssue).toHaveBeenCalled();
+    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "send_failed", send_error: "Resend rejected the send (500)" }));
+  });
+
+  it("newsletter_send — refuses an unapproved issue without calling the sender", async () => {
+    const j = job("newsletter_send", { payload: { issue_id: "iss1" } });
+    const issuesBuilder = queryBuilder(dbOk({ id: "iss1", number: 4, subject: "s", status: "draft", approved_at: null }));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], { newsletter_issues: () => issuesBuilder });
+
+    await runJobById(j.id);
+
+    expect(sendIssue).not.toHaveBeenCalled();
+    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "send_failed", send_error: expect.stringContaining("Not approved") }));
   });
 
   it("newsletter_send — does not re-send an issue that's already gone out", async () => {

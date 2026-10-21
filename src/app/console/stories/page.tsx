@@ -109,7 +109,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
 
       <section className="mt-6 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="text-sm font-bold text-ink">Social push settings</h2>
-        <p className="mt-1 text-xs text-graphite">Caps how many auto-posts go out a day, and how long after publish the first one waits.</p>
+        <p className="mt-1 text-xs text-graphite">How many auto-posts go out a day (UK day, stories and videos together), and how long after going live a story or video posts when its editor leaves &quot;Post at&quot; empty.</p>
         <form action={saveSocialCaps} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
           <label className="flex flex-col">
             Per day

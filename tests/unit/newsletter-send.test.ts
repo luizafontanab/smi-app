@@ -31,6 +31,8 @@ describe.skipIf(!KEY)("newsletter_send idempotency", () => {
       number,
       subject: "Idempotency test issue",
       status: "draft",
+      // Approved, since the job refuses anything else (gap review area 4).
+      approved_at: new Date().toISOString(),
     }).select("id").single();
     issueId = issue!.id;
     contactEmail = `newsletter-test-${number}@test.local`;
@@ -137,5 +139,33 @@ describe.skipIf(!KEY)("newsletter_send idempotency", () => {
     // A failed send to the whole list must dead-letter, not vanish.
     const { data: failedJob } = await db.from("jobs").select("status, last_error").eq("id", job!.id).single();
     expect(failedJob?.status === "dead" || failedJob?.status === "pending").toBe(true);
+  });
+
+  it("refuses an unapproved issue: send_failed, and nothing reaches Resend", async () => {
+    const broadcasts: string[] = [];
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("api.resend.com")) {
+        broadcasts.push(url);
+        return new Response('{"id":"broadcast_test"}', { status: 200 });
+      }
+      return realFetch(input, init);
+    });
+
+    vi.resetModules();
+    const { enqueue, runJobById } = await import("@/lib/jobs");
+    await db.from("newsletter_issues").update({ status: "draft", approved_at: null }).eq("id", issueId);
+    await enqueue("newsletter_send", { issue_id: issueId });
+    const { data: job } = await db.from("jobs").select("id").eq("kind", "newsletter_send")
+      .eq("status", "pending").order("created_at", { ascending: false }).limit(1).single();
+    jobIds.push(job!.id);
+
+    await runJobById(job!.id);
+
+    const { data: issue } = await db.from("newsletter_issues").select("status, send_error").eq("id", issueId).single();
+    expect(issue?.status).toBe("send_failed");
+    expect(issue?.send_error).toContain("Not approved");
+    expect(broadcasts).toEqual([]);
   });
 });

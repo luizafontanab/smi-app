@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Role } from "@/lib/auth";
+import { PROOF_KEYS } from "@/lib/newsletter-proof";
 import { svgBanner } from "./lib/placeholder-art";
 import { AUTHORED_STATIC_PAGES } from "./lib/static-page-content";
 import { must } from "./lib/must";
@@ -65,6 +66,8 @@ async function emptyBucket(prefix = "") {
 
 async function main() {
   console.log("— buckets");
+  // The buckets come from migration 20261020000004 (and 20261016000070); these
+  // calls only cover a database the migrations haven't reached yet.
   await db.storage.createBucket("media", { public: true }).catch(() => {});
   // Invoices are private: served via signed URLs only (lib/invoice-pdf.ts).
   await db.storage.createBucket("invoices", { public: false }).catch(() => {});
@@ -309,18 +312,25 @@ async function main() {
     { title: "New 6kW fibre laser installed at our Rotherham facility", status: "awaiting_approval", source: "member", member_id: memberLogins[0], is_member_news: true },
     { title: "Apprenticeship intake doubles for 2027", status: "awaiting_approval", source: "member", member_id: memberLogins[1], is_member_news: true },
     { title: "Trade show preview: what to expect at EuroBLECH", status: "awaiting_approval", source: "member", member_id: memberLogins[2], is_member_news: true },
-    { title: "UK steel prices steady into autumn", status: "scheduled", source: "admin", member_id: null, is_member_news: false },
-    { title: "Draft: bending cell automation roundup", status: "draft", source: "admin", member_id: null, is_member_news: false },
+    // Per-story social settings (Area 3, 20261020000003): one with its own
+    // post time and lead-in, one that won't be posted, so each editor state shows.
+    { title: "UK steel prices steady into autumn", status: "scheduled", source: "admin", member_id: null, is_member_news: false, social: "timed" as const },
+    { title: "Draft: bending cell automation roundup", status: "draft", source: "admin", member_id: null, is_member_news: false, social: "skip" as const },
     // A member's own unsubmitted draft (Jas 13/10, migration 20261015000001):
     // visible to member1 under Your content → Drafts, invisible to the console.
     { title: "Draft: our new press brake line", status: "draft", source: "member", member_id: memberLogins[0], is_member_news: true, member_draft: true },
   ];
   for (const p of pending) {
+    const scheduledAt = p.status === "scheduled" ? faker.date.soon({ days: 3 }) : null;
     const { data: row, error } = await db.from("stories").insert({
       slug: slugify(p.title), title: p.title, body: `<p>${faker.lorem.paragraphs(3, "</p><p>")}</p>`,
       excerpt: faker.lorem.sentence(), status: p.status, source: p.source, member_id: p.member_id,
       is_member_news: p.is_member_news, member_draft: p.member_draft ?? false,
-      scheduled_at: p.status === "scheduled" ? faker.date.soon({ days: 3 }).toISOString() : null,
+      scheduled_at: scheduledAt?.toISOString() ?? null,
+      ...("social" in p && p.social === "timed" && scheduledAt
+        ? { social_at: new Date(scheduledAt.getTime() + 2 * 3_600_000).toISOString(), social_text: "Prices held through September — what that means for your next steel order." }
+        : {}),
+      ...("social" in p && p.social === "skip" ? { social_skip: true } : {}),
     }).select("id").single();
     if (error) throw error;
     // story_members holds every member a story features, the primary included
@@ -452,10 +462,18 @@ async function main() {
   console.log("— newsletter issues");
   const { data: pubStories } = await db.from("stories").select("id").eq("status", "published").limit(16);
   for (let n = 0; n < 2; n++) {
+    const sentAt = new Date(today.getFullYear(), today.getMonth() - (2 - n), 3);
+    // Sent issues were approved the day before, with an audience count, so the
+    // console's "within 5% of last month" check (gap review area 4) has a
+    // baseline to compare against.
     const { data: issue } = await must("newsletter_issues", db.from("newsletter_issues").insert({
       number: n + 47, subject: `SMI Monthly — ${["June", "July"][n]} 2026`, status: "sent",
-      web_slug: `issue-${n + 47}`, sent_at: new Date(today.getFullYear(), today.getMonth() - (2 - n), 3).toISOString(),
+      web_slug: `issue-${n + 47}`, sent_at: sentAt.toISOString(),
       intro: faker.lorem.paragraph(),
+      sent_count: [104, 108][n],
+      approved_at: new Date(sentAt.getTime() - 24 * 3_600_000).toISOString(),
+      approved_recipients: [104, 108][n],
+      proof_checks: Object.fromEntries(PROOF_KEYS.map((key) => [key, true])),
     }).select("id").single());
     await must("newsletter_items", db.from("newsletter_items").insert(pubStories!.slice(n * 8, n * 8 + 8).map((s, i) => ({ issue_id: issue!.id, story_id: s.id, position: i }))));
   }

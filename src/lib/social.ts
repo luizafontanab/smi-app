@@ -330,6 +330,29 @@ export function parseStoryPosts(read: (key: StoryPostChannel) => string): { valu
   return { value };
 }
 
+/**
+ * Merge the editor's post links with what is stored now. A field whose value
+ * is unchanged from when the form was rendered (`was`) wasn't touched, so the
+ * stored value wins — it may have been filled from Buffer since. A field the
+ * editor did change, including clearing it, is taken as given. With no `was`
+ * (a direct POST, or a form from before this) the submitted value stands.
+ */
+export function keepUntouchedPosts(
+  submitted: Partial<Record<StoryPostChannel, string>>,
+  stored: unknown,
+  was: (key: StoryPostChannel) => FormDataEntryValue | null,
+): Partial<Record<StoryPostChannel, string>> {
+  const current = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
+  const out: Partial<Record<StoryPostChannel, string>> = {};
+  for (const key of STORY_POST_CHANNELS) {
+    const before = was(key);
+    const untouched = typeof before === "string" && before.trim() === (submitted[key] ?? "");
+    const value = untouched ? current[key] : submitted[key];
+    if (typeof value === "string" && value) out[key] = value;
+  }
+  return out;
+}
+
 export type StoryPostLink = { key: StoryPostChannel; label: string; href: string; isPost: boolean };
 
 /**

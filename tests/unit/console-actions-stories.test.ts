@@ -610,3 +610,126 @@ describe("saveSiteVariant / clearMyVariantOverride", () => {
     expect(cookieStore.has("smi-theme")).toBe(false);
   });
 });
+
+// Area 3 (Jas's 16 Oct flow chart): each story has its own social post time,
+// lead-in and opt-out; times typed in the console are UK time.
+describe("per-story social posts", () => {
+  const NOW = new Date("2026-07-01T12:00:00Z");
+  afterEach(() => vi.useRealTimers());
+  const at = (iso: string) => new Date(iso);
+
+  it.each([
+    ["Publish now", () => scheduleStory(form({ id: "s1", mode: "now" })).catch(() => {})],
+    ["Approve & publish now", () => decideStory(form({ id: "s1", decision: "approve" }))],
+    ["dragging to Live", () => moveStory({ id: "s1", to: "published" })],
+  ])("%s queues the post at the configured delay — the 30 minutes is no longer hard-coded", async (_how, act) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    db({
+      stories: () => queryBuilder(dbOk({ id: "s1", member_id: null, status: "awaiting_approval", source: "admin", member_draft: false, social_at: null, social_posted_at: null, published_at: null })),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
+    });
+
+    await act();
+
+    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, at("2026-07-01T12:45:00Z"));
+  });
+
+  it("approving queues the post for the story's own time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    db({
+      stories: () => queryBuilder(dbOk({ id: "s1", member_id: null, status: "awaiting_approval", source: "admin", social_at: "2026-07-01T16:00:00Z", social_posted_at: null, published_at: null })),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
+    });
+
+    await decideStory(form({ id: "s1", decision: "approve" }));
+
+    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, at("2026-07-01T16:00:00Z"));
+  });
+
+  it.each([
+    ["2026-07-01T10:00", "2026-07-01T09:00:00.000Z"], // BST
+    ["2026-01-15T10:00", "2026-01-15T10:00:00.000Z"], // GMT
+  ])("reads the publish time %s as UK time", async (typed, stored) => {
+    const storiesBuilder = queryBuilder(dbOk({ member_id: null, status: "draft" }));
+    db({ stories: () => storiesBuilder });
+
+    await expect(scheduleStory(form({ id: "s1", scheduled_at: typed }))).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled", scheduled_at: stored }));
+  });
+
+  it("refuses a publish time it can't read instead of storing Invalid Date", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ member_id: null, status: "draft" }));
+    db({ stories: () => storiesBuilder });
+
+    await expect(scheduleStory(form({ id: "s1", scheduled_at: "next tuesday" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?error=");
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("saving stores the post time as UK time, a lead-in left as the prefill as null, and the opt-out", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    db({ stories: () => storiesBuilder, jobs: () => queryBuilder(dbOk([])) });
+
+    await expect(saveStory(form({
+      id: "s1", title: "T", social_at: "2026-07-01T10:00", social_text: "The summary.", social_text_default: "The summary.", social_skip: "on",
+    }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?saved=1");
+
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({
+      social_at: "2026-07-01T09:00:00.000Z", social_text: null, social_skip: true,
+    }));
+  });
+
+  it("saving refuses a lead-in over the budget before writing anything", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    db({ stories: () => storiesBuilder });
+
+    await expect(saveStory(form({ id: "s1", title: "T", social_at: "", social_text: "x".repeat(201) })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?error=");
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+    expect(uploadImage).not.toHaveBeenCalled();
+  });
+
+  it("saving moves a post that's already waiting to the edited time", async () => {
+    const pending = queryBuilder(dbOk([{ id: "j1" }]));
+    const update = queryBuilder(dbOk(null));
+    let jobsCalls = 0;
+    db({
+      stories: () => queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false, social_at: "2099-01-01T10:00:00Z", published_at: NOW.toISOString() })),
+      jobs: () => (jobsCalls++ === 0 ? pending : update),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
+    });
+
+    await expect(saveStory(form({ id: "s1", title: "T", social_at: "2099-01-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(update.update).toHaveBeenCalledWith(expect.objectContaining({ due_at: "2099-01-01T10:00:00.000Z" }));
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("taking a live story off the site drops its waiting post", async () => {
+    const jobs = queryBuilder(dbOk(null));
+    db({
+      stories: () => queryBuilder(dbOk({ id: "s1", status: "published", member_id: null, member_draft: false, source: "admin" })),
+      jobs: () => jobs,
+    });
+
+    expect(await moveStory({ id: "s1", to: "draft" })).toEqual({ ok: true });
+
+    expect(jobs.delete).toHaveBeenCalled();
+    expect(jobs.filter).toHaveBeenCalledWith("payload->>story_id", "eq", "s1");
+  });
+});
+
+describe("saveStory — SMI's post links filled from Buffer", () => {
+  it("saving a form opened before Buffer's link arrived keeps the link", async () => {
+    const LI = "https://www.linkedin.com/feed/update/urn:li:share:1";
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false, social_posts: { linkedin: LI } }));
+    db({ stories: () => storiesBuilder, jobs: () => queryBuilder(dbOk([])) });
+
+    await expect(saveStory(form({ id: "s1", title: "T", post_linkedin: "", post_linkedin_was: "", post_facebook: "", post_facebook_was: "", post_x: "", post_x_was: "" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?saved=1");
+
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ social_posts: { linkedin: LI } }));
+  });
+});

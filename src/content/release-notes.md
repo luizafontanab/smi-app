@@ -10,6 +10,30 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-21 — Newsletter proof and approval before sending
+- Each newsletter issue now has a "Proof and approval" section with the full proof checklist from the newsletter SOP, saved as you tick it.
+- "Send me a test" emails the issue, exactly as subscribers will see it, to your own address, marked [TEST].
+- "Approve to send" becomes available once every item is ticked and a test has gone out since the last change; it records who approved the issue, when, and how many subscribers it will go to.
+- The page compares the number of subscribers with the last issue sent and warns you in red if it has changed by more than 5%.
+- An issue can only be scheduled or sent once it is approved, and "Send now" asks you to tick "confirm" first, because it goes to the whole list.
+- Changing an approved issue, its adverts or its checklist takes the approval away and asks for a fresh test; a scheduled issue goes back to draft until it is approved again.
+- Some checklist items, such as the postal address in the footer and "Sheet Metal Industries" as the sender name, aren't built into the newsletter yet, so an issue can't be approved until they are.
+
+## 2026-10-20 — Newsletter issues keep their older stories
+- Saving a newsletter issue no longer drops stories or videos that were picked earlier but are older than the latest 20; before, they quietly fell out of the issue.
+- Everything already in an issue is now listed first, ticked, in the issue's order, with "not live" beside anything that has since come off the site.
+
+## 2026-10-20 — Social posts set per story and video
+- Each story and video has a new "Social post" section: a lead-in to post with the link, a "Post at" time, and a "Don't post this to social media" box.
+- The lead-in starts as the story's summary (or the video's description); leave it alone and it keeps following the summary if you change that.
+- Leave "Post at" empty and it posts the usual number of minutes after going live, as set in the Story Engine; a post never goes out before the story is live.
+- The editor now says where each post stands: when it will go, when it went, or why it won't.
+- Publishing now, approving, and dragging a card to Live now all use your delay setting; before, they always used 30 minutes.
+- A story or video taken off the site before its post goes out is no longer posted.
+- Times you type in the Story and Video Engines are now read as UK time; in summer they were an hour out.
+- The daily limit now counts only posts that actually went out, starting from midnight UK time.
+- The LinkedIn, Facebook and X links under "SMI's posts of this story" now fill themselves in once Buffer has posted the story, so there's nothing to copy and paste; a link you paste yourself is never replaced.
+
 ## 2026-10-20 — Story sources, in place of ChangeTower
 - There's a new "Story Sources" page under Content. It holds your list of company news pages and checks each one once a day for articles that weren't there before.
 - New articles appear under "Suggested". "Start story" turns one into a draft titled after the article and opens it in the Story Engine, with a link back to the original; "Dismiss" hides it for good.

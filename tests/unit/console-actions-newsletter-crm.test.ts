@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addContact, createIssue, previewBiginPull, runBiginSync, saveContact, scheduleIssue, searchBiginCompanies, sendIssue, unscheduleIssue,
+  addContact, approveIssue, attachNewsletterAd, createIssue, previewBiginPull, runBiginSync, saveContact, saveProofChecks, scheduleIssue,
+  searchBiginCompanies, sendIssue, sendTestIssue, unscheduleIssue, updateIssue, withdrawApproval,
 } from "@/app/console/actions";
+import { PROOF_KEYS } from "@/lib/newsletter-proof";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -24,12 +26,20 @@ const { requireConsole, enqueue, syncContactToCrm, crm, saveLastRun, firstImport
   firstImportDone: vi.fn(async () => true),
   readLastRun: vi.fn(async (): Promise<unknown> => null),
 }));
+const { renderIssueHtml, emailSend } = vi.hoisted(() => ({
+  renderIssueHtml: vi.fn(async (): Promise<{ subject: string; html: string; text: string } | null> => null),
+  emailSend: vi.fn(async () => {}),
+}));
+vi.mock("@/lib/adapters/newsletter", () => ({ renderIssueHtml }));
+vi.mock("@/lib/adapters/email", () => ({ getEmailSender: () => ({ send: emailSend }) }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
 vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => crm), syncContactToCrm, saveLastRun, firstImportDone, readLastRun }));
 
 afterEach(() => {
   resetDbServerMocks();
+  renderIssueHtml.mockReset().mockResolvedValue(null);
+  emailSend.mockReset().mockResolvedValue(undefined);
   enqueue.mockReset().mockResolvedValue(undefined);
   syncContactToCrm.mockReset().mockResolvedValue(undefined);
   saveLastRun.mockReset().mockResolvedValue(undefined);
@@ -87,14 +97,30 @@ describe("createIssue", () => {
 
 describe("sendIssue", () => {
   it("clears a prior send failure, drops back to draft, and enqueues the send", async () => {
-    const issuesBuilder = queryBuilder(dbOk(null));
+    const issuesBuilder = queryBuilder(dbOk({ approved_at: "2026-10-20T09:00:00Z" }));
     db({ newsletter_issues: () => issuesBuilder });
 
-    await sendIssue(form({ id: "iss1" }));
+    await sendIssue(form({ id: "iss1", confirm: "1" }));
 
     expect(issuesBuilder.update).toHaveBeenCalledWith({ status: "draft", send_error: null });
     expect(issuesBuilder.eq).toHaveBeenCalledWith("status", "send_failed");
     expect(enqueue).toHaveBeenCalledWith("newsletter_send", { issue_id: "iss1" });
+  });
+
+  it("refuses without the ticked confirm, before reading anything", async () => {
+    const from = db({});
+    await expect(sendIssue(form({ id: "iss1" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(from).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("refuses an issue that isn't approved to send", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ approved_at: null }));
+    db({ newsletter_issues: () => issuesBuilder });
+
+    await expect(sendIssue(form({ id: "iss1", confirm: "1" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(issuesBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });
 
@@ -106,13 +132,191 @@ describe("scheduleIssue", () => {
   });
 
   it("schedules the issue and enqueues the send for that time", async () => {
-    const builder = queryBuilder(dbOk(null));
+    const builder = queryBuilder(dbOk({ approved_at: "2026-10-20T09:00:00Z" }));
     db({ newsletter_issues: () => builder });
 
     await scheduleIssue(form({ id: "iss1", scheduled_at: "2026-09-01T09:00" }));
 
     expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled" }));
     expect(enqueue).toHaveBeenCalledWith("newsletter_send", { issue_id: "iss1" }, expect.any(Date));
+  });
+
+  it("refuses an issue that isn't approved to send", async () => {
+    const builder = queryBuilder(dbOk({ approved_at: null }));
+    db({ newsletter_issues: () => builder });
+
+    await expect(scheduleIssue(form({ id: "iss1", scheduled_at: "2026-09-01T09:00" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(builder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+});
+
+const ALL_TICKED = Object.fromEntries(PROOF_KEYS.map((key) => [key, true]));
+
+describe("approveIssue", () => {
+  it("records who approved it and the audience count, once the proof is complete and tested", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft", proof_checks: ALL_TICKED, last_test_sent_at: "2026-10-20T08:00:00Z" }));
+    const contactsBuilder = queryBuilder({ data: null, error: null, count: 2712 } as DbResult<null>);
+    db({ newsletter_issues: () => issuesBuilder, contacts: () => contactsBuilder });
+
+    await approveIssue(form({ id: "iss1" }));
+
+    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({
+      approved_by: "admin1", approved_recipients: 2712, approved_at: expect.any(String),
+    }));
+  });
+
+  it("refuses while any proof item is unticked", async () => {
+    const allButOne: Record<string, boolean> = { ...ALL_TICKED };
+    delete allButOne.audience;
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft", proof_checks: allButOne, last_test_sent_at: "2026-10-20T08:00:00Z" }));
+    db({ newsletter_issues: () => issuesBuilder });
+
+    await expect(approveIssue(form({ id: "iss1" }))).rejects.toThrow("1%20proof%20item%20is%20still%20unticked");
+    expect(issuesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses with no test sent since the last change", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft", proof_checks: ALL_TICKED, last_test_sent_at: null }));
+    db({ newsletter_issues: () => issuesBuilder });
+
+    await expect(approveIssue(form({ id: "iss1" }))).rejects.toThrow("send%20a%20test");
+    expect(issuesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses an issue that has already been sent", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "sent", proof_checks: ALL_TICKED, last_test_sent_at: "2026-10-20T08:00:00Z" }));
+    db({ newsletter_issues: () => issuesBuilder });
+
+    await expect(approveIssue(form({ id: "iss1" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(issuesBuilder.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("withdrawApproval", () => {
+  it("clears the approval, and pulls a scheduled issue back to draft with its job cancelled", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "scheduled" }));
+    const jobsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => issuesBuilder, jobs: () => jobsBuilder });
+
+    await withdrawApproval(form({ id: "iss1" }));
+
+    expect(jobsBuilder.delete).toHaveBeenCalled();
+    expect(jobsBuilder.filter).toHaveBeenCalledWith("payload->>issue_id", "eq", "iss1");
+    expect(issuesBuilder.update).toHaveBeenCalledWith({
+      approved_at: null, approved_by: null, approved_recipients: null, status: "draft", scheduled_at: null,
+    });
+  });
+
+  it("leaves a draft a draft", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    const jobs = vi.fn();
+    db({ newsletter_issues: () => issuesBuilder, jobs });
+
+    await withdrawApproval(form({ id: "iss1" }));
+
+    expect(jobs).not.toHaveBeenCalled();
+    expect(issuesBuilder.update).toHaveBeenCalledWith({ approved_at: null, approved_by: null, approved_recipients: null });
+  });
+});
+
+describe("saveProofChecks", () => {
+  it("stores only known keys", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft", approved_at: null }));
+    db({ newsletter_issues: () => issuesBuilder });
+    const fd = form({ id: "iss1" });
+    fd.append("checks", "story_links");
+    fd.append("checks", "not_a_real_key");
+
+    await saveProofChecks(fd);
+
+    expect(issuesBuilder.update).toHaveBeenCalledWith({ proof_checks: { story_links: true } });
+  });
+
+  it("withdraws the approval when an approved issue loses a tick", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft", approved_at: "2026-10-20T09:00:00Z" }));
+    db({ newsletter_issues: () => issuesBuilder });
+    const fd = form({ id: "iss1" });
+    fd.append("checks", "story_links");
+
+    await saveProofChecks(fd);
+
+    expect(issuesBuilder.update).toHaveBeenCalledWith({ approved_at: null, approved_by: null, approved_recipients: null });
+  });
+
+  it("keeps the approval when the proof stays complete", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft", approved_at: "2026-10-20T09:00:00Z" }));
+    db({ newsletter_issues: () => issuesBuilder });
+    const fd = form({ id: "iss1" });
+    for (const key of PROOF_KEYS) fd.append("checks", key);
+
+    await saveProofChecks(fd);
+
+    expect(issuesBuilder.update).toHaveBeenCalledTimes(1);
+    expect(issuesBuilder.update).toHaveBeenCalledWith({ proof_checks: ALL_TICKED });
+  });
+});
+
+describe("edits withdraw approval", () => {
+  it("updateIssue clears approval and the test stamp, keeps the ticks, and unschedules a scheduled issue", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "scheduled" }));
+    const itemsBuilder = queryBuilder(dbOk(null));
+    const jobsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => issuesBuilder, newsletter_items: () => itemsBuilder, jobs: () => jobsBuilder });
+
+    await updateIssue(form({ id: "iss1", subject: "October", intro: "" }));
+
+    expect(jobsBuilder.delete).toHaveBeenCalled();
+    const cleared = vi.mocked(issuesBuilder.update as ReturnType<typeof vi.fn>).mock.calls.map(([v]) => v)
+      .find((v) => "approved_at" in (v as object));
+    expect(cleared).toEqual(expect.objectContaining({
+      last_edited_by: "admin1", approved_at: null, approved_by: null, approved_recipients: null,
+      last_test_sent_at: null, last_test_sent_by: null, status: "draft", scheduled_at: null,
+    }));
+    expect(cleared).not.toHaveProperty("proof_checks");
+  });
+
+  it("attaching an advert withdraws approval too", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    const adsBuilder = queryBuilder(dbOk(null));
+    db({ newsletter_issues: () => issuesBuilder, newsletter_ads: () => adsBuilder });
+
+    await attachNewsletterAd(form({ issue_id: "iss1", advert_id: "ad1" }));
+
+    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ approved_at: null, last_test_sent_at: null }));
+    expect(issuesBuilder.update).not.toHaveBeenCalledWith(expect.objectContaining({ status: "draft" }));
+  });
+});
+
+describe("sendTestIssue", () => {
+  it("emails the signed-in admin a [TEST] copy with a working unsubscribe link, and records it", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    db({ newsletter_issues: () => issuesBuilder });
+    renderIssueHtml.mockResolvedValue({ subject: "October", html: "<p>hi</p>", text: "hi" });
+
+    await expect(sendTestIssue(form({ id: "iss1" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?tested=1");
+
+    expect(renderIssueHtml).toHaveBeenCalledWith("iss1", { unsubscribeUrl: expect.stringMatching(/\/unsubscribe$/) });
+    expect(emailSend).toHaveBeenCalledWith({ to: "jas@smi.local", subject: "[TEST] October", html: "<p>hi</p>", text: "hi" });
+    expect(issuesBuilder.update).toHaveBeenCalledWith({ last_test_sent_at: expect.any(String), last_test_sent_by: "admin1" });
+  });
+
+  it("records nothing when the email provider refuses", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    db({ newsletter_issues: () => issuesBuilder });
+    renderIssueHtml.mockResolvedValue({ subject: "October", html: "<p>hi</p>", text: "hi" });
+    emailSend.mockRejectedValueOnce(new Error("403 domain not verified"));
+
+    await expect(sendTestIssue(form({ id: "iss1" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(issuesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses a sent issue without sending anything", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "sent" }));
+    db({ newsletter_issues: () => issuesBuilder });
+
+    await expect(sendTestIssue(form({ id: "iss1" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(emailSend).not.toHaveBeenCalled();
   });
 });
 

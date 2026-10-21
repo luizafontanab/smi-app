@@ -89,7 +89,17 @@ function escapeHtml(value: string): string {
  * newsletter slot rendered nowhere, which for a paid placement is a billing
  * problem as much as a rendering one. It is read here.
  */
-export async function renderIssueHtml(issueId: string): Promise<{ subject: string; html: string; text: string } | null> {
+export async function renderIssueHtml(
+  issueId: string,
+  opts: {
+    /**
+     * Replaces Resend's per-recipient unsubscribe tag. A test send goes out as
+     * a single email, not a broadcast, and Resend fills the tag in only for
+     * broadcasts, so a test would otherwise show the raw `{{{…}}}` text.
+     */
+    unsubscribeUrl?: string;
+  } = {},
+): Promise<{ subject: string; html: string; text: string } | null> {
   const db = serviceDb();
   const base = siteUrl();
 
@@ -193,12 +203,15 @@ export async function renderIssueHtml(issueId: string): Promise<{ subject: strin
       online_link: issue.web_slug
         ? ` · <a href="${escapeHtml(base)}/newsletters/${escapeHtml(issue.web_slug)}" style="color:#5a6068;">Read this issue online</a>`
         : "",
-      unsubscribe_url: UNSUBSCRIBE_URL,
+      unsubscribe_url: opts.unsubscribeUrl ?? UNSUBSCRIBE_URL,
     },
     await loadEmailTemplates(),
   );
 
-  return { subject: issue.subject, html: rendered.html, text: rendered.text };
+  // A template edited to carry Resend's tag literally (rather than through
+  // `unsubscribe_url`) would still leak it into a test send, so swap that too.
+  const swap = (body: string) => (opts.unsubscribeUrl ? body.split(UNSUBSCRIBE_URL).join(opts.unsubscribeUrl) : body);
+  return { subject: issue.subject, html: swap(rendered.html), text: swap(rendered.text) };
 }
 
 class LoggingNewsletterStub implements NewsletterSender {
