@@ -41,6 +41,11 @@ jobs:
         # REST API — an external dependency. If this step proves flaky, cache
         # the fetch or add an offline fixture path to the script.
         run: pnpm exec tsx scripts/seed.ts
+      - name: Generate Next route types
+        # PageProps, LayoutProps and RouteContext are globals that Next writes
+        # into .next/ on dev/build/typegen. A fresh checkout has none, so tsc
+        # in `pnpm check` fails without this step.
+        run: pnpm exec next typegen
       - run: pnpm check
       - run: pnpm build
 
