@@ -75,6 +75,25 @@ const BRAND = "#ff8200";
 const CHROME = "#0b0d10";
 const LINE = "#e4e6e9";
 
+/** Who a shell email is going to: a member, or someone who only wrote in (an inbox reply). */
+export type ShellAudience = "member" | "contact";
+
+/**
+ * The shell's `{{footer}}`, for each audience (GAPS B3.4). For the html, the
+ * caller passes `base` already HTML-escaped, as the shell's own `{{base}}` is.
+ */
+export function shellFooter(audience: ShellAudience, base: string): { html: string; text: string } {
+  if (audience === "contact") {
+    const line = "You're receiving this because you contacted Sheet Metal Industries.";
+    return { html: line, text: line };
+  }
+  const line = "You're receiving this because you have a Sheet Metal Industries member account.";
+  return {
+    html: `${line}<br>\n            <a href="${base}/dashboard" style="color:${GRAPHITE};">Manage your account</a>`,
+    text: `${line} Manage your account: ${base}/dashboard`,
+  };
+}
+
 /**
  * One body paragraph, carrying the inline styles verbatim.
  *
@@ -631,23 +650,28 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
         </td></tr>
         <tr><td style="border-top:1px solid ${LINE};padding:18px 28px;">
           <p style="margin:0;font-size:13px;line-height:1.5;color:${GRAPHITE};">
-            You're receiving this because you have a Sheet Metal Industries member account.<br>
-            <a href="{{base}}/dashboard" style="color:${GRAPHITE};">Manage your account</a>
+            {{footer}}
           </p>
         </td></tr>
       </table>
     </td></tr>
   </table>
 </body></html>`,
-    // The plain-text email has no wrapper today: the body and the CTA line are
-    // the whole message. Leaving the token alone here keeps that true while
-    // giving somewhere to add a text-side footer later.
-    bodyText: "{{body}}",
+    // The plain-text email is the body and the CTA line, then the same footer line.
+    bodyText: "{{body}}\n\n{{footer}}",
     tokens: [
       { token: "subject", description: "This email's subject line.", sample: "Your advert run ends soon" },
       { token: "body", description: "The email's own paragraphs. Every email needs this.", sample: "", raw: true },
       { token: "cta", description: "The button, if this email has one.", sample: "", raw: true },
       { token: "base", description: "The site's web address, with no trailing slash.", sample: "https://sheetmetalindustries.com" },
+      {
+        // GAPS B3.4: this used to be fixed text claiming a member account, which
+        // was untrue in a reply to someone who only used the contact form.
+        token: "footer",
+        description: "Why the reader is getting this email. Members get a line about their account and a link to it; someone who wrote in through the contact form gets a line saying so.",
+        sample: "",
+        raw: true,
+      },
     ],
     required: ["body"],
   },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import type { IssueContentResult } from "@/lib/newsletter-picker";
+import { isLiveContent, type IssueContentResult } from "@/lib/newsletter-picker";
 
 /**
  * The issue's stories and videos as one ordered list (gap review area 5): the
@@ -84,7 +84,7 @@ export function IssueItemsPicker({
               <span className="min-w-0 flex-1 truncate">
                 {item.title}
                 {item.kind === "video" && <span className="text-xs text-graphite"> (video)</span>}
-                {item.status !== "published" && <span className="text-xs text-danger"> not live</span>}
+                {!isLiveContent(item.status) && <span className="text-xs text-danger">{" not live: remove it or republish it, or the issue can't be sent"}</span>}
               </span>
               <span className="text-xs text-graphite">{item.published_at?.slice(0, 10)}</span>
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move ${item.title} up`} className="rounded border px-1.5 text-xs disabled:opacity-30">↑</button>

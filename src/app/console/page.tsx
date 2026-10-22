@@ -4,7 +4,8 @@ import { serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
 import { Badge, Card, SectionTitle, Stat } from "@/components/console/ui";
 import { FEATURED_SLOTS, MEMBERSHIP_MONTHLY_PENNIES, pounds, revenueByStream } from "@/lib/pricing";
-import { monthGrid, monthKey, parseMonth } from "@/lib/calendar";
+import { dayKey, monthGrid, monthKey, parseMonth, shiftMonth } from "@/lib/calendar";
+import { londonAt, londonDayStart } from "@/lib/london-time";
 import { inboxKindLabel } from "@/lib/console-notification-links";
 import { OverviewCalendar, type OverviewItem } from "./OverviewCalendar";
 import { markInboxRead } from "./actions";
@@ -18,16 +19,19 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   const { start, end } = monthGrid(month);
   const startIso = start.toISOString();
   const endIso = end.toISOString();
-  const startDate = startIso.slice(0, 10);
-  const endDate = endIso.slice(0, 10);
+  // GAPS A3.9: UK days throughout — `start`/`end` are UK midnights, and the
+  // date-column bounds are the UK dates they fall on.
+  const startDate = dayKey(start);
+  const endDate = dayKey(end);
   // eslint-disable-next-line react-hooks/purity -- server component, per-request render is the point
   const now = Date.now();
-  const today = new Date(now).toISOString().slice(0, 10);
-  const weekOut = new Date(now + 7 * 864e5).toISOString().slice(0, 10);
-  // This calendar month (UTC, like `today`) for the revenue figure — the month
-  // it is now, not the calendar's `?month=`.
-  const thisMonthStart = `${today.slice(0, 7)}-01T00:00:00.000Z`;
-  const nextMonthStart = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1)).toISOString();
+  const today = dayKey(new Date(now));
+  const weekOut = dayKey(londonAt(new Date(now), 7, 12));
+  // This UK calendar month for the revenue figure — the month it is now, not
+  // the calendar's `?month=`. From UK midnight on the 1st to the next 1st.
+  const thisMonth = parseMonth(today.slice(0, 7));
+  const thisMonthStart = londonDayStart(thisMonth).toISOString();
+  const nextMonthStart = londonDayStart(shiftMonth(thisMonth, 1)).toISOString();
 
   const [
     members,
@@ -150,7 +154,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   const siteUsers = sessions.error || sessions.data == null || !Number.isFinite(sessionCount) ? null : sessionCount;
 
   const issueSent = lastSent?.[0];
-  const dateLabel = new Date(now).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const dateLabel = new Date(now).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" });
 
   const fmtTime = (t: string) => {
     const [h, m] = t.split(":");

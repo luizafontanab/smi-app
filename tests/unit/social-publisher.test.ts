@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getSocialPublisher, isSocialLive, MAX_EXTRA_TAGGED_MEMBERS, type SocialPost } from "@/lib/adapters/social";
+import { fitTagsToX, getSocialPublisher, isSocialLive, MAX_EXTRA_TAGGED_MEMBERS, SocialPublishError, X_MAX_LENGTH, xLength, type SocialPost } from "@/lib/adapters/social";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -335,5 +335,125 @@ describe("Buffer — the live links of SMI's posts", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     await expect(getSocialPublisher().publish(post())).resolves.toEqual([]);
     await expect(getSocialPublisher().postLinks(["p1"])).resolves.toEqual([]);
+  });
+});
+
+// GAPS B4.5: each channel gets its own network's tags, an X post stays within
+// 280, and a retry never posts again to a channel that already took it.
+describe("per-channel posts and retries (GAPS B4.5)", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetDbServerMocks();
+    fetchSpy?.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  function withOrg(channelIds: string[]) {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: () => queryBuilder(dbOk({ value: { channelIds, organizationId: "org-1" } })),
+    })));
+  }
+  const channels = (list: { id: string; service: string }[]) =>
+    new Response(JSON.stringify({ data: { channels: list } }), { status: 200 });
+  const failed = (message: string) =>
+    new Response(JSON.stringify({ data: { createPost: { __typename: "MutationError", message } } }), { status: 200 });
+  /** createPost inputs only — the channel lookup is the first call when an organisation id is stored. */
+  const posted = (spy: ReturnType<typeof vi.spyOn>) =>
+    (spy.mock.calls as [unknown, RequestInit | undefined][])
+      .map(([, init]) => JSON.parse(init?.body as string) as { variables?: { input?: { channelId: string; text: string } } })
+      .flatMap((body) => (body.variables?.input ? [body.variables.input] : []));
+
+  const LINK = "https://sheetmetalindustries.com/news/a-story";
+  const fivemembers = post({
+    text: `${"word ".repeat(40).trim()}\n\n${LINK}`,
+    tagHandles: { x: "acmeengineering", linkedin: "acme-engineering-ltd", facebook: "acmeeng" },
+    extraTagHandles: Array.from({ length: 4 }, (_, i) => ({ x: `featuredmember${i}ltd`, linkedin: `featured-member-${i}-limited` })),
+  });
+
+  it("looks up each channel's network and tags only that network's handles", async () => {
+    withOrg(["li-1", "x-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(channels([{ id: "li-1", service: "linkedin" }, { id: "x-1", service: "twitter" }]))
+      .mockImplementation(async () => ok());
+
+    await getSocialPublisher().publish(post({ text: "Hello", tagHandles: { linkedin: "acme-ltd", x: "acme" } }));
+
+    expect(JSON.parse(fetchSpy.mock.calls[0][1]?.body as string).query).toContain('organizationId: "org-1"');
+    const [li, x] = posted(fetchSpy);
+    expect(li).toMatchObject({ channelId: "li-1", text: "Hello\n\nlinkedin:acme-ltd" });
+    expect(x).toMatchObject({ channelId: "x-1", text: "Hello\n\nx:@acme" });
+  });
+
+  it("keeps an X post within 280 with five members tagged, dropping the co-featured ones first", async () => {
+    withOrg(["x-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(channels([{ id: "x-1", service: "twitter" }]))
+      .mockImplementation(async () => ok());
+
+    await getSocialPublisher().publish(fivemembers);
+
+    const [{ text }] = posted(fetchSpy);
+    expect(xLength(text)).toBeLessThanOrEqual(X_MAX_LENGTH);
+    expect(text).toContain("x:@acmeengineering");
+    expect(text).not.toContain("linkedin:");
+    expect(text).not.toContain("x:@featuredmember3ltd");
+  });
+
+  it("fits one text to X's limit for every channel when the lookup fails", async () => {
+    withOrg(["a", "b"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("nope", { status: 500 }))
+      .mockImplementation(async () => ok());
+
+    await getSocialPublisher().publish(fivemembers);
+
+    const [a, b] = posted(fetchSpy);
+    expect(a.text).toBe(b.text);
+    expect(xLength(a.text)).toBeLessThanOrEqual(X_MAX_LENGTH);
+  });
+
+  it("on a partial failure, throws with the channels that took it, and skips them on the retry", async () => {
+    withOrg(["li-1", "x-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(channels([{ id: "li-1", service: "linkedin" }, { id: "x-1", service: "twitter" }]))
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(failed("too long"));
+
+    const error = await getSocialPublisher().publish(post()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SocialPublishError);
+    expect((error as SocialPublishError).doneChannelIds).toEqual(["li-1"]);
+    expect((error as SocialPublishError).sent.map((p) => p.id)).toEqual(["p1"]);
+
+    fetchSpy.mockReset()
+      .mockResolvedValueOnce(channels([{ id: "li-1", service: "linkedin" }, { id: "x-1", service: "twitter" }]))
+      .mockImplementation(async () => ok());
+    await getSocialPublisher().publish(post(), { skipChannelIds: ["li-1"] });
+    expect(posted(fetchSpy).map((p) => p.channelId)).toEqual(["x-1"]);
+  });
+
+  it("posts nothing, and doesn't look anything up, when every channel is already done", async () => {
+    withOrg(["li-1"]);
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ok());
+    expect(await getSocialPublisher().publish(post(), { skipChannelIds: ["li-1"] })).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("xLength / fitTagsToX", () => {
+  it("counts any link as 23", () => {
+    expect(xLength(`ab https://example.com/${"x".repeat(100)}`)).toBe(3 + 23);
+  });
+
+  it("adds tags while they fit and stops at the first that doesn't", () => {
+    const body = "y".repeat(260); // +2+6 = 268 fits; +1+18 would be 287
+    expect(fitTagsToX(body, ["x:@one", "x:@twotwotwotwotwo", "x:@3"])).toBe(`${body}\n\nx:@one`);
   });
 });

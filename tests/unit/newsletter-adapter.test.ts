@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getNewsletterSender, newsletterIsLive, renderIssueHtml } from "@/lib/adapters/newsletter";
+import { getNewsletterSender, issueItemsNotLive, newsletterIsLive, renderIssueHtml } from "@/lib/adapters/newsletter";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
@@ -25,7 +25,7 @@ describe("renderIssueHtml", () => {
   it("escapes story titles into the html, and lists them plainly in the text version", async () => {
     db({
       newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 4, subject: "S & T", intro: null, web_slug: null })),
-      newsletter_items: () => queryBuilder(dbOk([{ position: 1, story: { slug: "acme-news", title: "Acme <Ltd>", excerpt: null, cover_path: null } }])),
+      newsletter_items: () => queryBuilder(dbOk([{ position: 1, story: { slug: "acme-news", title: "Acme <Ltd>", status: "published", excerpt: null, cover_path: null } }])),
       newsletter_ads: () => queryBuilder(dbOk([])),
     });
 
@@ -96,6 +96,43 @@ describe("renderIssueHtml", () => {
     expect(rendered!.text).not.toContain("- ");
   });
 
+  it("leaves out a picked story or video that has left the site (GAPS B5.5)", async () => {
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: null })),
+      newsletter_items: () => queryBuilder(dbOk([
+        { position: 0, story: { slug: "gone", title: "Withdrawn story", status: "withdrawn", excerpt: null, cover_path: null }, video: null },
+        { position: 1, story: null, video: { slug: "draft-vid", title: "Draft video", status: "draft", thumbnail_path: null } },
+        { position: 2, story: { slug: "live", title: "Live story", status: "published", excerpt: null, cover_path: null }, video: null },
+      ])),
+      newsletter_ads: () => queryBuilder(dbOk([])),
+    });
+
+    const { html, text } = (await renderIssueHtml("iss1"))!;
+    expect(text).toContain("Live story");
+    expect(text).not.toContain("Withdrawn story");
+    expect(html).not.toContain("/news/gone");
+    expect(html).not.toContain("/video/draft-vid");
+  });
+});
+
+describe("issueItemsNotLive (GAPS B5.5)", () => {
+  it("names every picked item that isn't published, and ignores deleted rows", async () => {
+    db({
+      newsletter_items: () => queryBuilder(dbOk([
+        { position: 0, story: { title: "Withdrawn story", status: "withdrawn" }, video: null },
+        { position: 1, story: { title: "Live story", status: "published" }, video: null },
+        { position: 2, story: null, video: { title: "Draft video", status: "draft" } },
+        { position: 3, story: null, video: null },
+      ])),
+    });
+    expect(await issueItemsNotLive("iss1")).toEqual(["Withdrawn story", "Draft video"]);
+  });
+
+  it("throws rather than report an issue clean when the items can't be read", async () => {
+    db({ newsletter_items: () => queryBuilder(dbError("boom")) });
+    await expect(issueItemsNotLive("iss1")).rejects.toThrow("boom");
+  });
+
   it("prefers the mobile advert creative, falling back to desktop, and skips a slot with neither", async () => {
     db({
       newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 1, subject: "s", intro: null, web_slug: null })),
@@ -119,7 +156,7 @@ describe("renderIssueHtml", () => {
   describe("the live-issue layout (gap review area 5)", () => {
     const story = (n: number) => ({
       position: n,
-      story: { slug: `story-${n}`, title: `Story ${n}`, excerpt: `Summary ${n}`, cover_path: `cover-${n}.jpg` },
+      story: { slug: `story-${n}`, title: `Story ${n}`, status: "published", excerpt: `Summary ${n}`, cover_path: `cover-${n}.jpg` },
       video: null,
     });
     const banner = (id: string, after_item: number | null = null, name = `Advert ${id}`) => ({
@@ -272,7 +309,7 @@ describe("renderIssueHtml", () => {
 
     it("lists items in the composer's order in the text version, videos mixed in", async () => {
       issue({}, [
-        { position: 0, story: null, video: { slug: "demo", title: "Demo video", thumbnail_path: null } },
+        { position: 0, story: null, video: { slug: "demo", title: "Demo video", status: "published", thumbnail_path: null } },
         story(1),
       ], []);
       const { text } = (await renderIssueHtml("iss1"))!;

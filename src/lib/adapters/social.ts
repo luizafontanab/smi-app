@@ -90,7 +90,7 @@ export const MAX_EXTRA_TAGGED_MEMBERS = 4;
 
 export interface SocialPublisher {
   /** One entry per channel Buffer accepted — so the live links can be collected afterwards. */
-  publish(post: SocialPost): Promise<SentPost[]>;
+  publish(post: SocialPost, opts?: PublishOptions): Promise<SentPost[]>;
   /** Re-reads posts by id for their status and live URL. Ids Buffer can't find are left out. */
   postLinks(ids: string[]): Promise<SentPost[]>;
 }
@@ -104,12 +104,23 @@ export interface SocialPublisher {
  * rather than silently vanishing. See GAPS B4.3 for what closing it needs.
  */
 function formatTags(post: Pick<SocialPost, "tagHandles" | "extraTagHandles">): string {
+  return tagList(post).join(" ");
+}
+
+/**
+ * The tags in order, the primary member's first, so trimming from the end
+ * drops the co-featured members before the one the story is about. With
+ * `network`, only that network's handles (GAPS B4.5: an X post used to carry
+ * every member's LinkedIn and Facebook handles too).
+ */
+export function tagList(post: Pick<SocialPost, "tagHandles" | "extraTagHandles">, network?: string): string[] {
   const sets = [post.tagHandles, ...(post.extraTagHandles ?? []).slice(0, MAX_EXTRA_TAGGED_MEMBERS)];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const handles of sets) {
     for (const [ch, h] of Object.entries(handles ?? {})) {
       if (typeof h !== "string") continue;
+      if (network !== undefined && ch !== network) continue;
       const href = socialHref(ch, h);
       const tag = `${ch}:${(href && socialHandle(ch, href)) ?? h}`;
       // the same company tagged twice (primary and extra, or two branches sharing a handle) reads once
@@ -118,8 +129,71 @@ function formatTags(post: Pick<SocialPost, "tagHandles" | "extraTagHandles">): s
       out.push(tag);
     }
   }
-  return out.join(" ");
+  return out;
 }
+
+/** X's limit, and what it counts any link as (t.co wraps every URL to this length). */
+export const X_MAX_LENGTH = 280;
+const X_URL_LENGTH = 23;
+
+/**
+ * A post's length as X counts it, near enough: every link is 23, everything
+ * else one per character (code point). X weighs some scripts and emoji as 2;
+ * SMI's posts are English, and the budget below leaves the lead-in its full 200.
+ */
+export function xLength(text: string): number {
+  return [...text.replace(/https?:\/\/\S+/g, "x".repeat(X_URL_LENGTH))].length;
+}
+
+/**
+ * The body, then as many tags as fit in X's 280, in order. The body itself
+ * (lead-in ≤ 200 + link 23) always fits, so only tags are ever dropped.
+ */
+export function fitTagsToX(body: string, tags: string[]): string {
+  let text = body;
+  for (const tag of tags) {
+    const next = `${text}${text === body ? "\n\n" : " "}${tag}`;
+    if (xLength(next) > X_MAX_LENGTH) break;
+    text = next;
+  }
+  return text;
+}
+
+/** Buffer's channel `service` names → the `members.social` key whose handles belong in that post. */
+const SERVICE_TAG_KEY: Partial<Record<string, string>> = {
+  twitter: "x", x: "x", linkedin: "linkedin", facebook: "facebook", instagram: "instagram", youtube: "youtube", tiktok: "tiktok",
+};
+
+/**
+ * One channel's text (GAPS B4.5). Known network: that network's tags only,
+ * fitted to 280 on X. Unknown — the lookup failed, or no organisation id is
+ * stored — every tag, fitted to X's 280, since any channel might be X: a
+ * shorter post everywhere beats one X refuses.
+ */
+export function channelText(post: SocialPost, service: string | null): string {
+  if (service === null) return fitTagsToX(post.text, tagList(post));
+  const key = SERVICE_TAG_KEY[service.toLowerCase()];
+  const tags = key ? tagList(post, key) : [];
+  if (key === "x") return fitTagsToX(post.text, tags);
+  return tags.length ? `${post.text}\n\n${tags.join(" ")}` : post.text;
+}
+
+/**
+ * Some channels took the post and at least one didn't. Carries what did go
+ * out, so the job can record it and a retry posts only to the channels still
+ * owed — Buffer has no idempotency key, so nothing else stops a re-post.
+ */
+export class SocialPublishError extends Error {
+  constructor(message: string, readonly sent: SentPost[], readonly doneChannelIds: string[]) {
+    super(message);
+    this.name = "SocialPublishError";
+  }
+}
+
+export type PublishOptions = {
+  /** Channels an earlier attempt of the same job already posted to. */
+  skipChannelIds?: string[];
+};
 
 class LoggingSocialStub implements SocialPublisher {
   async publish(post: SocialPost): Promise<SentPost[]> {
@@ -134,7 +208,7 @@ class LoggingSocialStub implements SocialPublisher {
 }
 
 /** Which connected Buffer channels a post goes to — one createPost mutation each. */
-async function bufferChannels(): Promise<{ channelIds: string[]; legacyProfileIds: string[] }> {
+async function bufferChannels(): Promise<{ channelIds: string[]; legacyProfileIds: string[]; organizationId?: string }> {
   const { data } = await serviceDb().from("settings").select("value").eq("key", "social_channels").maybeSingle();
   return readSocialChannels(data?.value);
 }
@@ -150,8 +224,8 @@ type ChannelInput = {
 class BufferPublisher implements SocialPublisher {
   constructor(private token: string) {}
 
-  async publish(post: SocialPost): Promise<SentPost[]> {
-    const { channelIds, legacyProfileIds } = await bufferChannels();
+  async publish(post: SocialPost, opts: PublishOptions = {}): Promise<SentPost[]> {
+    const { channelIds, legacyProfileIds, organizationId } = await bufferChannels();
     if (!channelIds.length) {
       // Fail closed rather than let Buffer reject a channel-less request with a
       // cryptic error — same posture as the other adapters (A7.5, B3.1).
@@ -161,36 +235,74 @@ class BufferPublisher implements SocialPublisher {
       throw new Error(`[social] no Buffer channel configured — set channel ids in /console/stories.${stale}`);
     }
 
-    const tags = formatTags(post);
-    const text = tags ? `${post.text}\n\n${tags}` : post.text;
+    const skip = new Set(opts.skipChannelIds ?? []);
+    const owed = channelIds.filter((id) => !skip.has(id));
+    if (!owed.length) return [];
+
+    // GAPS B4.5: each channel gets its own network's tags, fitted to 280 on X.
+    const services = organizationId ? await this.channelServices(organizationId) : null;
     const image = mediaUrl(post.imagePath);
 
     // Every channel is attempted: one bad channel must not stop the others.
-    //
-    // ⚠ Buffer exposes no idempotency key, so a job that succeeds on channel A
-    // and fails on B will repost to A when the job retries — bounded at
-    // max_attempts (3). Nil in practice at the 1-2 channels SMI will configure.
-    // The real fix is per-channel job fan-out in jobs.ts (one social_push job
-    // per {story_id, channel_id}), so a retry is scoped to the channel that
-    // failed. Out of scope here; recorded in GAPS B4.4.
+    // Buffer exposes no idempotency key, so a retry must not post again to a
+    // channel this attempt reached: the error carries those, and the job
+    // passes them back as `skipChannelIds` (GAPS B4.5).
     const failures: string[] = [];
     const sent: SentPost[] = [];
-    for (const channelId of channelIds) {
+    const done: string[] = [];
+    for (const channelId of owed) {
+      const text = channelText(post, services?.get(channelId) ?? null);
       const input: ChannelInput = { text, channelId, mode: SHARE_MODE, schedulingType: SCHEDULING_TYPE };
       if (image) input.assets = [{ image: { url: image } }];
 
       const result = await this.publishToChannel(input);
       if (!result.ok) failures.push(`${channelId}: ${result.error}`);
-      else if (result.post) sent.push(result.post);
+      else {
+        done.push(channelId);
+        if (result.post) sent.push(result.post);
+      }
     }
 
     if (failures.length) {
-      // job retries; dead-letter surfaces in Needs You Today
-      throw new Error(
-        `[social] Buffer publish failed for ${failures.length} of ${channelIds.length} channel(s) — ${failures.join("; ")}`,
+      // job retries the rest; dead-letter surfaces in Needs You Today
+      throw new SocialPublishError(
+        `[social] Buffer publish failed for ${failures.length} of ${owed.length} channel(s) — ${failures.join("; ")}`,
+        sent,
+        done,
       );
     }
     return sent;
+  }
+
+  /**
+   * Which network each connected channel is, so its post can be shaped for it
+   * (GAPS B4.5). Null on any failure — the caller then fits one text to X's
+   * limit for every channel rather than not posting.
+   *
+   * ⚠ UNVERIFIED against a live account, like the enums above: the query
+   * shape and the `service` values ("twitter", "linkedin", …) follow Buffer's
+   * GraphQL reference. The organisation id is inlined as a string literal so
+   * a wrong guess at the input type's name can't fail the query.
+   */
+  private async channelServices(organizationId: string): Promise<Map<string, string> | null> {
+    try {
+      const res = await fetch(BUFFER_API, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: `query { channels(input: { organizationId: ${JSON.stringify(organizationId)} }) { id service } }` }),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { data?: { channels?: { id?: unknown; service?: unknown }[] }; errors?: unknown[] };
+      if (body.errors?.length || !Array.isArray(body.data?.channels)) return null;
+      const map = new Map<string, string>();
+      for (const c of body.data.channels) {
+        if (typeof c.id === "string" && typeof c.service === "string") map.set(c.id, c.service);
+      }
+      return map;
+    } catch (e) {
+      console.error("[social] buffer channel lookup failed:", e);
+      return null;
+    }
   }
 
   async postLinks(ids: string[]): Promise<SentPost[]> {

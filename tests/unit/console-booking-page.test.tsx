@@ -56,6 +56,17 @@ describe("console booking page — a renewal's draft", () => {
     expect(postedId(screen.getByRole("button", { name: "Book & schedule" }))).toBe(ID);
   });
 
+  it("lets the desk change its dates, pre-filled, or delete it behind a confirm (GAPS A2.12)", async () => {
+    bookingDb({});
+    render(await BookingPage(props));
+
+    expect(screen.getByLabelText("Start")).toHaveValue("2026-11-01");
+    expect(screen.getByLabelText("End")).toHaveValue("2026-11-30");
+    expect(postedId(screen.getByRole("button", { name: "Change dates" }))).toBe(ID);
+    expect(screen.getByRole("checkbox", { name: /Delete this draft/ })).toBeRequired();
+    expect(postedId(screen.getByRole("button", { name: "Delete draft" }))).toBe(ID);
+  });
+
   it("is not offered for a member's own draft, or a run already booked", async () => {
     bookingDb({ source: "member" });
     const { unmount } = render(await BookingPage(props));

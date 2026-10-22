@@ -66,7 +66,8 @@ describe("console overview revenue", () => {
     render(await CommandCentre(props));
 
     expect(paid.eq).toHaveBeenCalledWith("status", "paid");
-    expect(paid.gte).toHaveBeenCalledWith("paid_at", "2026-10-01T00:00:00.000Z");
+    // UK months (GAPS A3.9): 1 Oct starts at midnight BST, 23:00 UTC the day before; 1 Nov is back in GMT.
+    expect(paid.gte).toHaveBeenCalledWith("paid_at", "2026-09-30T23:00:00.000Z");
     expect(paid.lt).toHaveBeenCalledWith("paid_at", "2026-11-01T00:00:00.000Z");
     expect(unpaid.eq).toHaveBeenCalledWith("status", "issued");
 

@@ -12,10 +12,13 @@ vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 const send = vi.fn(async () => {});
 vi.mock("@/lib/adapters/email", () => ({ getEmailSender: vi.fn(() => ({ send })) }));
 
-const publish = vi.fn<() => Promise<SentPost[]>>(async () => []);
+const publish = vi.fn<(post: unknown, opts?: { skipChannelIds?: string[] }) => Promise<SentPost[]>>(async () => []);
 const postLinks = vi.fn<(ids: string[]) => Promise<SentPost[]>>(async () => []);
 const socialLive = vi.fn(() => false);
-vi.mock("@/lib/adapters/social", () => ({ getSocialPublisher: vi.fn(() => ({ publish, postLinks })), isSocialLive: () => socialLive() }));
+class SocialPublishError extends Error {
+  constructor(message: string, readonly sent: SentPost[], readonly doneChannelIds: string[]) { super(message); }
+}
+vi.mock("@/lib/adapters/social", () => ({ getSocialPublisher: vi.fn(() => ({ publish, postLinks })), isSocialLive: () => socialLive(), SocialPublishError }));
 
 const crmSync = vi.fn(async () => {});
 const crmPush = vi.fn(async () => {});
@@ -26,9 +29,11 @@ const sendIssue = vi.fn<(issueId: string, idempotencyKey: string) => Promise<Sen
   async () => ({ ok: true, recipients: 10 }),
 );
 const newsletterIsLive = vi.fn(() => true);
+const issueItemsNotLive = vi.fn<(issueId: string) => Promise<string[]>>(async () => []);
 vi.mock("@/lib/adapters/newsletter", () => ({
   getNewsletterSender: vi.fn(() => ({ syncContacts, sendIssue })),
   newsletterIsLive,
+  issueItemsNotLive,
 }));
 
 // Three sweeps raise a console notification (fix-list 71). Asserted through
@@ -303,7 +308,7 @@ describe("runJob kinds", () => {
 
     await runJobById(j.id);
 
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+    expect(publish.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       text: `Acme took the top prize at the awards.\n\n${siteUrl()}/news/acme-wins-award`,
       tagHandles: { x: "acme" },
     }));
@@ -318,7 +323,7 @@ describe("runJob kinds", () => {
       const [j, jobs] = socialJob({ story_id: "s1" });
       dbFor([...jobs], { stories: () => queryBuilder(dbOk(liveStory(row))) });
       await runJobById(j.id);
-      expect(publish).toHaveBeenCalledWith(expect.objectContaining({ text: `${lead}\n\n${siteUrl()}/news/acme-wins-award` }));
+      expect(publish.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ text: `${lead}\n\n${siteUrl()}/news/acme-wins-award` }));
     }
   });
 
@@ -378,7 +383,7 @@ describe("runJob kinds", () => {
 
     await runJobById(j.id);
 
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+    expect(publish.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       tagHandles: { x: "acme" },
       extraTagHandles: [{ x: "blmgroup" }], // the primary isn't repeated as an extra
     }));
@@ -400,7 +405,7 @@ describe("runJob kinds", () => {
 
     await runJobById(j.id);
 
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+    expect(publish.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       tagHandles: {},
       extraTagHandles: [{ x: "cutters" }],
     }));
@@ -419,7 +424,7 @@ describe("runJob kinds", () => {
 
     await runJobById(j.id);
 
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+    expect(publish.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       text: `The new 6kW laser cutting 20mm plate.\n\n${siteUrl()}/video/laser-demo`,
       tagHandles: {},
     }));
@@ -499,6 +504,35 @@ describe("runJob kinds", () => {
     expect(stories.update).toHaveBeenCalledWith({ social_posts: { linkedin: LI } });
     const follow = callsOf(jobsTail.insert).map(([r]) => r as { kind: string; payload: unknown }).find((r) => r.kind === "social_links");
     expect(follow?.payload).toEqual({ story_id: "s1", post_ids: ["p2"], tries: 0 });
+  });
+
+  it("social_push — after a partial failure, records the channels that took it and passes them to the retry (GAPS B4.5)", async () => {
+    publish.mockRejectedValueOnce(new SocialPublishError("x-1: too long", [{ id: "p1", service: "linkedin", status: "sent", link: LI }], ["li-1"]));
+    const j = job("social_push", { payload: { story_id: "s1" } });
+    const claim = queryBuilder(dbOk([{ id: j.id }]));
+    const payloadWrite = queryBuilder(dbOk(null));
+    const stories = queryBuilder(dbOk(liveStory({ social_posts: {} })));
+    const failure = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), claim, payloadWrite, failure], { stories: () => stories });
+
+    await runJobById(j.id);
+
+    // still a failure, so the job retries
+    expect(failure.update).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", last_error: expect.stringContaining("too long") }));
+
+    expect(publish.mock.calls[0]?.[1]).toEqual({ skipChannelIds: [] });
+    expect(payloadWrite.update).toHaveBeenCalledWith({ payload: { story_id: "s1", done_channel_ids: ["li-1"] } });
+    expect(payloadWrite.eq).toHaveBeenCalledWith("id", j.id);
+    // the post that did go out still gets its link, and the item isn't marked posted
+    expect(stories.update).toHaveBeenCalledWith({ social_posts: { linkedin: LI } });
+    expect(stories.update).not.toHaveBeenCalledWith(expect.objectContaining({ social_posted_at: expect.any(String) }));
+
+    // the retry runs the same job row, now carrying the done channels
+    publish.mockClear().mockResolvedValueOnce([]);
+    const retry = job("social_push", { payload: { story_id: "s1", done_channel_ids: ["li-1"] }, attempts: 1 });
+    dbFor([...happyPath(retry)], { stories: () => queryBuilder(dbOk(liveStory({ social_posts: { linkedin: LI } }))) });
+    await runJobById(retry.id);
+    expect(publish.mock.calls[0]?.[1]).toEqual({ skipChannelIds: ["li-1"] });
   });
 
   it("social_push (story) — never overwrites a link someone pasted", async () => {
@@ -1116,6 +1150,22 @@ describe("runJob kinds", () => {
 
     expect(sendIssue).not.toHaveBeenCalled();
     expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "send_failed", send_error: expect.stringContaining("Not approved") }));
+  });
+
+  it("newsletter_send — refuses while a picked item has left the site, without calling the sender or throwing (GAPS B5.5)", async () => {
+    const j = job("newsletter_send", { payload: { issue_id: "iss1" } });
+    const issuesBuilder = queryBuilder(dbOk({ id: "iss1", number: 4, subject: "s", status: "scheduled", approved_at: "2026-10-20T09:00:00Z" }));
+    issueItemsNotLive.mockResolvedValueOnce(["Withdrawn story"]);
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], { newsletter_issues: () => issuesBuilder });
+
+    await runJobById(j.id);
+
+    expect(issueItemsNotLive).toHaveBeenCalledWith("iss1");
+    expect(sendIssue).not.toHaveBeenCalled();
+    expect(issuesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: "send_failed",
+      send_error: expect.stringContaining("“Withdrawn story” is no longer live"),
+    }));
   });
 
   it("newsletter_send — does not re-send an issue that's already gone out", async () => {

@@ -96,9 +96,10 @@ describe("memberValuesFromForm", () => {
     expect(companyPageValuesFromForm(form({ website }), existing)).toEqual({ error: WEBSITE_INVALID });
   });
 
-  it("normalises paid_at to ISO and blank dates to null", () => {
+  it("reads paid_at as UK time, normalises it to ISO, and blank dates to null", () => {
+    // 09:30 BST is 08:30 UTC, whatever zone the server is in (GAPS A3.9).
     expect(ok(memberValuesFromForm(form({ paid_at: "2026-08-01T09:30" }), existing)).values.paid_at)
-      .toBe(new Date("2026-08-01T09:30").toISOString());
+      .toBe("2026-08-01T08:30:00.000Z");
     expect(ok(memberValuesFromForm(form(), existing)).values).toMatchObject({ paid_at: null, joined_at: null, comped_until: null });
   });
 

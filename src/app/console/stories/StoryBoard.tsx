@@ -1,5 +1,6 @@
 "use client";
 
+import { formatLondon } from "@/lib/london-time";
 import Link from "next/link";
 import { startTransition, useState } from "react";
 import {
@@ -178,7 +179,7 @@ function StoryCard({ story }: { story: BoardStory }) {
       </div>
       <p className="mt-1 pl-6 text-xs text-graphite">
         {story.member?.name && <>{story.member.name} · </>}{story.source}
-        {story.scheduled_at && story.status === "scheduled" && <> · {new Date(story.scheduled_at).toLocaleString("en-GB")}</>}
+        {story.scheduled_at && story.status === "scheduled" && <> · {formatLondon(story.scheduled_at)}</>}
         {isPinned && <> · 📌 pinned</>}
       </p>
 

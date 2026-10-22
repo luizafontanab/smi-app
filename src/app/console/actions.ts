@@ -30,6 +30,7 @@ import { FEATURED_SLOTS, penniesFromPounds } from "@/lib/pricing";
 import { BANNER_SPOTS_KEY } from "@/lib/banner-spots";
 import { raiseInvoice } from "@/lib/invoicing";
 import { holdsForPayment, invoiceAdvertising, settleInvoice, voidBundleInvoiceIfAbandoned, voidInvoices } from "@/lib/advert-payments";
+import { renewalDatesProblem } from "@/lib/advert-renewal";
 import { editorImageUpload, uploadFailureMessage } from "@/lib/editor-upload";
 import type { UploadResult } from "@/lib/upload-limits";
 import { removeMedia, uploadDocument, uploadImage } from "@/lib/media";
@@ -1465,6 +1466,59 @@ export async function renewBooking(formData: FormData) {
  * Only an admin's draft: a member's own is theirs to send. Conditional on it
  * still being a draft, so a double click books it once and invoices it once.
  */
+/**
+ * GAPS A2.12: a desk rebook draft (renewBooking) could be booked but not
+ * changed or thrown away. Only that kind of draft: `source = 'admin'` and still
+ * `draft`. A member's own draft is theirs, and the member may also submit the
+ * desk's (Luiza, 22 Oct: it's an offer), after which it has moved on and these
+ * refuse rather than overwrite what they sent.
+ */
+const DRAFT_MOVED_ON = "This draft has moved on (it was booked or sent in), so it can't be changed here any more.";
+
+export async function updateDraftDates(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const back = `/console/adverts/${id}`;
+  const startsOn = String(formData.get("starts_on") ?? "");
+  const endsOn = String(formData.get("ends_on") ?? "");
+  // A draft holds no dates, so there's no overlap to check here; booking it does that.
+  const problem = renewalDatesProblem(startsOn, endsOn, new Date().toISOString().slice(0, 10));
+  if (problem) redirect(`${back}?error=${encodeURIComponent(problem)}`);
+  const { data: changed, error } = await db.from("advert_bookings")
+    .update({ starts_on: startsOn, ends_on: endsOn, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "draft")
+    .eq("source", "admin")
+    .select("id");
+  if (error) redirect(`${back}?error=${encodeURIComponent(dbProblem("action:updateDraftDates", error))}`);
+  if (!changed?.length) redirect(`${back}?error=${encodeURIComponent(DRAFT_MOVED_ON)}`);
+  revalidatePath("/console/adverts");
+  revalidatePath(back);
+  redirect(`${back}?saved=1`);
+}
+
+export async function deleteDraftBooking(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id"));
+  const back = `/console/adverts/${id}`;
+  if (formData.get("confirm") !== "1") redirect(`${back}?error=${encodeURIComponent("Tick \"confirm\" to delete this draft.")}`);
+  // Safe to remove outright: a draft raises no invoice and reserves no dates,
+  // and what points at a booking (invoices, a later renewal) is `on delete set null`.
+  const { data: deleted, error } = await db.from("advert_bookings")
+    .delete()
+    .eq("id", id)
+    .eq("status", "draft")
+    .eq("source", "admin")
+    .select("id");
+  if (error) redirect(`${back}?error=${encodeURIComponent(dbProblem("action:deleteDraftBooking", error))}`);
+  if (!deleted?.length) redirect(`${back}?error=${encodeURIComponent(DRAFT_MOVED_ON)}`);
+  revalidatePath("/console/adverts");
+  revalidatePath("/console");
+  redirect("/console/adverts?deleted=1");
+}
+
 export async function bookDraftRun(formData: FormData) {
   const user = await requireConsole();
   const db = serviceDb();
@@ -2377,6 +2431,19 @@ const ISSUE_EDITABLE_STATUSES = new Set(["draft", "scheduled", "send_failed"]);
 const issueFail = (id: string, message: string): never =>
   redirect(`/console/newsletter/${id}?error=${encodeURIComponent(message)}`);
 
+/**
+ * GAPS B5.5: no test, approval, schedule or send while a picked story or video
+ * has left the site. The send job checks again, for anything already queued.
+ */
+async function refuseNotLiveItems(id: string) {
+  const [{ issueItemsNotLive }, { notLiveMessage }] = await Promise.all([
+    import("@/lib/adapters/newsletter"),
+    import("@/lib/newsletter-picker"),
+  ]);
+  const notLive = await issueItemsNotLive(id);
+  if (notLive.length) issueFail(id, notLiveMessage(notLive));
+}
+
 /** Drops the issue's queued send, so a pending job can't fire after it was pulled back. */
 async function cancelPendingIssueSend(db: ReturnType<typeof serviceDb>, id: string) {
   await db.from("jobs").delete().eq("kind", "newsletter_send").eq("status", "pending").filter("payload->>issue_id", "eq", id);
@@ -2619,6 +2686,7 @@ export async function sendTestIssue(formData: FormData) {
   const id = String(formData.get("id"));
   const { data: issue } = await db.from("newsletter_issues").select("status").eq("id", id).single();
   if (!issue || !ISSUE_EDITABLE_STATUSES.has(issue.status)) return issueFail(id, "This issue has been sent; there's nothing left to test.");
+  await refuseNotLiveItems(id);
   const [{ renderIssueHtml }, { getEmailSender, newsletterFrom }] = await Promise.all([
     import("@/lib/adapters/newsletter"),
     import("@/lib/adapters/email"),
@@ -2657,6 +2725,7 @@ export async function approveIssue(formData: FormData) {
   const missing = missingChecks(issue.proof_checks);
   if (missing.length) return issueFail(id, `Not approved: ${missing.length} proof ${missing.length === 1 ? "item is" : "items are"} still unticked.`);
   if (!issue.last_test_sent_at) return issueFail(id, "Not approved: send a test since the last change first.");
+  await refuseNotLiveItems(id);
   await db.from("newsletter_issues").update({
     approved_at: new Date().toISOString(),
     approved_by: user.userId,
@@ -2681,6 +2750,7 @@ export async function withdrawApproval(formData: FormData) {
 async function requireApprovedIssue(db: ReturnType<typeof serviceDb>, id: string) {
   const { data: issue } = await db.from("newsletter_issues").select("approved_at").eq("id", id).single();
   if (!issue?.approved_at) issueFail(id, "This issue isn't approved to send yet — finish the proof and approve it first.");
+  await refuseNotLiveItems(id);
 }
 
 export async function sendIssue(formData: FormData) {
@@ -2708,7 +2778,9 @@ export async function scheduleIssue(formData: FormData) {
   const id = String(formData.get("id"));
   const when = String(formData.get("scheduled_at") ?? "");
   if (!when) return;
-  const at = new Date(when);
+  // GAPS A3.9: the input is UK wall-clock time, not the server's (UTC on Vercel).
+  const at = parseLondonInput(when);
+  if (!at) return issueFail(id, "That send time isn't a date and time we can read.");
   const db = serviceDb();
   await requireApprovedIssue(db, id);
   await db.from("newsletter_issues").update({ status: "scheduled", scheduled_at: at.toISOString() }).eq("id", id);

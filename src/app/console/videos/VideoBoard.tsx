@@ -1,5 +1,6 @@
 "use client";
 
+import { formatLondon } from "@/lib/london-time";
 import Image from "next/image";
 import Link from "next/link";
 import { startTransition, useState } from "react";
@@ -168,7 +169,7 @@ function VideoCard({ video }: { video: BoardVideo }) {
       </div>
       <p className="mt-1 pl-6 text-xs text-graphite">
         {video.member?.name && <>{video.member.name} · </>}{video.source}
-        {video.scheduled_at && video.status === "scheduled" && <> · {new Date(video.scheduled_at).toLocaleString("en-GB")}</>}
+        {video.scheduled_at && video.status === "scheduled" && <> · {formatLondon(video.scheduled_at)}</>}
         {isPinned && <> · 📌 pinned</>}
       </p>
 

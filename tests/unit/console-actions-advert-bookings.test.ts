@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bookDraftRun, decideAdvertBooking, endBooking, markInvoicePaid, renewBooking, saveBooking, saveBundle, saveBundleBooking } from "@/app/console/actions";
+import { bookDraftRun, decideAdvertBooking, deleteDraftBooking, endBooking, markInvoicePaid, renewBooking, saveBooking, saveBundle, saveBundleBooking, updateDraftDates } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -715,5 +715,60 @@ describe("markInvoicePaid", () => {
     db({}, async () => dbOk({ outcome: "paid" }));
     await expect(markInvoicePaid(form({ invoice_id: INV, confirm: "1", return_to: "/dashboard/evil" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\?error=/);
+  });
+});
+
+// GAPS A2.12: a desk rebook draft's dates can change, and an unwanted one can go.
+// Only while it's still the desk's draft — the member may have submitted it.
+describe("updateDraftDates / deleteDraftBooking", () => {
+  const table = (result: DbResult) => {
+    const b = queryBuilder(result);
+    db({ advert_bookings: () => b });
+    return b;
+  };
+
+  it("changes the dates of the desk's own draft only", async () => {
+    const b = table(dbOk([{ id: "b2" }]));
+    await expect(updateDraftDates(form({ id: "b2", starts_on: "2099-03-01", ends_on: "2099-03-31" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/adverts/b2?saved=1");
+    expect(b.update).toHaveBeenCalledWith(expect.objectContaining({ starts_on: "2099-03-01", ends_on: "2099-03-31" }));
+    expect(called(b, "eq", "status", "draft")).toBe(true);
+    expect(called(b, "eq", "source", "admin")).toBe(true);
+  });
+
+  it("refuses dates out of order or in the past, writing nothing", async () => {
+    for (const [starts_on, ends_on, says] of [
+      ["2099-03-31", "2099-03-01", "end on or after"],
+      ["2001-01-01", "2001-01-31", "start in the past"],
+      ["2099-02-30", "2099-03-01", "Choose a start and an end"],
+    ]) {
+      const b = table(dbOk([{ id: "b2" }]));
+      await expect(updateDraftDates(form({ id: "b2", starts_on, ends_on }))).rejects.toThrow(encodeURIComponent(says));
+      expect(b.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it("says so when the draft has moved on (booked, or sent in by the member)", async () => {
+    table(dbOk([]));
+    await expect(updateDraftDates(form({ id: "b2", starts_on: "2099-03-01", ends_on: "2099-03-31" })))
+      .rejects.toThrow(encodeURIComponent("This draft has moved on"));
+  });
+
+  it("deletes the desk's draft only with the confirm ticked", async () => {
+    const unconfirmed = table(dbOk([{ id: "b2" }]));
+    await expect(deleteDraftBooking(form({ id: "b2" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/b2?error=");
+    expect(unconfirmed.delete).not.toHaveBeenCalled();
+
+    const b = table(dbOk([{ id: "b2" }]));
+    await expect(deleteDraftBooking(form({ id: "b2", confirm: "1" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts?deleted=1");
+    expect(b.delete).toHaveBeenCalled();
+    expect(called(b, "eq", "status", "draft")).toBe(true);
+    expect(called(b, "eq", "source", "admin")).toBe(true);
+  });
+
+  it("deletes nothing that has moved on, and says so", async () => {
+    table(dbOk([]));
+    await expect(deleteDraftBooking(form({ id: "b2", confirm: "1" })))
+      .rejects.toThrow(encodeURIComponent("This draft has moved on"));
   });
 });

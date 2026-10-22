@@ -125,6 +125,7 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
       </p>
 
       {typeof sp.saved === "string" && <p role="status" className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.deleted === "string" && <p role="status" className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Draft deleted.</p>}
       {/* saveBooking sends the overlap rejection back here. Without this the
           booking form looked like a silent no-op. */}
       {typeof sp.error === "string" && <p role="alert" className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}

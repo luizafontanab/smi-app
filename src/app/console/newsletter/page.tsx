@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
-import { monthGrid, parseMonth } from "@/lib/calendar";
+import { dayKey, monthGrid, parseMonth } from "@/lib/calendar";
+import { formatLondon } from "@/lib/london-time";
 import { createIssue, saveNewsletterFooter, scheduleIssue, sendIssue, unscheduleIssue } from "../actions";
 import { DEFAULT_REASON_LINE, POSTAL_ADDRESS_MAX, readNewsletterFooter, REASON_LINE_MAX } from "@/lib/newsletter-footer";
 import { CalendarView, type CalendarIssue } from "./CalendarView";
@@ -119,10 +120,10 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
                     <div key={i.id} className="rounded border p-2.5 text-sm">
                       <Link href={`/console/newsletter/${i.id}`} className="font-medium leading-snug hover:text-graphite hover:underline">#{i.number} — {i.subject}</Link>
                       {i.status === "scheduled" && i.scheduled_at && (
-                        <p className="mt-1 text-xs text-graphite">{new Date(i.scheduled_at).toLocaleString("en-GB")}</p>
+                        <p className="mt-1 text-xs text-graphite">{formatLondon(i.scheduled_at)}</p>
                       )}
                       {i.status === "sent" && i.sent_at && (
-                        <p className="mt-1 text-xs text-success">sent {i.sent_at.slice(0, 10)}</p>
+                        <p className="mt-1 text-xs text-success">sent {dayKey(new Date(i.sent_at))}</p>
                       )}
                       {i.web_slug && i.status === "sent" && (
                         <Link href={`/newsletters/${i.web_slug}`} className="mt-1 block text-xs text-graphite hover:underline">web version</Link>
@@ -140,7 +141,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
                           <SendNowForm id={i.id} label="Send now" />
                           <form action={scheduleIssue} className="flex flex-wrap items-center gap-1.5">
                             <input type="hidden" name="id" value={i.id} />
-                            <input type="datetime-local" name="scheduled_at" aria-label="Schedule send time" required className="max-w-full rounded border px-1.5 py-1 text-xs" />
+                            <input type="datetime-local" name="scheduled_at" aria-label="Schedule send time (UK time)" required className="max-w-full rounded border px-1.5 py-1 text-xs" />
                             <button className="rounded border px-2.5 py-1 text-xs">Schedule</button>
                           </form>
                         </div>

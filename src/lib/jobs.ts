@@ -5,7 +5,7 @@ import { siteUrl } from "./site-url";
 import { londonAt, londonDayStart } from "./london-time";
 import { excerptFromHtml } from "./sanitize";
 import { composeSocialText, fillStoryPostLinks, queueSocialPush, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
-import type { SocialPost } from "./adapters/social";
+import type { SentPost, SocialPost } from "./adapters/social";
 import { enqueueStoryLive, taggedMembers } from "./story-members";
 import { isMemberLinkable } from "./member-visibility";
 
@@ -378,27 +378,45 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         await enqueue("social_push", payload, await nextOverflowSlot(db, caps.delay_minutes));
         return;
       }
-      const { getSocialPublisher, isSocialLive } = await import("./adapters/social");
-      const sent = (await getSocialPublisher().publish({
-        text: composeSocialText(item.lead, `${siteUrl()}${item.path}`),
-        imagePath: item.imagePath,
-        ...(await item.tags()),
-      })) ?? [];
-      // Stamped only for a real post: the logging stub must not make the editor say "Posted".
-      if (isSocialLive()) {
-        await db.from(item.table).update({ social_posted_at: new Date().toISOString() }).eq("id", item.id);
-      }
+      const { getSocialPublisher, isSocialLive, SocialPublishError } = await import("./adapters/social");
       // The story page links to SMI's own posts (Jas 13/10 item 8). Their URLs
       // used to be pasted in by hand; now they're filled from Buffer, straight
       // away if it already has them, otherwise once it has sent the post.
       // Videos have no post-link fields.
-      if (item.table === "stories" && sent.length) {
+      const collectLinks = async (sent: SentPost[]) => {
+        if (item.table !== "stories" || !sent.length) return;
         const waiting = await fillStoryPostLinks(db, item.id, sent);
         if (waiting.length) {
           await enqueue("social_links", { story_id: item.id, post_ids: waiting.map((p) => p.id), tries: 0 },
             new Date(Date.now() + SOCIAL_LINK_BACKOFF[0] * 60_000));
         }
+      };
+      // GAPS B4.5: channels an earlier attempt of this job already reached.
+      const done = Array.isArray(payload.done_channel_ids)
+        ? payload.done_channel_ids.filter((x): x is string => typeof x === "string")
+        : [];
+      let sent: SentPost[];
+      try {
+        sent = (await getSocialPublisher().publish({
+          text: composeSocialText(item.lead, `${siteUrl()}${item.path}`),
+          imagePath: item.imagePath,
+          ...(await item.tags()),
+        }, { skipChannelIds: done })) ?? [];
+      } catch (e) {
+        // Some channels took it: record them on this job's own payload (a retry
+        // re-reads the row), so the retry posts only to the ones still owed —
+        // Buffer has no idempotency key. Their links are collected now, too.
+        if (e instanceof SocialPublishError && e.doneChannelIds.length) {
+          await db.from("jobs").update({ payload: { ...payload, done_channel_ids: [...done, ...e.doneChannelIds] } as Json }).eq("id", jobId);
+          await collectLinks(e.sent);
+        }
+        throw e;
       }
+      // Stamped only for a real post: the logging stub must not make the editor say "Posted".
+      if (isSocialLive()) {
+        await db.from(item.table).update({ social_posted_at: new Date().toISOString() }).eq("id", item.id);
+      }
+      await collectLinks(sent);
       break;
     }
     case "social_links": {
@@ -884,7 +902,19 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
           .eq("id", issue.id);
         return;
       }
-      const { getNewsletterSender, newsletterIsLive } = await import("./adapters/newsletter");
+      const { getNewsletterSender, newsletterIsLive, issueItemsNotLive } = await import("./adapters/newsletter");
+      // GAPS B5.5: a story or video withdrawn after it was picked would go out
+      // linking to a 404. Refused here, ahead of either sender, so the logging
+      // stub can't let it through. Not thrown, like the approval check above:
+      // a retry can't put the item back.
+      const notLive = await issueItemsNotLive(issue.id);
+      if (notLive.length) {
+        const { notLiveMessage } = await import("./newsletter-picker");
+        await db.from("newsletter_issues")
+          .update({ status: "send_failed", send_error: notLiveMessage(notLive).slice(0, 500) })
+          .eq("id", issue.id);
+        return;
+      }
       // Keyed on this job's own id: a retry of the SAME job (crash between the
       // broadcast succeeding and the status write below landing) reuses the
       // key, so Resend dedupes rather than mailing the whole list twice. A

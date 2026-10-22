@@ -6,6 +6,7 @@ import { industryIdsFromForm, resolveIndustryPick } from "@/lib/member-services"
 import { EMAIL_RE, parseCoordinate, parsePhone } from "@/lib/validate";
 import { optionalYoutubeUrl } from "@/lib/youtube";
 import { websiteUrl } from "@/lib/website-url";
+import { parseLondonInput } from "@/lib/london-time";
 
 /**
  * FormData → the payload to write to `members`, for both editors of the same
@@ -53,12 +54,12 @@ const checked = (formData: FormData, key: string) => formData.get(key) === "on";
 
 const coordinate = (formData: FormData, key: "lat" | "lng", limit: number) => parseCoordinate(text(formData, key), limit, key);
 
-/** `datetime-local` → ISO, so it round-trips through a timestamptz column. */
+/** `datetime-local`, read as UK time (GAPS A3.9) → ISO, so it round-trips through a timestamptz column. */
 function timestamp(formData: FormData, key: string): string | null | { error: string } {
   const raw = text(formData, key);
   if (!raw) return null;
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return { error: "Paid-at is not a valid date and time." };
+  const parsed = parseLondonInput(raw);
+  if (!parsed) return { error: "Paid-at is not a valid date and time." };
   return parsed.toISOString();
 }
 

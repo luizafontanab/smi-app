@@ -12,6 +12,7 @@ import {
   renderNotification,
   renderPreview,
   renderReply,
+  shellTemplateProblem,
   sampleVarsFor,
   validateEmailTemplate,
 } from "@/lib/email/templates";
@@ -418,3 +419,44 @@ describe("reply to an inbox enquiry", () => {
   });
 });
 
+
+// GAPS B3.4: the wrapper's footer used to tell everyone they had a member
+// account, including someone who only wrote in through the contact form.
+describe("the wrapper's footer line", () => {
+  const overrides = (map: EmailTemplateMap) => map;
+
+  it("tells a member about their account, with a link to it, in both versions", () => {
+    const mail = renderNotification({ kind: "page_live" });
+    expect(mail.html).toContain("you have a Sheet Metal Industries member account");
+    expect(mail.html).toMatch(/href="[^"]*\/dashboard"[^>]*>Manage your account</);
+    expect(mail.text).toContain("you have a Sheet Metal Industries member account");
+    expect(mail.text).toMatch(/Manage your account: \S+\/dashboard/);
+  });
+
+  it("never tells someone who wrote in that they have a member account", () => {
+    const mail = renderReply({ name: "Dave", subject: "Re: Advertising enquiry", body: "Happy to help." });
+    for (const version of [mail.html, mail.text]) {
+      expect(version).not.toContain("member account");
+      expect(version).not.toContain("Manage your account");
+      expect(version).toContain("You're receiving this because you contacted Sheet Metal Industries.");
+    }
+  });
+
+  it("keeps the footer in graphite, never brand orange", () => {
+    const html = renderReply({ subject: "Re: hi", body: "x" }).html;
+    expect(html).toMatch(/<p style="[^"]*color:#5a6068;">\s*You're receiving this because you contacted/);
+  });
+
+  it("flags an edited wrapper with no footer placeholder, and passes one that has it", () => {
+    expect(shellTemplateProblem(undefined)).toBeNull();
+    expect(shellTemplateProblem(overrides({ _shell: { body_html: "<html><body>{{body}} old footer</body></html>" } })))
+      .toMatch(/no \{\{footer\}\}/);
+    expect(shellTemplateProblem(overrides({ _shell: { body_html: "<html><body>{{body}}<p>{{footer}}</p></body></html>" } })))
+      .toBeNull();
+  });
+
+  it("accepts {{footer}} in an edit to the wrapper, without making it required", () => {
+    expect(validateEmailTemplate("_shell", { body_html: "<html><body>{{body}}{{footer}}</body></html>" })).toBeNull();
+    expect(validateEmailTemplate("_shell", { body_html: "<html><body>{{body}}</body></html>" })).toBeNull();
+  });
+});

@@ -11,7 +11,7 @@ import { PHASE_LABELS } from "@/components/console/advert-formats";
 import { InvoicePanel } from "@/components/console/InvoicePanel";
 import { ApproveBookingFields } from "@/components/console/ApproveBookingFields";
 import { holdsForPayment } from "@/lib/advert-payments";
-import { bookDraftRun, decideArtworkSwap, decideAdvertBooking, endBooking, proposeArtworkSwap, renewBooking } from "../../actions";
+import { bookDraftRun, decideArtworkSwap, decideAdvertBooking, deleteDraftBooking, endBooking, proposeArtworkSwap, renewBooking, updateDraftDates } from "../../actions";
 import { UploadField } from "@/components/UploadField";
 
 export const dynamic = "force-dynamic";
@@ -164,6 +164,13 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
         <section className="mt-4 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Book this run</h2>
           <p className="mt-1 text-xs text-graphite">Not booked yet — it holds no dates and shows nowhere until you book it.</p>
+          {/* GAPS A2.12: the dates can still change, and an unwanted draft can go. */}
+          <form action={updateDraftDates} className="mt-3 flex flex-wrap items-end gap-3 text-sm">
+            <input type="hidden" name="id" value={id} />
+            <label className="block">Start<input type="date" name="starts_on" required defaultValue={booking.starts_on} className="mt-1 block rounded border px-3 py-2" /></label>
+            <label className="block">End<input type="date" name="ends_on" required defaultValue={booking.ends_on} className="mt-1 block rounded border px-3 py-2" /></label>
+            <button className="rounded border px-4 py-2">Change dates</button>
+          </form>
           <form action={bookDraftRun} className="mt-3">
             <input type="hidden" name="id" value={id} />
             {booking.bundle_id ? (
@@ -178,6 +185,13 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
                 pricedHolds={holdsForPayment(1)}
               />
             )}
+          </form>
+          <form action={deleteDraftBooking} className="mt-4 flex flex-wrap items-center gap-3 border-t pt-3 text-sm">
+            <input type="hidden" name="id" value={id} />
+            <label className="flex items-center gap-2 text-graphite">
+              <input type="checkbox" name="confirm" value="1" required /> Delete this draft. It was never booked, so nothing else changes.
+            </label>
+            <button className="rounded border border-danger/30 px-3 py-1.5 text-danger">Delete draft</button>
           </form>
         </section>
       )}

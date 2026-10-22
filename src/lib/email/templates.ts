@@ -25,8 +25,10 @@ import {
   NEWSLETTER_SHELL_KIND,
   REPLY_KIND,
   SHELL_KIND,
+  type ShellAudience,
   type TemplateDefault,
   ctaMarkup,
+  shellFooter,
 } from "./defaults";
 import {
   collapseBlankLines,
@@ -287,6 +289,7 @@ function assemble(
   cta: { href: string; specific: boolean },
   base: string,
   overrides?: EmailTemplateMap,
+  audience: ShellAudience = "member",
 ): RenderedEmail {
   const tpl = resolveTemplate(kind, overrides);
   const raw = tpl.tokens.filter((t) => t.raw).map((t) => t.token);
@@ -306,11 +309,11 @@ function assemble(
   const shell = resolveTemplate(SHELL_KIND, overrides);
   const html = interpolate(
     shell.bodyHtml,
-    { subject, body: bodyHtml, cta: ctaHtml, base },
-    { escape: true, raw: ["body", "cta"] },
+    { subject, body: bodyHtml, cta: ctaHtml, base, footer: shellFooter(audience, escapeHtml(base)).html },
+    { escape: true, raw: ["body", "cta", "footer"] },
   );
   const text = collapseBlankLines(
-    interpolate(shell.bodyText, { body: [bodyText, ctaText].filter(Boolean).join("\n\n") }),
+    interpolate(shell.bodyText, { body: [bodyText, ctaText].filter(Boolean).join("\n\n"), footer: shellFooter(audience, base).text }),
   );
 
   return { subject, text, html };
@@ -382,6 +385,8 @@ export function renderReply(vars: ReplyVars, overrides?: EmailTemplateMap): Rend
     { href: `${base}/dashboard`, specific: true },
     base,
     overrides,
+    // GAPS B3.4: often someone with no account at all, so the footer says why they have it instead.
+    "contact",
   );
 
   return {
@@ -466,6 +471,20 @@ export function newsletterTemplateProblem(overrides?: EmailTemplateMap): string 
     if (missing.length) return `${prefix} The ${label} is missing ${missing.map((t) => `{{${t}}}`).join(", ")}.`;
   }
   return null;
+}
+
+/**
+ * GAPS B3.4: an edited member-email wrapper saved before `{{footer}}` existed
+ * keeps its own fixed footer, which tells someone who only used the contact
+ * form that they have a member account. Shown on the templates list rather
+ * than blocking anything: the email is still correct for members, and a reply
+ * shouldn't fail over a footer line. Null when there is no edit or it's sound.
+ */
+export function shellTemplateProblem(overrides?: EmailTemplateMap): string | null {
+  if (!overrides?.[SHELL_KIND]) return null;
+  const tpl = resolveTemplate(SHELL_KIND, overrides);
+  if (tokensIn(tpl.bodyHtml).includes("footer")) return null;
+  return "The wrapper has been edited and has no {{footer}}, so it keeps its old footer: replies to contact-form enquiries tell the reader they have a member account. Put {{footer}} where the footer text is, or reset the wrapper.";
 }
 
 /** The PECR/SOP footer lines every version of an issue carries, in the order a message lists them. */

@@ -30,3 +30,20 @@ export function parseIssueItems(values: string[]): IssueItemRef[] {
     return [{ kind, id }];
   });
 }
+
+/**
+ * GAPS B5.5: a picked story or video is "live" only while it's published —
+ * the same rule the site's RLS applies (`public_read_published_*`), so the
+ * email and the web copy agree on what's in the issue.
+ */
+export function isLiveContent(status: string | null | undefined): boolean {
+  return status === "published";
+}
+
+/** Why an issue can't go out while it holds items that have left the site. */
+export function notLiveMessage(titles: string[]): string {
+  const named = titles.map((t) => `“${t}”`).join(", ");
+  return titles.length === 1
+    ? `${named} is no longer live on the site. Remove it from the issue or republish it before sending.`
+    : `${titles.length} picked items are no longer live on the site (${named}). Remove them from the issue or republish them before sending.`;
+}

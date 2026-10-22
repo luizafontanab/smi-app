@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { dayKey, monthGrid, monthKey, shiftMonth, WEEKDAYS } from "@/lib/calendar";
+import { dayKey, monthGrid, monthKey, shiftMonth, ukTime, WEEKDAYS } from "@/lib/calendar";
 
 /**
  * Read-only month view of newsletter issues, mirroring the Story Engine's
@@ -96,7 +96,7 @@ export function CalendarView({ month, issues }: { month: Date; issues: CalendarI
                         }`}
                       >
                         <span className="tabular-nums opacity-70">
-                          {at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                          {ukTime(at)}
                         </span>{" "}
                         {issue.subject}
                         <span className="sr-only">, {longDate(day)}</span>

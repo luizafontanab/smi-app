@@ -2,7 +2,7 @@ import Link from "next/link";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { requireConsole } from "@/lib/auth";
-import { monthGrid, parseMonth } from "@/lib/calendar";
+import { dayKey, monthGrid, parseMonth } from "@/lib/calendar";
 import { CalendarView, type CalendarEvent } from "./CalendarView";
 import { EventBoard, type BoardEvent } from "./EventBoard";
 
@@ -34,8 +34,8 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
           .from("events")
           .select(SELECT)
           .in("status", ["draft", "awaiting_approval", "published"])
-          .gte("starts_on", start.toISOString().slice(0, 10))
-          .lt("starts_on", end.toISOString().slice(0, 10))
+          .gte("starts_on", dayKey(start))
+          .lt("starts_on", dayKey(end))
       : db
           .from("events")
           .select(SELECT)

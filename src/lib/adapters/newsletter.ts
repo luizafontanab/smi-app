@@ -5,6 +5,7 @@ import { siteUrl } from "../site-url";
 import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "../newsletter-layout";
 import { issueExtras } from "../newsletter-extras";
 import { newsletterParams } from "../newsletter-tracking";
+import { isLiveContent } from "../newsletter-picker";
 import { addressLine, readNewsletterFooter } from "../newsletter-footer";
 import { SMI_SOCIAL_URLS, SOCIAL_CHANNELS } from "../social";
 import { EmailSendError, newsletterFrom } from "./email";
@@ -145,7 +146,7 @@ export async function renderIssueHtml(
   const [{ data: items }, { data: ads }] = await Promise.all([
     db.from("newsletter_items")
       // excerpt = the story_summary computed field: the author's summary, else the body's opening
-      .select("position, story:stories(slug, title, excerpt:story_summary, cover_path), video:videos(slug, title, thumbnail_path)")
+      .select("position, story:stories(slug, title, status, excerpt:story_summary, cover_path), video:videos(slug, title, status, thumbnail_path)")
       .eq("issue_id", issueId).order("position"),
     db.from("newsletter_ads")
       .select("position, after_item, advert:adverts(id, name, format, desktop_path, mobile_path, headline, body)")
@@ -159,11 +160,14 @@ export async function renderIssueHtml(
   // (gap review area 5 slice C, lib/newsletter-tracking).
   const tracked = newsletterParams(issue.id);
   const cards = (items ?? []).flatMap((item): IssueCard[] => {
-    if (item.story) {
+    // GAPS B5.5: an item that has left the site is never rendered. Every send
+    // path also refuses while one is picked (issueItemsNotLive), so this only
+    // keeps the preview showing what the list would actually get.
+    if (item.story && isLiveContent(item.story.status)) {
       const s = item.story;
       return [{ href: `${base}/news/${s.slug}?${tracked}`, title: s.title, summary: s.excerpt, image: mediaUrl(s.cover_path), kicker: null, cta: "Read article" }];
     }
-    if (item.video) {
+    if (item.video && isLiveContent(item.video.status)) {
       const v = item.video;
       return [{ href: `${base}/video/${v.slug}?${tracked}`, title: v.title, summary: null, image: mediaUrl(v.thumbnail_path), kicker: "Video", cta: "Watch video" }];
     }
@@ -302,6 +306,28 @@ export async function renderIssueHtml(
   // `unsubscribe_url`) would still leak it into a test send, so swap that too.
   const swap = (body: string) => (opts.unsubscribeUrl ? body.split(UNSUBSCRIBE_URL).join(opts.unsubscribeUrl) : body);
   return { subject: issue.subject, html: swap(rendered.html), text: swap(rendered.text) };
+}
+
+/**
+ * GAPS B5.5: the titles of picked stories and videos that are no longer live
+ * (withdrawn, unpublished, back in draft). A send refuses while there are any
+ * — Luiza, 22 Oct: refuse rather than silently drop, because dropping one
+ * changes the lead and moves every advert from what was proofed. Checked by
+ * the send job and the console actions rather than inside a sender, so the
+ * logging stub can't skip it. A deleted item has no row to name and was
+ * already left out, so it doesn't count.
+ */
+export async function issueItemsNotLive(issueId: string): Promise<string[]> {
+  const { data, error } = await serviceDb()
+    .from("newsletter_items")
+    .select("position, story:stories(title, status), video:videos(title, status)")
+    .eq("issue_id", issueId)
+    .order("position");
+  if (error) throw new Error(`newsletter items for ${issueId}: ${error.message}`);
+  return (data ?? []).flatMap((item) => {
+    const picked = item.story ?? item.video;
+    return picked && !isLiveContent(picked.status) ? [picked.title] : [];
+  });
 }
 
 class LoggingNewsletterStub implements NewsletterSender {

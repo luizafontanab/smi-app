@@ -8,6 +8,7 @@ import { startViewAs } from "@/app/view-as/actions";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
+import { londonInputValue } from "@/lib/london-time";
 import { Badge, Card, SectionTitle } from "@/components/console/ui";
 import { CompanyPageForm } from "@/components/member/CompanyPageForm";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -257,7 +258,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               <div><label htmlFor="grace_until" className={label}>Grace until</label><input id="grace_until" type="date" name="grace_until" defaultValue={member.grace_until ?? ""} className={field} /></div>
               <div>
                 <label htmlFor="paid_at" className={label}>Paid at</label>
-                <input id="paid_at" type="datetime-local" name="paid_at" defaultValue={member.paid_at?.slice(0, 16) ?? ""} className={field} />
+                <input id="paid_at" type="datetime-local" name="paid_at" defaultValue={londonInputValue(member.paid_at)} className={field} />
                 <p className="mt-1 text-xs text-graphite">For corrections — use “Record payment” below to raise an invoice too.</p>
               </div>
               <div><label htmlFor="comped_until" className={label}>Comped until</label><input id="comped_until" type="date" name="comped_until" defaultValue={member.comped_until ?? ""} className={field} /></div>

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addContact, addDirectoryMember, approveIssue, attachNewsletterAd, createIssue, placeNewsletterAd, previewBiginPull, runBiginSync, saveContact, saveNewsletterFooter, saveProofChecks, scheduleIssue,
   removeDirectoryMember, searchBiginCompanies, searchIssueContent, sendIssue, sendTestIssue, unscheduleIssue, updateIssue, withdrawApproval,
@@ -26,11 +26,12 @@ const { requireConsole, enqueue, syncContactToCrm, crm, saveLastRun, firstImport
   firstImportDone: vi.fn(async () => true),
   readLastRun: vi.fn(async (): Promise<unknown> => null),
 }));
-const { renderIssueHtml, emailSend } = vi.hoisted(() => ({
+const { renderIssueHtml, emailSend, issueItemsNotLive } = vi.hoisted(() => ({
   renderIssueHtml: vi.fn(async (): Promise<{ subject: string; html: string; text: string } | null> => null),
+  issueItemsNotLive: vi.fn<(issueId: string) => Promise<string[]>>(async () => []),
   emailSend: vi.fn(async () => {}),
 }));
-vi.mock("@/lib/adapters/newsletter", () => ({ renderIssueHtml }));
+vi.mock("@/lib/adapters/newsletter", () => ({ renderIssueHtml, issueItemsNotLive }));
 vi.mock("@/lib/adapters/email", () => ({ getEmailSender: () => ({ send: emailSend }), newsletterFrom: () => "Sheet Metal Industries <news@smi.local>" }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
@@ -39,6 +40,7 @@ vi.mock("@/lib/adapters/crm", () => ({ getCrmSync: vi.fn(() => crm), syncContact
 afterEach(() => {
   resetDbServerMocks();
   renderIssueHtml.mockReset().mockResolvedValue(null);
+  issueItemsNotLive.mockReset().mockResolvedValue([]);
   emailSend.mockReset().mockResolvedValue(undefined);
   enqueue.mockReset().mockResolvedValue(undefined);
   syncContactToCrm.mockReset().mockResolvedValue(undefined);
@@ -137,8 +139,18 @@ describe("scheduleIssue", () => {
 
     await scheduleIssue(form({ id: "iss1", scheduled_at: "2026-09-01T09:00" }));
 
-    expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled" }));
-    expect(enqueue).toHaveBeenCalledWith("newsletter_send", { issue_id: "iss1" }, expect.any(Date));
+    // 09:00 on 1 Sep is BST: 08:00 UTC, whatever zone the server is in (GAPS A3.9).
+    expect(builder.update).toHaveBeenCalledWith({ status: "scheduled", scheduled_at: "2026-09-01T08:00:00.000Z" });
+    expect(enqueue).toHaveBeenCalledWith("newsletter_send", { issue_id: "iss1" }, new Date("2026-09-01T08:00:00.000Z"));
+  });
+
+  it("refuses a send time it can't read, scheduling nothing", async () => {
+    const builder = queryBuilder(dbOk({ approved_at: "2026-10-20T09:00:00Z" }));
+    db({ newsletter_issues: () => builder });
+
+    await expect(scheduleIssue(form({ id: "iss1", scheduled_at: "2026-02-31T09:00" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
+    expect(builder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("refuses an issue that isn't approved to send", async () => {
@@ -514,6 +526,43 @@ describe("sendTestIssue", () => {
 
     await expect(sendTestIssue(form({ id: "iss1" }))).rejects.toThrow("NEXT_REDIRECT:/console/newsletter/iss1?error=");
     expect(emailSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("a picked item that has left the site blocks every send path (GAPS B5.5)", () => {
+  const notLive = /\?error=.*%E2%80%9CWithdrawn%20story%E2%80%9D%20is%20no%20longer%20live/;
+  beforeEach(() => issueItemsNotLive.mockResolvedValue(["Withdrawn story"]));
+
+  it("sendIssue refuses and queues nothing", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ approved_at: "2026-10-20T09:00:00Z" }));
+    db({ newsletter_issues: () => issuesBuilder });
+    await expect(sendIssue(form({ id: "iss1", confirm: "1" }))).rejects.toThrow(notLive);
+    expect(issuesBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("scheduleIssue refuses and queues nothing", async () => {
+    const builder = queryBuilder(dbOk({ approved_at: "2026-10-20T09:00:00Z" }));
+    db({ newsletter_issues: () => builder });
+    await expect(scheduleIssue(form({ id: "iss1", scheduled_at: "2026-11-01T09:00" }))).rejects.toThrow(notLive);
+    expect(builder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("approveIssue refuses", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft", proof_checks: ALL_TICKED, last_test_sent_at: "2026-10-20T08:00:00Z" }));
+    db({ newsletter_issues: () => issuesBuilder });
+    await expect(approveIssue(form({ id: "iss1" }))).rejects.toThrow(notLive);
+    expect(issuesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("sendTestIssue refuses and sends nothing", async () => {
+    const issuesBuilder = queryBuilder(dbOk({ status: "draft" }));
+    db({ newsletter_issues: () => issuesBuilder });
+    renderIssueHtml.mockResolvedValue({ subject: "October", html: "<p>hi</p>", text: "hi" });
+    await expect(sendTestIssue(form({ id: "iss1" }))).rejects.toThrow(notLive);
+    expect(emailSend).not.toHaveBeenCalled();
+    expect(issuesBuilder.update).not.toHaveBeenCalled();
   });
 });
 

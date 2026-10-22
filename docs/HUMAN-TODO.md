@@ -176,6 +176,10 @@ through Proof and approval first.
       add `{{masthead}}` and `{{preheader}}` by hand. Since 21 Oct (gap review
       area 6) it also lacks the new footer, and a re-save needs `{{postal_address}}`
       and `{{reason_line}}`, so resetting it is simpler.
+      Check the member-email wrapper the same way (`kind = '_shell'`). An edited
+      one keeps a fixed footer that tells contact-form enquirers they have a
+      member account (GAPS B3.4). The Email Templates list flags it; reset it,
+      or put `{{footer}}` where the footer text is.
 - [ ] **2.11 — Fill in the newsletter footer** under `/console/newsletter` →
       Footer once Jas has given the postal address (ask-jas 32). Until then every
       issue goes out without one, and the issue page says so.
@@ -237,6 +241,16 @@ through Proof and approval first.
         `externalLink`, which is in its API reference but has never been seen on a
         live response. If they stay empty, look at the `social_links` jobs; a link
         can still be pasted by hand meanwhile.
+      - Check that the organisation id is filled in next to the channel ids on
+        `/console/stories`. Then check the first post on each network carries only
+        that network's tags (GAPS B4.5). The network comes from Buffer's
+        `channels(input: { organizationId })` → `service`, which is in its API
+        reference but untested. If X shows `linkedin:` tags too, the lookup is
+        failing, and every channel gets one shared text cut to fit X's 280.
+        That's safe, but untidy.
+      - Confirm X really refuses a post over 280 through Buffer (as a
+        `MutationError`) rather than truncating it. Our counting treats every
+        link as 23 characters.
 - [ ] **3.6 — Login-email change.** Do one end to end after 1.7. Check whether
       one link or both are needed, and that the member lands back in Settings.
 - [ ] **3.7 — Story sources, after the first week.** Review the "Blocked",

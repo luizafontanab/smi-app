@@ -4,7 +4,8 @@ import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { Badge } from "@/components/console/ui";
 import { EMAIL_DEFAULTS, type EmailFamily } from "@/lib/email/defaults";
-import { EDITABLE_KINDS } from "@/lib/email/templates";
+import { EDITABLE_KINDS, shellTemplateProblem } from "@/lib/email/templates";
+import { loadEmailTemplates } from "@/lib/email/store";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Email Templates" };
@@ -37,7 +38,10 @@ const FAMILIES: { key: EmailFamily; title: string; blurb: string }[] = [
 export default async function EmailTemplatesList(props: PageProps<"/console/email-templates">) {
   await requireConsole();
   const sp = await props.searchParams;
-  const rows = await must(serviceDb().from("email_templates").select("kind, updated_at"), "console/email-templates list");
+  const [rows, shellProblem] = await Promise.all([
+    must(serviceDb().from("email_templates").select("kind, updated_at"), "console/email-templates list"),
+    loadEmailTemplates().then(shellTemplateProblem),
+  ]);
   const edited = new Map((rows ?? []).map((r) => [r.kind, r.updated_at]));
 
   return (
@@ -57,6 +61,9 @@ export default async function EmailTemplatesList(props: PageProps<"/console/emai
           <section key={family.key} className="mt-6">
             <h2 className="font-bold text-ink">{family.title}</h2>
             <p className="mt-0.5 max-w-2xl text-sm text-graphite">{family.blurb}</p>
+            {family.key === "shell" && shellProblem && (
+              <p role="alert" className="mt-2 max-w-2xl rounded bg-danger/10 p-2 text-sm text-danger">{shellProblem}</p>
+            )}
             <div className="mt-3 overflow-hidden rounded-xl bg-white shadow-sm">
               <ul className="divide-y">
                 {kinds.map((kind) => {

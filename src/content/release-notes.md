@@ -10,6 +10,18 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-22 — Newsletter, social post and console fixes
+- A newsletter can no longer go out with a story or video that has since been withdrawn or unpublished. The issue page names it, and "Send me a test", approving, scheduling and sending all refuse until you remove it from the issue or republish it. If it happens after the issue is scheduled, the issue shows as failed with the reason instead of sending.
+- Social posts now carry only the tags for the network they're posted to, so an X post no longer includes LinkedIn and Facebook handles. On X, extra members' tags are dropped when needed to keep the post within 280 characters.
+- If a social post goes out on some networks but fails on another, the retry posts only to the one that failed, instead of posting again everywhere. For this to work best, fill in the Buffer organisation id next to the channel ids under Stories.
+- The newsletter's "Schedule" time is now UK time, and so is the time shown on a scheduled issue. In summer it used to be read an hour out.
+- The console calendars (stories, videos, newsletter, events and the Command Centre) now put everything on its UK day, so something at half past midnight no longer appears on the day before. Their times are UK time too.
+- A member's "Paid at" date and time, and the scheduled times on the Story and Video boards, are now UK time.
+- The Command Centre's "this month" revenue now starts at midnight UK time on the 1st.
+- A rebook draft made with "Rebook" can now have its dates changed, or be deleted if you don't want it, from its booking page. Once the member has sent it in, or you've booked it, it can't be changed this way.
+- Replies you send from the inbox no longer say "you have a Sheet Metal Industries member account" at the bottom. They now say the reader is getting it because they contacted you. Member emails keep the account line, and the plain-text version of every email now has it too.
+- If the email wrapper under Email templates was edited before this change, it keeps its old footer. The Email templates page says so, and resetting the wrapper fixes it.
+
 ## 2026-10-22 — Home page on phones, and easier-to-read green labels
 - On phones, the home page no longer scrolls sideways. The "More news" row now scrolls on its own, as it does on a computer.
 - The green used for "done" and "approved" labels across the console and member area is a shade darker, so the small green tags, such as "To call" on Leads, are easier to read.

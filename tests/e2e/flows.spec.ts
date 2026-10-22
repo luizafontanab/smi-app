@@ -119,7 +119,16 @@ test.describe("member directory — cloud view", () => {
   test("the logo is reachable by keyboard, not just by mouse", async ({ page }) => {
     await page.goto("/member");
     const item = page.locator("li.cloud-item").first();
-    await item.locator(".cloud-name").focus();
+    const name = item.locator(".cloud-name");
+    // GAPS A6.14: `load` can fire while the page is still streaming in behind
+    // (public)/loading.tsx. React holds the finished page in a hidden staging
+    // container (`S:0`) for up to ~300ms before revealing it, and focus() — which
+    // doesn't wait for visibility — then targets a hidden link and silently
+    // doesn't take. Wait until the name is really on the page, as a keyboard
+    // user would have to.
+    await expect(name).toBeVisible();
+    await name.focus();
+    await expect(name).toBeFocused();
     await expect(item.locator(".cloud-card")).toHaveCSS("opacity", "1");
   });
 

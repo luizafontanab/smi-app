@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { dayKey, monthGrid, monthKey, parseMonth, shiftMonth, WEEKDAYS } from "@/lib/calendar";
+import { dayKey, monthGrid, monthKey, parseMonth, shiftMonth, ukTime, WEEKDAYS } from "@/lib/calendar";
 
 /**
  * Read-only month view of the story diary (USE-CASES A: "reviews the calendar
@@ -98,7 +98,7 @@ export function CalendarView({ month, stories }: { month: Date; stories: Calenda
                         }`}
                       >
                         <span className="tabular-nums opacity-70">
-                          {at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                          {ukTime(at)}
                         </span>{" "}
                         {story.title}
                         <span className="sr-only">, {longDate(day)}</span>
