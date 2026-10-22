@@ -128,8 +128,9 @@ has:
   `"all"` run would write `analytics_events` rows that the *next* run's
   `/dashboard/stats` and `/console/analytics` would render. The suite would fail
   against itself.
-- `smi-theme=forge` — pins the homepage design; the `grid` variant is its own
-  route (`home@grid`).
+- `smi-theme=grid` — pins the site design to grid, the one going live, on every
+  route (the header, footer and industries bar differ too); the forge homepage is
+  its own route (`home@forge`).
 - `reducedMotion: "reduce"` — triggers the existing
   `@media (prefers-reduced-motion: reduce)` block in `globals.css`, which stops
   the infinite 26s hero ken-burns pan and every entrance animation.

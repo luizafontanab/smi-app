@@ -41,13 +41,14 @@ export const STATE_DIR = path.resolve(__dirname, "../.state");
  *              so the unseeded Math.random shuffle in dealSlots never runs and every
  *              slot draws its deterministic dashed placeholder instead — no carousel.
  *              showAdPlaceholders() honours the cookie even in a production build.
- * smi-theme    The homepage has two structurally different designs. Pin forge; the
- *              grid variant is captured as its own route.
+ * smi-theme    The homepage has two structurally different designs. Pin grid, the
+ *              design going live (ask-jas 17, site default since A8.2); the forge
+ *              homepage is captured as its own route, home@forge.
  */
 export const DEFAULT_COOKIES = [
   { name: "smi-consent", value: "essential" },
   { name: "smi-ads", value: "empty" },
-  { name: "smi-theme", value: "forge" },
+  { name: "smi-theme", value: "grid" },
 ];
 
 /** Logs each role in and writes .state/<role>.json. Returns role -> file path. */

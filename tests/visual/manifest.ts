@@ -69,9 +69,10 @@ const PUBLIC: Route[] = [
   // Anonymously it redirects to /login and there is nothing to photograph.
   member("/reset/new"),
 
-  // The homepage has two structurally different designs (src/lib/variant.ts);
-  // the default forge one is covered above, this is the other module.
-  { id: "home@grid", path: "/", role: "anon", cookies: [{ name: "smi-theme", value: "grid" }] },
+  // The homepage has two structurally different designs (src/lib/variant.ts).
+  // Grid is the one going live and every route is captured in it (lib/auth
+  // DEFAULT_COOKIES, since 22 Oct); forge keeps this one route.
+  { id: "home@forge", path: "/", role: "anon", cookies: [{ name: "smi-theme", value: "forge" }] },
 ];
 
 const PUBLIC_PINNED: Route[] = [
@@ -121,9 +122,9 @@ const DASHBOARD: Route[] = [
   member("/dashboard/submissions?status=published", { id: "dashboard_submissions_live" }),
   member("/dashboard/video/new"),
 
-  member("/dashboard/advert/6c85bdd1-e527-43c7-9d89-020bb1b6e375", {
+  member("/dashboard/advert/852ffe1a-b8c6-4514-a89d-d739b5eb2929", {
     id: "dashboard_advert_id",
-    pin: "member1's first booking on /dashboard/advertising/manage",
+    pin: "member1's first booking (live KUKA banner; repinned 22 Oct, the old pin no longer existed after a reseed)",
   }),
 
   // member1 currently owns no submitted content, so the four editors have
@@ -219,9 +220,9 @@ const CONSOLE_PINNED: Route[] = [
     id: "console_email_template",
     pin: "the one row scripts/seed.ts customises, so this captures the edited state; every other kind renders the shipped default",
   }),
-  admin("/console/adverts/3f47b54d-e236-497a-931b-fbc423a97616", {
+  admin("/console/adverts/7a80b0ba-0fde-4ba7-b041-d486e4f6b211", {
     id: "console_advert_id",
-    pin: "first booking on /console/adverts",
+    pin: "member1's scheduled KUKA banner run (repinned 22 Oct: the old pin no longer existed after a reseed). The seed has no draft, so the A2.12 draft forms aren't in the picture",
   }),
   admin("/console/notifications/44894901-5d1a-4c72-9200-40ae867e4216", {
     id: "console_message_id",
