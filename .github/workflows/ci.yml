@@ -35,6 +35,9 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON_KEY"
             echo "SUPABASE_SECRET_KEY=$SERVICE_ROLE_KEY"
             echo "DATABASE_URL=$DB_URL"
+            # Without it the email adapter logs instead of sending, and
+            # notify-member.test.ts finds nothing in Mailpit.
+            echo "MAILPIT_URL=$MAILPIT_URL"
           } >> "$GITHUB_ENV"
       - name: Seed
         # Note: seed.ts pulls ~25 real stories from the live site's public WP
@@ -74,6 +77,9 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON_KEY"
             echo "SUPABASE_SECRET_KEY=$SERVICE_ROLE_KEY"
             echo "DATABASE_URL=$DB_URL"
+            # Without it the email adapter logs instead of sending, and
+            # notify-member.test.ts finds nothing in Mailpit.
+            echo "MAILPIT_URL=$MAILPIT_URL"
           } >> "$GITHUB_ENV"
       - name: Seed
         run: pnpm exec tsx scripts/seed.ts

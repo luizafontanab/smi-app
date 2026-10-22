@@ -37,6 +37,9 @@ test.describe("reader (V1/V2)", () => {
     await page.goto("/news?filter=members");
     // scoped to the filtered All-news grid — the rails above it are unfiltered
     await page.locator('[data-testid="all-news-grid"] a[href^="/news/"]:has(h3)').first().click();
+    // The first story page a fresh dev server serves compiles on demand, which
+    // outran the 5s expect timeout in CI (the RSC request was still pending).
+    await page.waitForURL(/\/news\/[^/?#]+$/, { timeout: 30_000 });
     // Jas 13/10 item 12b: the member box became tiles headed "Featured SMI member(s)"
     await expect(page.getByText(/^Featured SMI members?$/).first()).toBeVisible();
   });
@@ -121,6 +124,10 @@ test.describe("member directory — cloud view", () => {
   });
 
   test("filters apply to the cloud and names link through", async ({ page }) => {
+    // The 60 largest names drift (cloud-layout.ts DRIFT_COUNT), so a filtered
+    // cloud of fewer members is all drift and no name ever passes Playwright's
+    // "stable" check. Reduced motion switches the drift off (globals.css).
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/member");
     await page.getByRole("navigation", { name: "Filter by industry" }).getByRole("link").nth(1).click();
     await page.waitForURL(/\/member\?industry=/);

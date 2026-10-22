@@ -32,10 +32,13 @@
   --smi-chrome-hover: #22262c;
   --smi-line: #e4e6e9;
   /* Semantic status pair — previously ad-hoc Tailwind red/green across 59
-     files. Both pass AA on paper for normal text (danger 6.3:1, success 4.9:1);
-     tint their backgrounds via opacity (bg-danger/10), never a separate hex. */
+     files. Both pass AA for normal text on paper (danger 6.5:1, success 5.8:1)
+     AND on their own /10 tint (5.5:1, 5.0:1) — the tag pattern
+     `bg-success/10 text-success` is everywhere, and the old #15803d fell to
+     4.38:1 on it. Tint backgrounds via opacity (bg-danger/10), never a
+     separate hex. */
   --smi-danger: #b91c1c;
-  --smi-success: #15803d;
+  --smi-success: #147538;
   /* Tint panel between paper and line — the old bg-gray-50/100 role. */
   --smi-shade: #f4f5f6;
   /* Categorical series for multi-series charts (StackedTrendChart) — fixed

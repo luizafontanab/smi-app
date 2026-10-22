@@ -257,7 +257,11 @@ export function GridHome({
        * each other so their "Read more" links land on one line.
        */}
       <Band inner="pt-6">
-        <div className="grid gap-4 lg:grid-cols-[4fr_4fr_3fr]">
+        {/* grid-cols-1 below lg, not the implicit column: an implicit track
+            grows to its widest child's min-content, and the More News row is
+            ~1700px of fixed-width tiles, which pushed the whole page sideways
+            on phones. minmax(0,1fr) caps it so the row scrolls in place. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[4fr_4fr_3fr]">
           {lead && <GhStoryCard story={lead} size="lg" eyebrow={null} />}
           {second && <GhStoryCard story={second} size="lg" eyebrow={null} />}
           {/* The third column is the two placement cards, stacked, running the

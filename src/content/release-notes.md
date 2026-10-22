@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-22 — Home page on phones, and easier-to-read green labels
+- On phones, the home page no longer scrolls sideways. The "More news" row now scrolls on its own, as it does on a computer.
+- The green used for "done" and "approved" labels across the console and member area is a shade darker, so the small green tags, such as "To call" on Leads, are easier to read.
+
 ## 2026-10-21 — Bounced addresses, and a last check before each newsletter
 - An address that bounces permanently is now marked "bounced, not mailed" on its CRM contact instead of being unsubscribed. It's left out of newsletters, but nothing is recorded in Bigin as an opt-out.
 - When you correct a bounced contact's email address, or tick "address fixed" when editing it, they go back on the list from the next daily contact sync.

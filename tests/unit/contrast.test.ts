@@ -43,9 +43,17 @@ describe("meetsWcagAA", () => {
 
   it("matches the semantic status tokens: danger and success pass normal text on paper, and white on both", () => {
     expect(meetsWcagAA("#b91c1c", "#ffffff")).toBe(true);
-    expect(meetsWcagAA("#15803d", "#ffffff")).toBe(true);
+    expect(meetsWcagAA("#147538", "#ffffff")).toBe(true);
     expect(meetsWcagAA("#ffffff", "#b91c1c")).toBe(true);
-    expect(meetsWcagAA("#ffffff", "#15803d")).toBe(true);
+    expect(meetsWcagAA("#ffffff", "#147538")).toBe(true);
+  });
+
+  it("passes the status tokens as text on their own /10 tint (the bg-success/10 text-success tag pattern)", () => {
+    // The /10 tint over paper, rounded: 0.1 × token + 0.9 × #ffffff.
+    expect(meetsWcagAA("#b91c1c", "#f8e8e8")).toBe(true);
+    expect(meetsWcagAA("#147538", "#e8f1eb")).toBe(true);
+    // The previous success green, which axe flagged at 4.38:1 on /console/leads.
+    expect(meetsWcagAA("#15803d", "#e8f2ec")).toBe(false);
   });
 
   it("rejects a malformed hex rather than silently treating it as black", () => {

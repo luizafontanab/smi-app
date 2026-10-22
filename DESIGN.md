@@ -13,7 +13,7 @@ colors:
   line: "#e4e6e9"
   shade: "#f4f5f6"
   danger: "#b91c1c"
-  success: "#15803d"
+  success: "#147538"
 typography:
   display:
     fontFamily: "League Spartan, Arial, sans-serif"
@@ -135,7 +135,7 @@ A single industrial accent over a neutral scale — orange is the identity, the 
 - **Shade** (#f4f5f6): the tint panel between paper and line — quiet grouped regions and inert placeholders.
 
 ### Semantic
-- **Danger** (#b91c1c, 6.3:1 on paper) and **Success** (#15803d, 4.9:1): status meaning only — rejections, errors, live/approved states. Tint their grounds via opacity (`bg-danger/10`), never a separate hex, and never use either decoratively.
+- **Danger** (#b91c1c, 6.3:1 on paper) and **Success** (#147538, 5.8:1 on paper, 5.0:1 on its own `/10` tint): status meaning only — rejections, errors, live/approved states. Tint their grounds via opacity (`bg-danger/10`), never a separate hex, and never use either decoratively.
 
 ### Named Rules
 **The Cut-Line Rule.** Hot-Cut Orange never sets body-size text on light ground. Small labels on paper use #ac5800; small text on ink/chrome may use full #ff8200; ink-on-orange (7.4:1) is the CTA pairing — white-on-orange fails AA at any size. The contrast table in `src/app/globals.css` is the measured authority.

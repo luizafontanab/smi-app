@@ -67,7 +67,7 @@
       "success": {
         "role": "semantic",
         "displayName": "Success",
-        "canonical": "#15803d",
+        "canonical": "#147538",
         "tonalRamp": ["oklch(20% 0.06 152)", "oklch(30% 0.09 152)", "oklch(40% 0.11 152)", "oklch(50% 0.13 152)", "oklch(58% 0.14 152)", "oklch(68% 0.12 152)", "oklch(82% 0.08 152)", "oklch(94% 0.03 152)"]
       }
     },
