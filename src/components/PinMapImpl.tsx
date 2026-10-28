@@ -30,7 +30,23 @@ const icon = L.divIcon({
 
 export type MapPin = { href: string; label: string; lat: number; lng: number };
 
-export function PinMap({ pins, ariaLabel }: { pins: MapPin[]; ariaLabel: string }) {
+/**
+ * Display options, defaulting to the directory/events map. A member profile's
+ * sidebar map (one pin, the page you're already on) passes a street-level
+ * zoom, a shorter box, no wheel zoom — so scrolling the page past it doesn't
+ * get captured — and no popup linking back to the same page.
+ */
+export type PinMapOptions = { zoom?: number; heightClass?: string; scrollWheelZoom?: boolean; popups?: boolean; roundedClass?: string };
+
+export function PinMap({
+  pins,
+  ariaLabel,
+  zoom = 6,
+  heightClass = "h-[32rem]",
+  scrollWheelZoom = true,
+  popups = true,
+  roundedClass = "rounded-lg shadow-sm",
+}: { pins: MapPin[]; ariaLabel: string } & PinMapOptions) {
   // Centres on the average of whatever is on screen — filters change what's
   // plotted, so the view should follow rather than stay pinned to the UK.
   const center = useMemo<[number, number]>(() => {
@@ -41,8 +57,8 @@ export function PinMap({ pins, ariaLabel }: { pins: MapPin[]; ariaLabel: string 
   }, [pins]);
 
   return (
-    <div role="region" aria-label={ariaLabel} className="h-[32rem] overflow-hidden rounded-lg shadow-sm">
-      <MapContainer center={center} zoom={6} scrollWheelZoom className="h-full w-full">
+    <div role="region" aria-label={ariaLabel} className={`${heightClass} overflow-hidden ${roundedClass}`}>
+      <MapContainer center={center} zoom={zoom} scrollWheelZoom={scrollWheelZoom} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -50,9 +66,11 @@ export function PinMap({ pins, ariaLabel }: { pins: MapPin[]; ariaLabel: string 
         {/* title gives each keyboard-focusable divIcon an accessible name */}
         {pins.map((p) => (
           <Marker key={p.href} position={[p.lat, p.lng]} icon={icon} title={p.label} alt={p.label}>
-            <Popup>
-              <Link href={p.href} className="font-semibold hover:underline">{p.label}</Link>
-            </Popup>
+            {popups && (
+              <Popup>
+                <Link href={p.href} className="font-semibold hover:underline">{p.label}</Link>
+              </Popup>
+            )}
           </Marker>
         ))}
       </MapContainer>

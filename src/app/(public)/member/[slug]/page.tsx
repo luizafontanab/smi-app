@@ -12,10 +12,11 @@ import { memberBySlug, publishedStories } from "@/lib/queries";
 import { resolveRedirect } from "@/lib/redirects";
 import { socialLinks } from "@/lib/social";
 import { memberVideoList } from "@/lib/member-videos";
-import { websiteUrl } from "@/lib/website-url";
 import { BlockRenderer } from "@/components/blocks/BlockRenderer";
 import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
+import { MemberLinks } from "@/components/MemberLinks";
+import { PinMap } from "@/components/PinMap";
 import { MemberVideos } from "@/components/MemberVideos";
 
 export const dynamic = "force-dynamic";
@@ -125,11 +126,6 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
             </div>
           )}
         </div>
-        <div className="flex gap-2 text-sm">
-          {/* only a website /go can actually send the reader to (lib/website-url) */}
-          {websiteUrl(member.website) && <a href={`/go/${member.id}?kind=website`} target="_blank" rel="noopener" className="rounded bg-ink px-4 py-2 text-white">Website</a>}
-          {member.phone && <a href={`/go/${member.id}?kind=phone`} className="rounded border px-4 py-2">Call</a>}
-        </div>
       </header>
 
       <div className="mt-6 grid items-stretch gap-6 lg:grid-cols-3">
@@ -143,34 +139,28 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           </section>
         </div>
         <aside className="flex flex-col gap-4">
-          {member.lat && member.lng && (
+          {/* Leaflet over OSM tiles, the same map as the directory's Map view.
+              It replaced an openstreetmap.org <iframe> that never rendered:
+              the CSP's frame-src (next.config.ts) doesn't admit it, while
+              img-src already admits the tiles. `!= null`, not truthiness — a
+              longitude of 0 runs through Greenwich and London. */}
+          {member.lat != null && member.lng != null && (
             <div className="overflow-hidden rounded-lg bg-white shadow-sm">
-              <iframe
-                className="h-56 w-full"
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${member.lng - 0.05}%2C${member.lat - 0.03}%2C${member.lng + 0.05}%2C${member.lat + 0.03}&layer=mapnik&marker=${member.lat}%2C${member.lng}`}
-                title="Location map"
+              <PinMap
+                ariaLabel={`Map showing ${member.name}'s location`}
+                pins={[{ href: `/member/${member.slug}`, label: member.name, lat: member.lat, lng: member.lng }]}
+                zoom={13}
+                heightClass="h-56"
+                roundedClass=""
+                scrollWheelZoom={false}
+                popups={false}
               />
               <p className="p-3 text-xs text-graphite">{member.address}</p>
             </div>
           )}
-          {socials.length > 0 && (
-            <div className="rounded-lg bg-white p-4 shadow-sm text-sm">
-              <h3 className="font-bold text-ink">Follow</h3>
-              <ul className="mt-2 space-y-1 text-graphite">
-                {socials.map((s) => (
-                  <li key={s.key} className="break-words">
-                    {!s.href ? (
-                      <>{s.label}: <span className="text-graphite">{s.value}</span></>
-                    ) : s.handle ? (
-                      <>{s.label}: <a href={`/go/${member.id}?kind=social&platform=${s.key}`} target="_blank" rel="noopener" className="hover:underline">{s.handle}</a></>
-                    ) : (
-                      <a href={`/go/${member.id}?kind=social&platform=${s.key}`} target="_blank" rel="noopener" className="hover:underline">{s.label}</a>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Website, phone and socials together, under the map — replaces
+              the header Website/Call buttons. */}
+          <MemberLinks member={member} />
         </aside>
       </div>
     </>

@@ -46,9 +46,10 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const rawQ = typeof sp.q === "string" ? sp.q : "";
   const q = rawQ.trim() || undefined;
   const page = Math.max(1, Number(sp.page) || 1);
-  // Cloud is the landing view; list and map are opt-in. `?view=list` is a real
-  // URL surface now, so it has to be emitted (and preserved) like `map` is.
-  const view = sp.view === "map" ? "map" : sp.view === "list" ? "list" : "cloud";
+  // List is the landing view (28 Oct); cloud and map are opt-in, so they are
+  // the ones emitted and preserved. `?view=list` was emitted while the cloud
+  // was the default and may be bookmarked or linked — it still reads as list.
+  const view = sp.view === "map" ? "map" : sp.view === "cloud" ? "cloud" : "list";
 
   // Neither map nor cloud pages: a map naturally plots the whole filtered set,
   // and a word map of twelve names is not a word map. Both take every match at
@@ -84,8 +85,8 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const qs = (over: Record<string, string | string[] | number | undefined>) => {
     const params = new URLSearchParams();
     const merged: Record<string, string | string[] | number | undefined> = {
-      // Cloud is the default, so it is the one view that emits no param.
-      industry: industrySlugs, service: services, type: membershipTypeSlugs, q, view: view === "cloud" ? undefined : view, page: undefined, ...over,
+      // List is the default, so it is the one view that emits no param.
+      industry: industrySlugs, service: services, type: membershipTypeSlugs, q, view: view === "list" ? undefined : view, page: undefined, ...over,
     };
     Object.entries(merged).forEach(([k, v]) => {
       if (v === undefined || v === "") return;
@@ -150,9 +151,9 @@ export default async function MembersPage(props: PageProps<"/member">) {
           {industrySlugs.map((s) => <input key={s} type="hidden" name="industry" value={s} />)}
           {services.map((s) => <input key={s} type="hidden" name="service" value={s} />)}
           {membershipTypeSlugs.map((t) => <input key={t} type="hidden" name="type" value={t} />)}
-          {/* Both non-default views, or searching from the list silently throws
-              you into the cloud and the view is lost on every search. */}
-          {view !== "cloud" && <input type="hidden" name="view" value={view} />}
+          {/* Both non-default views, or searching from the cloud silently
+              throws you into the list and the view is lost on every search. */}
+          {view !== "list" && <input type="hidden" name="view" value={view} />}
           <input
             name="q"
             type="search"
@@ -206,7 +207,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
           {([["list", "List"], ["cloud", "Cloud"], ["map", "Map"]] as const).map(([key, label]) => (
             <Link
               key={key}
-              href={qs({ view: key === "cloud" ? undefined : key })}
+              href={qs({ view: key === "list" ? undefined : key })}
               aria-current={view === key ? "true" : undefined}
               className={`tap rounded border px-3 py-1.5 ${view === key ? "bg-ink text-white" : "bg-white"}`}
             >
@@ -229,8 +230,8 @@ export default async function MembersPage(props: PageProps<"/member">) {
           <MemberMap members={withCoords} />
         </div>
       ) : members.length === 0 ? (
-        /* Hoisted out of the list branch: the cloud is the default view now, so
-           this is what an over-narrow filter lands on. e2e asserts the literal
+        /* Shared by list and cloud: this is what an over-narrow filter lands
+           on in either. e2e asserts the literal
            string. (Map has its own coverage note above instead.) */
         <p className="mt-10 text-center text-graphite">No members found.</p>
       ) : view === "cloud" ? (

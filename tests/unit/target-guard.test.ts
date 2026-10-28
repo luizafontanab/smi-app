@@ -65,6 +65,7 @@ describe("scripts/ that open a Supabase client", () => {
   /** Writers behind assertScriptTarget, with the package script that runs each locally. */
   const GUARDED: Record<string, string> = {
     "backfill-industries.ts": "industries:backfill",
+    "backfill-coordinates.ts": "coordinates:backfill",
     "create-test-accounts.ts": "accounts:test",
     "remove-sample-adverts.ts": "remove-sample-adverts",
     "audit-test-rows.ts": "audit:test-rows",

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { geocodeAddress } from "@/lib/adapters/geocode";
+import { geocodeAddress, geocodePostcode, ukPostcode } from "@/lib/adapters/geocode";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -61,5 +61,40 @@ describe("geocodeAddress", () => {
     const result = await geocodeAddress("somewhere");
 
     expect(result).toBeNull();
+  });
+});
+
+describe("ukPostcode", () => {
+  it("finds and normalises the postcode in an imported address", () => {
+    expect(ukPostcode("BRUDERER UK Ltd, Unit 8, Hortonwood West,, Telford, Shropshire, TF1 6AH")).toBe("TF1 6AH");
+    expect(ukPostcode("Unit 6b pilot drive, coventry, cv34rs")).toBe("CV3 4RS");
+    expect(ukPostcode("1 High St, London EC1A 1BB")).toBe("EC1A 1BB");
+  });
+
+  it("returns null when there is no postcode", () => {
+    expect(ukPostcode("Somewhere in Telford")).toBeNull();
+    expect(ukPostcode("")).toBeNull();
+  });
+});
+
+describe("geocodePostcode", () => {
+  it("uses Nominatim's structured postcode search, limited to Great Britain", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ lat: "52.7", lon: "-2.5" }]), { status: 200 }),
+    );
+    expect(await geocodePostcode("TF1 6AH")).toEqual({ lat: 52.7, lng: -2.5 });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(`postalcode=${encodeURIComponent("TF1 6AH")}`);
+    expect(String(url)).toContain("countrycodes=gb");
+    expect((init?.headers as Record<string, string>)["User-Agent"]).toMatch(/SMI/);
+  });
+
+  it("returns null on no match, a bad response or a network failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("[]", { status: 200 }));
+    expect(await geocodePostcode("TF1 6AH")).toBeNull();
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("busy", { status: 503 }));
+    expect(await geocodePostcode("TF1 6AH")).toBeNull();
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("down"));
+    expect(await geocodePostcode("TF1 6AH")).toBeNull();
   });
 });

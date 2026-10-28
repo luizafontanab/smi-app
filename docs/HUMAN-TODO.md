@@ -192,6 +192,13 @@ through Proof and approval first.
 - [ ] **2.11 — Fill in the newsletter footer** under `/console/newsletter` →
       Footer once Jas has given the postal address (ask-jas 32). Until then every
       issue goes out without one, and the issue page says so.
+- [ ] **2.12 — Fill in members' map pins:** `pnpm coordinates:backfill:prod -- --dry-run`,
+      then without `--dry-run`. Only members with an address and no coordinates
+      are looked up (about 18 of the 123 imported); typed-in pins are never
+      touched. It looks each one up on OpenStreetMap, one a second, and lists
+      any it couldn't place: fix those addresses in the console. Until it runs,
+      those members show no map on their page or in the directory's Map view.
+      Safe to re-run. *(Working tree, uncommitted.)*
 
 ---
 

@@ -31,3 +31,32 @@ export async function geocodeAddress(address: string): Promise<Coordinates | nul
     return null;
   }
 }
+
+/**
+ * The UK postcode in a free-text address, normalised ("tf1 6ah" → "TF1 6AH"),
+ * or null. Imported addresses often carry a company name, a unit number and a
+ * doubled comma ahead of the street, which Nominatim's free-text search can't
+ * place — but the postcode alone it nearly always can, to within a street.
+ */
+export function ukPostcode(address: string): string | null {
+  const m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i.exec(address);
+  return m ? `${m[1]} ${m[2]}`.toUpperCase() : null;
+}
+
+/** A UK postcode → its coordinates, via Nominatim's structured search. Same failure rules as geocodeAddress. */
+export async function geocodePostcode(postcode: string): Promise<Coordinates | null> {
+  const trimmed = postcode.trim();
+  if (!trimmed) return null;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=gb&postalcode=${encodeURIComponent(trimmed)}`;
+    const res = await fetch(url, { headers: { "User-Agent": "SMI-app (https://sheetmetalindustries.com)" } });
+    if (!res.ok) return null;
+    const first = ((await res.json()) as NominatimResult[])[0];
+    if (!first) return null;
+    const lat = Number(first.lat);
+    const lng = Number(first.lon);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  } catch {
+    return null;
+  }
+}

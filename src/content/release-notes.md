@@ -10,6 +10,15 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-28 — Members directory opens on the list
+- The members directory now opens on the list. The word cloud and the map are still one click away with the buttons above the results.
+
+## 2026-10-28 — Tidier links and a working map on member pages
+- The Website and Call buttons have moved from the top of a member's page into the sidebar box with their socials, now called "Links".
+- Each link now shows the platform's logo in its own colour, with the web address, phone number or handle underneath, so it's clear what you can click.
+- The map on a member's page now shows. It was always blank before. It's the same map as the directory's Map view, and you can drag and zoom it.
+- Members that had an address but no map pin now have one.
+
 ## 2026-10-27 — Story sources from Bigin
 - Each company's News Page URL in Bigin is now a story source as well as the spreadsheet list. It's checked daily, or straight away with "Sync from Bigin now" on Story sources → Sources.
 - A news page that's already on the list isn't added twice. If a company's URL changes or is removed in Bigin, the old page stops being checked, unless it's also on the spreadsheet.

@@ -46,13 +46,12 @@ const PUBLIC: Route[] = [
   anon("/featured-machine"),
   anon("/join"),
   anon("/join/account"),
-  // Bare /member is the word-cloud view now, not the tile list. The existing
-  // `member` baseline therefore changes meaning wholesale and needs a human
-  // accept. The explicit id is mandatory on the list entry: idFor() strips the
-  // query string, so the default would collide with `member` and trip the
-  // duplicate guard at the foot of this file.
+  // Bare /member is the tile list again (28 Oct); the word cloud is
+  // ?view=cloud. The explicit id is mandatory on the cloud entry: idFor()
+  // strips the query string, so the default would collide with `member` and
+  // trip the duplicate guard at the foot of this file.
   anon("/member"),
-  { id: "member_list", path: "/member?view=list", role: "anon" },
+  { id: "member_cloud", path: "/member?view=cloud", role: "anon" },
   anon("/news"),
   anon("/newsletters"),
   anon("/search?q=laser"),

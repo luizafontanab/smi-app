@@ -63,29 +63,35 @@ test.describe("reader (V1/V2)", () => {
 });
 
 test.describe("member directory — cloud view", () => {
-  test("/member opens on the cloud, and the list is one click away", async ({ page }) => {
+  test("/member opens on the list, and the cloud is one click away", async ({ page }) => {
     await page.goto("/member");
+    await expect(page.locator("#member-cloud")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "List", exact: true })).toHaveAttribute("aria-current", "true");
+
+    await page.getByRole("link", { name: "Cloud", exact: true }).click();
+    await page.waitForURL(/view=cloud/);
     await expect(page.locator("#member-cloud")).toBeVisible();
     await expect(page.getByRole("link", { name: "Cloud", exact: true })).toHaveAttribute("aria-current", "true");
+  });
 
-    await page.getByRole("link", { name: "List", exact: true }).click();
-    await page.waitForURL(/view=list/);
+  test("an old ?view=list link still lands on the list", async ({ page }) => {
+    await page.goto("/member?view=list");
     await expect(page.locator("#member-cloud")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "List", exact: true })).toHaveAttribute("aria-current", "true");
   });
 
   test("the cloud shows every match at once, while the list still pages", async ({ page }) => {
-    await page.goto("/member");
+    await page.goto("/member?view=cloud");
     const total = Number((await page.getByText(/^\d+ members?/).textContent())!.match(/\d+/)![0]);
     // The whole point of the view: a word map of one page of twelve is not one.
     expect(await page.locator("li.cloud-item").count()).toBe(total);
 
-    await page.goto("/member?view=list");
+    await page.goto("/member");
     expect(await page.locator("a[href^='/member/']").count()).toBeLessThan(total);
   });
 
   test("hovering a name reveals its logo without moving the page", async ({ page }) => {
-    await page.goto("/member");
+    await page.goto("/member?view=cloud");
     // The cloud repacks itself once the real font metrics are known, and eases
     // into the correction — measure after that, or this test races the settle
     // rather than the thing it is about.
@@ -117,7 +123,7 @@ test.describe("member directory — cloud view", () => {
   });
 
   test("the logo is reachable by keyboard, not just by mouse", async ({ page }) => {
-    await page.goto("/member");
+    await page.goto("/member?view=cloud");
     const item = page.locator("li.cloud-item").first();
     const name = item.locator(".cloud-name");
     // GAPS A6.14: `load` can fire while the page is still streaming in behind
@@ -137,9 +143,9 @@ test.describe("member directory — cloud view", () => {
     // cloud of fewer members is all drift and no name ever passes Playwright's
     // "stable" check. Reduced motion switches the drift off (globals.css).
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/member");
+    await page.goto("/member?view=cloud");
     await page.getByRole("navigation", { name: "Filter by industry" }).getByRole("link").nth(1).click();
-    await page.waitForURL(/\/member\?industry=/);
+    await page.waitForURL(/\/member\?industry=.*view=cloud/);
     const total = Number((await page.getByText(/^\d+ members?/).textContent())!.match(/\d+/)![0]);
     expect(await page.locator("li.cloud-item").count()).toBe(total);
 
@@ -151,8 +157,8 @@ test.describe("member directory — cloud view", () => {
   });
 
   test("an empty result still says so in the cloud view", async ({ page }) => {
-    // Cloud is the default, so this message can no longer live in the list branch.
-    await page.goto("/member?q=zzzznosuchmemberzzzz");
+    // Shared with the list, so it lives outside both view branches.
+    await page.goto("/member?q=zzzznosuchmemberzzzz&view=cloud");
     await expect(page.getByText("No members found.")).toBeVisible();
     await expect(page.locator("li.cloud-item")).toHaveCount(0);
   });

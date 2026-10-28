@@ -6,9 +6,9 @@ import { expect, test } from "@playwright/test";
  * violations fail the build — moderate/minor are reported in the failure
  * output but tolerated, so this stays a floor rather than a treadmill.
  */
-// Bare /member is the word cloud now, so the tile list needs naming explicitly
-// or it loses the coverage it had when it was the default view.
-const PAGES = ["/", "/news", "/member", "/member?view=list", "/industry/welding-joining", "/join", "/login", "/contact", "/search"];
+// Bare /member is the tile list (28 Oct), so the word cloud needs naming
+// explicitly or it loses the coverage it had when it was the default view.
+const PAGES = ["/", "/news", "/member", "/member?view=cloud", "/industry/welding-joining", "/join", "/login", "/contact", "/search"];
 
 const PASSWORD = "local-dev-password";
 
