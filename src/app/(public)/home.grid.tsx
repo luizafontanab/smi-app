@@ -52,7 +52,7 @@ import { excluding, type HomeData } from "./home.data";
  * those still shows a reader nothing. Tracked in docs/HUMAN-TODO.md §14.3.
  */
 export function GridHome({
-  stories, memberNews, videos, events, newsletters, featuredMembers, featuredMachine,
+  stories, memberNews, videos, events, newsletters, featuredMembers, featuredMachine, featuredEvent,
   adverts, showPlaceholders, storyTotal, memberCount, homeSections,
 }: HomeData) {
   // One call, because a slot family is a FORMAT and all three positions now
@@ -76,9 +76,11 @@ export function GridHome({
   const railNews = excluding(memberNews, placedStoryIds);
   const machine = featuredMachine?.machine;
 
-  // events[0] is the fold's placement card, so the row below takes what's
-  // after it. An issue with no web_slug has no page to link to.
-  const upcomingEvents = events.slice(1, 4);
+  // The fold's placement card is the Featured Event (booked, pinned backup, or
+  // next upcoming — queries.ts featuredEvent()), so the row below is the
+  // upcoming list without it. loadHome() fetches four, so three always remain.
+  // An issue with no web_slug has no page to link to.
+  const upcomingEvents = events.filter((e) => e.slug !== featuredEvent?.slug).slice(0, 3);
   const issues = newsletters.filter((i) => i.web_slug);
 
   /*
@@ -191,11 +193,11 @@ export function GridHome({
          * Both rows exist to put content between home_2 and home_3 rather than
          * two banners near each other, and both are free: loadHome() already
          * fetches four events and three sent issues for every render, and grid
-         * was reading neither of them (the fold takes events[0] and nothing
-         * else). No new query, no new limit to keep in step.
+         * was reading neither of them. No new query, no new limit to keep in
+         * step.
          *
-         * The events row starts at index 1 — events[0] is the fold's placement
-         * card, and showing it twice on one page is the thing to avoid.
+         * The events row leaves out the fold's Featured Event card — showing
+         * it twice on one page is the thing to avoid.
          */}
         {upcomingEvents.length > 0 && (
           <Band inner="py-8">
@@ -271,7 +273,7 @@ export function GridHome({
               second card. */}
           <div className="flex flex-col gap-4 lg:row-span-2">
             {machine && <div className="flex-1"><GhMachineCard machine={machine} /></div>}
-            {events[0] && <div className="flex-1"><GhEventCard event={events[0]} featured /></div>}
+            {featuredEvent && <div className="flex-1"><GhEventCard event={featuredEvent} featured /></div>}
           </div>
           <div className="lg:col-span-2">
             <GhMoreNews stories={moreNews} />

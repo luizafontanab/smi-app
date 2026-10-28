@@ -190,6 +190,8 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
         slots={slots}
         latestStories={latest}
         memberStories={member.stories}
+        memberStoriesTotal={member.storyTotal}
+        memberStoriesHref={`/news?member=${encodeURIComponent(slug)}#all-news`}
         memberName={member.name}
         supplierLogos={logos}
         showPlaceholders={showPlaceholders}

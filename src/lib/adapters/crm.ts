@@ -77,6 +77,23 @@ export type LastRun = { at: string; preview: boolean } & SyncResult;
 
 export type BiginCompany = { id: string; name: string };
 
+/** A Bigin company with its News Page URL filled in — a story source (src/lib/sources/bigin.ts). */
+export type CompanyNewsPage = { id: string; name: string; url: string };
+
+/**
+ * Every company's News Page URL. `complete` is false when the read stopped
+ * part-way (a refused call, or the page cap): the caller may add what it got,
+ * but must not treat a company missing from the list as cleared.
+ */
+export type CompanyNewsPages = { complete: boolean; companies: CompanyNewsPage[] };
+
+/**
+ * The API name of the Companies field "News Page URL". Assumed from Bigin's
+ * naming rule (spaces → underscores) until checked against the live account —
+ * Settings → Developer Space → APIs → API Names → Companies (HUMAN-TODO 1.15a).
+ */
+export const NEWS_PAGE_FIELD = "News_Page_URL";
+
 export interface CrmSync {
   /** False for the local stub — the console uses it to say Bigin isn't connected. */
   readonly live: boolean;
@@ -90,6 +107,8 @@ export interface CrmSync {
   unlink(ids: string[]): Promise<void>;
   /** Console picker: existing Bigin companies matching `q`. */
   searchCompanies(q: string): Promise<BiginCompany[]>;
+  /** Story sources: every company with a News Page URL. Null when Bigin isn't connected. */
+  listCompanyNewsPages(): Promise<CompanyNewsPages | null>;
   /** The `crm_sync` job: retry stuck pushes, pull, renew the webhook channel. */
   sync(opts?: { allowFirstImport?: boolean }): Promise<SyncResult>;
 }
@@ -314,6 +333,9 @@ class LocalMirrorCrmStub implements CrmSync {
   async searchCompanies(): Promise<BiginCompany[]> {
     return [];
   }
+  async listCompanyNewsPages(): Promise<CompanyNewsPages | null> {
+    return null;
+  }
   async sync(): Promise<SyncResult> {
     return EMPTY_RESULT;
   }
@@ -481,6 +503,41 @@ class BiginCrmSync implements CrmSync {
     if (word.length < 2) return [];
     const body = await this.request<ListResponse<{ id?: string; Account_Name?: string }>>(`/Accounts/search?word=${encodeURIComponent(word)}`);
     return (body?.data ?? []).filter((a) => a.id && a.Account_Name).map((a) => ({ id: a.id!, name: a.Account_Name! }));
+  }
+
+  /**
+   * A full read of Companies: the list API can't filter on a field being
+   * filled in, so every company is paged through and the blank ones dropped.
+   * A few thousand companies is a handful of calls a day. A refused call
+   * part-way returns what was read with `complete: false` rather than
+   * throwing, so a Bigin hiccup never reads as "every URL was cleared".
+   */
+  async listCompanyNewsPages(): Promise<CompanyNewsPages> {
+    const companies: CompanyNewsPage[] = [];
+    let page = 1;
+    let pageToken: string | null = null;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const paging: string = pageToken ? `page_token=${encodeURIComponent(pageToken)}` : `page=${page}`;
+      let body: ListResponse<Record<string, unknown>> | null;
+      try {
+        body = await this.request<ListResponse<Record<string, unknown>>>(
+          `/Accounts?fields=Account_Name,${NEWS_PAGE_FIELD}&per_page=200&${paging}`,
+        );
+      } catch (e) {
+        console.error("[crm] reading company news pages stopped part-way:", e);
+        return { complete: false, companies };
+      }
+      for (const r of body?.data ?? []) {
+        const id = typeof r.id === "string" ? r.id : null;
+        const url = typeof r[NEWS_PAGE_FIELD] === "string" ? (r[NEWS_PAGE_FIELD] as string).trim() : "";
+        if (!id || !url) continue;
+        companies.push({ id, name: typeof r.Account_Name === "string" ? r.Account_Name : "", url });
+      }
+      if (!body?.info?.more_records) return { complete: true, companies };
+      if (body.info.next_page_token) pageToken = body.info.next_page_token;
+      else page++;
+    }
+    return { complete: false, companies };
   }
 
   /**

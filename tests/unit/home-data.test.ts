@@ -5,7 +5,7 @@ type Rec = Record<string, unknown>;
 
 const {
   headlineStory, publishedStories, publishedVideos, upcomingEvents, activePlacements, liveAdvertsByFormat,
-  sentNewsletters, memberDirectory, storyCategories, showAdPlaceholders, storyIntros, requestContext, record,
+  sentNewsletters, memberDirectory, storyCategories, showAdPlaceholders, storyIntros, requestContext, record, featuredEvent,
 } = vi.hoisted(() => ({
   headlineStory: vi.fn<() => Promise<Rec | null>>(async () => null),
   publishedStories: vi.fn<() => Promise<{ stories: Rec[]; total: number }>>(async () => ({ stories: [], total: 0 })),
@@ -20,13 +20,14 @@ const {
   storyIntros: vi.fn<() => Promise<Map<string, string | null>>>(async () => new Map()),
   requestContext: vi.fn(async () => ({ session_hash: null as string | null, referrer: null as string | null, region: null as string | null, company: null as string | null, consented: false })),
   record: vi.fn(() => {}),
+  featuredEvent: vi.fn<() => Promise<{ event: Rec | null; source: string; placement: Rec | null }>>(async () => ({ event: null, source: "fallback", placement: null })),
 }));
 // Spread the real module first: featuredMemberPlacements is a pure filter that
 // loadHome applies to the mocked activePlacements() result — keep it real.
 vi.mock("@/lib/queries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/queries")>()),
   headlineStory, publishedStories, publishedVideos, upcomingEvents, activePlacements, sentNewsletters,
-  memberDirectory, storyCategories, storyIntros,
+  memberDirectory, storyCategories, storyIntros, featuredEvent,
 }));
 vi.mock("@/lib/adverts", () => ({ liveAdvertsByFormat, showAdPlaceholders }));
 vi.mock("@/lib/analytics", () => ({ requestContext, record }));
@@ -43,6 +44,7 @@ beforeEach(() => {
   storyCategories.mockResolvedValue([]);
   showAdPlaceholders.mockResolvedValue(false);
   storyIntros.mockResolvedValue(new Map());
+  featuredEvent.mockResolvedValue({ event: null, source: "fallback", placement: null });
   requestContext.mockResolvedValue({ session_hash: null, referrer: null, region: null, company: null, consented: false });
 });
 
@@ -73,6 +75,11 @@ describe("loadHome", () => {
     const heroIds = new Set(home.heroItems.map((i) => i.key.replace(/^[sv]:/, "")));
     for (const s of home.stories) expect(heroIds.has(s.id)).toBe(false);
     for (const v of home.videos) expect(heroIds.has(v.id)).toBe(false);
+  });
+
+  it("passes the Featured Event's event through for the grid's top card", async () => {
+    featuredEvent.mockResolvedValue({ event: { slug: "open-day" }, source: "booked", placement: { starts_on: "2099-01-01", ends_on: "2099-01-02" } });
+    expect((await loadHome()).featuredEvent).toEqual({ slug: "open-day" });
   });
 
   it("splits placements into featured members vs. the (at most one) featured machine", async () => {

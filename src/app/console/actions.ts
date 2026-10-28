@@ -22,6 +22,7 @@ import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } fr
 import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
 import { EMAIL_RE, safeInternalPath, UUID_RE } from "@/lib/validate";
+import { eventLastDay, FEATURED_EVENT_BACKUP_KEY } from "@/lib/featured-event";
 import { canMoveStory, isMemberDraft } from "@/lib/story-board";
 import { enqueueStoryLive, replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
 import { canMoveEvent } from "@/lib/event-board";
@@ -53,6 +54,7 @@ import { missingChecks, PROOF_KEYS } from "@/lib/newsletter-proof";
 import { parseIssueItems, type IssueContentResult, type IssueItemRef } from "@/lib/newsletter-picker";
 import { ONE_PER_ISSUE_FORMATS } from "@/lib/newsletter-layout";
 import { isVariant, SITE_VARIANT_KEY, VARIANT_COOKIE } from "@/lib/variant";
+import { featureFlagKey, isFeatureFlag } from "@/lib/feature-flags";
 import { HOME_SECTION_IDS, HOME_SECTIONS_KEY, LOCKED_VISIBLE, moveHomeSection, resolveHomeSections, type HomeSectionId } from "@/lib/home-sections";
 import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
 import { advertLinkFromForm } from "@/lib/advert-link";
@@ -1064,6 +1066,117 @@ export async function saveFeaturedMemberPlacement(formData: FormData) {
   revalidatePath("/console");
   revalidatePath("/");
   redirect(savedOr(message && !id && saved ? `/console/adverts/featured-member/${saved.id}` : back, message));
+}
+
+const FEATURED_EVENT_LIST = "/console/adverts/featured-event";
+const FEATURED_EVENT_CLASH = "Another event is already featured for those dates — only one can run at a time.";
+
+/** Everything that shows the homepage's top event card or a list of its bookings. */
+function revalidateFeaturedEvent(back?: string) {
+  revalidatePath("/console/adverts");
+  revalidatePath(FEATURED_EVENT_LIST);
+  if (back) revalidatePath(back);
+  revalidatePath("/console/events");
+  revalidatePath("/console");
+  revalidatePath("/");
+}
+
+/**
+ * Featured Event (HUMAN-TODO 4.4): the homepage's top event card, booked by
+ * date like Featured Member, but ONE at a time — the
+ * placements_featured_event_no_overlap constraint is the guard, and the count
+ * below only turns its rejection into a sentence before any invoice is
+ * touched (as the takeover does).
+ *
+ * Billed to the event's own member: member_id is copied from the event so
+ * invoicing and rebilling run unchanged. An event with no member can still be
+ * featured, but only unpriced — there is no one to invoice.
+ */
+export async function saveFeaturedEventPlacement(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const id = String(formData.get("id") ?? "");
+  const eventId = String(formData.get("event_id") ?? "");
+  const startsOn = String(formData.get("starts_on") ?? "");
+  const endsOn = String(formData.get("ends_on") ?? "");
+  const back = id ? `${FEATURED_EVENT_LIST}/${id}` : FEATURED_EVENT_LIST;
+  const fail = (message: string): never => redirect(`${back}?error=${encodeURIComponent(message)}`);
+  const price = penniesFromPounds(formData.get("price_pounds"));
+  if (price === "invalid") return fail(priceError("100"));
+  if (!startsOn || !endsOn) return fail("Pick a start and an end date.");
+  if (endsOn < startsOn) return fail("The end date is before the start date.");
+
+  const { data: event } = UUID_RE.test(eventId)
+    ? await db.from("events").select("id, title, status, starts_on, ends_on, member_id").eq("id", eventId).maybeSingle()
+    : { data: null };
+  if (!event) return fail("Pick an event to feature.");
+  if (event.status !== "published") return fail(`“${event.title}” isn't published, so it can't be featured.`);
+  const lastDay = eventLastDay(event);
+  if (endsOn > lastDay) return fail(`“${event.title}” is over on ${lastDay} — end the booking on or before that day.`);
+  if (price && !event.member_id) return fail("This event has no member to invoice — book it unpriced, or link a member to the event first.");
+  const memberId = event.member_id;
+
+  let plan: Reprice = { action: "keep" };
+  if (id) {
+    const { data: slot } = await db.from("placements").select("id").eq("id", id).eq("kind", "featured_event").maybeSingle();
+    if (!slot) redirect(`${FEATURED_EVENT_LIST}?error=${encodeURIComponent("That Featured Event booking no longer exists.")}`);
+    plan = await rebillBeforeSave({ placement_id: id }, { memberId, pricePennies: price }, back);
+  }
+
+  let clash = db.from("placements").select("id", { count: "exact", head: true })
+    .eq("kind", "featured_event").lte("starts_on", endsOn).gte("ends_on", startsOn);
+  if (id) clash = clash.neq("id", id);
+  const { count } = await clash;
+  if (count) return fail(FEATURED_EVENT_CLASH);
+
+  if (id) await voidBeforeSave({ placement_id: id }, plan, back);
+
+  const values = { event_id: event.id, member_id: memberId, starts_on: startsOn, ends_on: endsOn, price_pennies: price };
+  const { data: saved, error } = id
+    ? await db.from("placements").update(values).eq("id", id).eq("kind", "featured_event").select("id").maybeSingle()
+    : await db.from("placements").insert({ kind: "featured_event", ...values, awaiting_payment: holdsForPayment(price) }).select("id").single();
+  if (error) {
+    return fail(error.message.includes("placements_featured_event_no_overlap")
+      ? FEATURED_EVENT_CLASH
+      : dbProblem("action:saveFeaturedEventPlacement", error));
+  }
+  if (id && !saved) redirect(`${FEATURED_EVENT_LIST}?error=${encodeURIComponent("That Featured Event booking no longer exists.")}`);
+
+  let message: string | null = null;
+  if (!id && saved && price && memberId) {
+    const invoice = await invoiceAdvertising(memberId, price, { placement_id: saved.id, description: `Featured Event (${startsOn} to ${endsOn})` });
+    if (invoice && !invoice.ok) message = invoiceFailedMessage(invoice.error);
+  }
+  if (id) message = await rebillAfterSave({ placement_id: id }, plan, price);
+
+  revalidateFeaturedEvent(id ? back : undefined);
+  redirect(savedOr(message && !id && saved ? `${FEATURED_EVENT_LIST}/${saved.id}` : back, message));
+}
+
+/**
+ * The backup event: what the homepage's top card shows on any day nothing is
+ * booked (queries.ts featuredEvent()). A settings row, not a placement — it
+ * has no term and no price. An empty event_id unpins it, and the card then
+ * falls back to the next upcoming event.
+ */
+export async function setFeaturedEventBackup(formData: FormData) {
+  await requireConsole();
+  const db = serviceDb();
+  const eventId = String(formData.get("event_id") ?? "");
+  const fail = (message: string): never => redirect(`${FEATURED_EVENT_LIST}?error=${encodeURIComponent(message)}`);
+  if (eventId) {
+    const { data: event } = UUID_RE.test(eventId)
+      ? await db.from("events").select("id, title, status").eq("id", eventId).maybeSingle()
+      : { data: null };
+    if (!event) return fail("Pick an event to pin as the backup.");
+    if (event.status !== "published") return fail(`“${event.title}” isn't published, so it can't be the backup.`);
+  }
+  const { error } = eventId
+    ? await db.from("settings").upsert({ key: FEATURED_EVENT_BACKUP_KEY, value: { event_id: eventId } })
+    : await db.from("settings").delete().eq("key", FEATURED_EVENT_BACKUP_KEY);
+  if (error) return fail(dbProblem("action:setFeaturedEventBackup", error));
+  revalidateFeaturedEvent();
+  redirect(`${FEATURED_EVENT_LIST}?${eventId ? "pinned" : "unpinned"}=1`);
 }
 
 /* ---------- adverts ---------- */
@@ -2145,6 +2258,31 @@ export async function saveSiteVariant(formData: FormData) {
   redirect("/console/pages?saved=variant");
 }
 
+/* ---------- feature flags (/console/features) ---------- */
+
+/**
+ * Switch one feature flag on or off. One `settings` row per flag
+ * (lib/feature-flags.ts), so this never touches any other flag. An unknown
+ * flag name is refused rather than written: the registry is the only list of
+ * flags that exist.
+ */
+export async function saveFeatureFlag(formData: FormData) {
+  await requireConsole();
+  const flag = formData.get("flag");
+  const state = formData.get("state");
+  if (!isFeatureFlag(flag) || (state !== "on" && state !== "off")) {
+    redirect(`/console/features?error=${encodeURIComponent("That switch isn't recognised — reload the page and try again.")}`);
+  }
+  const { error } = await serviceDb().from("settings").upsert({ key: featureFlagKey(flag), value: state === "on" });
+  if (error) redirect(`/console/features?error=${encodeURIComponent(dbProblem("action:saveFeatureFlag", error))}`);
+  // Flags gate member-area pages and nav; drop any client router cache still
+  // holding the old state.
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/console/features");
+  revalidatePath("/console/sources"); // shows whether the story crawler is on
+  redirect(`/console/features?saved=${flag}`);
+}
+
 /**
  * The grid homepage's below-the-fold sections: order and visibility (A13,
  * GAPS A1.7). One form: the current order rides in a hidden `order` field, an
@@ -2344,15 +2482,22 @@ export async function saveTakeoverPlacement(formData: FormData) {
  * started running unheld (that's a bill for something that went out).
  * Requires the confirm box, per the console's delete convention.
  */
+/** The placement kinds cancelPlacement handles, and the list page each returns to. */
+const CANCELLABLE_PLACEMENTS = {
+  featured_member: "/console/adverts/featured-member",
+  takeover: "/console/adverts/takeover",
+  featured_event: FEATURED_EVENT_LIST,
+} as const;
+
 export async function cancelPlacement(formData: FormData) {
   await requireConsole();
   const id = String(formData.get("id") ?? "");
   const db = serviceDb();
   const { data: p } = UUID_RE.test(id)
-    ? await db.from("placements").select("id, kind, starts_on, awaiting_payment").eq("id", id).in("kind", ["featured_member", "takeover"]).maybeSingle()
+    ? await db.from("placements").select("id, kind, starts_on, awaiting_payment").eq("id", id).in("kind", Object.keys(CANCELLABLE_PLACEMENTS) as (keyof typeof CANCELLABLE_PLACEMENTS)[]).maybeSingle()
     : { data: null };
   if (!p) redirect(`/console/adverts?error=${encodeURIComponent("That booking no longer exists.")}`);
-  const list = p.kind === "takeover" ? "/console/adverts/takeover" : "/console/adverts/featured-member";
+  const list = CANCELLABLE_PLACEMENTS[p.kind as keyof typeof CANCELLABLE_PLACEMENTS];
   const back = `${list}/${id}`;
   const fail = (message: string): never => redirect(`${back}?error=${encodeURIComponent(message)}`);
   if (formData.get("confirm") !== "1") return fail("Tick the box to confirm — cancelling deletes the booking.");
@@ -2374,6 +2519,8 @@ export async function cancelPlacement(formData: FormData) {
   revalidatePath("/console/adverts");
   revalidatePath(list);
   revalidatePath(back);
+  // the Events page's Featured Event card
+  if (p.kind === "featured_event") revalidatePath("/console/events");
   revalidatePath("/console");
   revalidatePath("/");
   redirect(`${list}?cancelled=1`);

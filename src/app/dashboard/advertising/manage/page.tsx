@@ -4,6 +4,7 @@ import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { MEMBER_ADVERT_PHASE } from "@/lib/advert-phase-labels";
 import { visibilityProductName } from "@/lib/visibility-products";
+import { monthLabel } from "@/lib/featured-availability";
 import { AdvertisingTabs } from "../AdvertisingTabs";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export default async function AdvertisingManagePage() {
       .eq("advert.member_id", user.memberId)
       .order("created_at", { ascending: false }),
     db.from("visibility_requests")
-      .select("id, product, message, status, created_at")
+      .select("id, product, message, preferred_month, status, created_at")
       .eq("member_id", user.memberId)
       .order("created_at", { ascending: false }),
   ]);
@@ -71,7 +72,7 @@ export default async function AdvertisingManagePage() {
           return (
             <p key={r.id} className="mt-2 border-t pt-2 text-sm">
               {visibilityProductName(r.product)} — <span className={s.className}>{s.label}</span>
-              <span className="text-graphite"> · {r.created_at.slice(0, 10)}{r.message && ` · “${r.message}”`}</span>
+              <span className="text-graphite"> · {r.created_at.slice(0, 10)}{r.preferred_month && ` · for ${monthLabel(r.preferred_month)}`}{r.message &&` · “${r.message}”`}</span>
             </p>
           );
         })}

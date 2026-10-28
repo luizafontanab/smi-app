@@ -87,6 +87,13 @@ Each service is independent; do them in any order.
       `BIGIN_CLIENT_SECRET`, `BIGIN_REFRESH_TOKEN`, `BIGIN_WEBHOOK_TOKEN` (any
       random string ≤ 50 characters), plus `BIGIN_ACCOUNTS_BASE` /
       `BIGIN_API_BASE` if the account isn't in the EU.
+- [ ] **1.15a — Confirm the API name of the Companies field "News Page URL".**
+      In Bigin: Settings → Developer Space → APIs → API Names → Companies. The
+      story crawler assumes `News_Page_URL` (`NEWS_PAGE_FIELD` in
+      `src/lib/adapters/crm.ts`). If it's different, change that one constant.
+      With a wrong name, no Bigin sources arrive, because every company reads
+      as having no URL. Nothing already added is paused, though: a read with no
+      URLs at all is treated as suspect. The scope is already in 1.14's list.
 
 ### Social — Buffer
 
@@ -117,7 +124,7 @@ Each service is independent; do them in any order.
 `supabase db push` applies every pending migration in one go; you can't push
 just one. Deploy the `staging` code at the same moment: old code against the new
 schema breaks member profiles, the directory and the CRM page. Pending, as far
-as this repo knows: `20261004000002` through `20261021000005`. Confirm with
+as this repo knows: `20261004000002` through `20261027000004`. Confirm with
 `supabase migration list --linked`. From `20261020000005` on, nothing sends
 until it is approved in the console: any newsletter issue already *scheduled*
 when it lands is marked approved so it still goes out, but a draft must go
@@ -156,7 +163,9 @@ through Proof and approval first.
       `pnpm industries:backfill:prod`.
 - [ ] **2.5 — Normalise contact emails:** `select * from normalise_contact_emails();`.
 - [ ] **2.6 — Import the story sources:** `pnpm sources:import:prod` (724 sources;
-      safe to re-run).
+      safe to re-run). Then turn on **Story crawler** in `/console/features`:
+      it ships off, and while it's off no source is checked and Bigin's News
+      Page URLs aren't synced.
 - [ ] **2.7 — Check the result:** run `pnpm verify:prod`, then two SQL checks.
       - `select polname from pg_policy where polrelid = 'members'::regclass;`
         must include `public_read_active_members`.
@@ -288,8 +297,6 @@ through Proof and approval first.
 - [ ] **4.3 — Social reach figure.** "347,000" is hard-coded in the grid
       homepage stats band (`src/components/grid-home/cards.tsx`). Give the real
       number, or drop the stat.
-- [ ] **4.4 — Featured event:** editorial or sellable? Selling it needs a new
-      placement kind and console support.
 - [ ] **4.5 — Unpaid advert holds** keep their dates until the term ends, with
       no reminder. Should there be a reminder or an earlier expiry?
 - [ ] **4.6 — Lapsed members' stories** stay live, without the directory
@@ -309,7 +316,14 @@ through Proof and approval first.
       - "site users this year" double-counts returning visitors until old rows
         age out;
       - SMI's own post links on each story now fill in from Buffer; there is
-        nothing to paste (a pasted link is never replaced).
+        nothing to paste (a pasted link is never replaced);
+      - the homepage's Featured event card is now bookable under Adverts →
+        Featured Event, with a backup event to pin. Until something is booked
+        or pinned it shows the next upcoming event, as before.
+
+**Done:** 4.4 answered "sellable" (27 Oct): Featured Event is a dated, optionally
+priced placement, one at a time, billed to the event's member, with a pinned
+backup event (`/console/adverts/featured-event`). *(Working tree, uncommitted.)*
 
 ## 5 · Content to upload
 

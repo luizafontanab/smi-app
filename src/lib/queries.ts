@@ -6,6 +6,7 @@ import { parseDateParam } from "./news-prefs";
 import { seededShuffle } from "./shuffle";
 import { computeFacets, type FacetMember, type Facets } from "./member-facets";
 import { allRows } from "./db/all-rows";
+import { eventLastDay, FEATURED_EVENT_BACKUP_KEY, type FeaturedEventSource } from "./featured-event";
 import { HOME_SECTIONS_KEY, resolveHomeSections, type HomeSections } from "./home-sections";
 
 export type StoryCard = {
@@ -52,6 +53,28 @@ async function resolveIndustryId(
   return data?.id ?? null;
 }
 
+/**
+ * How many stories a member page's carousel holds. memberBySlug fetches this
+ * many plus the total; past it, the carousel links to /news?member=<slug>.
+ */
+export const MEMBER_STORY_CAROUSEL = 12;
+
+/**
+ * The /news?member=<slug> filter's member, for the label above the grid and
+ * the id publishedStories filters on. Public read, so an archived or lapsed
+ * member resolves to null, which the page treats as "no filter".
+ */
+export async function storyFilterMember(slug: string | undefined): Promise<{ id: string; slug: string; name: string } | null> {
+  if (!slug) return null;
+  const { data } = await publicDb()
+    .from("members")
+    .select("id, slug, name")
+    .in("status", PUBLIC_MEMBER_STATUSES)
+    .eq("slug", slug)
+    .maybeSingle();
+  return data ?? null;
+}
+
 export async function publishedStories(opts: {
   limit?: number;
   offset?: number;
@@ -59,6 +82,8 @@ export async function publishedStories(opts: {
   memberOnly?: boolean;
   /** Industry slug, or a pre-resolved industries.id — filters on the story's own industry_id. */
   industry?: string | number;
+  /** members.id (from storyFilterMember) — every story featuring them, primary or tagged, via story_members. */
+  memberId?: string;
   /** YYYY-MM-DD bounds on published_at; malformed values are ignored. */
   from?: string;
   to?: string;
@@ -81,8 +106,12 @@ export async function publishedStories(opts: {
   const industryId = await resolveIndustryId(db, opts.industry);
   let q = db
     .from("stories")
-    .select(catId ? `${STORY_CARD}, story_categories!inner(category_id)` : STORY_CARD, { count: "exact" })
+    .select(
+      [STORY_CARD, catId && "story_categories!inner(category_id)", opts.memberId && "story_members!inner(member_id)"].filter(Boolean).join(", "),
+      { count: "exact" },
+    )
     .eq("status", "published");
+  if (opts.memberId) q = q.eq("story_members.member_id", opts.memberId);
   if (opts.memberOnly) q = q.eq("is_member_news", true);
   if (catId) q = q.eq("story_categories.category_id", catId);
   if (industryId) q = q.eq("industry_id", industryId);
@@ -476,6 +505,48 @@ export async function upcomingEvents(opts: { limit?: number; offset?: number; ty
 }
 
 /**
+ * The event in the grid homepage's top card, and why it's there:
+ *   1. today's paid Featured Event booking (/console/adverts/featured-event);
+ *   2. else the backup event pinned on that page (a settings row);
+ *   3. else the next upcoming event — what the card always showed before.
+ * A booked or pinned event that has since been unpublished, withdrawn or has
+ * finished is skipped, so the card never goes empty or stale while there is
+ * any upcoming event at all. Errors fall through to the next step for the same
+ * reason. `placement` carries the booking's term when source is "booked".
+ */
+export async function featuredEvent() {
+  const today = new Date().toISOString().slice(0, 10);
+  const svc = serviceDb();
+  const [{ data: booking }, { data: backup }] = await Promise.all([
+    svc
+      .from("placements")
+      .select("id, event_id, starts_on, ends_on")
+      .eq("kind", "featured_event")
+      .eq("awaiting_payment", false)
+      .lte("starts_on", today)
+      .gte("ends_on", today)
+      .maybeSingle(),
+    svc.from("settings").select("value").eq("key", FEATURED_EVENT_BACKUP_KEY).maybeSingle(),
+  ]);
+  const backupId = (backup?.value as { event_id?: unknown } | null)?.event_id;
+  const ids = [booking?.event_id, typeof backupId === "string" ? backupId : null].filter((x): x is string => !!x);
+
+  if (ids.length) {
+    // publicDb: RLS (public_read_published_events) already hides anything unpublished.
+    const { data } = await publicDb().from("events").select(`id, ${EVENT_FIELDS}` as const).in("id", ids).eq("status", "published");
+    const live = withDisplayLocation(data).filter((e) => eventLastDay(e) >= today);
+    // the id was only needed to match the booking and the pin; callers get the public event shape
+    const strip = (row: (typeof live)[number]) => { const { id, ...e } = row; void id; return e; };
+    const booked = live.find((e) => e.id === booking?.event_id);
+    if (booked) return { event: strip(booked), source: "booked" as FeaturedEventSource, placement: booking };
+    const pinned = live.find((e) => e.id === backupId);
+    if (pinned) return { event: strip(pinned), source: "backup" as FeaturedEventSource, placement: null };
+  }
+  const { events } = await upcomingEvents({ limit: 1 });
+  return { event: events[0] ?? null, source: "fallback" as FeaturedEventSource, placement: null };
+}
+
+/**
  * Everything already finished, newest first.
  *
  * The old site kept its event pages up indefinitely — 56 of them, most long
@@ -736,17 +807,19 @@ export async function memberBySlug(slug: string, opts: { includeArchived?: boole
     .eq("slug", slug)
     .single();
   if (!member) return null;
-  const [{ data: stories }, { data: videos }] = await Promise.all([
-    // Every published story featuring this member — as primary or tagged
+  const [{ data: stories, count: storyTotal }, { data: videos }] = await Promise.all([
+    // Published stories featuring this member — as primary or tagged
     // alongside others (Jas 13/10 item 12) — through story_members, which
     // holds the primary too. An inner embed keeps it one round trip with
-    // ordering and paging still done by the database.
+    // ordering and paging still done by the database. Only the carousel's
+    // worth is fetched; the count drives its "See more" link.
     db
       .from("stories")
-      .select(`${STORY_CARD}, story_members!inner(member_id)`)
+      .select(`${STORY_CARD}, story_members!inner(member_id)`, { count: "exact" })
       .eq("status", "published")
       .eq("story_members.member_id", member.id)
-      .order("published_at", { ascending: false }),
+      .order("published_at", { ascending: false })
+      .limit(MEMBER_STORY_CAROUSEL),
     // The member's own published videos, shown after the company video on
     // their page (GAPS A8.5) — already approval-gated, so no new table.
     db
@@ -762,7 +835,14 @@ export async function memberBySlug(slug: string, opts: { includeArchived?: boole
   const { member_membership_types, member_services, ...rest } = member;
   const membershipTypes = (member_membership_types ?? []).flatMap((r) => (r.membership_type ? [r.membership_type] : []));
   const services = (member_services ?? []).flatMap((r) => (r.service ? [r.service] : []));
-  return { ...rest, membershipTypes, services, stories: (stories ?? []) as unknown as StoryCard[], videos: videos ?? [] };
+  return {
+    ...rest,
+    membershipTypes,
+    services,
+    stories: (stories ?? []) as unknown as StoryCard[],
+    storyTotal: storyTotal ?? stories?.length ?? 0,
+    videos: videos ?? [],
+  };
 }
 
 /** Site search: members rank first (query-level ordering — not stored bias). */

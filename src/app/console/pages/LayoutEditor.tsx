@@ -37,7 +37,7 @@ export function LayoutEditor({ pageType, initial }: Props) {
     const id = `${type}-${uid.replace(/[^a-z0-9]/gi, "")}-${blocks.length}-${counter++}`;
     const props =
       type === "back_link" ? { label: "Back to News", href: "/news" } :
-      type === "latest_news" || type === "member_news" ? { limit: 4 } : undefined;
+      type === "latest_news" ? { limit: 4 } : undefined;
     setBlocks((bs) => [...bs, { id, type, ...(props ? { props } : {}) }]);
   };
 
@@ -120,15 +120,15 @@ function SortableBlock({ block, pinned, adNumber, onRemove, onProps }: {
           <input value={props.href ?? ""} onChange={(e) => onProps({ href: e.target.value })} placeholder="/news" aria-label="Back link URL" className="w-24 rounded border px-2 py-0.5 text-xs" />
         </span>
       )}
-      {(block.type === "latest_news" || block.type === "member_news") && (
+      {/* member_news has no count: it's a carousel of the member's latest 12, with "See more" past that */}
+      {block.type === "latest_news" && (
         <label className="flex items-center gap-1 text-xs text-graphite">
           cards
           <input
-            type="number" min={block.type === "member_news" ? 0 : 1} max={8} value={props.limit ?? 4}
+            type="number" min={1} max={8} value={props.limit ?? 4}
             onChange={(e) => onProps({ limit: Number(e.target.value) })}
             className="w-14 rounded border px-2 py-0.5"
           />
-          {block.type === "member_news" && <span className="text-graphite">(0 = all)</span>}
         </label>
       )}
       {!pinned && (

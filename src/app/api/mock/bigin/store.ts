@@ -26,15 +26,18 @@ export type MockContact = {
   Modified_Time: string;
 };
 
-type Org = { contacts: Map<string, MockContact>; accounts: { id: string; Account_Name: string }[]; nextId: number };
+export type MockAccount = { id: string; Account_Name: string; News_Page_URL: string | null };
+
+type Org = { contacts: Map<string, MockContact>; accounts: MockAccount[]; nextId: number };
 
 const g = globalThis as typeof globalThis & { __biginMockOrg?: Org };
 
 function seedOrg(): Org {
-  const accounts = [
-    { id: "9100000000001", Account_Name: "Acme Fabrication Ltd" },
-    { id: "9100000000002", Account_Name: "Brightsteel Engineering" },
-    { id: "9100000000003", Account_Name: "Northern Laser Cutting" },
+  // News_Page_URL feeds the story crawler (src/lib/sources/bigin.ts); one blank, as in a real org.
+  const accounts: MockAccount[] = [
+    { id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/" },
+    { id: "9100000000002", Account_Name: "Brightsteel Engineering", News_Page_URL: "https://brightsteel.test/blog" },
+    { id: "9100000000003", Account_Name: "Northern Laser Cutting", News_Page_URL: null },
   ];
   const contacts = new Map<string, MockContact>();
   const now = Date.now();

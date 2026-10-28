@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
+import { monthLabel, monthLast } from "@/lib/featured-availability";
 import { declineInterest, startAdvertFromInterest } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export default async function AdvertInterestPage(props: PageProps<"/console/adve
   const db = serviceDb();
   const requests = await must(
     db.from("visibility_requests")
-      .select("id, product, message, status, created_at, member:members(id, name, contact_email)")
+      .select("id, product, message, preferred_month, status, created_at, member:members(id, name, contact_email)")
       .order("created_at", { ascending: false }),
     "console/adverts interest list",
   );
@@ -51,6 +52,26 @@ export default async function AdvertInterestPage(props: PageProps<"/console/adve
               </p>
               <span className="text-xs text-graphite">{String(r.created_at).slice(0, 10)}</span>
             </div>
+            {r.preferred_month && (
+              <p className="mt-1">
+                Wants: <b>{monthLabel(r.preferred_month)}</b>
+                {r.product === "featured_member" && r.member?.id && (
+                  <>
+                    {" · "}
+                    <Link
+                      href={`/console/adverts/featured-member?${new URLSearchParams({
+                        member_id: r.member.id,
+                        starts_on: r.preferred_month,
+                        ends_on: monthLast(r.preferred_month),
+                      })}`}
+                      className="font-semibold text-ink underline"
+                    >
+                      Book this slot →
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
             {r.message && <p className="mt-1 text-graphite">{r.message}</p>}
             {r.member?.contact_email && <p className="mt-1 text-xs text-graphite">{r.member.contact_email}</p>}
             <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -3,6 +3,8 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { requireConsole } from "@/lib/auth";
 import { dayKey, monthGrid, parseMonth } from "@/lib/calendar";
+import { featuredEvent } from "@/lib/queries";
+import { FeaturedEventCard } from "@/components/console/FeaturedEventCard";
 import { CalendarView, type CalendarEvent } from "./CalendarView";
 import { EventBoard, type BoardEvent } from "./EventBoard";
 
@@ -24,6 +26,18 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
   const view = sp.view === "calendar" ? "calendar" : "board";
   const month = parseMonth(typeof sp.month === "string" ? sp.month : undefined);
   const db = serviceDb();
+
+  // The Featured Event card above the board (HUMAN-TODO 4.4): today's
+  // homepage top event, and the next booking that hasn't started.
+  const today = new Date().toISOString().slice(0, 10);
+  const [live, nextBooked] = await Promise.all([
+    featuredEvent(),
+    must(
+      db.from("placements").select("starts_on, ends_on, awaiting_payment, event:events(title)")
+        .eq("kind", "featured_event").gt("starts_on", today).order("starts_on").limit(1).maybeSingle(),
+      "console/events next featured",
+    ),
+  ]);
 
   // An event's date exists before it's approved, so — unlike Story/Video's
   // calendar — don't restrict to published; show drafts/pending on their date too.
@@ -63,6 +77,11 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
         <Link href="/console/events/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New event</Link>
       </div>
       <p className="mt-1 text-sm text-graphite">Nothing publishes without approval.</p>
+
+      <FeaturedEventCard
+        live={live}
+        next={nextBooked ? { title: nextBooked.event?.title ?? "—", starts_on: nextBooked.starts_on, ends_on: nextBooked.ends_on, awaiting_payment: nextBooked.awaiting_payment } : null}
+      />
 
       <div className="mt-4 flex gap-1 border-b text-sm">
         {TABS.map((t) => (

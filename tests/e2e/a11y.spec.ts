@@ -64,7 +64,9 @@ test("axe: / (forge variant) has no serious or critical violations", async ({ pa
 // shows up first.
 // /console/sources earns a slot: a new route with a filter nav and several
 // forms per row inside a <details> disclosure.
-const CONSOLE_PAGES = ["/console", "/console/stories", "/console/dev", "/console/newsletter", "/console/industries", "/console/leads", "/console/email-templates/welcome", "/console/advertising", "/console/notifications", "/console/releases", "/console/sources"];
+// /console/features earns a slot: a new route whose only controls are
+// per-flag submit buttons named partly by visually hidden text.
+const CONSOLE_PAGES = ["/console", "/console/stories", "/console/dev", "/console/newsletter", "/console/industries", "/console/leads", "/console/email-templates/welcome", "/console/advertising", "/console/notifications", "/console/releases", "/console/sources", "/console/adverts/featured-event", "/console/features"];
 // /dashboard/submissions earns a slot: it gained status tabs, a <details>
 // disclosure and an inline form per published row, which is exactly the shape
 // unlabelled-control drift takes.

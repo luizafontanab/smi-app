@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  activePlacements, activeTakeover, eventBySlug, eventsInRange, featuredMemberPlacements, featuredMembers,
+  activePlacements, activeTakeover, eventBySlug, eventsInRange, featuredEvent, featuredMemberPlacements, featuredMembers,
   forYouStories, headlineStory, headlineVideo, ilikeTerm, industries,
-  industryBySlug, memberBySlug, memberDirectory, memberFacets, memberPins, membershipTypes, mostViewedStories, newsletterBySlug,
+  industryBySlug, MEMBER_STORY_CAROUSEL, memberBySlug, memberDirectory, memberFacets, memberPins, membershipTypes, mostViewedStories, newsletterBySlug,
   pastEvents, publishedStories, publishedVideos,
-  searchSite, sentNewsletters, services, staticPage, storyBySlug, storyForPreview, storyMembers, storyCategories, storyIndustrySlug, storyIntros,
+  searchSite, sentNewsletters, services, staticPage, storyBySlug, storyFilterMember, storyForPreview, storyMembers, storyCategories, storyIndustrySlug, storyIntros,
   upcomingEventPins, upcomingEvents,
   videoBySlug,
 } from "@/lib/queries";
 import { publicDb, serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { PUBLIC_MEMBER_STATUSES } from "@/lib/member-visibility";
+import { asDb, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
@@ -113,6 +114,36 @@ describe("publishedStories", () => {
     expect(storiesBuilder.eq).not.toHaveBeenCalledWith("industry_id", expect.anything());
   });
 
+  it("filters to one member's stories through story_members (inner) for memberId", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    db({ stories: () => storiesBuilder });
+
+    await publishedStories({ memberId: "m1" });
+
+    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.stringContaining("story_members!inner(member_id)"), { count: "exact" });
+    expect(storiesBuilder.eq).toHaveBeenCalledWith("story_members.member_id", "m1");
+  });
+
+  it("combines the member and category inner joins in one select", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    db({ stories: () => storiesBuilder, categories: () => queryBuilder(dbOk({ id: "cat1" })) });
+
+    await publishedStories({ memberId: "m1", category: "fabrication" });
+
+    const sel = (storiesBuilder.select as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sel).toContain("story_categories!inner(category_id)");
+    expect(sel).toContain("story_members!inner(member_id)");
+  });
+
+  it("adds no member join without memberId", async () => {
+    const storiesBuilder = queryBuilder(dbOk([], 0));
+    db({ stories: () => storiesBuilder });
+
+    await publishedStories();
+
+    expect(storiesBuilder.select).toHaveBeenCalledWith(expect.not.stringContaining("story_members"), { count: "exact" });
+  });
+
   it("takes a pre-resolved industry id without looking the slug up again", async () => {
     const storiesBuilder = queryBuilder(dbOk([], 0));
     // no `industries` entry: fromByTable throws on an unconfigured table, so
@@ -173,9 +204,41 @@ describe("memberBySlug — stories featuring the member", () => {
       stories: () => stories,
     });
     await memberBySlug("blm");
-    expect(stories.select).toHaveBeenCalledWith(expect.stringContaining("story_members!inner(member_id)"));
+    expect(stories.select).toHaveBeenCalledWith(expect.stringContaining("story_members!inner(member_id)"), { count: "exact" });
     expect(stories.eq).toHaveBeenCalledWith("story_members.member_id", "m1");
     expect(stories.eq).not.toHaveBeenCalledWith("member_id", "m1");
+  });
+
+  it("fetches only the carousel's worth, and reports the full total for See more", async () => {
+    const stories = queryBuilder(dbOk([{ id: "s1" }], 30));
+    db({
+      members: () => queryBuilder(dbOk({ id: "m1", slug: "blm", member_membership_types: [], member_services: [] })),
+      stories: () => stories,
+    });
+    const member = await memberBySlug("blm");
+    expect(stories.limit).toHaveBeenCalledWith(MEMBER_STORY_CAROUSEL);
+    expect(member?.storyTotal).toBe(30);
+  });
+});
+
+describe("storyFilterMember", () => {
+  it("returns null without a query for no slug", async () => {
+    const from = db({});
+    expect(await storyFilterMember(undefined)).toBeNull();
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("resolves a public member by slug, and only public statuses", async () => {
+    const members = queryBuilder(dbOk({ id: "m1", slug: "acme", name: "Acme" }));
+    db({ members: () => members });
+    expect(await storyFilterMember("acme")).toEqual({ id: "m1", slug: "acme", name: "Acme" });
+    expect(members.in).toHaveBeenCalledWith("status", PUBLIC_MEMBER_STATUSES);
+    expect(members.eq).toHaveBeenCalledWith("slug", "acme");
+  });
+
+  it("is null for an unknown slug — the page then applies no filter", async () => {
+    db({ members: () => queryBuilder(dbOk(null)) });
+    expect(await storyFilterMember("bogus")).toBeNull();
   });
 });
 
@@ -529,7 +592,7 @@ describe("memberBySlug", () => {
     });
 
     expect(await memberBySlug("acme")).toEqual({
-      id: "m1", slug: "acme", services: [], membershipTypes: [], stories: [{ id: "s1" }],
+      id: "m1", slug: "acme", services: [], membershipTypes: [], stories: [{ id: "s1" }], storyTotal: 1,
       videos: [{ slug: "v1", title: "Open house", url: "https://youtu.be/x" }],
     });
   });
@@ -877,6 +940,71 @@ describe("featuredMembers", () => {
       ])),
     });
     expect((await featuredMembers()).map((p) => p.kind)).toEqual(["featured_member"]);
+  });
+});
+
+/* ---------- featured event ---------- */
+
+describe("featuredEvent", () => {
+  const ev = (id: string, over: Record<string, unknown> = {}) => ({
+    id, slug: id, title: id.toUpperCase(), location: null, starts_on: "2099-01-10", ends_on: null, ...over,
+  });
+  const booking = { id: "p1", event_id: "booked", starts_on: "2000-01-01", ends_on: "2099-12-31" };
+  const backup = { value: { event_id: "pinned" } };
+
+  it("shows today's booked event first, with its term, and without its id", async () => {
+    db({
+      placements: () => queryBuilder(dbOk(booking)),
+      settings: () => queryBuilder(dbOk(backup)),
+      events: () => queryBuilder(dbOk([ev("pinned"), ev("booked")])),
+    });
+    const got = await featuredEvent();
+    expect(got.source).toBe("booked");
+    expect(got.event?.slug).toBe("booked");
+    expect(got.event).not.toHaveProperty("id");
+    expect(got.placement).toEqual(booking);
+  });
+
+  it("falls back to the pinned backup when nothing is booked", async () => {
+    db({
+      placements: () => queryBuilder(dbOk(null)),
+      settings: () => queryBuilder(dbOk(backup)),
+      events: () => queryBuilder(dbOk([ev("pinned")])),
+    });
+    const got = await featuredEvent();
+    expect(got).toMatchObject({ source: "backup", placement: null });
+    expect(got.event?.slug).toBe("pinned");
+  });
+
+  it("skips a booked event that is over, and uses the backup", async () => {
+    db({
+      placements: () => queryBuilder(dbOk(booking)),
+      settings: () => queryBuilder(dbOk(backup)),
+      events: () => queryBuilder(dbOk([ev("booked", { starts_on: "2000-01-01", ends_on: "2000-01-02" }), ev("pinned")])),
+    });
+    expect((await featuredEvent()).source).toBe("backup");
+  });
+
+  it("falls back to the next upcoming event when the backup is unpublished (not returned) or none is pinned", async () => {
+    // publicDb's RLS hides unpublished events, so the id lookup returns nothing
+    // and the second events query is upcomingEvents().
+    db({
+      placements: () => queryBuilder(dbOk(null)),
+      settings: () => queryBuilder(dbOk(backup)),
+      events: sequence(dbOk([]), dbOk([ev("next")], 1)),
+    });
+    const got = await featuredEvent();
+    expect(got).toMatchObject({ source: "fallback", placement: null });
+    expect(got.event?.slug).toBe("next");
+  });
+
+  it("is a null event when nothing at all is upcoming", async () => {
+    db({
+      placements: () => queryBuilder(dbOk(null)),
+      settings: () => queryBuilder(dbOk(null)),
+      events: () => queryBuilder(dbOk([], 0)),
+    });
+    expect(await featuredEvent()).toEqual({ event: null, source: "fallback", placement: null });
   });
 });
 

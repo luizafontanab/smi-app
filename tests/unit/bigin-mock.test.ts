@@ -5,6 +5,7 @@ import { serviceDb } from "@/lib/db/server";
 import { DELETE as deleteContact, GET as getContact, PUT as putContact } from "@/app/api/mock/bigin/bigin/v2/Contacts/[id]/route";
 import { GET as listContacts, POST as createContact } from "@/app/api/mock/bigin/bigin/v2/Contacts/route";
 import { GET as searchContacts } from "@/app/api/mock/bigin/bigin/v2/Contacts/search/route";
+import { GET as listAccounts } from "@/app/api/mock/bigin/bigin/v2/Accounts/route";
 import { org } from "@/app/api/mock/bigin/store";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -77,6 +78,22 @@ describe("guard", () => {
   it("is a 404 when the mock is off, key or no key", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
     expect((await listContacts(req(`${API}/Contacts`))).status).toBe(404);
+  });
+});
+
+describe("GET /Accounts (story sources from Bigin)", () => {
+  it("lists companies with only the named fields, News Page URL included", async () => {
+    const res = await listAccounts(req(`${API}/Accounts?fields=Account_Name,News_Page_URL&per_page=200&page=1`));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.info.more_records).toBe(false);
+    expect(body.data).toContainEqual({ id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/" });
+    expect(body.data).toContainEqual({ id: "9100000000003", Account_Name: "Northern Laser Cutting", News_Page_URL: null });
+  });
+
+  it("is guarded like every other mock route", async () => {
+    const res = await listAccounts(req(`${API}/Accounts?fields=Account_Name`, { headers: { authorization: "Zoho-oauthtoken anything" } }));
+    expect(res.status).toBe(401);
   });
 });
 

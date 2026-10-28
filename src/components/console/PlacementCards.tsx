@@ -14,8 +14,11 @@ export type PlacementRow = {
   member: { name: string } | null;
 };
 
+/** The first column: who or what is booked. Defaults to the member. */
+type FirstColumn<T> = { header: string; cell: (row: T) => ReactNode };
+
 /**
- * Booked, then Pending, for placements (Featured Member, Takeover) — same
+ * Booked, then Pending, for placements (Featured Member, Featured Event, Takeover) — same
  * cards as ArtworkRunCards. Placements have no approval step, so Pending is
  * only ever "waiting for payment".
  */
@@ -24,25 +27,29 @@ export function PlacementCards<T extends PlacementRow>({
   today,
   editBase,
   noun,
+  first,
   extra,
 }: {
   rows: T[];
   today: string;
   editBase: string;
   noun: string;
+  /** replaces the Member column, e.g. Featured Event's event title */
+  first?: FirstColumn<T>;
   /** one page-specific column, e.g. the takeover's colour */
   extra?: { header: string; cell: (row: T) => ReactNode };
 }) {
   const groups = groupBy(rows, (r) => placementGroup(r, today));
   const byStart = (a: T, b: T) => a.starts_on.localeCompare(b.starts_on);
   const cols = extra ? 7 : 6;
+  const lead: FirstColumn<T> = first ?? { header: "Member", cell: (r) => r.member?.name };
 
   const table = (list: T[], status: (r: T) => ReactNode, empty: string) => (
     <div className="overflow-x-auto">
       <table className={TABLE}>
         <thead>
           <tr className={HEAD_ROW}>
-            <th scope="col" className="py-1">Member</th>
+            <th scope="col" className="py-1">{lead.header}</th>
             {extra && <th scope="col">{extra.header}</th>}
             <th scope="col">From</th><th scope="col">To</th><th scope="col">Price</th><th scope="col" /><th scope="col" />
           </tr>
@@ -50,7 +57,7 @@ export function PlacementCards<T extends PlacementRow>({
         <tbody>
           {list.map((r) => (
             <tr key={r.id} className="border-t">
-              <td className="py-2">{r.member?.name}</td>
+              <td className="py-2">{lead.cell(r)}</td>
               {extra && <td>{extra.cell(r)}</td>}
               <td>{r.starts_on}</td>
               <td>{r.ends_on}</td>

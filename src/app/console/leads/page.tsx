@@ -3,6 +3,8 @@ import { LeadsDisclaimer } from "@/components/leads/LeadsDisclaimer";
 import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import Link from "next/link";
 import { markProspect } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +39,8 @@ export default async function ConsoleLeadsPage(props: PageProps<"/console/leads"
     must(db.from("prospect_marks").select("prospect_ref, action").is("member_id", null), "console/leads prospect marks"),
   ]);
 
+  const memberLeadsOn = await isFeatureEnabled("member_leads");
+
   // Many marks per prospect: one operator can flag the same company to call and
   // to email, and both badges should show.
   const marked = new Map<string, string[]>();
@@ -51,6 +55,10 @@ export default async function ConsoleLeadsPage(props: PageProps<"/console/leads"
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="text-2xl font-bold text-ink">Lead generation</h1>
+      <p className="mt-1 text-sm text-graphite">
+        Members&apos; own Leads page is <strong>{memberLeadsOn ? "on" : "off"}</strong> —{" "}
+        <Link href="/console/features" className="underline">change in Features</Link>.
+      </p>
 
       <p className="mt-3 rounded bg-danger/10 p-3 text-sm text-danger">
         <strong>Sample data.</strong> These prospects are fictional and their contact details are not real —

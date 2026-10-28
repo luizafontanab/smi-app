@@ -236,18 +236,32 @@ describe("GridHome", () => {
   });
 
   /*
-   * The Upcoming events row starts at events[1]: events[0] is the fold's
-   * placement card, and the same event in both places reads as a bug. Only the
-   * fold card is `featured`, which is what carries the warm border and the
-   * "Featured event" label — a row of editorial events wearing a placement's
-   * highlight would be a commercial signal that means nothing.
+   * The fold card is the Featured Event (queries.ts featuredEvent(): booked,
+   * else the pinned backup, else the next upcoming), and the Upcoming events
+   * row is the upcoming list without it — the same event in both places reads
+   * as a bug. Only the fold card is `featured`, which is what carries the warm
+   * border and the "Featured event" label — a row of editorial events wearing
+   * a placement's highlight would be a commercial signal that means nothing.
    */
-  it("places the fold's event once, and the rest in the events row", () => {
-    const ev = (slug: string) => ({ slug, title: `Event ${slug}`, location: null, starts_on: "2026-10-20" });
-    const tree = GridHome(homeData({ events: [ev("a"), ev("b"), ev("c"), ev("d"), ev("e")] as never }));
+  const ev = (slug: string) => ({ slug, title: `Event ${slug}`, location: null, starts_on: "2026-10-20" });
+
+  it("places the featured event once, and leaves it out of the events row", () => {
+    const tree = GridHome(homeData({ events: [ev("a"), ev("b"), ev("c"), ev("d")] as never, featuredEvent: ev("b") as never }));
     const cards = eventCards(tree);
-    expect(cards.map((c) => c.event.slug)).toEqual(["a", "b", "c", "d"]);
-    expect(cards.filter((c) => c.featured).map((c) => c.event.slug)).toEqual(["a"]);
+    expect(cards.map((c) => c.event.slug)).toEqual(["b", "a", "c", "d"]);
+    expect(cards.filter((c) => c.featured).map((c) => c.event.slug)).toEqual(["b"]);
+  });
+
+  it("keeps the row at three when the featured event is further out than the upcoming list", () => {
+    const tree = GridHome(homeData({ events: [ev("a"), ev("b"), ev("c"), ev("d")] as never, featuredEvent: ev("z") as never }));
+    const cards = eventCards(tree);
+    expect(cards.map((c) => c.event.slug)).toEqual(["z", "a", "b", "c"]);
+    expect(cards.filter((c) => c.featured).map((c) => c.event.slug)).toEqual(["z"]);
+  });
+
+  it("has no fold event card when there is no featured event", () => {
+    const cards = eventCards(GridHome(homeData({ events: [], featuredEvent: null as never })));
+    expect(cards).toEqual([]);
   });
 
   // Both rows are gated on having something to show — an empty band with a

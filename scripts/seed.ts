@@ -444,6 +444,20 @@ async function main() {
     // notice on /event/[slug] are otherwise unreachable from seed data
     { slug: "smi-golf-challenge-2025", title: "SMI Golf Challenge 2025", location: "Belfry, West Midlands", starts_on: iso(new Date(today.getTime() - 340 * 864e5)), status: "published", description: "<p>Last year's golf day.</p>" },
   ]));
+  // Featured Event (HUMAN-TODO 4.4): an upcoming, member-owned event booked
+  // unpriced from today until it starts, so the homepage's top card and the
+  // console Events card show a "Booked" event rather than the fallback. Dated
+  // relative to today because the two published events above are fixed dates.
+  const featuredEventStart = new Date(today.getTime() + 21 * 864e5);
+  const { data: featuredEventRow } = await must("events", db.from("events").insert({
+    slug: "laser-cutting-open-day", title: "Laser cutting open day", location: faker.location.city(),
+    starts_on: iso(featuredEventStart), status: "published", type: "open_house", member_id: activeMembers[3].id,
+    description: "<p>Live demos on the latest fibre lasers.</p>",
+  }).select("id").single());
+  await must("placements", db.from("placements").insert({
+    kind: "featured_event", event_id: featuredEventRow!.id, member_id: activeMembers[3].id,
+    starts_on: iso(today), ends_on: iso(featuredEventStart),
+  }));
   const ytIds = ["fLcEcOuZTBs", "kXYiU_JCYtU", "hTWKbfoikeg", "9bZkp7q19f0", "dQw4w9WgXcQ", "L_jWHffIx5E"];
   await must("videos", db.from("videos").insert(ytIds.map((v, i) => {
     const title = `${faker.company.buzzPhrase()} — shop floor tour`;
@@ -595,6 +609,12 @@ async function main() {
     // The site-wide design (GAPS A8.2). Grid is also the code fallback; the row
     // makes the console's "live now" reflect a real choice.
     { key: "site_variant", value: "grid" },
+    // Feature flags (lib/feature-flags.ts). Member Leads defaults off in code;
+    // on here so the smoke, a11y and visual suites keep covering the page.
+    { key: "feature:member_leads", value: true },
+    // Story crawler defaults off in code; on here so the console shows it running.
+    // The synthetic sources below are paused, so no real site is ever fetched.
+    { key: "feature:story_crawler", value: true },
   ]));
   // Lead-gen marks (GAPS A8.3). Refs are copied from the LeadGenSource mock's
   // fixtures rather than imported from it: the adapter pulls in src/lib/db/server,
@@ -743,7 +763,10 @@ async function main() {
   // Example addresses, paused: the synthetic seed must never send the
   // source_watch job at real company sites. seed-real.ts imports the real list.
   const { data: sources } = await must("content_sources", db.from("content_sources").insert([
-    { url: "https://example-fabrication.test/news/", domain: "example-fabrication.test", label: "Example Fabrication", active: false, method: "feed", method_url: "https://example-fabrication.test/feed/", access: "ok", last_checked_at: new Date().toISOString(), last_ok_at: new Date().toISOString(), last_item_at: new Date(Date.now() - 2 * 864e5).toISOString() },
+    // Linked to a (fictional) Bigin company and a member, as the Bigin sync
+    // leaves a page that is on the spreadsheet too (lib/sources/bigin.ts).
+    { url: "https://example-fabrication.test/news/", domain: "example-fabrication.test", label: "Example Fabrication", active: false,
+      bigin_account_id: "seed-bigin-company-1", bigin_account_name: "Example Fabrication Ltd", member_id: activeMembers[0]?.id ?? null, method: "feed", method_url: "https://example-fabrication.test/feed/", access: "ok", last_checked_at: new Date().toISOString(), last_ok_at: new Date().toISOString(), last_item_at: new Date(Date.now() - 2 * 864e5).toISOString() },
     { url: "https://example-laser.test/blog/", domain: "example-laser.test", label: "Example Laser Cutting", active: false, method: "html", method_url: "https://example-laser.test/blog/", access: "ok", last_checked_at: new Date().toISOString(), last_ok_at: new Date().toISOString() },
     { url: "https://example-blocked.test/news/", domain: "example-blocked.test", active: false, access: "blocked", last_checked_at: new Date().toISOString(), failure_count: 1, last_error: "HTTP 403 — the site refuses automated requests" },
     { url: "https://example-moved.test/latest-news/", domain: "example-moved.test", active: false, access: "not_found", last_checked_at: new Date().toISOString(), failure_count: 2, last_error: "HTTP 404 — the news page has moved or gone" },

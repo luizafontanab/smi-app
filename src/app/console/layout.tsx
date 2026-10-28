@@ -45,6 +45,7 @@ const CONSOLE_SECTIONS: NavSection[] = [
       { href: "/console/adverts/bundles", label: "Bundles" },
       { href: "/console/adverts/takeover", label: "Takeover" },
       { href: "/console/adverts/featured-member", label: "Featured Member" },
+      { href: "/console/adverts/featured-event", label: "Featured Event" },
       { href: "/console/adverts/suppliers", label: "Supplier Logos" },
       { href: "/console/adverts/interest", label: "Interest" },
     ],
@@ -71,6 +72,8 @@ const CONSOLE_SECTIONS: NavSection[] = [
       // inventory — which is why they are here and not under Adverts.
       { href: "/console/advertising", label: "Advertising Page" },
       { href: "/console/pages", label: "Page Layouts" },
+      // Feature flags — switch parts of the site on or off (lib/feature-flags.ts).
+      { href: "/console/features", label: "Features" },
       { href: "/console/categories", label: "News Categories" },
       { href: "/console/industries", label: "Industries" },
       { href: "/console/media", label: "Media Library" },

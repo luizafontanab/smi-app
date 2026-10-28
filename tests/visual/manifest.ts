@@ -162,6 +162,7 @@ const CONSOLE: Route[] = [
   admin("/console/adverts"),
   admin("/console/adverts/artwork"),
   admin("/console/adverts/bundles"),
+  admin("/console/adverts/featured-event"),
   admin("/console/adverts/featured-member"),
   admin("/console/adverts/interest"),
   // Was /console/adverts/spots ("Inventory") until fix-list 79; the old path
@@ -180,6 +181,7 @@ const CONSOLE: Route[] = [
   admin("/console/dev"),
   admin("/console/email-templates"),
   admin("/console/events"),
+  admin("/console/features"),
   admin("/console/leads"),
   admin("/console/machines"),
   admin("/console/media"),
@@ -239,6 +241,13 @@ const CONSOLE_PINNED: Route[] = [
     id: "console_featured_member_id",
     pin: "first slot on /console/adverts/featured-member",
   }),
+  // Featured Event (HUMAN-TODO 4.4) — new route, no baseline yet.
+  {
+    id: "console_featured_event_id",
+    path: "/console/adverts/featured-event/PIN",
+    role: "admin",
+    skip: "no Featured Event booking in the current database — repin after a reseed (scripts/seed.ts books one)",
+  },
   {
     id: "console_takeover_id",
     path: "/console/adverts/takeover/PIN",

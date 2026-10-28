@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   consoleUploadImage, decideStory, moveStory, pinStory, saveSocialCaps, saveStory, scheduleStory, setStoryStatus,
-  saveSiteVariant, clearMyVariantOverride, saveHomeSections, setErrorStatus,
+  saveSiteVariant, clearMyVariantOverride, saveHomeSections, setErrorStatus, saveFeatureFlag,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
@@ -608,6 +608,48 @@ describe("saveSiteVariant / clearMyVariantOverride", () => {
     cookieStore.set("smi-theme", "forge");
     await expect(clearMyVariantOverride()).rejects.toThrow("NEXT_REDIRECT:/console/pages?saved=override");
     expect(cookieStore.has("smi-theme")).toBe(false);
+  });
+});
+
+// Feature flags (/console/features, lib/feature-flags.ts).
+describe("saveFeatureFlag", () => {
+  it.each([
+    ["on", true],
+    ["off", false],
+  ])("stores %s as a boolean under its own feature: key and revalidates the member area", async (state, value) => {
+    const builder = queryBuilder(dbOk(null));
+    db({ settings: () => builder });
+
+    await expect(saveFeatureFlag(form({ flag: "member_leads", state }))).rejects.toThrow(
+      "NEXT_REDIRECT:/console/features?saved=member_leads",
+    );
+
+    expect(builder.upsert).toHaveBeenCalledWith({ key: "feature:member_leads", value });
+    expect(revalidatePath).toHaveBeenCalledWith("/dashboard", "layout");
+  });
+
+  it.each([
+    [{ flag: "not_a_flag", state: "on" }],
+    [{ flag: "member_leads", state: "maybe" }],
+    [{ flag: "member_leads" }],
+  ])("refuses an unknown flag or state without writing: %o", async (fields) => {
+    const from = db({});
+    await expect(saveFeatureFlag(form(fields))).rejects.toThrow(/NEXT_REDIRECT:\/console\/features\?error=/);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed write instead of claiming it saved", async () => {
+    db({ settings: () => queryBuilder(dbError("boom")) });
+    await expect(saveFeatureFlag(form({ flag: "member_leads", state: "on" }))).rejects.toThrow(
+      /NEXT_REDIRECT:\/console\/features\?error=/,
+    );
+  });
+
+  it("is console-only: a refused requireConsole writes nothing", async () => {
+    const from = db({});
+    requireConsole.mockRejectedValueOnce(new Error("NEXT_REDIRECT:/dashboard"));
+    await expect(saveFeatureFlag(form({ flag: "member_leads", state: "on" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard");
+    expect(from).not.toHaveBeenCalled();
   });
 });
 

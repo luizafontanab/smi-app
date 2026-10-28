@@ -73,6 +73,13 @@ describe("LayoutEditor", () => {
     expect(block.props).toEqual({ limit: 6 });
   });
 
+  it("offers no card count for member_news — it is a fixed-size carousel", () => {
+    render(
+      <LayoutEditor pageType="member_profile" initial={layout({ id: "main", type: "profile_main" }, { id: "mn1", type: "member_news", props: { limit: 4 } })} />,
+    );
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+  });
+
   it("shows the validation error and disables Save for an invalid layout", () => {
     render(<LayoutEditor pageType="static_page" initial={layout()} />); // missing the required page_main anchor
     expect(screen.getByText(/main content blocks must each appear exactly once/)).toBeInTheDocument();

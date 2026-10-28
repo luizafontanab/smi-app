@@ -40,5 +40,15 @@ export async function importContentSources(db: SupabaseClient, csvPath = CONTENT
   const { data } = await must("content_sources", db.from("content_sources")
     .upsert(unique, { onConflict: "url", ignoreDuplicates: true })
     .select("id"));
+  // A page the Bigin sync added first (bigin_only) is on the spreadsheet too:
+  // it must keep running if the company later clears it in Bigin
+  // (src/lib/sources/bigin.ts). Only that flag changes — nothing edited in the
+  // console is touched.
+  for (let i = 0; i < unique.length; i += 200) {
+    await must("content_sources bigin_only", db.from("content_sources")
+      .update({ bigin_only: false })
+      .eq("bigin_only", true)
+      .in("url", unique.slice(i, i + 200).map((r) => r.url)));
+  }
   return { added: data?.length ?? 0, skipped };
 }

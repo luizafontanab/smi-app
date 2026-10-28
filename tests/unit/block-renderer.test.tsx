@@ -103,21 +103,41 @@ describe("latest_news / member_news", () => {
     expect(screen.getByRole("heading", { name: "Stories featuring this member" })).toBeInTheDocument();
   });
 
-  it("member_news with limit 0 shows every story about the member", () => {
+  // A carousel of whatever the page fetched — a stored limit from an older
+  // layout row (the editor used to offer one) no longer cuts it to 4.
+  it("member_news shows every story it is given, ignoring a stored limit", () => {
     const stories = [story({ id: "1", title: "One" }), story({ id: "2", title: "Two" }), story({ id: "3", title: "Three" })];
     render(
       <BlockRenderer
         pageType="member_profile"
-        path="/news"
-        layout={layout({ id: "b1", type: "member_news", props: { limit: 0 } })}
+        path="/member/acme"
+        layout={layout({ id: "b1", type: "member_news", props: { limit: 1 } })}
         anchors={{}}
         memberStories={stories}
         memberName="Acme Fabrication"
       />,
     );
+    expect(screen.getByRole("heading", { name: "Stories featuring Acme Fabrication" })).toBeInTheDocument();
     expect(screen.getByText("One")).toBeInTheDocument();
     expect(screen.getByText("Two")).toBeInTheDocument();
     expect(screen.getByText("Three")).toBeInTheDocument();
+  });
+
+  it("member_news links to See more only when the member has more stories than the carousel holds", () => {
+    const stories = [story({ id: "1", title: "One" }), story({ id: "2", title: "Two" })];
+    const props = {
+      pageType: "member_profile" as const,
+      path: "/member/acme",
+      layout: layout({ id: "b1", type: "member_news" }),
+      anchors: {},
+      memberStories: stories,
+      memberStoriesHref: "/news?member=acme#all-news",
+    };
+    const { rerender } = render(<BlockRenderer {...props} memberStoriesTotal={2} />);
+    expect(screen.queryByRole("link", { name: "See more →" })).not.toBeInTheDocument();
+
+    rerender(<BlockRenderer {...props} memberStoriesTotal={13} />);
+    expect(screen.getByRole("link", { name: "See more →" })).toHaveAttribute("href", "/news?member=acme#all-news");
   });
 });
 

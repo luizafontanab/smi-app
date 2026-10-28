@@ -680,6 +680,71 @@ describe("BiginCrmSync.pull", () => {
   });
 });
 
+describe("listCompanyNewsPages (story sources from Bigin)", () => {
+  const accounts = (data: Record<string, unknown>[], info: Record<string, unknown> = { more_records: false }) => json({ data, info });
+
+  it("the stub returns null — Bigin not connected, nothing to sync", async () => {
+    unconnectedEnv();
+    expect(await getCrmSync().listCompanyNewsPages()).toBeNull();
+  });
+
+  it("pages through every company, names the field, and keeps only filled-in URLs", async () => {
+    liveEnv();
+    const fetchSpy = fetchRoutes((url) => {
+      if (!url.startsWith(`${API}/Accounts?`)) return undefined;
+      return url.includes("page=1")
+        ? accounts([
+            { id: "1", Account_Name: "Acme", News_Page_URL: " https://acme.test/news " },
+            { id: "2", Account_Name: "Blank", News_Page_URL: null },
+            { id: "3", Account_Name: "Empty", News_Page_URL: "  " },
+          ], { more_records: true })
+        : accounts([{ id: "4", Account_Name: "Brightsteel", News_Page_URL: "brightsteel.test/blog" }]);
+    });
+
+    const result = await (await freshCrm()).getCrmSync().listCompanyNewsPages();
+
+    expect(calls(fetchSpy)).toEqual([
+      `GET ${API}/Accounts?fields=Account_Name,News_Page_URL&per_page=200&page=1`,
+      `GET ${API}/Accounts?fields=Account_Name,News_Page_URL&per_page=200&page=2`,
+    ]);
+    expect(result).toEqual({
+      complete: true,
+      companies: [
+        { id: "1", name: "Acme", url: "https://acme.test/news" },
+        { id: "4", name: "Brightsteel", url: "brightsteel.test/blog" },
+      ],
+    });
+  });
+
+  it("follows page_token past the first 2,000 records", async () => {
+    liveEnv();
+    const fetchSpy = fetchRoutes((url) => {
+      if (!url.startsWith(`${API}/Accounts?`)) return undefined;
+      return url.includes("page_token=")
+        ? accounts([{ id: "9", Account_Name: "Late", News_Page_URL: "https://late.test/" }])
+        : accounts([], { more_records: true, next_page_token: "tok/2" });
+    });
+    const result = await (await freshCrm()).getCrmSync().listCompanyNewsPages();
+    expect(calls(fetchSpy)[1]).toContain("page_token=tok%2F2");
+    expect(result?.companies.map((c) => c.id)).toEqual(["9"]);
+  });
+
+  it("a refused call part-way returns what was read, marked incomplete, instead of throwing", async () => {
+    liveEnv();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchRoutes((url) => {
+      if (!url.startsWith(`${API}/Accounts?`)) return undefined;
+      return url.includes("page=1")
+        ? accounts([{ id: "1", Account_Name: "Acme", News_Page_URL: "https://acme.test/news" }], { more_records: true })
+        : json({ code: "LIMIT_REACHED", message: "out of credits" }, 429);
+    });
+    expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
+      complete: false,
+      companies: [{ id: "1", name: "Acme", url: "https://acme.test/news" }],
+    });
+  });
+});
+
 describe("BiginCrmSync.pull — a batch insert that clashes", () => {
   const clash = () => dbError('duplicate key value violates unique constraint "contacts_email_key"', { code: "23505" }) as DbResult;
 

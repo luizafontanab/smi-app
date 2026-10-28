@@ -883,6 +883,9 @@ export type Database = {
         Row: {
           access: string
           active: boolean
+          bigin_account_id: string | null
+          bigin_account_name: string | null
+          bigin_only: boolean
           created_at: string
           domain: string
           failure_count: number
@@ -892,6 +895,7 @@ export type Database = {
           last_error: string | null
           last_item_at: string | null
           last_ok_at: string | null
+          member_id: string | null
           method: string | null
           method_url: string | null
           updated_at: string
@@ -900,6 +904,9 @@ export type Database = {
         Insert: {
           access?: string
           active?: boolean
+          bigin_account_id?: string | null
+          bigin_account_name?: string | null
+          bigin_only?: boolean
           created_at?: string
           domain: string
           failure_count?: number
@@ -909,6 +916,7 @@ export type Database = {
           last_error?: string | null
           last_item_at?: string | null
           last_ok_at?: string | null
+          member_id?: string | null
           method?: string | null
           method_url?: string | null
           updated_at?: string
@@ -917,6 +925,9 @@ export type Database = {
         Update: {
           access?: string
           active?: boolean
+          bigin_account_id?: string | null
+          bigin_account_name?: string | null
+          bigin_only?: boolean
           created_at?: string
           domain?: string
           failure_count?: number
@@ -926,12 +937,21 @@ export type Database = {
           last_error?: string | null
           last_item_at?: string | null
           last_ok_at?: string | null
+          member_id?: string | null
           method?: string | null
           method_url?: string | null
           updated_at?: string
           url?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "content_sources_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dev_tasks: {
         Row: {
@@ -2204,6 +2224,7 @@ export type Database = {
           config: Json
           created_at: string
           ends_on: string
+          event_id: string | null
           featured_machine_id: string | null
           grid_position: number | null
           id: string
@@ -2217,6 +2238,7 @@ export type Database = {
           config?: Json
           created_at?: string
           ends_on: string
+          event_id?: string | null
           featured_machine_id?: string | null
           grid_position?: number | null
           id?: string
@@ -2230,6 +2252,7 @@ export type Database = {
           config?: Json
           created_at?: string
           ends_on?: string
+          event_id?: string | null
           featured_machine_id?: string | null
           grid_position?: number | null
           id?: string
@@ -2239,6 +2262,13 @@ export type Database = {
           starts_on?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "placements_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "placements_featured_machine_id_fkey"
             columns: ["featured_machine_id"]
@@ -2839,6 +2869,7 @@ export type Database = {
           id: string
           member_id: string
           message: string | null
+          preferred_month: string | null
           product: string
           status: string
         }
@@ -2847,6 +2878,7 @@ export type Database = {
           id?: string
           member_id: string
           message?: string | null
+          preferred_month?: string | null
           product: string
           status?: string
         }
@@ -2855,6 +2887,7 @@ export type Database = {
           id?: string
           member_id?: string
           message?: string | null
+          preferred_month?: string | null
           product?: string
           status?: string
         }
@@ -3040,6 +3073,7 @@ export type Database = {
         | "featured_machine"
         | "grid_block"
         | "takeover"
+        | "featured_event"
       user_role: "admin" | "member"
     }
     CompositeTypes: {
@@ -3185,6 +3219,7 @@ export const Constants = {
         "featured_machine",
         "grid_block",
         "takeover",
+        "featured_event",
       ],
       user_role: ["admin", "member"],
     },

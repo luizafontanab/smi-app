@@ -1,7 +1,7 @@
 import { cancelPlacement } from "@/app/console/actions";
 
 /**
- * "Cancel this booking" for a Featured Member slot or takeover that hasn't
+ * "Cancel this booking" for a Featured Member or Featured Event slot, or a takeover, that hasn't
  * been paid for and hasn't run — the page decides whether to show it; the
  * action (cancelPlacement) checks the same things again. Same shape as the
  * console's other destructive forms: a bordered card, a required confirm box.

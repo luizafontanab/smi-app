@@ -31,6 +31,7 @@ const PLACEMENT_ORDER: Record<string, number> = { current: 0, upcoming: 1, past:
 /** Where each placement kind is edited (fix-list 76). Featured machines are Site Config's. */
 const PLACEMENT_EDIT: Record<string, string> = {
   featured_member: "/console/adverts/featured-member",
+  featured_event: "/console/adverts/featured-event",
   takeover: "/console/adverts/takeover",
 };
 
@@ -73,7 +74,7 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
   const [adverts, bookings, placements, { count: openInterest }, { count: impressions30 }, previewOn, bannerSpots] = await Promise.all([
     must(db.from("adverts").select("id, name, format").order("created_at", { ascending: false }).limit(500), "console/adverts list"),
     must(db.from("advert_bookings").select("id, advert_id, status, starts_on, ends_on, advert:adverts(name, format)").order("ends_on", { ascending: false }).limit(500), "console/adverts bookings"),
-    must(db.from("placements").select("id, kind, grid_position, starts_on, ends_on, awaiting_payment, member:members(name), machine:featured_machines(name)").order("ends_on", { ascending: false }).limit(500), "console/adverts placements"),
+    must(db.from("placements").select("id, kind, grid_position, starts_on, ends_on, awaiting_payment, member:members(name), machine:featured_machines(name), event:events(title)").order("ends_on", { ascending: false }).limit(500), "console/adverts placements"),
     // head:true — only the count comes back, so these two go through mustList.
     mustList(db.from("visibility_requests").select("id", { count: "exact", head: true }).eq("status", "requested"), "console/adverts open interest"),
     // The metric the page calls the headline one, finally readable here: the
@@ -256,6 +257,7 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
         <p className="mt-1 flex flex-wrap gap-3 text-xs">
           <Link href="/console/adverts/takeover" className="text-graphite hover:underline">Book a homepage takeover →</Link>
           <Link href="/console/adverts/featured-member" className="text-graphite hover:underline">Book Featured Member →</Link>
+          <Link href="/console/adverts/featured-event" className="text-graphite hover:underline">Book Featured Event →</Link>
           <Link href="/console/adverts/bundles" className="text-graphite hover:underline">Bundles →</Link>
         </p>
         <div className="overflow-x-auto mt-2">
@@ -270,7 +272,7 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
                     {p.kind.replace("_", " ")}
                     {p.awaiting_payment && <span className="ml-1.5 text-xs font-semibold text-brand-text">awaiting payment</span>}
                   </td>
-                  <td>{p.machine?.name ?? p.member?.name}</td>
+                  <td>{p.machine?.name ?? p.event?.title ?? p.member?.name}</td>
                   <td>{p.grid_position ?? "—"}</td>
                   <td>{p.starts_on}</td>
                   <td>{p.ends_on}</td>

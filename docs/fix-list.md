@@ -139,8 +139,11 @@
       - It's derived on read, so editing the body updates it, and nothing is written. The forms still edit the raw field, so a blank stays blank there.
     - **Rename and hint:** the console's "Excerpt" field is now "Summary (optional, 1–2 sentences)", matching the member form, and both forms say where it appears and what happens when it's left empty. *(Committed in `4f14b9b`.)*
 
-- pg_dump: warning: there are circular foreign-key constraints on this table:
-pg_dump: detail: advert_bookings
+- [x] pg_dump: warning: there are circular foreign-key constraints on this table:
+pg_dump: detail: advert_bookings — Not a bug; nothing changed.
+    - **Cause:** `advert_bookings.renewed_from` points at another booking in the same table, the one a renewal continued (migration `20260829000002`). pg_dump warns about every table that references itself, but only on data-only dumps (`supabase db dump --data-only`). Schema dumps and `db push` don't show it. No other table loops back to `advert_bookings`.
+    - **Restores are safe:** the warning means a renewal row could be loaded before the booking it points to. Supabase's data dump already opens with `SET session_replication_role = replica;`, which switches foreign-key checks off while it loads. Checked against a local dump on 27 Oct. A dump made with plain `pg_dump` instead needs `--disable-triggers` on restore.
+    - **Why no migration:** the schema is correct, and making the key deferrable wouldn't silence the warning.
 
 94. [x] Jas: can see EVERYTHING a member can, including stats and all — **View as member**, read-only: a "View as member" link on `/console/members/[id]` opens that member's real `/dashboard`, so every page (overview, My page, content, adverts, stats, leads, invoices, settings) is exactly what they see and can't drift from it.
     - **How:** an `smi-view-as` cookie (httpOnly, 8h) names the member; `requireMemberView()` (`src/lib/auth.ts`) honours it for an admin only, and all 26 dashboard pages plus the layout render through it. A grey "Admin view" bar on every page has "Back to console".

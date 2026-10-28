@@ -10,6 +10,36 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-27 — Story sources from Bigin
+- Each company's News Page URL in Bigin is now a story source as well as the spreadsheet list. It's checked daily, or straight away with "Sync from Bigin now" on Story sources → Sources.
+- A news page that's already on the list isn't added twice. If a company's URL changes or is removed in Bigin, the old page stops being checked, unless it's also on the spreadsheet.
+- Sources from Bigin show a "Bigin" tag with the company name, and there's a "From Bigin" filter. Their address is changed in Bigin, not on this page.
+- When a source belongs to a member, "Start story" makes a draft already tagged with that member. You can change the tag in the editor.
+- There's a new Story crawler switch under Features. It starts off; while it's off, no sources are checked.
+
+## 2026-10-27 — More of a member's stories on their page
+- "Stories featuring" on a member's page is now a carousel you can scroll sideways, showing their 12 latest stories instead of 4.
+- When a member has more than 12, a "See more" link opens the Newsroom showing every story featuring them, with a "Featuring …" tag you can clear to see all news again.
+- The page layout editor no longer has a card count for this block, as it's always the 12 latest.
+
+## 2026-10-27 — Switch member Leads on or off
+- There's a new Features page under Site Config, where you can switch parts of the site on or off. Changes apply straight away, with no redeploy.
+- The first switch is the members' Leads page. It starts off: members won't see Leads in their menu, and anyone opening the Leads address is taken to their dashboard. Turn it on in Features when you're ready.
+- Your own Lead Gen page in the console works as before, and says whether members' Leads is on.
+
+## 2026-10-27 — Members can see which months have Featured Member slots
+- When a member asks for Featured Member on Advertising → Buy, they now see this month and the next 11, each with how many of the 8 slots are left. Full months can't be picked. Choosing a month is optional.
+- Slots held for unpaid invoices count as taken, the same as when you book a slot. Members see only how many slots are left, never whose they are.
+- On Adverts & Banners → Interest, a request now shows the month the member wants, with a "Book this slot" link that opens Featured Member with the member and dates already filled in.
+- Members also see the month they asked for under Advertising → Manage.
+
+## 2026-10-27 — Featured event on the home page
+- The event card at the top of the home page can now be booked like a Featured Member slot, under Adverts & Banners → Featured Event. Pick an event, the dates and an optional price. Only one event can be featured on any day.
+- A priced booking is invoiced to the event's member and shows once it's paid. An event with no member can be featured, but only without a price.
+- You can also pin a backup event on the same page. It shows on any day nothing is booked. With no backup pinned, the card shows the next upcoming event, as it always has.
+- If a booked or pinned event is unpublished or has finished, the home page skips it and the Featured Event page tells you, so a booking never shows a dead event.
+- The Events page now has a card at the top saying which event is featured on the home page today, why, and what's booked next.
+
 ## 2026-10-22 — Newsletter, social post and console fixes
 - A newsletter can no longer go out with a story or video that has since been withdrawn or unpublished. The issue page names it, and "Send me a test", approving, scheduling and sending all refuse until you remove it from the issue or republish it. If it happens after the issue is scheduled, the issue shows as failed with the reason instead of sending.
 - Social posts now carry only the tags for the network they're posted to, so an X post no longer includes LinkedIn and Facebook handles. On X, extra members' tags are dropped when needed to keep the post within 280 characters.

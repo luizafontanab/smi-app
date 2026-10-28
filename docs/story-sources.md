@@ -60,6 +60,36 @@ filters rather than hiding them.
 - **The user agent is honest:** `SMI-story-sources/1.0 (+<site url>)`. Sites
   that block automated requests are left blocked, never worked around.
 
+## Sources from Bigin (27 Oct 2026)
+
+Each Bigin company's **News Page URL** (Companies module, field API name in
+`NEWS_PAGE_FIELD`, `src/lib/adapters/crm.ts`) is a second source list next to the
+imported spreadsheet. The daily `source_bigin_sync` job (and "Sync from Bigin
+now" on `/console/sources` → Sources) reads every company and:
+
+- links a URL that's already on the list to the company, without adding a second row;
+- adds a new URL as a source marked `bigin_only`, named after the company;
+- when a company's URL changes or is cleared, removes the link from the old
+  source and pauses that source if `bigin_only`. A page that's also on the
+  spreadsheet keeps running, and a spreadsheet re-import clears `bigin_only`;
+- never removes links or pauses anything after a partial read (Bigin refused a call
+  part-way), or after a read that found no URLs at all while some are linked
+  (a renamed field looks exactly like that);
+- skips a URL that isn't an address, or that a second company also lists, and
+  lists it on the console to be fixed in Bigin;
+- matches each linked source to one member: through a contact linked to both
+  the company and the member, otherwise through the member's website domain.
+  If more than one member matches, no one is tagged. "Start story" on that
+  source's suggestions makes a draft tagged with the member. Admin drafts
+  aren't shown to the member.
+
+A Bigin-linked source's address is changed or cleared in Bigin, not in the
+console, because the next sync would undo a console edit. It can still be
+paused in the console.
+
+Both jobs sit behind the **Story crawler** flag in `/console/features`. The
+flag is off by default, and while it's off nothing is checked or synced.
+
 ## Coverage (one test run, 20 Oct 2026)
 
 The whole list was run once through the prototype, then through feed, API and

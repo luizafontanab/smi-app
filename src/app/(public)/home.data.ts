@@ -2,7 +2,7 @@ import "server-only";
 import { liveAdvertsByFormat, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { buildHero, withIntros } from "@/lib/hero";
-import { activePlacements, featuredMemberPlacements, headlineStory, homeSectionsSetting, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
+import { activePlacements, featuredEvent, featuredMemberPlacements, headlineStory, homeSectionsSetting, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
 
 /**
  * Every advert format either design places on the home page.
@@ -32,7 +32,7 @@ const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_fee
 export async function loadHome() {
   // Limits are sized so the hero can eat from the top of these lists (up to 3
   // stories and 2 videos) and every section below still fills.
-  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx, homeSections] = await Promise.all([
+  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx, homeSections, topEvent] = await Promise.all([
     headlineStory(),
     publishedStories({ limit: 18 }),
     publishedStories({ limit: 8, memberOnly: true }),
@@ -50,6 +50,9 @@ export async function loadHome() {
     requestContext(),
     // Grid-only: which sections show below the fold, in what order (A1.7).
     homeSectionsSetting(),
+    // Grid-only: the top card's event — booked, else the pinned backup, else
+    // the next upcoming one (Featured Event, HUMAN-TODO 4.4).
+    featuredEvent(),
   ]);
 
   const hero = buildHero(headline, stories, videos);
@@ -73,6 +76,7 @@ export async function loadHome() {
     // the same definition via featuredMembers().
     featuredMembers: featuredMemberPlacements(placements),
     featuredMachine: placements.find((p) => p.kind === "featured_machine"),
+    featuredEvent: topEvent.event,
     newsletters: newsletters.slice(0, 3),
     // Logo wall, not a directory listing — members without a logo have nothing
     // to show in it, so they are filtered out here rather than in each view.

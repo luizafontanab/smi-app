@@ -43,12 +43,12 @@ export function StoryCard({
   );
 }
 
-export function Carousel({ title, children, href }: { title: string; children: React.ReactNode; href?: string }) {
+export function Carousel({ title, children, href, linkLabel = "See all →" }: { title: string; children: React.ReactNode; href?: string; linkLabel?: string }) {
   return (
     <section className="mt-8">
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="text-lg font-bold uppercase tracking-wide text-ink">{title}</h2>
-        {href && <Link href={href} className="text-sm text-graphite hover:underline">See all →</Link>}
+        {href && <Link href={href} className="text-sm text-graphite hover:underline">{linkLabel}</Link>}
       </div>
       <div className="carousel flex gap-4 overflow-x-auto pb-2">{children}</div>
     </section>

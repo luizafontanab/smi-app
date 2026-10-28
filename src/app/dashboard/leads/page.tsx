@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { requireMemberView } from "@/lib/auth";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { LeadsDisclaimer } from "@/components/leads/LeadsDisclaimer";
 import { serviceDb } from "@/lib/db/server";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
@@ -8,6 +10,9 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardLeadsPage() {
   const user = await requireMemberView();
+  // Feature flag (/console/features). Off: an old bookmark or typed address
+  // lands on the dashboard rather than an error.
+  if (!(await isFeatureEnabled("member_leads"))) redirect("/dashboard");
 
   // M14 is "prospects relevant to their own business", not a search panel —
   // the criteria form is A29's job, on the console side.

@@ -37,7 +37,8 @@ export type JobKind =
   | "dev_error_digest"       // daily: the last 24h of recorded errors, emailed to DEV_ALERT_EMAIL (docs/logging.md)
   | "log_retention"          // daily: error logs past 90 days; audit_events per purge_audit_events()
   | "upload_staging_sweep"   // hourly: removes direct uploads staged but never saved (lib/staged-upload)
-  | "source_watch";          // hourly: checks the story sources due their daily read (lib/sources/check)
+  | "source_watch"           // hourly: checks the story sources due their daily read (lib/sources/check)
+  | "source_bigin_sync";     // daily: Bigin companies' News Page URLs → story sources (lib/sources/bigin)
 
 /**
  * In development only, a job that is due now runs as soon as the response is
@@ -159,6 +160,7 @@ export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   // each source is still read only once a day (CHECK_EVERY_MS). Production's
   // once-a-day cron (GAPS A3.1) would reach one batch a day — see docs/story-sources.md.
   await ensurePeriodic("source_watch", 60 * 60);
+  await ensurePeriodic("source_bigin_sync", 24 * 60 * 60);
 
   const { data: due } = await db
     .from("jobs")
@@ -210,6 +212,12 @@ function rateLimitPauseMs(e: unknown): number | null {
   const err = e as { name?: unknown; status?: unknown; retryAfterMs?: unknown };
   if (err.name !== "EmailSendError" || err.status !== 429) return null;
   return typeof err.retryAfterMs === "number" && err.retryAfterMs > 0 ? err.retryAfterMs : 2000;
+}
+
+/** The "Story crawler" feature flag. Lazy, like the job modules: most ticks never need it. */
+async function storyCrawlerOn(): Promise<boolean> {
+  const { isFeatureEnabled } = await import("./feature-flags");
+  return isFeatureEnabled("story_crawler");
 }
 
 async function ensurePeriodic(kind: JobKind, everySeconds: number) {
@@ -599,8 +607,19 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       // hold the cron request; a source it doesn't reach stays due next run.
       // Per-source failures are recorded on the source, not thrown — a site
       // being down is an outcome, not a job failure.
+      // The "Story crawler" flag (/console/features) stops it outright; the job
+      // still completes, so the queue doesn't back up while it's off.
+      if (!(await storyCrawlerOn())) break;
       const { runSourceWatch } = await import("./sources/check");
       await runSourceWatch();
+      break;
+    }
+    case "source_bigin_sync": {
+      // Bigin companies' News Page URLs, merged into the source list. Bigin
+      // not connected is a skip, not a failure (syncBiginSources returns null).
+      if (!(await storyCrawlerOn())) break;
+      const { syncBiginSources } = await import("./sources/bigin");
+      await syncBiginSources();
       break;
     }
     case "comp_expiry": {

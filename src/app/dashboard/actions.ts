@@ -6,6 +6,7 @@ import { audit } from "@/lib/audit";
 import { requireMember, requireMemberView } from "@/lib/auth";
 import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { serviceDb, sessionDb } from "@/lib/db/server";
 import { isEventType } from "@/lib/event-types";
 import { editorImageUpload, uploadFailureMessage } from "@/lib/editor-upload";
@@ -41,6 +42,7 @@ import { advertLinkFromForm } from "@/lib/advert-link";
 import { logError } from "@/lib/log";
 import { siteUrl } from "@/lib/site-url";
 import { EMAIL_RE } from "@/lib/validate";
+import { loadFeaturedMonths } from "@/lib/featured-availability";
 import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
 
 /** Shown when a save fails for a reason that isn't the member's to fix; the detail goes to the error log. */
@@ -750,10 +752,26 @@ export async function editMachine(formData: FormData) {
 /** M11 — "Buy" request: no online payment; Jas confirms and invoices. */
 export async function requestVisibility(formData: FormData) {
   const user = await requireMember();
-  await serviceDb().from("visibility_requests").insert({
+  const db = serviceDb();
+  const product = String(formData.get("product"));
+  // Featured Member only: the month picked from the Buy page's availability
+  // list. Re-counted here — the page may be stale, and a direct POST can send
+  // anything — so only a month in the window with a slot left is stored.
+  let preferredMonth: string | null = null;
+  const picked = String(formData.get("preferred_month") ?? "");
+  if (product === "featured_member" && picked) {
+    const month = (await loadFeaturedMonths(db)).find((m) => m.key === picked);
+    if (!month) redirect(`/dashboard/advertising/buy?error=${encodeURIComponent("Pick one of the months listed.")}`);
+    if (month.left === 0) {
+      redirect(`/dashboard/advertising/buy?error=${encodeURIComponent(`${month.label} has just filled up — pick another month.`)}`);
+    }
+    preferredMonth = month.first;
+  }
+  await db.from("visibility_requests").insert({
     member_id: user.memberId,
-    product: String(formData.get("product")),
+    product,
     message: String(formData.get("message") ?? "") || null,
+    preferred_month: preferredMonth,
   });
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=buy");
@@ -1171,6 +1189,8 @@ export async function proposeOwnArtworkSwap(formData: FormData) {
 export async function markProspectFollowUp(formData: FormData) {
   const user = await requireMember();
   if (!user.memberId) return;
+  // Leads switched off in /console/features: a crafted POST mustn't reach it.
+  if (!(await isFeatureEnabled("member_leads"))) return;
 
   const ref = String(formData.get("ref") ?? "").trim();
   if (!ref) return;
@@ -1187,6 +1207,7 @@ export async function markProspectFollowUp(formData: FormData) {
 export async function unmarkProspect(formData: FormData) {
   const user = await requireMember();
   if (!user.memberId) return;
+  if (!(await isFeatureEnabled("member_leads"))) return;
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return;

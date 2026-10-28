@@ -9,6 +9,7 @@ import { signOut } from "@/app/actions";
 import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { unreadNotificationCount } from "@/lib/notifications";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +30,13 @@ const NAV: NavSection[] = [
 
 export default async function MemberLayout({ children }: { children: React.ReactNode }) {
   const user = await requireMemberView();
-  const [{ data: member }, unread] = await Promise.all([
+  const [{ data: member }, unread, leadsOn] = await Promise.all([
     serviceDb().from("members").select("name, status").eq("id", user.memberId).single(),
     unreadNotificationCount(user.memberId),
+    isFeatureEnabled("member_leads"),
   ]);
+  // Feature flag (/console/features): Leads drops out of the nav while it's off.
+  const nav = leadsOn ? NAV : NAV.filter((section) => section.key !== "leads");
 
   return (
     <div className="min-h-screen bg-paper">
@@ -54,7 +58,7 @@ export default async function MemberLayout({ children }: { children: React.React
           </div>
         </div>
         <div className="mx-auto max-w-5xl">
-          <ConsoleNav root="/dashboard" items={NAV} />
+          <ConsoleNav root="/dashboard" items={nav} />
         </div>
         {member?.status === "grace" && (
           <div className="bg-brand py-1.5 text-center text-sm font-medium text-ink">

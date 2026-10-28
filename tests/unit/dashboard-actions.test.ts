@@ -13,6 +13,8 @@ import { revalidatePath } from "next/cache";
 import type { CurrentUser, MemberView } from "@/lib/auth";
 import { IMAGE_TOO_LARGE, UPLOAD_EXPIRED, UploadRejectedError } from "@/lib/upload-limits";
 import { STORY_CHANGED_ERROR } from "@/lib/member-story";
+import { featuredMonths } from "@/lib/featured-availability";
+import { FEATURED_SLOTS } from "@/lib/pricing";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
@@ -43,6 +45,11 @@ vi.mock("@/lib/log", () => ({ logError }));
 vi.mock("@/lib/notify-admin", () => ({ notifyAdminFunnel, notifyConsole }));
 vi.mock("@/lib/adapters/geocode", () => ({ geocodeAddress }));
 
+// The member Leads flag (/console/features). On by default here so the
+// prospect tests below exercise the actions; the "switched off" cases flip it.
+const { isFeatureEnabled } = vi.hoisted(() => ({ isFeatureEnabled: vi.fn(async () => true) }));
+vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
+
 const { getLeadGenSource } = vi.hoisted(() => ({ getLeadGenSource: vi.fn() }));
 vi.mock("@/lib/adapters/leadgen", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -62,6 +69,7 @@ vi.mock("@/lib/membership", async (importOriginal) => ({
 afterEach(() => {
   resetDbServerMocks();
   vi.mocked(revalidatePath).mockClear();
+  isFeatureEnabled.mockReset().mockResolvedValue(true);
   requireMember.mockReset().mockResolvedValue({
     userId: "u1", email: "member@acme.example", role: "member", memberId: "mem1", displayName: "Acme",
   });
@@ -1014,6 +1022,58 @@ describe("requestVisibility / savePrefs", () => {
     expect(builder.insert).toHaveBeenCalledWith(expect.objectContaining({ member_id: "mem1", product: "featured" }));
   });
 
+  describe("Featured Member preferred month", () => {
+    // A month inside the live window whatever day the suite runs.
+    const next = featuredMonths([], new Date())[1];
+    const fullRuns = Array.from({ length: FEATURED_SLOTS.cap }, () => ({ starts_on: next.first, ends_on: next.last }));
+
+    it("stores the month's 1st when it has room", async () => {
+      const requests = queryBuilder(dbOk(null));
+      const placements = queryBuilder(dbOk([]));
+      db({ visibility_requests: () => requests, placements: () => placements });
+
+      await expect(requestVisibility(form({ product: "featured_member", preferred_month: next.key }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=buy");
+      expect(placements.eq).toHaveBeenCalledWith("kind", "featured_member");
+      expect(requests.insert).toHaveBeenCalledWith(expect.objectContaining({ product: "featured_member", preferred_month: next.first }));
+    });
+
+    it("refuses a month that filled up since the page loaded", async () => {
+      const requests = queryBuilder(dbOk(null));
+      db({ visibility_requests: () => requests, placements: () => queryBuilder(dbOk(fullRuns)) });
+
+      await expect(requestVisibility(form({ product: "featured_member", preferred_month: next.key }))).rejects.toThrow(
+        `NEXT_REDIRECT:/dashboard/advertising/buy?error=${encodeURIComponent(`${next.label} has just filled up — pick another month.`)}`,
+      );
+      expect(requests.insert).not.toHaveBeenCalled();
+    });
+
+    it("refuses a month outside the window", async () => {
+      const requests = queryBuilder(dbOk(null));
+      db({ visibility_requests: () => requests, placements: () => queryBuilder(dbOk([])) });
+
+      await expect(requestVisibility(form({ product: "featured_member", preferred_month: "1999-01" }))).rejects.toThrow(
+        "NEXT_REDIRECT:/dashboard/advertising/buy?error=",
+      );
+      expect(requests.insert).not.toHaveBeenCalled();
+    });
+
+    it("ignores a month on any other product, without querying placements", async () => {
+      const requests = queryBuilder(dbOk(null));
+      db({ visibility_requests: () => requests });
+
+      await expect(requestVisibility(form({ product: "newsletter_slot", preferred_month: next.key }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=buy");
+      expect(requests.insert).toHaveBeenCalledWith(expect.objectContaining({ product: "newsletter_slot", preferred_month: null }));
+    });
+
+    it("stores null for no preference", async () => {
+      const requests = queryBuilder(dbOk(null));
+      db({ visibility_requests: () => requests });
+
+      await expect(requestVisibility(form({ product: "featured_member", preferred_month: "" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=buy");
+      expect(requests.insert).toHaveBeenCalledWith(expect.objectContaining({ preferred_month: null }));
+    });
+  });
+
   it("savePrefs defaults frequencies when not given", async () => {
     const builder = queryBuilder(dbOk(null));
     db({ notification_prefs: () => builder });
@@ -1319,6 +1379,16 @@ describe("markProspectFollowUp — ownership", () => {
 
     expect(mark).toHaveBeenCalledWith(expect.any(String), "follow_up", expect.anything());
   });
+
+  it("does nothing while Leads is switched off in /console/features", async () => {
+    const mark = withSource(["https://www.linkedin.com/company/acme"]);
+    isFeatureEnabled.mockResolvedValue(false);
+
+    await markProspectFollowUp(form({ ref: "https://www.linkedin.com/company/acme" }));
+
+    expect(isFeatureEnabled).toHaveBeenCalledWith("member_leads");
+    expect(mark).not.toHaveBeenCalled();
+  });
 });
 
 describe("unmarkProspect", () => {
@@ -1334,6 +1404,16 @@ describe("unmarkProspect", () => {
   it("leaves another member's mark alone", async () => {
     const marks = queryBuilder(dbOk({ id: "mark1", member_id: "mem-other" }));
     db({ prospect_marks: () => marks });
+
+    await unmarkProspect(form({ id: "mark1" }));
+
+    expect(marks.delete).not.toHaveBeenCalled();
+  });
+
+  it("does nothing while Leads is switched off in /console/features", async () => {
+    const marks = queryBuilder(dbOk({ id: "mark1", member_id: "mem1" }));
+    db({ prospect_marks: () => marks });
+    isFeatureEnabled.mockResolvedValue(false);
 
     await unmarkProspect(form({ id: "mark1" }));
 

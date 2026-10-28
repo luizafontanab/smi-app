@@ -1211,6 +1211,13 @@ async function main() {
     // The site-wide design (GAPS A8.2). Grid is also the code fallback; the row
     // makes the console's "live now" reflect a real choice.
     { key: "site_variant", value: "grid" },
+    // Feature flags (lib/feature-flags.ts): Member Leads ships off, matching
+    // the code default; switched on from /console/features.
+    { key: "feature:member_leads", value: false },
+    // Story crawler: off, matching the code default and HUMAN-TODO 2.6 — this
+    // script runs against production (pnpm seed:prod), and checking ~724 real
+    // company sites daily is switched on by a person, from /console/features.
+    { key: "feature:story_crawler", value: false },
   ]));
   // No `prospect_marks` here, unlike scripts/seed.ts: those marks point at the
   // LeadGenSource mock's fictional prospects, and this seed builds the real

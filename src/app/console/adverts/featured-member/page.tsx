@@ -22,7 +22,16 @@ export default async function FeaturedMemberPage(props: PageProps<"/console/adve
     must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/featured-member members"),
     must(db.from("placements").select("id, starts_on, ends_on, price_pennies, awaiting_payment, member:members(name)").eq("kind", "featured_member").order("starts_on", { ascending: false }), "console/featured-member placements"),
   ]);
-  const liveCount = (slots ?? []).filter((p) => placementGroup(p, today) === "booked" && p.starts_on <= today).length;
+  // Pre-fill from the Interest page's "Book this slot" link. Only shapes are
+  // checked here — saveFeaturedMemberPlacement still checks the cap, and an
+  // unknown member id just leaves the picker on its first option.
+  const date = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
+  const prefill = {
+    member_id: typeof sp.member_id === "string" && (members ?? []).some((m) => m.id === sp.member_id) ? sp.member_id : undefined,
+    starts_on: date(sp.starts_on),
+    ends_on: date(sp.ends_on),
+  };
+  const liveCount =(slots ?? []).filter((p) => placementGroup(p, today) === "booked" && p.starts_on <= today).length;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -41,13 +50,13 @@ export default async function FeaturedMemberPage(props: PageProps<"/console/adve
         <form action={saveFeaturedMemberPlacement} className="space-y-4 text-sm">
           <div>
             <label htmlFor="member_id" className="text-sm font-medium">Member</label>
-            <select id="member_id" name="member_id" required className="mt-1 w-full rounded border px-3 py-2">
+            <select id="member_id" name="member_id" required defaultValue={prefill.member_id} className="mt-1 w-full rounded border px-3 py-2">
               {(members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
-            <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block w-full rounded border px-3 py-2" /></label>
-            <label className="block">End<input type="date" name="ends_on" required className="mt-1 block w-full rounded border px-3 py-2" /></label>
+            <label className="block">Start<input type="date" name="starts_on" required defaultValue={prefill.starts_on} className="mt-1 block w-full rounded border px-3 py-2" /></label>
+            <label className="block">End<input type="date" name="ends_on" required defaultValue={prefill.ends_on} className="mt-1 block w-full rounded border px-3 py-2" /></label>
             <label className="block">Price (£)<input name="price_pounds" inputMode="decimal" placeholder="optional" className="mt-1 block w-full rounded border px-3 py-2" /></label>
           </div>
           <SubmitButton pendingLabel="Booking…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Book slot</SubmitButton>

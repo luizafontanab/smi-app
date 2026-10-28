@@ -99,5 +99,12 @@ describe("Carousel", () => {
       </Carousel>,
     );
     expect(screen.getByRole("link", { name: "See all →" })).toHaveAttribute("href", "/news");
+
+    rerender(
+      <Carousel title="Latest" href="/news" linkLabel="See more →">
+        <p>Card one</p>
+      </Carousel>,
+    );
+    expect(screen.getByRole("link", { name: "See more →" })).toHaveAttribute("href", "/news");
   });
 });

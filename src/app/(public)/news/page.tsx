@@ -3,7 +3,7 @@ import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { parseDateParam, parseViewedCats, VIEWED_CATS_COOKIE } from "@/lib/news-prefs";
-import { forYouStories, industries as industryList, mostViewedStories, publishedStories, storyCategories } from "@/lib/queries";
+import { forYouStories, industries as industryList, mostViewedStories, publishedStories, storyCategories, storyFilterMember } from "@/lib/queries";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { ScrollToHash } from "@/components/ScrollToHash";
@@ -31,12 +31,16 @@ export default async function NewsPage(props: PageProps<"/news">) {
   // filters replaced it), but ?filter=members must keep working on the grid —
   // it's linked from elsewhere (e2e flows, shared URLs).
   const memberOnly = sp.filter === "members";
+  // ?member=<slug>: every story featuring one member — the target of a member
+  // page's "See more". Resolved first so the grid filters on the id and the
+  // chip can name them; an unknown or non-public slug means no filter.
+  const member = await storyFilterMember(typeof sp.member === "string" ? sp.member : undefined);
   const viewedCats = parseViewedCats((await cookies()).get(VIEWED_CATS_COOKIE)?.value);
 
   const [{ stories: latest }, { stories: memberNews }, { stories, total }, cats, industries, banners, logos, showPlaceholders, ctx] = await Promise.all([
     publishedStories({ limit: RAIL_SIZE }),
     publishedStories({ limit: RAIL_SIZE, memberOnly: true }),
-    publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly, industry, from, to }),
+    publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly, industry, memberId: member?.id, from, to }),
     storyCategories(),
     industryList(),
     liveAdverts("banner"),
@@ -65,13 +69,13 @@ export default async function NewsPage(props: PageProps<"/news">) {
   // scroll them back up past the three rails they already scrolled past.
   const qs = (over: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams();
-    const merged = { category, industry, from, to, filter: sp.filter as string | undefined, page: undefined, ...over };
+    const merged = { category, industry, member: member?.slug, from, to, filter: sp.filter as string | undefined, page: undefined, ...over };
     Object.entries(merged).forEach(([k, v]) => v !== undefined && v !== "" && params.set(k, String(v)));
     const s = params.toString();
     return `${s ? `/news?${s}` : "/news"}#all-news`;
   };
 
-  const hasFilters = Boolean(category || industry || from || to || memberOnly);
+  const hasFilters = Boolean(category || industry || member || from || to || memberOnly);
 
   return (
     <div className="mx-auto max-w-6xl px-4">
@@ -138,6 +142,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
       <form action="/news#all-news" className="mt-3 flex flex-wrap items-end gap-3 text-sm">
         {category && <input type="hidden" name="category" value={category} />}
         {industry && <input type="hidden" name="industry" value={industry} />}
+        {member && <input type="hidden" name="member" value={member.slug} />}
         {memberOnly && <input type="hidden" name="filter" value="members" />}
         <label className="flex items-center gap-2">
           <span className="text-graphite">From</span>
@@ -152,6 +157,15 @@ export default async function NewsPage(props: PageProps<"/news">) {
           <Link href="/news#all-news" className="text-graphite hover:underline">Clear filters</Link>
         )}
       </form>
+
+      {member && (
+        <p className="mt-4 text-sm">
+          <span className="inline-flex items-center gap-2 rounded-full bg-ink px-3 py-1 text-white">
+            Featuring {member.name}
+            <Link href={qs({ member: undefined })} aria-label={`Remove the ${member.name} filter`} className="hover:underline">×</Link>
+          </span>
+        </p>
+      )}
 
       <div data-testid="all-news-grid" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stories.map((s) => <StoryCard key={s.id} story={s} showExcerpt={false} />)}

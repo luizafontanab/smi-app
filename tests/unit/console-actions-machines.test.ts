@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cancelPlacement, decideMachine, raiseItemInvoice, saveFeaturedMemberPlacement, saveMachine, saveMachinePlacement } from "@/app/console/actions";
+import { cancelPlacement, decideMachine, raiseItemInvoice, saveFeaturedEventPlacement, saveFeaturedMemberPlacement, saveMachine, saveMachinePlacement, setFeaturedEventBackup } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { FEATURED_SLOTS } from "@/lib/pricing";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
@@ -372,5 +372,136 @@ describe("raiseItemInvoice", () => {
     await expect(raiseItemInvoice(form({ kind: "member", id: PL, return_to: "https://evil.example" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\?error=/);
     expect(from).not.toHaveBeenCalled();
+  });
+});
+
+/* ---------- Featured Event (HUMAN-TODO 4.4) ---------- */
+
+const EV = "44444444-4444-4444-8444-444444444444";
+const event = (extra: Record<string, unknown> = {}) => ({
+  id: EV, title: "Open day", status: "published", starts_on: "2099-11-20", ends_on: null, member_id: "m1", ...extra,
+});
+const booking = (extra: Record<string, string> = {}) =>
+  form({ event_id: EV, starts_on: "2099-11-01", ends_on: "2099-11-20", ...extra });
+
+describe("saveFeaturedEventPlacement", () => {
+  beforeEach(() => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "");
+    vi.stubEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("books an unpriced slot against the event, billed to the event's member", async () => {
+    const placements = queryBuilder(dbOk({ id: PL }, 0));
+    db({ events: () => queryBuilder(dbOk(event())), placements: () => placements });
+
+    await expect(saveFeaturedEventPlacement(booking())).rejects.toThrow("NEXT_REDIRECT:/console/adverts/featured-event?saved=1");
+
+    expect(placements.insert).toHaveBeenCalledWith({
+      kind: "featured_event", event_id: EV, member_id: "m1", starts_on: "2099-11-01", ends_on: "2099-11-20", price_pennies: null, awaiting_payment: false,
+    });
+  });
+
+  it("refuses dates another featured event already holds — one at a time", async () => {
+    const placements = queryBuilder(dbOk(null, 1));
+    db({ events: () => queryBuilder(dbOk(event())), placements: () => placements });
+
+    await expect(saveFeaturedEventPlacement(booking())).rejects.toThrow(/featured-event\?error=Another%20event%20is%20already%20featured/);
+    expect(placements.insert).not.toHaveBeenCalled();
+  });
+
+  it("turns the overlap constraint's rejection into the same sentence", async () => {
+    db({
+      events: () => queryBuilder(dbOk(event())),
+      placements: sequence(dbOk(null, 0), dbError('conflicting key value violates exclusion constraint "placements_featured_event_no_overlap"')),
+    });
+    await expect(saveFeaturedEventPlacement(booking())).rejects.toThrow(/error=Another%20event%20is%20already%20featured/);
+  });
+
+  it("refuses an unpublished event", async () => {
+    const from = db({ events: () => queryBuilder(dbOk(event({ status: "draft" }))) });
+    await expect(saveFeaturedEventPlacement(booking())).rejects.toThrow(/error=.*isn't%20published/);
+    expect(from).not.toHaveBeenCalledWith("placements");
+  });
+
+  it("refuses a booking that runs past the event's last day", async () => {
+    const from = db({ events: () => queryBuilder(dbOk(event({ ends_on: "2099-11-18" }))) });
+    await expect(saveFeaturedEventPlacement(booking())).rejects.toThrow(/error=.*is%20over%20on%202099-11-18/);
+    expect(from).not.toHaveBeenCalledWith("placements");
+  });
+
+  it("refuses a priced booking for an event with no member to invoice", async () => {
+    const from = db({ events: () => queryBuilder(dbOk(event({ member_id: null }))) });
+    await expect(saveFeaturedEventPlacement(booking({ price_pounds: "100" }))).rejects.toThrow(/error=This%20event%20has%20no%20member%20to%20invoice/);
+    expect(from).not.toHaveBeenCalledWith("placements");
+  });
+
+  it("but books an unpriced one for an event with no member", async () => {
+    const placements = queryBuilder(dbOk({ id: PL }, 0));
+    db({ events: () => queryBuilder(dbOk(event({ member_id: null }))), placements: () => placements });
+    await expect(saveFeaturedEventPlacement(booking())).rejects.toThrow("NEXT_REDIRECT:/console/adverts/featured-event?saved=1");
+    expect(placements.insert).toHaveBeenCalledWith(expect.objectContaining({ member_id: null }));
+  });
+
+  it("a priced slot is held and invoiced to the event's member", async () => {
+    const placements = queryBuilder(dbOk({ id: PL }, 0));
+    const invoices = invoicesTable(null, "inv9");
+    db({ events: () => queryBuilder(dbOk(event())), placements: () => placements, invoices: invoices.factory });
+
+    await expect(saveFeaturedEventPlacement(booking({ price_pounds: "100" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/featured-event?saved=1");
+
+    expect(placements.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "featured_event", price_pennies: 10000, awaiting_payment: true }));
+    expect(invoices.inserts()).toEqual([expect.objectContaining({ placement_id: PL, member_id: "m1", amount_pennies: 10000 })]);
+  });
+
+  it("edits in place, not clashing with itself", async () => {
+    // existence check → overlap count → the update; no invoice on record
+    let n = 0;
+    const steps = [dbOk({ id: PL }), dbOk(null, 0), dbOk({ id: PL })];
+    const builder = queryBuilder(() => steps[Math.min(n++, steps.length - 1)]);
+    db({ events: () => queryBuilder(dbOk(event())), placements: () => builder, invoices: invoicesTable(null).factory });
+
+    await expect(saveFeaturedEventPlacement(booking({ id: PL }))).rejects.toThrow(`NEXT_REDIRECT:/console/adverts/featured-event/${PL}?saved=1`);
+
+    expect(builder.neq).toHaveBeenCalledWith("id", PL);
+    expect(builder.insert).not.toHaveBeenCalled();
+    expect(builder.update).toHaveBeenCalledWith({ event_id: EV, member_id: "m1", starts_on: "2099-11-01", ends_on: "2099-11-20", price_pennies: null });
+  });
+});
+
+describe("setFeaturedEventBackup", () => {
+  it("pins a published event as the backup", async () => {
+    const settings = queryBuilder(dbOk(null));
+    db({ events: () => queryBuilder(dbOk({ id: EV, title: "Open day", status: "published" })), settings: () => settings });
+
+    await expect(setFeaturedEventBackup(form({ event_id: EV }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/featured-event?pinned=1");
+    expect(settings.upsert).toHaveBeenCalledWith({ key: "featured_event_backup", value: { event_id: EV } });
+  });
+
+  it("refuses an unpublished one", async () => {
+    const settings = queryBuilder(dbOk(null));
+    db({ events: () => queryBuilder(dbOk({ id: EV, title: "Open day", status: "withdrawn" })), settings: () => settings });
+    await expect(setFeaturedEventBackup(form({ event_id: EV }))).rejects.toThrow(/error=.*can't%20be%20the%20backup/);
+    expect(settings.upsert).not.toHaveBeenCalled();
+  });
+
+  it("unpins with an empty event_id", async () => {
+    const settings = queryBuilder(dbOk(null));
+    const from = db({ settings: () => settings });
+    await expect(setFeaturedEventBackup(form({ event_id: "" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/featured-event?unpinned=1");
+    expect(settings.delete).toHaveBeenCalled();
+    expect(settings.eq).toHaveBeenCalledWith("key", "featured_event_backup");
+    expect(from).not.toHaveBeenCalledWith("events");
+  });
+});
+
+describe("cancelPlacement — Featured Event", () => {
+  it("cancels a held booking and returns to the Featured Event page", async () => {
+    const placements = queryBuilder(dbOk(slot({ kind: "featured_event", awaiting_payment: true })));
+    db({ placements: () => placements, invoices: invoicesTable(ISSUED).factory });
+
+    await expect(cancelPlacement(form({ id: PL, confirm: "1" }))).rejects.toThrow("NEXT_REDIRECT:/console/adverts/featured-event?cancelled=1");
+    expect(placements.in).toHaveBeenCalledWith("kind", ["featured_member", "takeover", "featured_event"]);
+    expect(placements.delete).toHaveBeenCalled();
   });
 });

@@ -169,11 +169,10 @@ export type GhEventData = {
  * wear it — one prop rather than two keeps the colour and the label from ever
  * disagreeing about which of those a card is.
  *
- * Note the fold card is EDITORIAL too: `placement_kind` has no
- * `featured_event` member (supabase/migrations/20260808000002_commerce.sql), so
- * there is nothing to book against it. It shows whatever `upcomingEvents()`
- * returns first. The wireframe labels the position "Advert — Featured Event";
- * making that real needs a new placement kind, which is a schema change.
+ * The fold card is a placement: queries.ts featuredEvent() picks today's
+ * booked Featured Event (/console/adverts/featured-event), else the backup
+ * pinned there, else the next upcoming event — so it is not always a sold one,
+ * but it is always the one admin chose to stand in that slot.
  */
 export function GhEventCard({ event, featured = false }: { event: GhEventData; featured?: boolean }) {
   const img = mediaUrl(event.cover_path ?? null);

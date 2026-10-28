@@ -42,6 +42,14 @@ vi.mock("@/lib/adapters/newsletter", () => ({
 // raises the right KIND, about the right thing.
 const { notifyConsole } = vi.hoisted(() => ({ notifyConsole: vi.fn(async () => {}) }));
 vi.mock("@/lib/notify-admin", () => ({ ADMIN_EMAIL: "jas@sheetmetalindustries.com", notifyConsole }));
+const { storyCrawlerOn, runSourceWatch, syncBiginSources } = vi.hoisted(() => ({
+  storyCrawlerOn: vi.fn(async () => true),
+  runSourceWatch: vi.fn(async () => ({})),
+  syncBiginSources: vi.fn(async () => null),
+}));
+vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: storyCrawlerOn }));
+vi.mock("@/lib/sources/check", () => ({ runSourceWatch }));
+vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
 
 afterEach(() => {
   resetDbServerMocks();
@@ -220,6 +228,7 @@ describe("runDueJobs", () => {
         "newsletter_sync",
         "publish_scheduled",
         "rollup_daily",
+        "source_bigin_sync",
         "source_watch",
         "stats_summary",
         "upload_staging_sweep",
@@ -268,6 +277,38 @@ describe("runDueJobs", () => {
 });
 
 describe("runJob kinds", () => {
+  describe("story crawler jobs follow the Story crawler flag", () => {
+    afterEach(() => {
+      storyCrawlerOn.mockReset().mockResolvedValue(true);
+      runSourceWatch.mockClear();
+      syncBiginSources.mockClear();
+    });
+
+    it.each([
+      ["source_watch", runSourceWatch],
+      ["source_bigin_sync", syncBiginSources],
+    ] as const)("%s runs while the flag is on", async (kind, fn) => {
+      const j = job(kind);
+      dbFor(happyPath(j));
+      await runJobById(j.id);
+      expect(storyCrawlerOn).toHaveBeenCalledWith("story_crawler");
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["source_watch", runSourceWatch],
+      ["source_bigin_sync", syncBiginSources],
+    ] as const)("%s does nothing while it's off, and still completes", async (kind, fn) => {
+      storyCrawlerOn.mockResolvedValue(false);
+      const j = job(kind);
+      const [select, claim, tail] = happyPath(j);
+      dbFor([select, claim, tail]);
+      await runJobById(j.id);
+      expect(fn).not.toHaveBeenCalled();
+      expect(callsOf(tail.update)).toContainEqual([expect.objectContaining({ status: "done" })]);
+    });
+  });
+
   it("publish_scheduled — publishes ready stories/videos and enqueues their follow-up jobs", async () => {
     const j = job("publish_scheduled");
     const storiesBuilder = queryBuilder(dbOk([{ id: "s1", member_id: "m1" }]));

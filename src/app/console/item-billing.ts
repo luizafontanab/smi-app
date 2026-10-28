@@ -184,7 +184,7 @@ export async function billItem(target: BillTarget, opts: { hold: boolean }): Pro
     if (error) return dbFail("billing:placement", error, READ_FAILED);
     if (!p) return { ok: false, error: "That booking no longer exists." };
     if (!p.member_id || !p.price_pennies) return { ok: true, invoice: null };
-    const what = p.kind === "takeover" ? "Homepage takeover" : p.kind === "featured_member" ? "Featured Member slot" : "Featured placement";
+    const what = p.kind === "takeover" ? "Homepage takeover" : p.kind === "featured_member" ? "Featured Member slot" : p.kind === "featured_event" ? "Featured Event" : "Featured placement";
     const result = await invoiceAdvertising(p.member_id, p.price_pennies, {
       placement_id: p.id,
       description: `${what} (${p.starts_on} to ${p.ends_on})`,

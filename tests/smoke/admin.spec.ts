@@ -15,6 +15,7 @@ const PAGES = [
   "/console/stories",
   "/console/members",
   "/console/adverts",
+  "/console/adverts/featured-event",
   "/console/events",
   "/console/videos",
   "/console/messages",
@@ -22,6 +23,7 @@ const PAGES = [
   "/console/analytics",
   "/console/newsletter",
   "/console/leads",
+  "/console/features",
   "/console/crm",
   "/console/releases",
 ];

@@ -3,7 +3,7 @@ import { AdSlot, SupplierLogos } from "@/components/AdSlot";
 import { JoinCta } from "@/components/JoinCta";
 import { NewsletterSignup } from "@/components/NewsletterSignup";
 import { SIGNUP_SURFACES } from "@/lib/newsletter-consent";
-import { StoryCard } from "@/components/StoryCard";
+import { Carousel, StoryCard } from "@/components/StoryCard";
 import type { LiveAdvert } from "@/lib/adverts";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
 import { adSlotKeys, isAnchor, type PageLayout, type PageType } from "@/lib/blocks/schema";
@@ -17,6 +17,10 @@ type Props = {
   slots?: Map<string, LiveAdvert[]>;
   latestStories?: StoryCardType[];
   memberStories?: StoryCardType[];
+  /** Every published story featuring the member — memberStories is only the carousel's first page. */
+  memberStoriesTotal?: number;
+  /** Where the carousel's "See more" goes; shown only when memberStoriesTotal exceeds what it holds. */
+  memberStoriesHref?: string;
   memberName?: string;
   supplierLogos?: LiveAdvert[];
   /** Draw empty slots' footprints — resolved per request by showAdPlaceholders(). */
@@ -43,7 +47,7 @@ export const STORY_AD_WRAPPER = "my-8 mx-auto w-full max-w-[300px] md:max-w-none
  * upstream by the uniform shuffle — this component must never pick or reorder
  * adverts (rotational-neutral contract).
  */
-export function BlockRenderer({ pageType, layout, anchors, slots, latestStories, memberStories, memberName, supplierLogos, showPlaceholders = false, path, adWrapperClassName = "my-8" }: Props) {
+export function BlockRenderer({ pageType, layout, anchors, slots, latestStories, memberStories, memberStoriesTotal, memberStoriesHref, memberName, supplierLogos, showPlaceholders = false, path, adWrapperClassName = "my-8" }: Props) {
   const keys = adSlotKeys(pageType, layout);
   let adIndex = 0;
 
@@ -70,22 +74,33 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
               </div>
             );
           }
-          case "latest_news":
-          case "member_news": {
-            const stories = block.type === "latest_news" ? latestStories : memberStories;
+          case "latest_news": {
             const limit = typeof block.props?.limit === "number" ? block.props.limit : 4;
-            const title = block.type === "latest_news" ? "Latest News" : `Stories featuring ${memberName ?? "this member"}`;
-            if (!stories?.length) return null;
-            // limit 0 only ever means "show every story" for member_news — guarded
-            // by block type here too, in case a stale layout row has stray data.
-            const shown = block.type === "member_news" && limit === 0 ? stories : stories.slice(0, limit);
+            if (!latestStories?.length) return null;
             return (
               <section key={block.id} className="mt-10">
-                <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">{title}</h2>
+                <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">Latest News</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {shown.map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
+                  {latestStories.slice(0, limit).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
                 </div>
               </section>
+            );
+          }
+          case "member_news": {
+            // A carousel of whatever the page fetched (memberBySlug caps it at
+            // MEMBER_STORY_CAROUSEL), not a grid cut to the block's limit — any
+            // stored `limit` on an older layout row is ignored. Past the cap,
+            // "See more" opens the Newsroom filtered to this member.
+            if (!memberStories?.length) return null;
+            const more = memberStoriesHref && (memberStoriesTotal ?? 0) > memberStories.length ? memberStoriesHref : undefined;
+            return (
+              <Carousel key={block.id} title={`Stories featuring ${memberName ?? "this member"}`} href={more} linkLabel="See more →">
+                {memberStories.map((s) => (
+                  // fixed width, as on the newsroom/industry rails: the carousel
+                  // is a flex row, so an auto-width card would collapse
+                  <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} showExcerpt={false} /></div>
+                ))}
+              </Carousel>
             );
           }
           case "join_cta":
