@@ -198,7 +198,7 @@ through Proof and approval first.
       touched. It looks each one up on OpenStreetMap, one a second, and lists
       any it couldn't place: fix those addresses in the console. Until it runs,
       those members show no map on their page or in the directory's Map view.
-      Safe to re-run. *(Working tree, uncommitted.)*
+      Safe to re-run. *(Committed in `ed26f92`.)*
 
 ---
 
