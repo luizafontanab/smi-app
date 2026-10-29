@@ -10,6 +10,14 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-28 — "Start story" fills in the draft for you
+- "Start story" on a suggestion now reads the article and fills in the draft: title, summary, the article's text and its main image as the cover.
+- When the source belongs to a member, the draft is tagged with them, takes their industry, and the first time their name appears in the text it links to their member page.
+- The text is rewritten from the company's "we" to third person, changing nothing else. This switches on once the AI service is connected; until then the draft keeps the company's own wording and says so.
+- The article's original text is kept with the draft. Open "Original article text" at the top of the editor to compare it with the rewrite.
+- Anything that couldn't be filled in, such as a missing image or a page that couldn't be read, is listed at the top of the editor. The draft is always made.
+- Starting a story now takes a few seconds while the article is read; the button says "Preparing draft…" meanwhile.
+
 ## 2026-10-28 — Members directory opens on the list
 - The members directory now opens on the list. The word cloud and the map are still one click away with the buttons above the results.
 

@@ -188,9 +188,15 @@ describe.skipIf(!KEY)("join funnel", () => {
       contact_email: `expired-${ts}@test.local`, comped_until: "2026-01-31",
     }).select("id").single();
 
-    const { enqueue, runDueJobs } = await import("@/lib/jobs");
+    const { enqueue, runJobById } = await import("@/lib/jobs");
     await enqueue("comp_expiry");
-    await runDueJobs();
+    const { data: job } = await db.from("jobs").select("id").eq("kind", "comp_expiry")
+      .eq("status", "pending").lte("due_at", new Date().toISOString())
+      .order("created_at", { ascending: false }).limit(1).single();
+    // Only this job: runDueJobs() would also run whatever else is due on the
+    // local stack — including the story crawler, whose every fetch fails under
+    // the test network guard and marks all local sources unreachable.
+    await runJobById(job!.id);
 
     const { data: after } = await db.from("members").select("status, grace_until").eq("id", member!.id).single();
     expect(after?.status).toBe("grace");

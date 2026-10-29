@@ -778,6 +778,23 @@ async function main() {
     { source_id: sourceId("example-laser.test"), url: "https://example-laser.test/blog/iso-9001-renewed/", title: "ISO 9001 certification renewed for another three years", state: "new" },
     { source_id: sourceId("example-laser.test"), url: "https://example-laser.test/blog/old-post/", title: "An older post that was there on the first check", state: "baseline" },
   ]));
+  // One suggestion already started, as "Start story" leaves it: a draft with the
+  // third-person rewrite, and the article's own text kept in story_originals.
+  const startedUrl = "https://example-laser.test/blog/second-press-brake/";
+  const { data: started } = await must("stories (from suggestion)", db.from("stories").insert({
+    title: "Example Laser Cutting adds a second press brake",
+    slug: "example-laser-cutting-adds-a-second-press-brake",
+    excerpt: "The company has doubled its bending capacity.",
+    body: "<p>Example Laser Cutting has installed a second press brake, doubling its bending capacity.</p><p>\"We're delighted,\" said the works manager.</p>",
+    status: "draft", source: "admin",
+  }).select("id").single());
+  await must("source_items (started)", db.from("source_items").insert({
+    source_id: sourceId("example-laser.test"), url: startedUrl, title: "We've added a second press brake", state: "drafted", story_id: started!.id,
+  }));
+  await must("story_originals", db.from("story_originals").insert({
+    story_id: started!.id, source_url: startedUrl, rewritten: true,
+    body: "<p>We have installed a second press brake, doubling our bending capacity.</p><p>\"We're delighted,\" said the works manager.</p>",
+  }));
 
   // Industries for every member and piece of content, from the member_services
   // and story_categories written above — the same backfill real data gets.

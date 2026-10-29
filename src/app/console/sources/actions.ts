@@ -6,9 +6,12 @@ import { requireConsole } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { logError } from "@/lib/log";
+import { removeMedia, uploadImage } from "@/lib/media";
 import { isMemberLinkable } from "@/lib/member-visibility";
 import { syncBiginSources } from "@/lib/sources/bigin";
+import { prepareDraft } from "@/lib/sources/draft";
 import { normalizeSourceUrl } from "@/lib/sources/extract";
+import { UploadRejectedError } from "@/lib/upload-limits";
 import { replaceStoryMembers } from "@/lib/story-members";
 
 /*
@@ -122,59 +125,95 @@ export async function dismissSuggestion(formData: FormData) {
 }
 
 /**
- * Turn a suggestion into an ordinary admin draft titled after the article,
- * and open it in the story editor. The source link stays on the suggestion
- * (shown in the editor) — it is never written into the story body, where it
- * could go live by accident.
+ * "Start story" on a suggestion: an admin draft pre-loaded from the article
+ * page — title, summary, body rewritten to third person, cover image, and the
+ * member's name linked to their page (lib/sources/draft.ts; Luiza, 28 Oct).
+ * The article's own text is kept in story_originals so the editor can show
+ * it next to the rewrite. Whatever couldn't be loaded is listed in a notice;
+ * the draft is always made.
  *
  * A source matched to a member (Bigin sync, lib/sources/bigin.ts) tags the
- * draft with them as its subject, provided they still have a live page. An
- * admin draft naming a member is not shown to that member (memberContent and
- * member_read_own_stories), and the editor can change the tag before it goes
- * anywhere.
+ * draft with them as its subject, provided they still have a live page, and
+ * the draft takes their industry. An admin draft naming a member is not shown
+ * to that member (memberContent and member_read_own_stories), and the editor
+ * can change the tag before it goes anywhere.
  */
 export async function startStoryFromSuggestion(formData: FormData) {
   const user = await requireConsole();
   const db = serviceDb();
   const id = String(formData.get("id") ?? "");
   const { data: item } = await db.from("source_items")
-    .select("id, title, state, story_id, source:content_sources(member:members(id, status, archived_at))")
+    .select("id, url, title, state, story_id, source:content_sources(label, domain, bigin_account_name, member:members(id, name, slug, industry_id, status, archived_at))")
     .eq("id", id).maybeSingle();
   if (!item) redirect(back(`error=${encodeURIComponent("That suggestion no longer exists.")}`));
   // A second click (or a second admin) lands on the story already started.
   if (item.state === "drafted" && item.story_id) redirect(`/console/stories/${item.story_id}`);
 
   const member = item.source?.member ?? null;
-  const memberId = isMemberLinkable(member) ? member.id : null;
+  const linked = isMemberLinkable(member) ? member : null;
+  const company = linked?.name ?? item.source?.bigin_account_name ?? item.source?.label ?? item.source?.domain ?? "the company";
+
+  const draft = await prepareDraft({ url: item.url, title: item.title, company, member: linked });
+  const notes = [...draft.notes];
+
+  let coverPath: string | null = null;
+  if (draft.cover) {
+    try {
+      coverPath = await uploadImage(draft.cover, "stories");
+    } catch (e) {
+      // A refused image (not really an image, too large once decoded) is a note, not a failure.
+      if (!(e instanceof UploadRejectedError)) logError({ source: "server", area: "action:startStoryFromSuggestion", error: e, context: { item: id } });
+      notes.push("The article's image couldn't be used — add a cover by hand.");
+    }
+  }
 
   const { data: story, error } = await db.from("stories").insert({
-    title: item.title,
-    slug: `${slugify(item.title) || "story"}-${Date.now().toString(36)}`,
+    title: draft.title,
+    slug: `${slugify(draft.title) || "story"}-${Date.now().toString(36)}`,
+    excerpt: draft.excerpt,
+    body: draft.body,
+    cover_path: coverPath,
     status: "draft",
     source: "admin",
     submitted_by: user.userId,
-    member_id: memberId,
+    member_id: linked?.id ?? null,
+    industry_id: linked?.industry_id ?? null,
   }).select("id").single();
   if (error || !story) {
     logError({ source: "db", area: "action:startStoryFromSuggestion", error: error?.message ?? "no row", context: { item: id } });
+    // Nothing points at the cover yet — don't leave it in storage.
+    if (coverPath) await removeMedia(coverPath);
     redirect(back(`error=${encodeURIComponent("The draft couldn't be created — please try again.")}`));
   }
-  let tagNote = "";
-  if (memberId) {
+
+  let tagError = "";
+  if (linked) {
     // story_members holds every tagged member, primary included (20261015000003).
     // If that write fails, the draft goes untagged rather than half-tagged.
     try {
-      await replaceStoryMembers(db, story.id, [memberId]);
+      await replaceStoryMembers(db, story.id, [linked.id]);
     } catch (e) {
-      logError({ source: "db", area: "action:startStoryFromSuggestion", error: e, context: { story: story.id, member: memberId } });
+      logError({ source: "db", area: "action:startStoryFromSuggestion", error: e, context: { story: story.id, member: linked.id } });
       await db.from("stories").update({ member_id: null }).eq("id", story.id);
-      tagNote = `?error=${encodeURIComponent("The draft was created, but its member couldn't be tagged — choose them in the editor.")}`;
+      tagError = "The draft was created, but its member couldn't be tagged — choose them in the editor.";
+    }
+  }
+  if (draft.original) {
+    const { error: originalError } = await db.from("story_originals")
+      .insert({ story_id: story.id, source_url: item.url, body: draft.original, rewritten: draft.rewritten });
+    if (originalError) {
+      logError({ source: "db", area: "action:startStoryFromSuggestion", error: originalError.message, context: { story: story.id } });
+      notes.push("The article's original text couldn't be saved alongside the draft.");
     }
   }
   await db.from("source_items").update({ state: "drafted", story_id: story.id, updated_at: new Date().toISOString() }).eq("id", id);
   revalidatePath(PAGE);
   revalidatePath("/console/stories");
-  redirect(`/console/stories/${story.id}${tagNote}`);
+  const query = new URLSearchParams();
+  if (tagError) query.set("error", tagError);
+  if (notes.length) query.set("notice", notes.join("\n"));
+  const qs = query.toString();
+  redirect(`/console/stories/${story.id}${qs ? `?${qs}` : ""}`);
 }
 
 /**

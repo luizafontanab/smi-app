@@ -1,4 +1,5 @@
 import { siteUrl } from "../site-url";
+import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_BYTES } from "../upload-limits";
 
 /**
  * The one network call the story-sources watcher makes. Never throws: a
@@ -36,6 +37,36 @@ export async function fetchText(url: string, accept = "text/html,application/xht
     const err = e as Error & { cause?: { code?: string } };
     const error = err.name === "AbortError" ? "timed out" : err.cause?.code ?? err.message;
     return { ok: false, status: 0, body: "", finalUrl: url, error };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * An article's main image, for "Start story" to use as the cover. Returns
+ * null on anything but a reasonably sized image response: the draft simply
+ * has no cover then. The bytes are checked again (and normalised) by
+ * uploadImage — the declared type here is only a cheap first refusal.
+ */
+export async function fetchImage(url: string): Promise<File | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": userAgent(), Accept: "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9" },
+      redirect: "follow",
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!res.ok || !ALLOWED_IMAGE_TYPES[type]) return null;
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_UPLOAD_BYTES) return null;
+    const bytes = await res.arrayBuffer();
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_UPLOAD_BYTES) return null;
+    return new File([bytes], `cover.${ALLOWED_IMAGE_TYPES[type]}`, { type });
+  } catch {
+    return null;
   } finally {
     clearTimeout(timer);
   }

@@ -45,10 +45,19 @@ describe("upload wiring", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * Uploads whose bytes never pass through the action's request, so the 4.5MB
+   * request cap this rule guards against can't apply. Each is named exactly.
+   */
+  const SERVER_FETCHED = new Set([
+    // "Start story": the article's image, downloaded by the server (lib/sources/fetch.ts fetchImage).
+    "app/console/sources/actions.ts: uploadImage(draft.cover",
+  ]);
+
   it("hands uploadImage / uploadDocument only what submittedFile produced", () => {
     const actions = sources.filter((s) => s.file.startsWith("app/") && /^["']use server["']/.test(s.text.trimStart()));
     const offenders = actions.flatMap((s) =>
       [...s.text.matchAll(/\b(uploadImage|uploadDocument)\(\s*(?!await submittedFile\(|file\b)([^,)]*)/g)].map((m) => `${s.file}: ${m[1]}(${m[2]}`));
-    expect(offenders).toEqual([]);
+    expect(offenders.filter((o) => !SERVER_FETCHED.has(o))).toEqual([]);
   });
 });

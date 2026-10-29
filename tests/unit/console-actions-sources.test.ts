@@ -6,6 +6,7 @@ import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
+import { UploadRejectedError } from "@/lib/upload-limits";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
@@ -23,12 +24,27 @@ const { isFeatureEnabled, syncBiginSources } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
 vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
+const DRAFT = {
+  title: "Acme installs a laser", excerpt: "Acme has a laser.", body: "<p>Acme has a laser.</p>",
+  cover: new File([new Uint8Array([1])], "cover.jpg", { type: "image/jpeg" }),
+  original: "<p>We have a laser.</p>", rewritten: true, notes: [] as string[],
+};
+const { prepareDraft, uploadImage, removeMedia } = vi.hoisted(() => ({
+  prepareDraft: vi.fn(),
+  uploadImage: vi.fn(),
+  removeMedia: vi.fn(async () => {}),
+}));
+vi.mock("@/lib/sources/draft", () => ({ prepareDraft }));
+vi.mock("@/lib/media", () => ({ uploadImage, removeMedia }));
 
 afterEach(() => {
   resetDbServerMocks();
   logError.mockReset();
   isFeatureEnabled.mockReset().mockResolvedValue(true);
   syncBiginSources.mockReset();
+  prepareDraft.mockReset().mockResolvedValue(DRAFT);
+  uploadImage.mockReset().mockResolvedValue("stories/cover.jpg");
+  removeMedia.mockClear();
 });
 
 const form = (fields: Record<string, string>) => {
@@ -131,59 +147,83 @@ describe("dismissSuggestion", () => {
 });
 
 describe("startStoryFromSuggestion", () => {
-  it("creates an ordinary admin draft titled after the article, marks the suggestion, and opens the editor", async () => {
-    const items = queryBuilder(dbOk({ id: "i1", title: "New 12kW fibre laser installed", state: "new", story_id: null }));
-    const stories = queryBuilder(dbOk({ id: "story-9" }));
-    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ source_items: () => items, stories: () => stories }) })));
+  const ACME = { id: "m-acme", name: "Acme Fabrication Ltd", slug: "acme-fabrication", industry_id: 7, status: "active", archived_at: null };
+  const suggestion = (extra: Record<string, unknown> = {}) => queryBuilder(dbOk({
+    id: "i1", url: "https://acme.test/news/laser", title: "New 12kW fibre laser installed", state: "new", story_id: null,
+    source: { label: "Acme news", domain: "acme.test", bigin_account_name: null, member: null }, ...extra,
+  }));
+  const setup = (items: ReturnType<typeof queryBuilder>, opts: { stories?: ReturnType<typeof queryBuilder>; originals?: ReturnType<typeof queryBuilder>; rpc?: () => Promise<unknown> } = {}) => {
+    const stories = opts.stories ?? queryBuilder(dbOk({ id: "story-9" }));
+    const originals = opts.originals ?? queryBuilder(dbOk(null));
+    const db = mockDb({
+      from: fromByTable({ source_items: () => items, stories: () => stories, story_originals: () => originals }),
+      ...(opts.rpc ? { rpc: opts.rpc } : {}),
+    });
+    vi.mocked(serviceDb).mockReturnValue(asDb(db));
+    return { stories, originals, db };
+  };
+
+  it("makes an admin draft pre-loaded from the article, keeps the original, marks the suggestion and opens the editor", async () => {
+    const items = suggestion();
+    const { stories, originals } = setup(items);
 
     await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-9");
+    expect(prepareDraft).toHaveBeenCalledWith({ url: "https://acme.test/news/laser", title: "New 12kW fibre laser installed", company: "Acme news", member: null });
     const inserted = callsOf(stories, "insert")[0][0] as Record<string, unknown>;
-    expect(inserted).toEqual(expect.objectContaining({ title: "New 12kW fibre laser installed", status: "draft", source: "admin", submitted_by: "admin1" }));
-    expect(inserted.slug).toMatch(/^new-12kw-fibre-laser-installed-[a-z0-9]+$/);
-    // the source link is never written into the story
-    expect(inserted).not.toHaveProperty("body");
+    expect(inserted).toEqual(expect.objectContaining({
+      title: "Acme installs a laser", excerpt: "Acme has a laser.", body: "<p>Acme has a laser.</p>", cover_path: "stories/cover.jpg",
+      status: "draft", source: "admin", submitted_by: "admin1", member_id: null, industry_id: null,
+    }));
+    expect(inserted.slug).toMatch(/^acme-installs-a-laser-[a-z0-9]+$/);
+    expect(uploadImage).toHaveBeenCalledWith(expect.any(File), "stories");
+    expect(callsOf(originals, "insert")[0][0]).toEqual({ story_id: "story-9", source_url: "https://acme.test/news/laser", body: "<p>We have a laser.</p>", rewritten: true });
     expect(callsOf(items, "update")[0][0]).toEqual(expect.objectContaining({ state: "drafted", story_id: "story-9" }));
   });
 
-  it("a source matched to a member tags the draft with them, primary included in story_members", async () => {
-    const items = queryBuilder(dbOk({
-      id: "i1", title: "Fibre laser", state: "new", story_id: null,
-      source: { member: { id: "m-acme", status: "active", archived_at: null } },
-    }));
-    const stories = queryBuilder(dbOk({ id: "story-9" }));
-    const db = mockDb({ from: fromByTable({ source_items: () => items, stories: () => stories }) });
-    vi.mocked(serviceDb).mockReturnValue(asDb(db));
+  it("lists whatever couldn't be loaded on the editor, and still makes the draft", async () => {
+    prepareDraft.mockResolvedValueOnce({
+      title: "New 12kW fibre laser installed", excerpt: null, body: "", cover: null, original: "", rewritten: false,
+      notes: ["Couldn't read the article page.", "No image."],
+    });
+    const { stories, originals } = setup(suggestion());
+
+    const thrown = await startStoryFromSuggestion(form({ id: "i1" })).catch((e: Error) => e);
+    const target = new URL(String((thrown as Error).message).replace("NEXT_REDIRECT:", "http://x"));
+    expect(target.pathname).toBe("/console/stories/story-9");
+    expect(target.searchParams.get("notice")).toBe("Couldn't read the article page.\nNo image.");
+    expect(callsOf(stories, "insert")[0][0]).toEqual(expect.objectContaining({ title: "New 12kW fibre laser installed", body: "", cover_path: null }));
+    expect(uploadImage).not.toHaveBeenCalled();
+    // nothing was read, so there is no original to keep
+    expect(callsOf(originals, "insert")).toHaveLength(0);
+  });
+
+  it("a source matched to a member tags the draft, takes their industry and passes them on for the link", async () => {
+    const { stories, db } = setup(suggestion({ source: { label: "Acme news", domain: "acme.test", bigin_account_name: "Acme (Bigin)", member: ACME } }));
 
     await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-9");
-    expect(callsOf(stories, "insert")[0][0]).toEqual(expect.objectContaining({ member_id: "m-acme", source: "admin", status: "draft" }));
+    expect(prepareDraft).toHaveBeenCalledWith(expect.objectContaining({ company: "Acme Fabrication Ltd", member: ACME }));
+    expect(callsOf(stories, "insert")[0][0]).toEqual(expect.objectContaining({ member_id: "m-acme", industry_id: 7 }));
     expect(db.rpc).toHaveBeenCalledWith("replace_story_members", { p_story_id: "story-9", p_member_ids: ["m-acme"] });
   });
 
+  it("names the company from Bigin when no member is matched", async () => {
+    setup(suggestion({ source: { label: "Acme news", domain: "acme.test", bigin_account_name: "Acme Fabrication", member: null } }));
+    await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-9");
+    expect(prepareDraft).toHaveBeenCalledWith(expect.objectContaining({ company: "Acme Fabrication", member: null }));
+  });
+
   it("doesn't tag a member without a live page (lapsed or archived)", async () => {
-    const items = queryBuilder(dbOk({
-      id: "i1", title: "T", state: "new", story_id: null,
-      source: { member: { id: "m-old", status: "lapsed", archived_at: null } },
-    }));
-    const stories = queryBuilder(dbOk({ id: "story-9" }));
-    const db = mockDb({ from: fromByTable({ source_items: () => items, stories: () => stories }) });
-    vi.mocked(serviceDb).mockReturnValue(asDb(db));
+    const { stories, db } = setup(suggestion({ source: { label: null, domain: "acme.test", bigin_account_name: null, member: { ...ACME, status: "lapsed" } } }));
 
     await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-9");
-    expect(callsOf(stories, "insert")[0][0]).toEqual(expect.objectContaining({ member_id: null }));
+    expect(callsOf(stories, "insert")[0][0]).toEqual(expect.objectContaining({ member_id: null, industry_id: null }));
+    expect(prepareDraft).toHaveBeenCalledWith(expect.objectContaining({ company: "acme.test", member: null }));
     expect(db.rpc).not.toHaveBeenCalled();
   });
 
   it("if tagging fails the draft is kept untagged, and the editor says so", async () => {
-    const items = queryBuilder(dbOk({
-      id: "i1", title: "T", state: "new", story_id: null,
-      source: { member: { id: "m-acme", status: "active", archived_at: null } },
-    }));
-    const stories = queryBuilder(dbOk({ id: "story-9" }));
-    const db = mockDb({
-      from: fromByTable({ source_items: () => items, stories: () => stories }),
-      rpc: async () => ({ data: null, error: { message: "boom" } }),
-    });
-    vi.mocked(serviceDb).mockReturnValue(asDb(db));
+    const items = suggestion({ source: { label: null, domain: "acme.test", bigin_account_name: null, member: ACME } });
+    const { stories } = setup(items, { rpc: async () => ({ data: null, error: { message: "boom" } }) });
 
     await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/story-9\?error=/);
     expect(callsOf(stories, "update")[0][0]).toEqual({ member_id: null });
@@ -191,11 +231,26 @@ describe("startStoryFromSuggestion", () => {
     expect(callsOf(items, "update")[0][0]).toEqual(expect.objectContaining({ state: "drafted", story_id: "story-9" }));
   });
 
-  it("a second click opens the story already started instead of making another", async () => {
-    const items = queryBuilder(dbOk({ id: "i1", title: "T", state: "drafted", story_id: "story-9" }));
-    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ source_items: () => items }) })));
+  it("a refused image is a note, not a failure", async () => {
+    uploadImage.mockRejectedValueOnce(new UploadRejectedError("Images only"));
+    const { stories } = setup(suggestion());
 
+    await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/story-9\?notice=/);
+    expect(callsOf(stories, "insert")[0][0]).toEqual(expect.objectContaining({ cover_path: null }));
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it("if the draft can't be made, the uploaded cover is removed", async () => {
+    setup(suggestion(), { stories: queryBuilder(dbError("boom")) });
+
+    await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/sources\?error=/);
+    expect(removeMedia).toHaveBeenCalledWith("stories/cover.jpg");
+  });
+
+  it("a second click opens the story already started instead of making another", async () => {
+    setup(suggestion({ state: "drafted", story_id: "story-9" }));
     await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-9");
+    expect(prepareDraft).not.toHaveBeenCalled();
   });
 
   it("says so when the suggestion has gone", async () => {

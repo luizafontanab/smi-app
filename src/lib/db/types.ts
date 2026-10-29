@@ -2769,6 +2769,38 @@ export type Database = {
           },
         ]
       }
+      story_originals: {
+        Row: {
+          body: string
+          created_at: string
+          rewritten: boolean
+          source_url: string
+          story_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          rewritten: boolean
+          source_url: string
+          story_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          rewritten?: boolean
+          source_url?: string
+          story_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_originals_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: true
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       videos: {
         Row: {
           created_at: string

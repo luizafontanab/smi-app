@@ -90,6 +90,32 @@ paused in the console.
 Both jobs sit behind the **Story crawler** flag in `/console/features`. The
 flag is off by default, and while it's off nothing is checked or synced.
 
+## "Start story" (28 Oct 2026)
+
+*Start story* on a suggestion makes an admin draft pre-loaded from the article
+page (`src/lib/sources/draft.ts`):
+
+1. The page is fetched once (`fetchText`) and parsed (`src/lib/sources/article.ts`).
+   - **Title:** `og:title`, with the site name removed.
+   - **Summary:** `og:description` or the meta description.
+   - **Cover:** `og:image`, downloaded with `fetchImage` and stored through `uploadImage`, which checks the bytes.
+   - **Body:** the post's text container (`.entry-content`, `<article>` and so on), or else the element with the most paragraph text. Widgets are stripped inside it, and the result is sanitised like every story body. Outside images are dropped.
+2. Title, summary and body are rewritten from first to third person
+   (`src/lib/adapters/rewrite.ts`, Claude Opus 5.5, low effort). The rewrite is
+   kept only if it changed nothing else: the same tags, the same links, and a
+   length within about 20% of the original. Otherwise the original wording
+   stays and the editor says why. Without `ANTHROPIC_API_KEY` (HUMAN-TODO 1.21)
+   this step is skipped.
+3. When the source is matched to a member, the first plain-text mention of
+   their name (also tried without "Ltd", "Limited" and similar) links to their
+   member page. The draft is tagged with them and takes their industry.
+4. The pre-rewrite body is saved in `story_originals`, which is console-only
+   (RLS with no policies). The editor shows it under "Original article text".
+
+Every step fails on its own, and the draft is always made. What couldn't be
+loaded is listed at the top of the editor (`?notice=`). On a sample of 20 local
+suggestions (28 Oct), every page gave a body, 19 gave a summary and 14 an image.
+
 ## Coverage (one test run, 20 Oct 2026)
 
 The whole list was run once through the prototype, then through feed, API and

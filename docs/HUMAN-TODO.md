@@ -103,6 +103,16 @@ Each service is independent; do them in any order.
 - [ ] **1.17 — Enter the Buffer channel ids** at `/console/stories` → "Buffer
       channels". Until then, every post fails closed.
 
+### Anthropic (the third-person rewrite)
+
+- [ ] **1.21 — Create an SMI-owned Anthropic account and set `ANTHROPIC_API_KEY`**
+      (Production and Preview). Until it's set, "Start story" still pre-loads
+      the draft (text, summary, image, member link) but leaves the article in
+      the company's own "we" wording, and the draft's notice says so. Create the
+      account at console.anthropic.com in SMI's name, as with the other
+      services, not a personal one. Set a monthly spend limit: each Start story
+      costs roughly 3–8p, so £10 a month is ample.
+
 ### Vercel
 
 - [ ] **1.18 — Set the remaining variables.**

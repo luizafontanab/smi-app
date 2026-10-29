@@ -4,6 +4,7 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
+import { renderableHtml } from "@/lib/sanitize";
 import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, setStoryStatus } from "../../actions";
 import { CoverField } from "@/components/CoverField";
 import { parseFocus } from "@/lib/focus";
@@ -69,6 +70,10 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const origin = isNew
     ? null
     : await must(db.from("source_items").select("url, source:content_sources(domain, label)").eq("story_id", id).limit(1).maybeSingle(), "console/stories source suggestion");
+  // The article's own text, as it was before the third-person rewrite (story_originals).
+  const original = isNew
+    ? null
+    : await must(db.from("story_originals").select("body, rewritten").eq("story_id", id).maybeSingle(), "console/stories original article");
   // every member the story features, primary first (lib/story-members)
   const tagged = isNew || !story ? [] : await taggedMembers(db, id, story.member_id);
   const taggedIds = new Set(tagged.map((m) => m.id));
@@ -115,8 +120,25 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           <a href={origin.url} target="_blank" rel="noopener noreferrer" className="break-all text-ink underline">{origin.url}</a>
         </p>
       )}
+      {original && (
+        <details className="mt-2 rounded bg-white p-2 text-sm shadow-sm">
+          <summary className="cursor-pointer text-graphite">
+            Original article text{original.rewritten ? " — the body below is its third-person rewrite" : ""}
+          </summary>
+          {/* Read-only reference. Sanitised on render like every story body. */}
+          <div className="story-body mt-2 max-h-96 overflow-y-auto border-t pt-2" dangerouslySetInnerHTML={{ __html: renderableHtml(original.body) }} />
+        </details>
+      )}
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {typeof sp.notice === "string" && (
+        <div role="status" className="mt-2 rounded bg-shade p-2 text-sm text-ink">
+          <p className="font-medium">Draft pre-loaded from the article. Still to do:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {sp.notice.split("\n").filter(Boolean).map((line) => <li key={line}>{line}</li>)}
+          </ul>
+        </div>
+      )}
 
       <form action={saveStory} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         <UnsavedChangesGuard />

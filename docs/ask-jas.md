@@ -238,6 +238,16 @@
       We haven't built double opt-in (a confirmation email before someone is added);
       UK law doesn't require it, and fewer people finish signing up with it.
 
+33. **"Start story" now rewrites "we" into third person: a few examples to tune it
+    (28 Oct).** Starting a story from a suggestion now fills in the draft from the
+    article and rewrites it from the company's "we" to third person, changing
+    nothing else, as you described (1 May). It switches on once the AI account is
+    set up (HUMAN-TODO 1.21). To make it match how you write, send us **5–10
+    pairs: a company's original article, and the story you published from it.**
+    Links to both are enough. Until then it follows the rule as you described it:
+    the company's name or "the company" for "we", "its" for "our", quotes left as
+    they are.
+
 ## Data validation
 
 - sent to Jas on oct 4th

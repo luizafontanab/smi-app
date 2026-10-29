@@ -6,12 +6,17 @@ import { getCrmSync } from "@/lib/adapters/crm";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { readBiginSourcesRun } from "@/lib/sources/bigin";
 import { Pagination } from "@/components/Pagination";
+import { SubmitButton } from "@/components/SubmitButton";
 import { lastPage, pagedList } from "../paged-list";
 import {
   addSource, deleteSource, dismissSuggestion, recheckSource, setSourceActive, startStoryFromSuggestion, syncSourcesFromBigin, updateSourceUrl,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
+// "Start story" reads the article, its image and the third-person rewrite in one
+// go (lib/sources/draft.ts) — up to about a minute on a slow site. A page's
+// maxDuration is also its server actions' time limit.
+export const maxDuration = 120;
 export const metadata = { title: "Story sources" };
 
 const PAGE_SIZE = 50;
@@ -141,7 +146,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                   </div>
                   <form action={startStoryFromSuggestion}>
                     <input type="hidden" name="id" value={item.id} />
-                    <button className="rounded bg-ink px-3 py-1.5 text-sm text-white">Start story</button>
+                    <SubmitButton pendingLabel="Preparing draft…" className="rounded bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-50">Start story</SubmitButton>
                   </form>
                   <form action={dismissSuggestion}>
                     <input type="hidden" name="id" value={item.id} />
