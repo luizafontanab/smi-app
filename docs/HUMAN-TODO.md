@@ -5,7 +5,9 @@ production data, and decisions. The code for each is written and merged.
 
 **How this list works.** Ordered by when things happen: set up the services,
 push to production, check each service the first time it runs for real, then
-the decisions. Finished items are deleted, and git keeps the history.
+the decisions. §7 holds what doesn't touch the deploy at all: staging setup
+and housekeeping. Finished items are deleted and listed on their section's
+**Done:** line, and git keeps the history.
 Renumbered on 20 Oct 2026. Older references (GAPS, code comments, migrations,
 commits) use the previous numbers, which are in `git show d89aee9:docs/HUMAN-TODO.md`.
 
@@ -20,18 +22,8 @@ Each service is independent; do them in any order.
 
 ### Email — Resend
 
-- [ ] **1.1 — Confirm the Resend account is SMI-owned**, not an agency's.
-      `RESEND_API_KEY`, `EMAIL_FROM` and `ADMIN_EMAIL` are already set in production
-      (5 Oct).
-- [ ] **1.2 — Verify the sending domain** `sheetmetalindustries.com` (SPF, DKIM,
-      DMARC). Until then, mail reaches only the Resend account owner.
-- [ ] **1.3 — Verify a staging subdomain** (e.g. `staging-mail.`) and set a
-      domain-restricted, sending-only key in the Preview scope. Resend has no test mode.
-- [ ] **1.4 — Choose and set `EMAIL_REPLY_TO`**, a monitored inbox. Without it,
-      replies go to `noreply@`. Since 21 Oct (GAPS B5.11) this is the newsletter's
-      reply-to too, which the SOP requires.
 - [ ] **1.4a — Set `NEWSLETTER_FROM`** to `Sheet Metal Industries <…@sheetmetalindustries.com>`
-      (an address on the verified domain, 1.2). The SOP wants that sender name;
+      (an address on the verified domain). The SOP wants that sender name;
       unset, the newsletter comes from `EMAIL_FROM` like every other email.
 - [ ] **1.5 — Create the subscriber segment** and set `RESEND_SEGMENT_ID`.
       Without it, newsletters stay unsent.
@@ -44,7 +36,7 @@ Each service is independent; do them in any order.
 - [ ] **1.7 — Auth settings in the hosted dashboard.** `config push` would
       overwrite them with the local values.
       - SMTP via Resend: `smtp.resend.com:465`, user `resend`, password the API
-        key. Needs 1.2 first.
+        key. The sending domain is verified, so this can go ahead.
       - Raise the auth email rate limit (the default is 2 an hour).
       - Site URL: the real domain. Redirect allow-list: `/reset/confirm` and
         `/account/email/confirm`.
@@ -56,8 +48,6 @@ Each service is independent; do them in any order.
 
 ### Payments — Stripe
 
-- [ ] **1.8 — Create the SMI-owned Stripe account** and the £40/month
-      subscription Price, then set `STRIPE_PRICE_ID`.
 - [ ] **1.9 — Register the webhook** `https://<domain>/api/stripe/webhook`
       (`checkout.session.completed`, `checkout.session.async_payment_succeeded`,
       `invoice.payment_failed`), then set `STRIPE_WEBHOOK_SECRET`.
@@ -65,16 +55,9 @@ Each service is independent; do them in any order.
       test-mode keys in Preview, live keys in Production. Advert payments need
       both. The publishable key is baked in at build time, so redeploy after
       setting it.
-- [ ] **1.11 — Leave `MOCK_INTEGRATIONS` unset on Preview** and use Stripe's
-      test-mode keys there instead. The flag mocks Stripe *and* Bigin together,
-      so with it on, 1.12's test account is never called.
 
 ### CRM — Bigin
 
-- [ ] **1.12 — Start with a throwaway Bigin account** on the free plan (5,000
-      API calls a day). Bigin has no test mode: real keys write to real
-      contacts. Do 1.13–1.14 for it, put its keys in **Preview** only, and run
-      3.3 against it.
 - [ ] **1.13 — Create the SMI-owned Bigin account** and an OAuth client in the
       Zoho API Console. Note its data centre: the code defaults to EU
       (`accounts.zoho.eu` / `www.zohoapis.eu`); Canada's accounts host is
@@ -120,12 +103,16 @@ Each service is independent; do them in any order.
       - `UNSUBSCRIBE_SECRET`, at least 32 characters (Production and Preview).
       - `DEVELOPER_EMAILS`, your login email (otherwise `/console/errors` 404s).
       - `DEV_ALERT_EMAIL`, where error alerts go.
-- [ ] **1.19 — Turn on Deployment Protection for Preview deployments.**
 - [ ] **1.20 — Decide the production cron schedule.** `vercel.json` runs
       `/api/cron` once a day at 03:00. Per-minute or hourly needs the Pro plan,
       so check which plan the project is on. Everything queued waits for the
       next run: notifications, scheduled publishing, social posts, story-source
       checks.
+
+**Done (28 Oct):** 1.1 Resend account confirmed SMI-owned · 1.2 sending domain
+`sheetmetalindustries.com` verified · 1.4 `EMAIL_REPLY_TO` set · 1.8 SMI Stripe
+account and £40/month Price created, `STRIPE_PRICE_ID` set. Staging-only items
+1.3, 1.11, 1.12 and 1.19 moved to §7.
 
 ---
 
@@ -134,8 +121,9 @@ Each service is independent; do them in any order.
 `supabase db push` applies every pending migration in one go; you can't push
 just one. Deploy the `staging` code at the same moment: old code against the new
 schema breaks member profiles, the directory and the CRM page. Pending, as far
-as this repo knows: `20261004000002` through `20261027000004`. Confirm with
-`supabase migration list --linked`. From `20261020000005` on, nothing sends
+as this repo knows: none. Everything through `20261027000004` was pushed to
+`bvyxeujhecxulzwvpxfr` on 28 Oct, without the backup or pre-checks below.
+Confirm with `supabase migration list --linked`. From `20261020000005` on, nothing sends
 until it is approved in the console: any newsletter issue already *scheduled*
 when it lands is marked approved so it still goes out, but a draft must go
 through Proof and approval first.
@@ -300,6 +288,12 @@ through Proof and approval first.
       look right, then re-run with `--apply`. Delete the export afterwards: it's
       personal data. New contacts and opt-outs reach Bigin 50 per `crm_sync` run.
       The cutover top-up is GO-LIVE 2.4.
+- [ ] **3.10 — Check the first build runs on Node 24.** `package.json` now sets
+      `"engines": { "node": "24.x" }` (28 Oct), which overrides the Node version
+      in Vercel → Project Settings → Build and Deployment. In the first build
+      log, check that Node is 24.x and that Vercel warns the dashboard setting
+      was overridden. If the dashboard still says 20.x or 22.x, change it to
+      24.x so it no longer contradicts the repo. *(`08e6c93`.)*
 
 ---
 
@@ -340,7 +334,9 @@ through Proof and approval first.
 
 **Done:** 4.4 answered "sellable" (27 Oct): Featured Event is a dated, optionally
 priced placement, one at a time, billed to the event's member, with a pinned
-backup event (`/console/adverts/featured-event`). *(Working tree, uncommitted.)*
+backup event (`/console/adverts/featured-event`). *(`aefe096`.)*
+
+4.1, 4.5, 4.6 and 4.7 don't depend on the deploy and can be settled any time.
 
 ## 5 · Content to upload
 
@@ -349,25 +345,70 @@ backup event (`/console/adverts/featured-event`). *(Working tree, uncommitted.)*
 - [ ] **5.2 — Example images for the advert formats** at `/console/advertising`.
       The `/advertising` cards show none until then.
 
+Both can go up any time; neither waits for the deploy.
+
 ---
 
 ## 6 · Yours
 
 - [ ] **6.1 — Before launch, delete the test logins** `admin@smi.test` and
       `member@smi.test` (and the draft company `smi-test-company`).
+- [ ] **6.3 — Review the release notes** (`src/content/release-notes.md`)
+      before each deploy, and add an entry with it. The edits this item first
+      pointed at were committed in `aefe096`.
+
+**Done (28 Oct):** 6.5 the join spec gives every test its own synthetic
+`x-forwarded-for` IP, so repeat runs no longer hit the 3-an-hour limit and the
+limiter stays unchanged. Not deploy-related items 6.2, 6.4, 6.6, 6.7 and 6.8
+moved to §7.
+
+---
+
+## 7 · Not tied to the deploy
+
+Nothing here blocks the production deploy or the cutover. Items keep their
+original numbers, because other items and docs refer to them.
+
+### Staging and Preview
+
+- [ ] **1.3 — Verify a staging subdomain** (e.g. `staging-mail.`) and set a
+      domain-restricted, sending-only key in the Preview scope. Resend has no test mode.
+- [ ] **1.11 — Leave `MOCK_INTEGRATIONS` unset on Preview** and use Stripe's
+      test-mode keys there instead. The flag mocks Stripe *and* Bigin together,
+      so with it on, 1.12's test account is never called.
+- [ ] **1.12 — Start with a throwaway Bigin account** on the free plan (5,000
+      API calls a day). Bigin has no test mode: real keys write to real
+      contacts. Do 1.13–1.14 for it, put its keys in **Preview** only, and run
+      3.3 against it.
+- [ ] **1.19 — Turn on Deployment Protection for Preview deployments.**
+
+### Housekeeping
+
+- [ ] **7.1 — Replace `SUPABASE_ACCESS_TOKEN` in `.env.production.local`.**
+      Supabase rejects it ("Invalid access token", found 28 Oct). Loading the
+      file overrides your `supabase login`, so every script that sources it
+      fails against the hosted project: `pnpm seed:prod` and the other
+      `:prod` scripts, and any `supabase` command run after sourcing it. Make a
+      new personal access token in the account that owns `bvyxeujhecxulzwvpxfr`.
+- [ ] **7.2 — Move to Node 26 once Vercel supports it.** Node 26 became LTS on
+      28 Oct 2026, but Vercel only listed 24.x and 22.x for builds and functions
+      at the time, so the project stays on the newest 24. When Vercel's
+      "Supported Node.js versions" page lists 26.x, update these together:
+      `.nvmrc`, `engines.node` in `package.json`, `@types/node` (to `^26`), and
+      your Mac (`brew unlink node@24 && brew link node`). Then run `pnpm check`
+      and `pnpm build`. CI reads `.nvmrc`, so it follows on its own.
+      *(`08e6c93`.)*
 - [ ] **6.2 — Correct production's `consent_stats`** for two requests made by a
       local production build on 15 Oct:
       `update consent_stats set total_requests = total_requests - 2 where day = '2026-10-15';`
       Then decide how to stop a local `next start` from loading
       `.env.production.local`.
-- [ ] **6.3 — Review the release notes** (`src/content/release-notes.md`,
-      uncommitted edits) before they ship. Add an entry with each deploy.
 - [ ] **6.4 — Version-control `handover-extract/`.** The migration pipeline has
       no history. Keep `json/` and `seed/` out of git: they hold personal data.
-- [ ] **6.5 — `tests/e2e/join.spec.ts` against the join rate limit** (3 per
-      hour). Either the spec signs up less often, or the limiter changes.
-- [ ] **6.6 — Review and accept the visual baselines.** Last accepted 22 Sep;
-      every route has moved since, and new routes hard-fail until accepted.
+      Still no git repository there on 28 Oct.
+- [ ] **6.6 — Review and accept the visual baselines.** Last re-captured 22 Oct
+      (`78a944a`), and routes have moved again since. Check that every route
+      was looked at, not just re-captured. New routes hard-fail until accepted.
       Run `pnpm visual`, look, then `pnpm visual:accept <route-id>` per route,
       never `--all`. Eight routes are skipped until the local data has content
       for them (see `tests/visual/manifest.ts`).
@@ -377,7 +418,7 @@ backup event (`/console/adverts/featured-event`). *(Working tree, uncommitted.)*
       into a password manager, then delete it here. Found untracked and
       unignored in the tree on 21 Oct (code review); it is gitignored now so it
       can't be committed by accident, but it shouldn't live on disk in a
-      project folder either.
+      project folder either. Still there on 28 Oct.
 
 ---
 

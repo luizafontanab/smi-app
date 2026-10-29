@@ -8,15 +8,6 @@
 
 
 
-12. **Who does a reply to an enquiry come from?** The console can now reply to a
-    contact or advertising enquiry properly — the reply is stored against the message,
-    shows as a thread, survives a failed send, and goes out branded like every other
-    email instead of as bare plain text (fix-list 71b). It sends from `EMAIL_FROM` with
-    `EMAIL_REPLY_TO` as the return path, which is the only thing the platform knows.
-    **Should a reply instead come from a named person's address** so it reads as being
-    from you rather than from the website? That is an account and DNS decision
-    (HUMAN-TODO §1.5), not a code one, which is why we have not guessed.
-
 13. **Archiving a member — three consequences you should sign off.** The console can now
     archive a member (fix-list 72): their page becomes admin-only, their byline and the
     link back to them stop appearing on content, and the content itself survives
