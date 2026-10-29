@@ -53,6 +53,7 @@ export async function prepareDraft(
       ({ title, excerpt } = result);
       body = result.html;
       rewritten = true;
+      if (result.unnamedWriter) notes.push(`The article is written as "I" but doesn't say who wrote it, so "I" was attributed to the company. If you know who wrote it, put their name in.`);
     } else {
       notes.push(result.reason);
     }

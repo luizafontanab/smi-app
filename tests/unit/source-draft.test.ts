@@ -25,7 +25,7 @@ const INPUT = { url: "https://acme.test/news/laser", title: "Suggestion title", 
 const rewriter = (impl: Rewriter["toThirdPerson"]): Rewriter => ({ toThirdPerson: vi.fn(impl) });
 const thirdPerson = rewriter(async (i) => ({
   ok: true, title: i.title.replace("We install", "Acme installs"), excerpt: i.excerpt?.replace("Our", "Its") ?? null,
-  html: i.html.replace("We at Acme Fabrication", "Acme Fabrication"),
+  html: i.html.replace("We at Acme Fabrication", "Acme Fabrication"), unnamedWriter: false,
 }));
 
 describe("prepareDraft", () => {
@@ -55,6 +55,15 @@ describe("prepareDraft", () => {
     expect(draft.title).toBe("We install a laser");
     expect(draft.body).toBe(draft.original);
     expect(draft.notes).toEqual(["Not set up."]);
+  });
+
+  it("says so when the article speaks as \"I\" without naming the writer", async () => {
+    fetchText.mockResolvedValue(page(PAGE));
+    fetchImage.mockResolvedValue(IMAGE);
+    const unnamed = rewriter(async (i) => ({ ok: true, title: i.title, excerpt: i.excerpt, html: i.html, unnamedWriter: true }));
+    const draft = await prepareDraft({ ...INPUT, member: null }, unnamed);
+    expect(draft.rewritten).toBe(true);
+    expect(draft.notes).toEqual(['The article is written as "I" but doesn\'t say who wrote it, so "I" was attributed to the company. If you know who wrote it, put their name in.']);
   });
 
   it("an unreadable page gives a title-only draft and a note, without asking for a rewrite", async () => {

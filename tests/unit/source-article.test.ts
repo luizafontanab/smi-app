@@ -36,6 +36,25 @@ describe("parseArticle", () => {
     expect(a.bodyHtml).not.toMatch(/javascript|<img|<h1|<h2>Acme wins|Posted 1 Oct|\(share\)|\(sidebar\)|\(menu\)|&nbsp;/);
   });
 
+  it("drops the theme's loose labels and a trailing sign-up box, keeping loose text that reads as a paragraph", () => {
+    // Modelled on smmt.co.uk (28 Oct): header, text and newsletter box share one <main>.
+    const html = `<html><head><title>Path to zero - SMMT</title></head><body><main>
+      <section><div class="category">News</div><span>CEO Update</span><h1>Path to zero</h1>
+        <span>23 Oct 2026</span><div class="anchor-link">SCROLL TO DISCOVER</div></section>
+      <div class="content"><p>${LONG} Our message is clear.</p>
+        <div>${LONG} (loose but long)</div></div>
+      <h2><u>SMMT Update</u></h2><h3>Sign up</h3>
+      <div class="gform_wrapper"><div class="gform_heading"><p>Sign up to the SMMT Update Newsletter for weekly automotive news</p>
+        <p>"*" indicates required fields</p></div><form><input name="email"></form></div>
+      <a href="/news/">BACK TO ALL NEWS</a>
+    </main></body></html>`;
+    const body = parseArticle(html, "https://www.smmt.co.uk/path-to-zero/").bodyHtml;
+    expect(body).toMatch(/^<p>This paragraph/);
+    expect(body).toContain("(loose but long)");
+    expect(body).toMatch(/\(loose but long\)\s*$/);
+    expect(body).not.toMatch(/News|CEO Update|23 Oct|SCROLL|Sign up|required|BACK TO ALL/);
+  });
+
   it("without any known container, takes the element with the most paragraph text", () => {
     const html = `<html><head><title>News</title></head><body>
       <div class="promo"><p>${LONG}</p></div>

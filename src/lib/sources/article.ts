@@ -30,7 +30,12 @@ const CLUTTER_WIDGETS = [
   "[class*=share]", "[class*=social]", "[class*=cookie]", "[class*=related]", "[class*=comment]",
   "[class*=breadcrumb]", "[class*=newsletter]", "[class*=sidebar]", "[class*=author-bio]", "[class*=post-nav]",
   "[class*=post-meta]", "[id*=cookie]", "[id*=comments]", "[id*=sidebar]",
+  // Newsletter sign-up boxes: the <form> goes with CLUTTER_TAGS, but its heading and "* required" text don't.
+  "[class*=gform]", "[class*=signup]", "[class*=sign-up]", "[class*=subscribe]",
 ].join(",");
+
+/** Where article text lives. Short text outside all of these is a label: a category, a date, "Scroll to discover", "Back to all news". */
+const TEXT_BLOCKS = "p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, figcaption, pre";
 
 /** Containers themes use for the post body, most specific first. */
 const BODY_SELECTORS = [
@@ -109,6 +114,7 @@ export function parseArticle(html: string, pageUrl: string): Article {
   const root = bodyRoot($);
   if (!root) return { title, excerpt, imageUrl, bodyHtml: "" };
   root.find(CLUTTER_WIDGETS).remove();
+  dropLooseLabels($, root);
 
   // The story has its own title field: a heading repeating it would print twice.
   const titleKey = title ? tidy(title).toLowerCase() : null;
@@ -130,7 +136,42 @@ export function parseArticle(html: string, pageUrl: string): Article {
   // Empty paragraphs (spacers) carry nothing.
   root.find("p").each((_, p) => { if (!tidy($(p).text())) $(p).remove(); });
 
-  return { title, excerpt, imageUrl, bodyHtml: sanitizeRichText(root.html() ?? "") };
+  return { title, excerpt, imageUrl, bodyHtml: withoutTrailingHeadings(sanitizeRichText(root.html() ?? "")) };
+}
+
+/**
+ * Themes put the post's header (category, date, "Scroll to discover") and
+ * footer links ("Back to all news") in the same container as the text, as bare
+ * spans and divs. Text outside every TEXT_BLOCKS element is dropped when its
+ * element holds less than a paragraph's worth; longer loose text is kept, for
+ * themes that write the article in bare <div>s.
+ */
+function dropLooseLabels($: cheerio.CheerioAPI, root: NonNullable<ReturnType<typeof bodyRoot>>) {
+  // Loose: no text block between it and the root (a block outside the root, such as a layout <td>, doesn't count).
+  const loose = (el: Parameters<typeof $>[0]) => {
+    const block = $(el).closest(TEXT_BLOCKS).get(0);
+    return !block || !$.contains(root.get(0)!, block);
+  };
+  root.find("a").filter((_, a) => loose(a) && tidy($(a).text()).length < MIN_PARAGRAPH).remove();
+  root.find("*").addBack().contents()
+    .filter((_, node) => node.type === "text" && !!tidy($(node).text()) && loose(node))
+    .each((_, node) => {
+      if (tidy($(node).parent().text()).length < MIN_PARAGRAPH) $(node).remove();
+    });
+}
+
+/** A heading with nothing after it heads a box that was stripped (a sign-up form, a share bar), not text. */
+function withoutTrailingHeadings(html: string): string {
+  const $ = cheerio.load(html, null, false);
+  let removed = false;
+  for (;;) {
+    const last = $.root().contents().toArray().filter((n) => n.type !== "text" || tidy($(n).text())).pop();
+    if (!last || last.type !== "tag" || !["h2", "h3"].includes(last.tagName)) break;
+    $(last).remove();
+    removed = true;
+  }
+  // Re-serialising turns characters like a non-breaking space into entities: only do it when something changed.
+  return removed ? $.html().trim() : html;
 }
 
 const LEGAL_SUFFIX = /[\s,]+(ltd\.?|limited|plc|llp|inc\.?|co\.?|uk|\(uk\))$/i;

@@ -10,6 +10,11 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-28 — "Start story": cleaner text, and "I" handled properly
+- Page labels such as the category, the date, "Scroll to discover", "Back to all news" and newsletter sign-up boxes no longer end up in the draft's text.
+- The rewrite now always reads "we" as the company, never as the industry or the country.
+- When an article is written as "I", the rewrite uses the writer's name if the article gives it. If it doesn't, "I" becomes the company and the draft tells you, so you can put the writer's name in.
+
 ## 2026-10-28 — "Start story" fills in the draft for you
 - "Start story" on a suggestion now reads the article and fills in the draft: title, summary, the article's text and its main image as the cover.
 - When the source belongs to a member, the draft is tagged with them, takes their industry, and the first time their name appears in the text it links to their member page.

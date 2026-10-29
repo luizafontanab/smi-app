@@ -100,12 +100,20 @@ page (`src/lib/sources/draft.ts`):
    - **Summary:** `og:description` or the meta description.
    - **Cover:** `og:image`, downloaded with `fetchImage` and stored through `uploadImage`, which checks the bytes.
    - **Body:** the post's text container (`.entry-content`, `<article>` and so on), or else the element with the most paragraph text. Widgets are stripped inside it, and the result is sanitised like every story body. Outside images are dropped.
+     Short loose labels outside any paragraph, heading or list (category, date,
+     "Scroll to discover", "Back to all news"), newsletter sign-up boxes and
+     headings left at the very end are dropped too (SMMT, 28 Oct).
 2. Title, summary and body are rewritten from first to third person
    (`src/lib/adapters/rewrite.ts`, Claude Opus 5.5, low effort). The rewrite is
    kept only if it changed nothing else: the same tags, the same links, and a
    length within about 20% of the original. Otherwise the original wording
    stays and the editor says why. Without `ANTHROPIC_API_KEY` (HUMAN-TODO 1.21)
    this step is skipped.
+   "We" always means the company. "I" becomes the writer's name only when the
+   article's own text names them; a name it doesn't contain is rejected as a
+   guess. The page's author tag isn't used, because on WordPress sites it's
+   whoever posted the article (SMMT's CEO column names its web editor). Without
+   a named writer, "I" becomes the company and the editor says so.
 3. When the source is matched to a member, the first plain-text mention of
    their name (also tried without "Ltd", "Limited" and similar) links to their
    member page. The draft is tagged with them and takes their industry.
