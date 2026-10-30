@@ -37,7 +37,7 @@ describe("applyPaymentResult — a Stripe card payment", () => {
   it("claims the invoice on the session first, then records the rest once", async () => {
     const { invoices, members } = db(queryBuilder(dbOk({ id: "inv1" })));
 
-    await applyPaymentResult("m1", { kind: "paid" }, { sessionId: "cs_join_1" });
+    await expect(applyPaymentResult("m1", { kind: "paid" }, { sessionId: "cs_join_1" })).resolves.toBe(true);
 
     expect(invoices.insert).toHaveBeenCalledTimes(1);
     expect(invoices.insert).toHaveBeenCalledWith(expect.objectContaining({
@@ -53,7 +53,8 @@ describe("applyPaymentResult — a Stripe card payment", () => {
   it("does nothing at all on a retry of a session already recorded", async () => {
     const { members } = db(queryBuilder(sessionTaken()));
 
-    await applyPaymentResult("m1", { kind: "paid" }, { sessionId: "cs_join_1" });
+    // false tells recordMembershipCheckout not to announce the payment again.
+    await expect(applyPaymentResult("m1", { kind: "paid" }, { sessionId: "cs_join_1" })).resolves.toBe(false);
 
     expect(members.update).not.toHaveBeenCalled();
     expect(generateAndStoreInvoicePdf).not.toHaveBeenCalled();
@@ -71,6 +72,13 @@ describe("applyPaymentResult — a Stripe card payment", () => {
     await expect(applyPaymentResult("m1", { kind: "paid" }, { sessionId: "cs_join_1" })).rejects.toThrow(/members locked/);
     expect(invoices.delete).toHaveBeenCalled();
     expect(invoices.eq).toHaveBeenCalledWith("id", "inv1");
+  });
+
+  it("records nothing, and says so, for a result that settles nothing", async () => {
+    const { invoices, members } = db(queryBuilder(dbOk(null)));
+    await expect(applyPaymentResult("m1", { kind: "redirect", url: "https://checkout.stripe.com/x" })).resolves.toBe(false);
+    expect(invoices.insert).not.toHaveBeenCalled();
+    expect(members.update).not.toHaveBeenCalled();
   });
 
   it("works as before with no session (the stubbed checkout): stamps, then inserts the invoice with its PDF", async () => {

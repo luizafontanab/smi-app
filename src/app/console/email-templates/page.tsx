@@ -10,7 +10,7 @@ import { loadEmailTemplates } from "@/lib/email/store";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Email Templates" };
 
-const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
 
 const FAMILIES: { key: EmailFamily; title: string; blurb: string }[] = [
   {

@@ -143,7 +143,7 @@ export default async function DevTaskEditor(props: PageProps<"/console/dev/[id]"
 
         {!isNew && (
           <p className="text-xs text-graphite">
-            Created {new Date(task!.created_at).toLocaleString("en-GB")} · Last updated {new Date(task!.updated_at).toLocaleString("en-GB")}
+            Created {new Date(task!.created_at).toLocaleString("en-GB", { timeZone: "Europe/London" })} · Last updated {new Date(task!.updated_at).toLocaleString("en-GB", { timeZone: "Europe/London" })}
           </p>
         )}
       </form>

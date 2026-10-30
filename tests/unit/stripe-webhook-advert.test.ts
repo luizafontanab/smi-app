@@ -7,14 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * here is routing — an advert payment must settle its invoice and must NEVER
  * reach the membership path, which would stamp the £40 join fee as paid.
  */
-const { settleInvoice, applyPaymentResult, logError, notifyConsole } = vi.hoisted(() => ({
+const { settleInvoice, recordMembershipCheckout, logError, notifyConsole } = vi.hoisted(() => ({
   settleInvoice: vi.fn<(...args: unknown[]) => Promise<import("@/lib/advert-payments").SettleResult>>(async () => ({ settled: true, memberId: "m1" })),
-  applyPaymentResult: vi.fn(async () => {}),
+  recordMembershipCheckout: vi.fn(async () => {}),
   logError: vi.fn(),
   notifyConsole: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/advert-payments", () => ({ settleInvoice, formatPounds: (p: number) => `£${(p / 100).toFixed(2)}` }));
-vi.mock("@/lib/membership", () => ({ applyPaymentResult, applyPaymentFailure: vi.fn(), applySubscriptionEnded: vi.fn() }));
+vi.mock("@/lib/membership", () => ({ recordMembershipCheckout, applyPaymentFailure: vi.fn(), applySubscriptionEnded: vi.fn() }));
 vi.mock("@/lib/log", () => ({ logError }));
 vi.mock("@/lib/notify-admin", () => ({ notifyConsole }));
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
@@ -48,7 +48,7 @@ beforeEach(() => vi.stubEnv("STRIPE_WEBHOOK_SECRET", SECRET));
 afterEach(() => {
   vi.unstubAllEnvs();
   settleInvoice.mockReset().mockResolvedValue({ settled: true, memberId: "m1" });
-  applyPaymentResult.mockClear();
+  recordMembershipCheckout.mockClear();
   logError.mockClear();
   notifyConsole.mockClear();
 });
@@ -60,7 +60,7 @@ describe("/api/stripe/webhook — advert invoices", () => {
     const res = await POST(signed({ type: "checkout.session.completed", data: { object: session() } }));
     expect(res.status).toBe(200);
     expect(settleInvoice).toHaveBeenCalledWith("inv1", SETTLE_OPTS);
-    expect(applyPaymentResult).not.toHaveBeenCalled();
+    expect(recordMembershipCheckout).not.toHaveBeenCalled();
     expect(notifyConsole).not.toHaveBeenCalled();
   });
 
@@ -70,7 +70,7 @@ describe("/api/stripe/webhook — advert invoices", () => {
 
     await POST(signed({ type: "checkout.session.async_payment_succeeded", data: { object: session() } }));
     expect(settleInvoice).toHaveBeenCalledWith("inv1", SETTLE_OPTS);
-    expect(applyPaymentResult).not.toHaveBeenCalled();
+    expect(recordMembershipCheckout).not.toHaveBeenCalled();
   });
 
   // Review finding 13: the two "nothing to settle" events for an advert session.
@@ -80,7 +80,7 @@ describe("/api/stripe/webhook — advert invoices", () => {
       const res = await POST(signed({ type, data: { object: session({ payment_status: "unpaid" }) } }));
       expect(res.status).toBe(200);
       expect(settleInvoice).not.toHaveBeenCalled();
-      expect(applyPaymentResult).not.toHaveBeenCalled();
+      expect(recordMembershipCheckout).not.toHaveBeenCalled();
       expect(notifyConsole).not.toHaveBeenCalled();
     },
   );
@@ -125,14 +125,22 @@ describe("/api/stripe/webhook — advert invoices", () => {
 
   it("still routes a membership checkout to the membership path", async () => {
     await POST(signed({ type: "checkout.session.completed", data: { object: { client_reference_id: "m1" } } }));
-    expect(applyPaymentResult).toHaveBeenCalledWith("m1", { kind: "paid" }, {});
+    expect(recordMembershipCheckout).toHaveBeenCalledWith("m1", { sessionId: null, subscriptionId: null, customerId: null });
     expect(settleInvoice).not.toHaveBeenCalled();
   });
 
   // Review finding 7: a retried event duplicated the join invoice and receipt.
   it("keys a membership payment on its Checkout Session, so a retry can be recognised", async () => {
     await POST(signed({ type: "checkout.session.completed", data: { object: { id: "cs_join_1", client_reference_id: "m1" } } }));
-    expect(applyPaymentResult).toHaveBeenCalledWith("m1", { kind: "paid" }, { sessionId: "cs_join_1" });
+    expect(recordMembershipCheckout).toHaveBeenCalledWith("m1", expect.objectContaining({ sessionId: "cs_join_1" }));
+  });
+
+  // GAPS B1.7: the embedded membership session is tagged kind=membership, which
+  // must still take the membership path, never the advert one.
+  it("routes an embedded membership session (kind=membership) to the membership path", async () => {
+    await POST(signed({ type: "checkout.session.completed", data: { object: { id: "cs_join_2", client_reference_id: "m1", metadata: { kind: "membership", member_id: "m1" }, subscription: "sub_1", customer: "cus_1" } } }));
+    expect(recordMembershipCheckout).toHaveBeenCalledWith("m1", { sessionId: "cs_join_2", subscriptionId: "sub_1", customerId: "cus_1" });
+    expect(settleInvoice).not.toHaveBeenCalled();
   });
 
   it("rejects a forged advert event", async () => {

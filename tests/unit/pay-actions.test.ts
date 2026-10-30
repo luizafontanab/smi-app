@@ -119,6 +119,17 @@ describe("payMembership", () => {
     expect(applyPaymentResult).not.toHaveBeenCalled();
   });
 
+  // GAPS B1.7: the form opens Stripe's embedded Checkout with this; the payment
+  // is recorded only once Stripe confirms it (webhook or return page).
+  it("an embedded result hands the session to the form and records nothing", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => memberRow() })));
+    createCheckout.mockResolvedValueOnce({ kind: "embedded", clientSecret: "cs_1_secret_x" });
+
+    expect(await payMembership(PREV, form())).toEqual({ message: "", clientSecret: "cs_1_secret_x" });
+    expect(applyPaymentResult).not.toHaveBeenCalled();
+    expect(notifyAdminFunnel).not.toHaveBeenCalled();
+  });
+
   it("fails soft when the member row cannot be loaded", async () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => queryBuilder(dbOk(null)) })));
 

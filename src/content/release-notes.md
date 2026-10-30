@@ -14,6 +14,12 @@
 - The member directory's map, the events map and the map on each member's page now use Google Maps instead of OpenStreetMap. Pins and their links work as before.
 - This starts once the Google Maps key from the old website is set up. Until then those maps show "Map unavailable" and the rest of the page works as normal.
 
+## 2026-10-29 — Card payment in a pop-up, UK dates everywhere, and login-email changes
+- New members now pay the £40 a month in a secure Stripe window that opens on the payment page, instead of being sent off to Stripe's own site. This starts once the Stripe keys are set up.
+- When a new member pays by card, you now get a "Payment taken" note in the console inbox. Before, only promo codes and test payments sent one.
+- Members can change the email address they log in with, under Settings → Security. Both the old and new address get a confirmation email.
+- Dates and times across the console and the public site now always show UK time. Before, some showed an hour behind in summer, and anything published just after midnight could show the previous day's date.
+
 ## 2026-10-28 — Fixes to "Start story" and member map pins
 - If two people press "Start story" on the same suggestion at once, only one draft is made, and the second person is taken to it.
 - The rewrite no longer gets thrown away when the writer's name has an apostrophe, such as O'Brien.

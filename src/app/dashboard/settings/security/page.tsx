@@ -51,8 +51,8 @@ export default async function SecuritySettingsPage(props: PageProps<"/dashboard/
       <section aria-labelledby="login-email" className="mt-6 rounded-xl bg-white p-6 text-sm shadow-sm">
         <h2 id="login-email" className="font-bold text-ink">Login email</h2>
         <p className="mt-1 text-graphite">
-          You log in as <b className="text-ink">{user.email}</b>. This is not the contact email shown on your company page —
-          change that under <Link href="/dashboard/profile" className="underline">My page</Link>.
+          You log in as <b className="text-ink">{user.email}</b>. This is separate from your company&apos;s contact email,
+          which you can change under <Link href="/dashboard/profile" className="underline">My page</Link>.
         </p>
         {sp.esent && (
           <p role="status" className="mt-3 rounded bg-success/10 p-2 text-success">

@@ -147,7 +147,7 @@ export function Meta({ date, by, className = "" }: { date?: string | null; by?: 
       {date && (
         <span className="inline-flex items-center gap-1.5">
           <IconCalendar width={13} height={13} />
-          {new Date(date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+          {new Date(date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" })}
         </span>
       )}
     </div>

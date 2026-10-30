@@ -158,6 +158,20 @@ describe("buildHero", () => {
     expect(build.items[0].meta).toBe("12 August 2026 · Acme Fabrications");
   });
 
+  it("dates a story by the UK day, not the server's (GAPS A3.9)", () => {
+    // 23:30 UTC on 1 July is 00:30 BST on 2 July — a UTC server used to print
+    // the 1st. Run as that server would: on a London machine the bug can't show.
+    const tz = process.env.TZ;
+    process.env.TZ = "UTC";
+    try {
+      const build = buildHero(null, [story("s0", { published_at: "2026-07-01T23:30:00Z" })], []);
+      expect(build.items[0].meta).toBe("2 July 2026 · Acme Fabrications");
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
+  });
+
   it("keeps filling past the end of the pattern, defaulting the extra slots to stories", () => {
     // PATTERN only describes the first five slots. A rail asked for more must
     // default rather than read undefined and quietly stop short.

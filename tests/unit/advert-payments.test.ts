@@ -414,6 +414,19 @@ describe("retrieveCheckoutSession", () => {
     expect(await retrieveCheckoutSession("cs_test_1")).toEqual({
       status: "complete", paymentStatus: "paid", invoiceId: "inv1", kind: "advert_invoice",
       clientSecret: "cs_test_1_secret", amountTotal: 65000, currency: "gbp",
+      clientReferenceId: null, memberId: null, subscriptionId: null, customerId: null,
+    });
+  });
+
+  // GAPS B1.7: the membership return page checks who a session was for.
+  it("reads back who a membership session was for and what it created", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_1");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      status: "complete", payment_status: "paid", client_reference_id: "m1",
+      metadata: { kind: "membership", member_id: "m1" }, subscription: "sub_1", customer: "cus_1",
+    })));
+    expect(await retrieveCheckoutSession("cs_test_2")).toMatchObject({
+      kind: "membership", clientReferenceId: "m1", memberId: "m1", subscriptionId: "sub_1", customerId: "cus_1",
     });
   });
 });

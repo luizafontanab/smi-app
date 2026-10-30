@@ -30,7 +30,7 @@ export async function generateMetadata(props: PageProps<"/video/[slug]">) {
 }
 
 const fmt = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : null;
+  iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }) : null;
 
 export default async function VideoPage(props: PageProps<"/video/[slug]">) {
   const { slug } = await props.params;

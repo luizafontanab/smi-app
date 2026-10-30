@@ -28,7 +28,7 @@ const STATUS_TONE: Record<string, "neutral" | "brand" | "green" | "red"> = {
   rejected: "red",
 };
 
-const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" }) : "—");
 
 /**
  * Story Engine as a table (fix-list 75). Every status, newest edit first, 50 a

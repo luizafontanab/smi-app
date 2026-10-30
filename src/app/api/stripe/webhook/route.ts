@@ -1,8 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { applyPaymentResult, applyPaymentFailure, applySubscriptionEnded } from "@/lib/membership";
+import { applyPaymentFailure, applySubscriptionEnded, recordMembershipCheckout } from "@/lib/membership";
 import { mockBaseUrl } from "@/lib/adapters/mock-base-url";
-import { serviceDb } from "@/lib/db/server";
 import { ADVERT_INVOICE_KIND } from "@/lib/adapters/advert-checkout";
 import { formatPounds, settleInvoice } from "@/lib/advert-payments";
 import { logError } from "@/lib/log";
@@ -183,23 +182,16 @@ export async function POST(request: NextRequest) {
   if (!memberId) return NextResponse.json({ ok: true, ignored: "no member reference" });
 
   switch (event.type) {
-    case "checkout.session.completed": {
+    case "checkout.session.completed":
       // Keyed on the session so a Stripe retry of this event can't record the
-      // join fee — invoice, PDF, receipt — a second time (membership.ts).
-      const sessionId = event.data?.object?.id;
-      await applyPaymentResult(memberId, { kind: "paid" }, sessionId?.startsWith("cs_") ? { sessionId } : {});
-      // B1.5: remembered so a later cancel action has something of ours to
-      // act on — neither column was ever written before this.
-      const subscriptionId = event.data?.object?.subscription;
-      const customerId = event.data?.object?.customer;
-      if (subscriptionId || customerId) {
-        await serviceDb().from("members").update({
-          ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
-          ...(customerId ? { stripe_customer_id: customerId } : {}),
-        }).eq("id", memberId);
-      }
+      // join fee (invoice, PDF, receipt, Jas's note) a second time, and so the
+      // pay page's return fast path and this can't both record it (B1.7).
+      await recordMembershipCheckout(memberId, {
+        sessionId: event.data?.object?.id ?? null,
+        subscriptionId: event.data?.object?.subscription ?? null,
+        customerId: event.data?.object?.customer ?? null,
+      });
       break;
-    }
     case "invoice.payment_failed":
       await applyPaymentFailure(memberId);
       break;

@@ -117,11 +117,87 @@ describe("cancelSubscription", () => {
 });
 
 describe("StripePayments", () => {
+  // Hosted redirect: no publishable key, so the embedded modal (B1.7) is off.
   function liveEnv() {
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_123");
     vi.stubEnv("STRIPE_PRICE_ID", "price_123");
     vi.stubEnv("SITE_URL", "https://smi.example");
+    vi.stubEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "");
+    vi.stubEnv("MOCK_INTEGRATIONS", "");
   }
+
+  describe("embedded Checkout (GAPS B1.7)", () => {
+    function embeddedEnv() {
+      liveEnv();
+      vi.stubEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "pk_test_123");
+    }
+    // A fresh Response per call: a body can only be read once.
+    const sessionReply = () =>
+      vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+        new Response(JSON.stringify({ id: "cs_1", client_secret: "cs_1_secret_x" }), { status: 200 }),
+      );
+
+    it("creates an embedded_page subscription session on the pinned API version", async () => {
+      embeddedEnv();
+      const fetchMock = sessionReply();
+
+      const result = await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme" });
+
+      expect(result).toEqual({ kind: "embedded", clientSecret: "cs_1_secret_x" });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe("https://api.stripe.com/v1/checkout/sessions");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["Stripe-Version"]).toBe("2026-03-25.dahlia");
+      expect(headers["Idempotency-Key"]).toMatch(/^membership-checkout-m1-\d+$/);
+      const body = new URLSearchParams(String(init?.body));
+      expect(body.get("ui_mode")).toBe("embedded_page");
+      expect(body.get("mode")).toBe("subscription");
+      expect(body.get("line_items[0][price]")).toBe("price_123");
+      expect(body.get("client_reference_id")).toBe("m1");
+      expect(body.get("metadata[kind]")).toBe("membership");
+      expect(body.get("subscription_data[metadata][member_id]")).toBe("m1");
+      expect(body.get("return_url")).toBe("https://smi.example/dashboard/pay?session_id={CHECKOUT_SESSION_ID}");
+      // A redirect-mode field would make Stripe reject an embedded session.
+      expect(body.has("success_url")).toBe(false);
+      expect(body.has("cancel_url")).toBe(false);
+    });
+
+    it("sends the same idempotency key for a repeat within the minute", async () => {
+      embeddedEnv();
+      const fetchMock = sessionReply();
+      vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+
+      await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme" });
+      await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme" });
+
+      const key = (i: number) => (fetchMock.mock.calls[i][1]?.headers as Record<string, string>)["Idempotency-Key"];
+      expect(key(0)).toBe(key(1));
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toBe(String(fetchMock.mock.calls[1][1]?.body));
+    });
+
+    it("falls back to the hosted redirect on a Preview running the mocks", async () => {
+      embeddedEnv();
+      vi.stubEnv("MOCK_INTEGRATIONS", "1");
+      vi.stubEnv("VERCEL_ENV", "preview");
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ id: "mock_cs_1", url: "https://smi.example/mock/stripe/checkout/mock_cs_1" }), { status: 200 }),
+      );
+
+      const result = await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme" });
+
+      expect(result.kind).toBe("redirect");
+      expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).has("ui_mode")).toBe(false);
+    });
+
+    it("reports a 200 with no client secret as an error", async () => {
+      embeddedEnv();
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ id: "cs_1" }), { status: 200 }));
+
+      const result = await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme" });
+
+      expect(result).toEqual({ kind: "error", message: "Stripe did not return a checkout session." });
+    });
+  });
 
   it("posts a form-urlencoded checkout session and returns the redirect url", async () => {
     liveEnv();

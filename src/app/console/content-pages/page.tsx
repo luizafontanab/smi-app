@@ -6,7 +6,7 @@ import { must } from "@/lib/db/must";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Content Pages" };
 
-const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
 
 export default async function ContentPagesList(props: PageProps<"/console/content-pages">) {
   await requireConsole();

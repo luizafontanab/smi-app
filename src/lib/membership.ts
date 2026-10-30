@@ -139,8 +139,12 @@ async function notifyQuietly(memberId: string, payload: Record<string, unknown>)
  *
  * With a session this throws when the payment can't be recorded, so the
  * webhook answers 500 and Stripe tries again.
+ *
+ * Returns true when this call recorded something, false when there was nothing
+ * to do — a retry of a session already recorded, or a result that settles
+ * nothing (redirect, embedded, error) — so a caller can announce a payment once.
  */
-export async function applyPaymentResult(memberId: string, result: CheckoutResult, opts: { sessionId?: string } = {}): Promise<void> {
+export async function applyPaymentResult(memberId: string, result: CheckoutResult, opts: { sessionId?: string } = {}): Promise<boolean> {
   const db = serviceDb();
   if (result.kind === "paid") {
     const now = new Date();
@@ -158,7 +162,7 @@ export async function applyPaymentResult(memberId: string, result: CheckoutResul
         paid_at: now.toISOString(),
         stripe_session_id: opts.sessionId,
       }).select("id").single();
-      if (error?.code === "23505" && error.message.includes("invoices_stripe_session_idx")) return; // already recorded
+      if (error?.code === "23505" && error.message.includes("invoices_stripe_session_idx")) return false; // already recorded
       if (error || !claimed) throw new Error(`applyPaymentResult: ${opts.sessionId} for member ${memberId} was not recorded: ${error?.message ?? "no row returned"}`);
       claimedId = claimed.id;
       const { error: memberErr } = await db.from("members").update({ paid_at: now.toISOString() }).eq("id", memberId);
@@ -197,6 +201,7 @@ export async function applyPaymentResult(memberId: string, result: CheckoutResul
     if (paymentsAreLive()) {
       await notifyQuietly(memberId, { kind: "payment_receipt", amount: "£40.00", invoice_ref: number });
     }
+    return true;
   } else if (result.kind === "comped") {
     // date-only arithmetic: UTC noon dodges TZ off-by-one at month boundaries
     const d = new Date(`${new Date().toISOString().slice(0, 10)}T12:00:00Z`);
@@ -205,7 +210,44 @@ export async function applyPaymentResult(memberId: string, result: CheckoutResul
     await db.from("members").update({ comped_until: until }).eq("id", memberId);
     // A comp is real whether or not Stripe exists, so this one always sends.
     await notifyQuietly(memberId, { kind: "comp_applied", months: result.months, comped_until: until });
+    return true;
   }
+  return false;
+}
+
+/**
+ * A completed Stripe membership Checkout Session, recorded once (GAPS B1.7).
+ * Both the webhook and the pay page's return fast path call this; whichever
+ * runs first records it, and the other finds the session already claimed.
+ *
+ * Also remembers the subscription and customer (B1.5) so a later cancel has
+ * something of ours to act on, and tells Jas a payment came in. That console
+ * note used to be sent only by the simulated and promo paths, so a real card
+ * payment arrived in silence; it goes only when this call did the recording,
+ * so a Stripe retry can't send it twice.
+ */
+export async function recordMembershipCheckout(
+  memberId: string,
+  checkout: { sessionId: string | null; subscriptionId?: string | null; customerId?: string | null },
+): Promise<boolean> {
+  const sessionId = checkout.sessionId?.startsWith("cs_") ? checkout.sessionId : undefined;
+  const recorded = await applyPaymentResult(memberId, { kind: "paid" }, sessionId ? { sessionId } : {});
+  const { subscriptionId, customerId } = checkout;
+  if (subscriptionId || customerId) {
+    await serviceDb().from("members").update({
+      ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
+      ...(customerId ? { stripe_customer_id: customerId } : {}),
+    }).eq("id", memberId);
+  }
+  if (recorded) {
+    await notifyConsole({
+      kind: "payment_taken",
+      memberId,
+      payload: { member_id: memberId },
+      message: "Paid £40/month by card. Next step: build their page.",
+    });
+  }
+  return recorded;
 }
 
 /**

@@ -16,7 +16,7 @@ const STATUSES = [
 ] as const;
 const SOURCES = ["server", "client", "job", "webhook", "adapter", "db"] as const;
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" });
 
 /**
  * The error log (docs/logging.md) — developer-only: requireDeveloper() 404s

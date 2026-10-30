@@ -35,7 +35,7 @@ export function StoryCard({
         <h3 className={`font-semibold leading-snug ${size === "lg" ? "text-2xl" : "text-sm"} line-clamp-3`}>{story.title}</h3>
         {showExcerpt && size !== "sm" && story.excerpt && <p className="mt-1 text-xs text-graphite line-clamp-2">{story.excerpt}</p>}
         <p className="mt-2 text-[11px] uppercase tracking-wide text-graphite">
-          {story.published_at ? new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : ""}
+          {story.published_at ? new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }) : ""}
           {story.member && <> · {story.member.name}</>}
         </p>
       </div>

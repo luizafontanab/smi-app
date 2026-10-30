@@ -2,17 +2,23 @@
  * Payments adapter: Stripe in production, stub locally. (This used to cite
  * TECH-DECISIONS #16 — that number is Lead generation; Stripe has no numbered
  * row in that table.)
- * Constraint: existing Stripe subscriptions are never touched; members never
- * interact with Stripe directly (invoices served via the member area).
+ * Constraint: existing Stripe subscriptions are never touched. Members enter
+ * card details only in Stripe's own embedded form, in a modal on
+ * /dashboard/pay (GAPS B1.7); invoices are served from the member area.
  */
 
 import { serviceDb } from "../db/server";
 import { siteUrl } from "../site-url";
+import { STRIPE_API_VERSION, stripePublishableKey } from "./advert-checkout";
 import { mockBaseUrl } from "./mock-base-url";
+
+/** Marks a Checkout Session as the £40 membership, so the pay page's return check can tell it from an advert's. */
+export const MEMBERSHIP_CHECKOUT_KIND = "membership";
 
 export type CheckoutRequest = { memberId: string; email: string; companyName: string; promoCode?: string };
 export type CheckoutResult =
-  | { kind: "redirect"; url: string }   // Stripe-hosted checkout (production)
+  | { kind: "embedded"; clientSecret: string } // Stripe's embedded Checkout, mounted in a modal (B1.7)
+  | { kind: "redirect"; url: string }   // Stripe-hosted page: Preview mocks, or no publishable key
   | { kind: "paid" }                    // payment settled (stub simulates success)
   | { kind: "comped"; months: number }  // valid promo code
   | { kind: "error"; message: string };
@@ -86,10 +92,13 @@ class StripePayments implements Payments {
     private priceId: string,
     private successUrl: string,
     private cancelUrl: string,
+    /** Where embedded Checkout sends the member when done; null → the hosted redirect instead. */
+    private embeddedReturnUrl: string | null = null,
   ) {}
 
   async createCheckout(req: CheckoutRequest): Promise<CheckoutResult> {
     if (req.promoCode) return redeemPromoCode(req.promoCode);
+    if (this.embeddedReturnUrl) return this.createEmbeddedCheckout(req, this.embeddedReturnUrl);
 
     const body = new URLSearchParams({
       mode: "subscription",
@@ -122,6 +131,55 @@ class StripePayments implements Payments {
   }
 
   /**
+   * GAPS B1.7: the same subscription, as an embedded Checkout Session the pay
+   * page mounts in a modal. Follows createInvoiceCheckout (advert-checkout.ts):
+   * the API version is pinned because `ui_mode: "embedded_page"` needs it and
+   * must match the Stripe.js the page loads, and an Idempotency-Key means a
+   * double click, or a modal closed and reopened within the minute, gets the
+   * same session back rather than a second one the member could also pay.
+   * Always the real API: Stripe.js can't run against the Preview mocks, which
+   * keep the hosted redirect above (getPayments).
+   */
+  private async createEmbeddedCheckout(req: CheckoutRequest, returnUrl: string): Promise<CheckoutResult> {
+    // One clock reading for the key and expires_at: Stripe rejects a reused
+    // key whose parameters differ.
+    const minute = Math.floor(Date.now() / 60_000);
+    const body = new URLSearchParams({
+      mode: "subscription",
+      ui_mode: "embedded_page",
+      "line_items[0][price]": this.priceId,
+      "line_items[0][quantity]": "1",
+      customer_email: req.email,
+      client_reference_id: req.memberId,
+      "metadata[kind]": MEMBERSHIP_CHECKOUT_KIND,
+      "metadata[member_id]": req.memberId,
+      // As on the redirect path: invoice.payment_failed carries the subscription.
+      "subscription_data[metadata][member_id]": req.memberId,
+      // Stripe fills in {CHECKOUT_SESSION_ID}; the pay page reads it back.
+      return_url: returnUrl,
+      // An hour, not Stripe's default 24: fewer stale sessions left payable.
+      expires_at: String((minute + 60) * 60),
+    });
+    const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.secretKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Stripe-Version": STRIPE_API_VERSION,
+        "Idempotency-Key": `membership-checkout-${req.memberId}-${minute}`,
+      },
+      body,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      return { kind: "error", message: `Stripe rejected the checkout (${res.status}): ${detail.slice(0, 300)}` };
+    }
+    const session = (await res.json()) as { client_secret?: string };
+    if (!session.client_secret) return { kind: "error", message: "Stripe did not return a checkout session." };
+    return { kind: "embedded", clientSecret: session.client_secret };
+  }
+
+  /**
    * `cancel_at_period_end=true` on the subscription, not `DELETE` — Stripe's
    * documented distinction between "stop renewing" and "cancel now". The
    * actual state transition happens later, when Stripe's own
@@ -145,6 +203,16 @@ class StripePayments implements Payments {
   }
 }
 
+/**
+ * Whether membership checkout is the embedded modal (GAPS B1.7). It needs the
+ * publishable key as well as the secret one, and the real API: without the
+ * key, or on a Preview running the mocks, signups fall back to the hosted
+ * redirect, which still takes payment.
+ */
+export function membershipCheckoutIsEmbedded(): boolean {
+  return paymentsAreLive() && Boolean(stripePublishableKey()) && !mockBaseUrl();
+}
+
 export function getPayments(): Payments {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (key) {
@@ -155,6 +223,7 @@ export function getPayments(): Payments {
       process.env.STRIPE_PRICE_ID!,
       `${base}/dashboard?submitted=paid`,
       `${base}/dashboard/pay`,
+      membershipCheckoutIsEmbedded() ? `${base}/dashboard/pay?session_id={CHECKOUT_SESSION_ID}` : null,
     );
   }
   return new LocalStubPayments();

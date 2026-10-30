@@ -42,6 +42,8 @@ describe.skipIf(!KEY)("/api/stripe/webhook", () => {
     if (memberIds.length) {
       await db.from("invoices").delete().in("member_id", memberIds);
       await db.from("inbox_messages").delete().in("email", memberEmails);
+      // Console notes (payment_taken) carry no email, only the member.
+      await db.from("inbox_messages").delete().in("member_id", memberIds);
       await db.from("members").delete().in("id", memberIds);
     }
     memberIds.length = 0;
@@ -107,6 +109,19 @@ describe.skipIf(!KEY)("/api/stripe/webhook", () => {
     const { data: invoices } = await db.from("invoices").select("number, stripe_session_id").eq("member_id", memberId);
     expect(invoices).toHaveLength(1);
     expect(invoices?.[0]).toMatchObject({ number: expect.stringMatching(/^SMI-JOIN-/), stripe_session_id: `cs_test_replay_${ts}` });
+  });
+
+  // GAPS B1.7: a live card payment used to reach Jas in silence. The note goes
+  // once, from whichever of the webhook and the return page records it first.
+  it("checkout.session.completed tells Jas once, even when Stripe retries", async () => {
+    const memberId = await makeMember(`Stripe Note ${ts}`);
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const body = JSON.stringify({ type: "checkout.session.completed", data: { object: { id: `cs_test_note_${ts}`, client_reference_id: memberId } } });
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+
+    const { data: notes } = await db.from("inbox_messages").select("message").eq("member_id", memberId).eq("kind", "payment_taken");
+    expect(notes).toEqual([{ message: "Paid £40/month by card. Next step: build their page." }]);
   });
 
   it("invoice.payment_failed moves the member to grace with an inbox note", async () => {

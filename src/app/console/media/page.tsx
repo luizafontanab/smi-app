@@ -11,7 +11,7 @@ export const metadata = { title: "Media Library" };
 
 const PAGE_SIZE = 24;
 
-const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
 const kb = (bytes: number | null) => (bytes == null ? "—" : bytes > 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)}MB` : `${Math.round(bytes / 1024)}KB`);
 
 export default async function MediaLibraryPage(props: PageProps<"/console/media">) {

@@ -145,6 +145,11 @@ export type CheckoutSessionState = {
   clientSecret: string | null;
   amountTotal: number | null;
   currency: string | null;
+  /** The membership return check (GAPS B1.7) needs who it was for and what it created. */
+  clientReferenceId: string | null;
+  memberId: string | null;
+  subscriptionId: string | null;
+  customerId: string | null;
 };
 
 /**
@@ -166,6 +171,9 @@ export async function retrieveCheckoutSession(sessionId: string): Promise<Checko
     client_secret?: string | null;
     amount_total?: number | null;
     currency?: string | null;
+    client_reference_id?: string | null;
+    subscription?: string | null;
+    customer?: string | null;
   };
   return {
     status: s.status ?? null,
@@ -175,6 +183,11 @@ export async function retrieveCheckoutSession(sessionId: string): Promise<Checko
     clientSecret: s.client_secret ?? null,
     amountTotal: typeof s.amount_total === "number" ? s.amount_total : null,
     currency: s.currency ?? null,
+    clientReferenceId: s.client_reference_id ?? null,
+    memberId: s.metadata?.member_id ?? null,
+    // Unexpanded, these are ids; typeof guards against an expanded object.
+    subscriptionId: typeof s.subscription === "string" ? s.subscription : null,
+    customerId: typeof s.customer === "string" ? s.customer : null,
   };
 }
 

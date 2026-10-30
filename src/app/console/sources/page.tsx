@@ -34,7 +34,7 @@ const METHOD_LABEL: Record<string, string> = { feed: "Feed", wp_api: "WordPress 
 const ACCESS_FILTERS = ["all", "ok", "unknown", "blocked", "not_found", "unreachable", "empty", "paused", "bigin"] as const;
 const FILTER_LABEL: Record<string, string> = { all: "All", paused: "Paused", bigin: "From Bigin" };
 
-const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" }) : "—");
 
 export default async function SourcesPage(props: PageProps<"/console/sources">) {
   await requireConsole();

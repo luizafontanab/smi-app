@@ -225,7 +225,7 @@ export type GhNewsletterData = {
  */
 export function GhNewsletterCard({ issue }: { issue: GhNewsletterData }) {
   const sent = issue.sent_at
-    ? new Date(issue.sent_at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    ? new Date(issue.sent_at).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "Europe/London" })
     : null;
   return (
     <Panel className="group flex h-full flex-col p-4">

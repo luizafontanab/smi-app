@@ -38,7 +38,7 @@ export function StoryHeader({ story, categories }: { story: StoryArticleStory; c
       <h1 className="mt-3 text-3xl font-bold leading-tight text-ink">{story.title}</h1>
       <p className="mt-2 text-sm text-graphite">
         Sheet Metal Industries
-        {story.published_at && ` · ${new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
+        {story.published_at && ` · ${new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" })}`}
       </p>
     </header>
   );

@@ -185,7 +185,7 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
                 <td>
                   <Badge tone={PRIORITY_TONE[t.priority]}>{t.priority}</Badge>
                 </td>
-                <td className="text-xs text-graphite">{new Date(t.updated_at).toLocaleDateString("en-GB")}</td>
+                <td className="text-xs text-graphite">{new Date(t.updated_at).toLocaleDateString("en-GB", { timeZone: "Europe/London" })}</td>
               </tr>
             ))}
           </tbody>

@@ -10,7 +10,7 @@ import { setErrorStatus } from "../../actions";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Error" };
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "medium" });
+const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "medium", timeZone: "Europe/London" });
 
 /** One error and its latest occurrences — developer-only (see ../page.tsx). */
 export default async function ErrorDetailPage(props: PageProps<"/console/errors/[id]">) {
