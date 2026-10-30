@@ -53,8 +53,9 @@ Each service is independent; do them in any order.
       `invoice.payment_failed`), then set `STRIPE_WEBHOOK_SECRET`.
 - [ ] **1.10 — Set `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`**:
       test-mode keys in Preview, live keys in Production. Advert payments need
-      both. The publishable key is baked in at build time, so redeploy after
-      setting it.
+      both, and so does the membership payment modal (GAPS B1.7): with only
+      the secret key, signups fall back to Stripe's hosted page. The
+      publishable key is baked in at build time, so redeploy after setting it.
 
 ### CRM — Bigin
 
@@ -246,6 +247,11 @@ through Proof and approval first.
 - [ ] **3.2 — Stripe.**
       - One test subscription and one declined card. `invoice.payment_failed`
         must find the member.
+      - The membership payment opens as a modal on `/dashboard/pay`, not a
+        redirect (GAPS B1.7). Pay with `4242 4242 4242 4242`: the member lands
+        on the dashboard's "Payment sorted" banner, Billing shows a paid
+        SMI-JOIN invoice, and the console inbox has one "Payment taken" note,
+        not two. Closing the modal and paying again must also work.
       - One advert payment with `4242 4242 4242 4242`, and one 3-D Secure
         payment with `4000 0025 0000 3155`. Check: the run is "scheduled", the
         invoice is "paid" on both sides, and the webhook answers 200.
@@ -288,6 +294,10 @@ through Proof and approval first.
         link as 23 characters.
 - [ ] **3.6 — Login-email change.** Do one end to end after 1.7. Check whether
       one link or both are needed, and that the member lands back in Settings.
+      *Locally (29 Oct): either link alone switches the address and lands on
+      Settings; the other then fails with "link invalid or expired" and lands
+      on the dashboard with no message (GAPS A4.12). Note which way the hosted
+      project behaves: that decides the fix.*
 - [ ] **3.7 — Story sources, after the first week.** Review the "Blocked",
       "News page gone" and "Nothing readable found" filters. Cancel ChangeTower
       only after that: about 20% of sources still need checking by hand.
