@@ -9,7 +9,7 @@ vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const { record, requestContext } = vi.hoisted(() => ({
   record: vi.fn(() => {}),
-  requestContext: vi.fn(async (): Promise<RequestContext> => ({ session_hash: "h", referrer: null, region: null, company: null, consented: true })),
+  requestContext: vi.fn(async (): Promise<RequestContext> => ({ session_hash: "h", referrer: null, region: null, company: null, device: null, country: null, consented: true })),
 }));
 vi.mock("@/lib/analytics", async (orig) => ({ ...(await orig<typeof import("@/lib/analytics")>()), record, requestContext }));
 
@@ -82,7 +82,7 @@ describe("GET /visit/[id]", () => {
     });
 
     it("counts a newsletter click without consent, anonymously", async () => {
-      requestContext.mockResolvedValueOnce({ session_hash: null, referrer: null, region: null, company: null, consented: false });
+      requestContext.mockResolvedValueOnce({ session_hash: null, referrer: null, region: null, company: null, device: null, country: null, consented: false });
       stub({ id: "ad1", name: "Kerf banner", link_url: "https://kerf.example/", member: { id: "m1", slug: "kerf" } }, { id: ISSUE, scheduled_at: null, sent_at: "2026-11-03T09:01:00Z" });
 
       await expect(GET(click(`https://smi.local/visit/ad1?src=newsletter&issue=${ISSUE}&slot=banner-1`), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:");
@@ -91,7 +91,7 @@ describe("GET /visit/[id]", () => {
     });
 
     it("still drops an on-site advert click without consent", async () => {
-      requestContext.mockResolvedValueOnce({ session_hash: null, referrer: null, region: null, company: null, consented: false });
+      requestContext.mockResolvedValueOnce({ session_hash: null, referrer: null, region: null, company: null, device: null, country: null, consented: false });
       stub({ id: "ad1", name: "Kerf banner", link_url: "https://kerf.example/", member: { id: "m1", slug: "kerf" } }, null);
 
       await expect(GET(click("https://smi.local/visit/ad1"), ctx("ad1"))).rejects.toThrow("NEXT_REDIRECT:");

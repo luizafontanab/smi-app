@@ -328,6 +328,8 @@ export type Database = {
         Row: {
           advert_id: string | null
           company: string | null
+          country: string | null
+          device: string | null
           id: number
           kind: string
           member_id: string | null
@@ -343,6 +345,8 @@ export type Database = {
         Insert: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind: string
           member_id?: string | null
@@ -358,6 +362,8 @@ export type Database = {
         Update: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind?: string
           member_id?: string | null
@@ -376,6 +382,8 @@ export type Database = {
         Row: {
           advert_id: string | null
           company: string | null
+          country: string | null
+          device: string | null
           id: number
           kind: string
           member_id: string | null
@@ -391,6 +399,8 @@ export type Database = {
         Insert: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind: string
           member_id?: string | null
@@ -406,6 +416,8 @@ export type Database = {
         Update: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind?: string
           member_id?: string | null
@@ -424,6 +436,8 @@ export type Database = {
         Row: {
           advert_id: string | null
           company: string | null
+          country: string | null
+          device: string | null
           id: number
           kind: string
           member_id: string | null
@@ -439,6 +453,8 @@ export type Database = {
         Insert: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind: string
           member_id?: string | null
@@ -454,6 +470,8 @@ export type Database = {
         Update: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind?: string
           member_id?: string | null
@@ -472,6 +490,8 @@ export type Database = {
         Row: {
           advert_id: string | null
           company: string | null
+          country: string | null
+          device: string | null
           id: number
           kind: string
           member_id: string | null
@@ -487,6 +507,8 @@ export type Database = {
         Insert: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind: string
           member_id?: string | null
@@ -502,6 +524,8 @@ export type Database = {
         Update: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind?: string
           member_id?: string | null
@@ -520,6 +544,8 @@ export type Database = {
         Row: {
           advert_id: string | null
           company: string | null
+          country: string | null
+          device: string | null
           id: number
           kind: string
           member_id: string | null
@@ -535,6 +561,8 @@ export type Database = {
         Insert: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind: string
           member_id?: string | null
@@ -550,6 +578,8 @@ export type Database = {
         Update: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind?: string
           member_id?: string | null
@@ -568,6 +598,8 @@ export type Database = {
         Row: {
           advert_id: string | null
           company: string | null
+          country: string | null
+          device: string | null
           id: number
           kind: string
           member_id: string | null
@@ -583,6 +615,8 @@ export type Database = {
         Insert: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind: string
           member_id?: string | null
@@ -598,6 +632,8 @@ export type Database = {
         Update: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind?: string
           member_id?: string | null
@@ -616,6 +652,8 @@ export type Database = {
         Row: {
           advert_id: string | null
           company: string | null
+          country: string | null
+          device: string | null
           id: number
           kind: string
           member_id: string | null
@@ -631,6 +669,8 @@ export type Database = {
         Insert: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind: string
           member_id?: string | null
@@ -646,6 +686,8 @@ export type Database = {
         Update: {
           advert_id?: string | null
           company?: string | null
+          country?: string | null
+          device?: string | null
           id?: never
           kind?: string
           member_id?: string | null
@@ -3080,6 +3122,10 @@ export type Database = {
         Returns: Json
       }
       site_sessions_last_year: { Args: never; Returns: number }
+      site_stats: {
+        Args: { p_from: string; p_site_host?: string; p_to: string }
+        Returns: Json
+      }
       staged_uploads_older_than: {
         Args: { p_before: string; p_limit?: number }
         Returns: string[]

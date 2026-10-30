@@ -48,7 +48,7 @@ describe("POST /api/seen", () => {
     await POST(beacon([{ id: ADVERT, path: "/news" }]));
 
     const [rows] = record.mock.calls[0] as unknown as [Record<string, unknown>[]];
-    expect(rows).toEqual([{ kind: "ad_impression", advert_id: ADVERT, path: "/news", session_hash: null, referrer: null, region: null, company: null }]);
+    expect(rows).toEqual([{ kind: "ad_impression", advert_id: ADVERT, path: "/news", session_hash: null, referrer: null, region: null, company: null, device: null, country: null }]);
     // never flagged `consented: false`, which is what record() drops
     expect(rows[0]).not.toHaveProperty("consented");
   });

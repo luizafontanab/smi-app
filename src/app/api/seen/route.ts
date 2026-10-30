@@ -76,7 +76,7 @@ export async function POST(req: Request) {
   // accepted analytics cookies — they are what advertisers are invoiced
   // against, and dropping declined visitors made every number a sample. What
   // consent still governs is identity: without it requestContext() returns the
-  // DECLINED context (no session hash, referrer, region or company), so the
+  // DECLINED context (no session hash, referrer, region, company, device or country), so the
   // row is just advert + page + time. Nothing reads impressions to decide what
   // anyone is shown — rotation is uniform with no weight (lib/adverts.ts) — so
   // counting cannot change a visitor's experience. Every other event kind
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     kind: "ad_impression" as const,
     advert_id,
     path: byId.get(advert_id) ?? "unknown",
-    ...(consented ? context : { session_hash: null, referrer: null, region: null, company: null }),
+    ...(consented ? context : { session_hash: null, referrer: null, region: null, company: null, device: null, country: null }),
   })));
   return new Response(null, { status: 204 });
 }

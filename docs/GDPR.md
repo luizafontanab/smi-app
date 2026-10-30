@@ -379,7 +379,7 @@ For the statistics exception (para 5), all of these must hold:
 | `smi-ads` | Admin advert preview | Strictly necessary for the admin feature. |
 | `smi-theme` | Design switcher (currently off) | Appearance (para 6), or strictly necessary for a feature the admin asked for. Not gated; fine while the switcher is admin-only. |
 | `viewed_cats` | Personalises the news page | Appearance (para 6). Already gated behind "Accept". |
-| Analytics (`analytics_events` via `session_hash`) | Readership stats | **Doesn't store anything on the device**: we hash IP + browser on the server. Reading "information automatically emitted" may still count as "access" under reg 6(2). Consent-gated today, which is the safe side. |
+| Analytics (`analytics_events` via `session_hash`, plus device category and country since 29 Oct 2026) | Readership stats | **Doesn't store anything on the device**: we hash IP + browser on the server, and keep only a coarse device category and country alongside. Reading "information automatically emitted" may still count as "access" under reg 6(2). Consent-gated today, which is the safe side. |
 | Newsletter click counts (`analytics_events`, no identifier) | Counting clicks from a newsletter issue | **Recorded without consent since 21 Oct 2026** (Luiza's decision, GAPS B5.10), but only as a bare count: the event, the time, what was clicked and the issue. No session hash, referrer, region or company, and the IP and browser are never read (`requestContext()` returns before touching them; `record()` blanks the fields again). Only for links that carry `src=newsletter`. With consent, the usual full row is kept instead. See consequence 4. |
 
 Three consequences:
@@ -664,7 +664,7 @@ Built from the schema and code on 20 Oct 2026. Treat it as the draft of our reco
 | `contacts` | Name, email, company, Bigin ids, subscribed / unsubscribed | CRM contacts (~2,700), subscribers | **Forever**: "Nothing is ever deleted on either side" (`src/lib/adapters/crm.ts`) |
 | `newsletter_signups` | Email, time | Public subscribers | **Forever** |
 | `inbox_messages` / `inbox_replies` | Name, email, message text | Enquirers, members | **Forever** |
-| `analytics_events` (monthly partitions) | `session_hash`, full referrer, path | Consenting visitors | **Forever**: partitions are never dropped |
+| `analytics_events` (monthly partitions) | `session_hash`, full referrer, path; since 29 Oct 2026 also device category (desktop/mobile/tablet, worked out from the browser string, which is not kept) and country (two-letter code from Vercel's edge header, not a lookup of our own) | Consenting visitors | **Forever**: partitions are never dropped |
 | `search_queries` | Free-text query, `session_hash` | Consenting visitors | **Forever** |
 | `error_events` / `error_occurrences` | User id, user-agent, path | Anyone who hit an error | **90 days** (`log_retention` job) |
 | `dev_tasks` | Reporter email, page context | Admins | Manual |

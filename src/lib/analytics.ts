@@ -36,6 +36,10 @@ type EventRow = {
   platform?: string | null;
   /** The newsletter issue a click came from (lib/newsletter-tracking), when the link said so. */
   newsletter_issue_id?: string | null;
+  /** desktop / mobile / tablet, derived from the user-agent; the user-agent itself is never stored. */
+  device?: Device | null;
+  /** ISO 3166 alpha-2 country from Vercel's edge header. Not `region`, which is reserved for GeoLite2. */
+  country?: string | null;
 };
 
 export { CONSENT_COOKIE } from "./consent";
@@ -63,6 +67,8 @@ const DECLINED: RequestContext = {
   referrer: null,
   region: null,
   company: null,
+  device: null,
+  country: null,
   consented: false,
 };
 
@@ -71,6 +77,8 @@ export type RequestContext = {
   referrer: string | null;
   region: string | null;
   company: string | null;
+  device: Device | null;
+  country: string | null;
 } & Consent;
 
 /**
@@ -87,7 +95,7 @@ export function record(events: (EventRow & Partial<Consent>)[]): void {
     delete row.consented; // no such column — the flag only ever rides in memory
     delete row.anonymous;
     // Belt and braces: whatever a caller spread in, an anonymous row keeps nothing that could point at a reader.
-    if (event.anonymous) Object.assign(row, { session_hash: null, referrer: null, region: null, company: null });
+    if (event.anonymous) Object.assign(row, { session_hash: null, referrer: null, region: null, company: null, device: null, country: null });
     rows.push(row);
   }
   if (rows.length === 0) return;
@@ -168,7 +176,34 @@ export async function requestContext(): Promise<RequestContext> {
   const referrer = h.get("referer");
   const { resolveIp } = await import("./adapters/company-resolver");
   const { region, company } = await resolveIp(ip);
-  return { session_hash, referrer, region, company, consented: true };
+  return {
+    session_hash,
+    referrer,
+    region,
+    company,
+    device: deviceFromUserAgent(ua),
+    country: countryFromHeader(h.get("x-vercel-ip-country")),
+    consented: true,
+  };
+}
+
+export type Device = "desktop" | "mobile" | "tablet";
+
+/**
+ * Coarse device category for the console's device split. Tablets first:
+ * iPads and Android tablets also match the phone patterns below. Recent
+ * iPadOS Safari reports itself as a Mac, so those count as desktop.
+ */
+export function deviceFromUserAgent(ua: string): Device {
+  if (/iPad|Tablet|PlayBook|Silk|Kindle/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) return "tablet";
+  if (/Mobi|iPhone|iPod|Android|Windows Phone|BlackBerry/i.test(ua)) return "mobile";
+  return "desktop";
+}
+
+/** Vercel's x-vercel-ip-country, kept only when it is a plain two-letter code. Absent locally. */
+export function countryFromHeader(value: string | null | undefined): string | null {
+  const code = value?.trim().toUpperCase();
+  return code && /^[A-Z]{2}$/.test(code) ? code : null;
 }
 
 /**

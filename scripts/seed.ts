@@ -527,10 +527,20 @@ async function main() {
   })));
 
   console.log("— analytics (~90 days) + engagement audit + rollups");
-  const { data: allPub } = await db.from("stories").select("id, member_id").eq("status", "published");
+  const { data: allPub } = await db.from("stories").select("id, member_id, slug").eq("status", "published");
   const { data: allAds } = await db.from("adverts").select("id").eq("format", "banner");
   const fakeCompanies = ["Midlands Aero Components", "Precision Weld UK", "Northern Laser Services", "Clyde Fabrication", "Thames Estuary Marine", null, null, null, null, null];
   const events: Record<string, unknown>[] = [];
+  // A pool of returning visitors, so the console analytics page shows users,
+  // new users and sessions that differ from raw views. device/country are only
+  // recorded from 29 Oct 2026, so some visitors keep them null ("unknown").
+  const REFERRERS = [null, null, null, "https://www.google.com/", "https://www.google.com/", "https://www.linkedin.com/", "https://www.bing.com/", "https://chatgpt.com/", "https://www.facebook.com/"];
+  const visitors = Array.from({ length: 900 }, () => ({
+    hash: faker.string.alphanumeric(16),
+    referrer: faker.helpers.arrayElement(REFERRERS),
+    device: faker.helpers.weightedArrayElement([{ weight: 7, value: "desktop" }, { weight: 3, value: "mobile" }, { weight: 1, value: "tablet" }, { weight: 2, value: null }]),
+    country: faker.helpers.weightedArrayElement([{ weight: 8, value: "GB" }, { weight: 1, value: "IE" }, { weight: 1, value: "US" }, { weight: 1, value: "DE" }, { weight: 2, value: null }]),
+  }));
   for (let d = 90; d >= 0; d--) {
     const day = new Date(today.getTime() - d * 864e5);
     const views = faker.number.int({ min: 40, max: 110 });
@@ -538,7 +548,9 @@ async function main() {
       const t = new Date(day.getTime() + faker.number.int({ min: 8, max: 20 }) * 3600e3);
       const story = faker.helpers.arrayElement(allPub!);
       const region = faker.helpers.arrayElement(UK_REGIONS);
-      events.push({ occurred_at: t.toISOString(), kind: "story_view", story_id: story.id, member_id: story.member_id, region, session_hash: faker.string.alphanumeric(12) });
+      const visitor = faker.helpers.arrayElement(visitors);
+      events.push({ occurred_at: t.toISOString(), kind: "story_view", path: `/news/${story.slug}`, story_id: story.id, member_id: story.member_id, region, session_hash: visitor.hash, referrer: visitor.referrer, device: visitor.device, country: visitor.country });
+      if (v % 6 === 0) events.push({ occurred_at: t.toISOString(), kind: "page_view", path: faker.helpers.arrayElement(["/", "/news", "/member", "/event", "/video"]), session_hash: visitor.hash, referrer: visitor.referrer, device: visitor.device, country: visitor.country });
       events.push({ occurred_at: t.toISOString(), kind: "ad_impression", advert_id: faker.helpers.arrayElement(allAds!).id, region });
       if (v % 25 === 0) events.push({ occurred_at: t.toISOString(), kind: "ad_click", advert_id: faker.helpers.arrayElement(allAds!).id, region });
       if (v % 12 === 0) {

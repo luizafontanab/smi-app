@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { analyticsConsented, classifyReferrer, CONSENT_COOKIE, newsletterClick, record, recordSearch, requestContext, sessionHash } from "@/lib/analytics";
+import { analyticsConsented, classifyReferrer, CONSENT_COOKIE, countryFromHeader, deviceFromUserAgent, newsletterClick, record, recordSearch, requestContext, sessionHash } from "@/lib/analytics";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -65,8 +65,8 @@ describe("record", () => {
 });
 
 describe("newsletterClick (GAPS B5.10)", () => {
-  const consented = { session_hash: "h", referrer: "https://mail.example", region: "West Midlands", company: "Acme", consented: true };
-  const declined = { session_hash: null, referrer: null, region: null, company: null, consented: false };
+  const consented = { session_hash: "h", referrer: "https://mail.example", region: "West Midlands", company: "Acme", device: "desktop" as const, country: "GB", consented: true };
+  const declined = { session_hash: null, referrer: null, region: null, company: null, device: null, country: null, consented: false };
 
   it("keeps a consenting reader's full context", () => {
     expect(newsletterClick(consented, "newsletter")).toBe(consented);
@@ -86,7 +86,7 @@ describe("newsletterClick (GAPS B5.10)", () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({})));
     const { resolveIp } = await import("@/lib/adapters/company-resolver");
     const ctx = newsletterClick(await requestContext(), "newsletter");
-    expect(ctx).toEqual({ session_hash: null, referrer: null, region: null, company: null, consented: false, anonymous: true });
+    expect(ctx).toEqual({ session_hash: null, referrer: null, region: null, company: null, device: null, country: null, consented: false, anonymous: true });
     expect(resolveIp).not.toHaveBeenCalled();
   });
 });
@@ -96,10 +96,10 @@ describe("record — anonymous rows", () => {
     const builder = queryBuilder(dbOk(null));
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => builder })));
 
-    record([{ kind: "ad_click", advert_id: "ad1", path: "newsletter", session_hash: "leaked", region: "X", company: "Y", referrer: "Z", consented: false, anonymous: true }]);
+    record([{ kind: "ad_click", advert_id: "ad1", path: "newsletter", session_hash: "leaked", region: "X", company: "Y", referrer: "Z", device: "mobile", country: "GB", consented: false, anonymous: true }]);
 
     expect(builder.insert).toHaveBeenCalledWith([
-      { kind: "ad_click", advert_id: "ad1", path: "newsletter", session_hash: null, region: null, company: null, referrer: null },
+      { kind: "ad_click", advert_id: "ad1", path: "newsletter", session_hash: null, region: null, company: null, referrer: null, device: null, country: null },
     ]);
   });
 });
@@ -171,7 +171,31 @@ describe("requestContext", () => {
 
   it("returns the declined context without reading headers when not consented", async () => {
     const context = await requestContext();
-    expect(context).toEqual({ session_hash: null, referrer: null, region: null, company: null, consented: false });
+    expect(context).toEqual({ session_hash: null, referrer: null, region: null, company: null, device: null, country: null, consented: false });
+  });
+
+  it("never reads the country header without consent", async () => {
+    requestHeaders.set("x-vercel-ip-country", "GB");
+    requestHeaders.set("user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148");
+    const context = await requestContext();
+    expect(context.country).toBeNull();
+    expect(context.device).toBeNull();
+  });
+
+  it("records device category and country when consented", async () => {
+    cookieStore.set(CONSENT_COOKIE, "all");
+    requestHeaders.set("user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148");
+    requestHeaders.set("x-vercel-ip-country", "gb");
+    const context = await requestContext();
+    expect(context.device).toBe("mobile");
+    expect(context.country).toBe("GB");
+  });
+
+  it("leaves country null when the edge header is absent (local dev)", async () => {
+    cookieStore.set(CONSENT_COOKIE, "all");
+    const context = await requestContext();
+    expect(context.country).toBeNull();
+    expect(context.device).toBe("desktop");
   });
 
   it("builds attribution from the request when consented", async () => {
@@ -245,5 +269,34 @@ describe("sessionHash (GDPR.md G2)", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("deviceFromUserAgent", () => {
+  it.each([
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130.0 Safari/537.36", "desktop"],
+    ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36", "desktop"],
+    ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148", "mobile"],
+    ["Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36", "mobile"],
+    ["Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148", "tablet"],
+    ["Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/130.0 Safari/537.36", "tablet"],
+    ["", "desktop"],
+  ])("%s → %s", (ua, expected) => {
+    expect(deviceFromUserAgent(ua)).toBe(expected);
+  });
+});
+
+describe("countryFromHeader", () => {
+  it("keeps a two-letter code, uppercased", () => {
+    expect(countryFromHeader("gb")).toBe("GB");
+    expect(countryFromHeader(" IE ")).toBe("IE");
+  });
+
+  it("drops anything else", () => {
+    expect(countryFromHeader(null)).toBeNull();
+    expect(countryFromHeader(undefined)).toBeNull();
+    expect(countryFromHeader("")).toBeNull();
+    expect(countryFromHeader("GBR")).toBeNull();
+    expect(countryFromHeader("<x>")).toBeNull();
   });
 });

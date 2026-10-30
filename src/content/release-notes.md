@@ -10,6 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-29 — Website statistics in the console
+- Console → Analytics now shows your website statistics in the same shape as your Data Studio report: total users, new users, views and sessions per user, each with the % change on the previous period.
+- Pick any date range, or use "Last 7 / 28 / 90 days". The page compares it with the same number of days just before.
+- Top pages lists every page with its views and % change, ten at a time. User source names the site each visitor came from, such as google.com, linkedin.com, chatgpt.com or "(direct)".
+- There are new tables for device (desktop, mobile, tablet) and country. These are recorded from today, so earlier visits show as "Unknown". Country only appears on the live site.
+- The figures count only visitors who accept analytics cookies, and leave out bots, so they will be lower than Google Analytics showed. The page tells you what share of visits accepted.
+
 ## 2026-10-29 — Maps now use Google Maps
 - The member directory's map, the events map and the map on each member's page now use Google Maps instead of OpenStreetMap. Pins and their links work as before.
 - This starts once the Google Maps key from the old website is set up. Until then those maps show "Map unavailable" and the rest of the page works as normal.
