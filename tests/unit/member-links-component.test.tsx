@@ -37,6 +37,21 @@ describe("MemberLinks", () => {
     expect(screen.getAllByRole("link")).toHaveLength(3);
   });
 
+  it("shows the member's value, not the platform name, and still names the platform for screen readers", () => {
+    render(<MemberLinks member={full} />);
+    const linkedin = screen.getByRole("link", { name: /^LinkedIn: acme-ltd/ });
+    expect(linkedin).toHaveTextContent(/^acme-ltd$/);
+    expect(screen.getByRole("link", { name: /^Website/ })).toHaveTextContent(/^acme\.co\.uk$/);
+    expect(screen.getByRole("link", { name: /^Call/ })).toHaveTextContent(/^01234 567890$/);
+    // The unlinkable row keeps its platform name off-screen only.
+    expect(screen.getByText("Facebook:", { exact: false })).toHaveClass("sr-only");
+  });
+
+  it("falls back to the platform name when there's no value to show", () => {
+    render(<MemberLinks member={{ id: "m1", website: null, phone: null, social: { youtube: "https://www.youtube.com/" } }} />);
+    expect(screen.getByRole("link", { name: /^YouTube/ })).toHaveTextContent(/^YouTube$/);
+  });
+
   it("hides every logo from assistive tech", () => {
     const { container } = render(<MemberLinks member={full} />);
     const svgs = container.querySelectorAll("svg");

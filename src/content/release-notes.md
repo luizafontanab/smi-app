@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-29 — Bigger contact details on member pages
+- In the Links box on a member's public page, each row now shows just the member's details (their website, phone number or handle) in larger type. The logo already shows which platform it is, so the platform name is gone.
+- A link with no handle to show, such as a YouTube channel, still shows the platform name, so no row is ever blank.
+
 ## 2026-10-29 — Website statistics in the console
 - Console → Analytics now shows your website statistics in the same shape as your Data Studio report: total users, new users, views and sessions per user, each with the % change on the previous period.
 - Pick any date range, or use "Last 7 / 28 / 90 days". The page compares it with the same number of days just before.

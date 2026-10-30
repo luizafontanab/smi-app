@@ -44,10 +44,22 @@ function LinkTile({ link }: { link: MemberLink }) {
 }
 
 function LinkRow({ link }: { link: MemberLink }) {
+  // The logo already says which platform it is, so the row shows only the
+  // member's own value (domain, number, handle). A row with no value, e.g. a
+  // YouTube link with no readable handle, falls back to the platform name so
+  // it isn't blank. Screen readers still get "LinkedIn: gtma-uk": from the
+  // link's aria-label, or the sr-only prefix on an unlinkable row. Long
+  // handles wrap rather than truncate, so the whole value stays readable.
   const text = (
-    <span className="min-w-0 flex-1">
-      <span className="block text-sm font-semibold text-ink">{link.label}</span>
-      {link.detail && <span className="block truncate text-xs text-graphite">{link.detail}</span>}
+    <span className="min-w-0 flex-1 text-base font-semibold text-ink [overflow-wrap:anywhere]">
+      {link.detail ? (
+        <>
+          {!link.href && <span className="sr-only">{link.label}: </span>}
+          {link.detail}
+        </>
+      ) : (
+        link.label
+      )}
     </span>
   );
 
