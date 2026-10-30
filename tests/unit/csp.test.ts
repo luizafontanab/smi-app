@@ -37,4 +37,19 @@ describe("Content-Security-Policy", () => {
     expect(directive(policy, "frame-src").split(/\s+/)).toEqual(expect.arrayContaining(["https://js.stripe.com", "https://hooks.stripe.com"]));
     expect(directive(policy, "connect-src").split(/\s+/)).toContain("https://api.stripe.com");
   });
+
+  // 29 Oct: the directory, events and profile maps moved from Leaflet/OSM
+  // tiles to Google Maps (PinMapImpl), per Google's CSP allowlist.
+  it("lets Google Maps load its script, tiles, API calls and workers", async () => {
+    const policy = await csp();
+    expect(directive(policy, "script-src").split(/\s+/)).toContain("https://*.googleapis.com");
+    expect(directive(policy, "img-src").split(/\s+/)).toEqual(expect.arrayContaining(["https://*.googleapis.com", "https://*.gstatic.com"]));
+    expect(directive(policy, "connect-src").split(/\s+/)).toContain("https://*.googleapis.com");
+    expect(directive(policy, "worker-src").split(/\s+/)).toEqual(expect.arrayContaining(["'self'", "blob:"]));
+    expect(policy).not.toContain("tile.openstreetmap.org");
+  });
+
+  it("does not allow eval outside development", async () => {
+    expect(directive(await csp(), "script-src")).not.toContain("'unsafe-eval'");
+  });
 });

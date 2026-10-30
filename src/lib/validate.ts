@@ -23,8 +23,9 @@ export function safeInternalPath(raw: unknown): string | null {
 
 /**
  * Blank → null. Anything else must parse to a finite number inside `limit`:
- * lat/lng feed the OpenStreetMap bbox embed on the public profile, where an
- * out-of-range value renders a broken iframe rather than failing loudly.
+ * lat/lng place the pins on the Google Maps views (directory, events, profile),
+ * where an out-of-range value draws a pin in the wrong place rather than
+ * failing loudly.
  */
 export function parseCoordinate(raw: string, limit: number, label: "lat" | "lng"): number | null | { error: string } {
   const trimmed = raw.trim();

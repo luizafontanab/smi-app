@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-10-29 — Maps now use Google Maps
+- The member directory's map, the events map and the map on each member's page now use Google Maps instead of OpenStreetMap. Pins and their links work as before.
+- This starts once the Google Maps key from the old website is set up. Until then those maps show "Map unavailable" and the rest of the page works as normal.
+
 ## 2026-10-28 — "Start story": cleaner text, and "I" handled properly
 - Page labels such as the category, the date, "Scroll to discover", "Back to all news" and newsletter sign-up boxes no longer end up in the draft's text.
 - The rewrite now always reads "we" as the company, never as the industry or the country.

@@ -26,8 +26,8 @@ export function isRemoteSupabaseRequest(url: URL): boolean {
   return SUPABASE_HOSTED.test(url.hostname) || SUPABASE_API_PATH.test(url.pathname);
 }
 
-/** Third parties the app's CSP allows the browser to call. None of them is a database. */
-const THIRD_PARTY_CONNECT = /(^|\.)stripe\.com$/;
+/** Third parties the app's CSP allows the browser to call (Stripe, Google Maps). None of them is a database. */
+const THIRD_PARTY_CONNECT = /(^|\.)(stripe\.com|googleapis\.com|google\.com|gstatic\.com)$/;
 
 /** Every http(s) origin in a Content-Security-Policy's connect-src. */
 export function connectSrcOrigins(csp: string | null): string[] {

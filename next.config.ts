@@ -44,21 +44,30 @@ const stripeScript = " https://js.stripe.com https://*.js.stripe.com https://che
 const stripeFrame = " https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://checkout.stripe.com";
 const stripeConnect = " https://api.stripe.com https://checkout.stripe.com";
 
+// Google Maps JS (PinMapImpl — directory, events and profile maps), per
+// Google's CSP allowlist: developers.google.com/maps/documentation/javascript/content-security-policy
+// Their list also has 'unsafe-eval' in script-src; left out of production on
+// purpose until a production build proves the maps need it.
+const mapsScript = " https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.ggpht.com https://*.googleusercontent.com";
+const mapsImg = " https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.googleusercontent.com";
+const mapsConnect = " https://*.googleapis.com https://*.google.com https://*.gstatic.com";
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${stripeScript}${__impeccableLiveDev}`,
-  "style-src 'self' 'unsafe-inline'",
-  // tile.openstreetmap.org: the raster tiles behind MemberMap's Leaflet view (A6.4).
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} blob:${mapsScript}${stripeScript}${__impeccableLiveDev}`,
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   // i.ytimg.com: YouTube's still-image host. Video cards, the home hero and
   // og:image all fall back to its stills when a video has no uploaded
   // thumbnail — blocked until 28 Sep, so that fallback never rendered (GAPS
   // A8.5). Images only; frame-src already trusts YouTube's players.
-  `img-src 'self' data: blob: https://*.tile.openstreetmap.org https://i.ytimg.com https://*.stripe.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
-  "font-src 'self' data:",
-  `connect-src 'self'${stripeConnect}${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}${__impeccableLiveDev}`,
+  `img-src 'self' data: blob:${mapsImg} https://i.ytimg.com https://*.stripe.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  "font-src 'self' data: https://fonts.gstatic.com",
+  `connect-src 'self' data: blob:${mapsConnect}${stripeConnect}${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${isDev ? " ws: wss:" : ""}${__impeccableLiveDev}`,
   "media-src 'self' https:",
   // nocookie is what /video/[slug] embeds — same player, no ad cookies before consent
-  `frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com${stripeFrame}`,
+  `frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://*.google.com${stripeFrame}`,
+  // Google Maps renders vector maps in blob: workers; 'self' kept since setting worker-src stops it falling back to default-src.
+  "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",

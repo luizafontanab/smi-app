@@ -139,11 +139,9 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           </section>
         </div>
         <aside className="flex flex-col gap-4">
-          {/* Leaflet over OSM tiles, the same map as the directory's Map view.
-              It replaced an openstreetmap.org <iframe> that never rendered:
-              the CSP's frame-src (next.config.ts) doesn't admit it, while
-              img-src already admits the tiles. `!= null`, not truthiness — a
-              longitude of 0 runs through Greenwich and London. */}
+          {/* Google Maps, the same map as the directory's Map view (PinMap).
+              `!= null`, not truthiness — a longitude of 0 runs through
+              Greenwich and London. */}
           {member.lat != null && member.lng != null && (
             <div className="overflow-hidden rounded-lg bg-white shadow-sm">
               <PinMap

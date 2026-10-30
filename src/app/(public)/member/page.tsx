@@ -219,9 +219,9 @@ export default async function MembersPage(props: PageProps<"/member">) {
 
       {view === "map" ? (
         <div className="mt-6">
-          {/* Coordinates are only as good as what an admin typed in manually —
-              no geocoding exists yet (see docs/GAPS.md A4.5) — so coverage can
-              be genuinely sparse. Say so rather than silently dropping members. */}
+          {/* Addresses are geocoded on save (A4.5), but one that doesn't
+              resolve gets no pin — so coverage can be sparse. Say so rather
+              than silently dropping members. */}
           {withCoords.length < pinRows.length && (
             <p className="mb-3 text-sm text-graphite">
               Showing {withCoords.length} of {pinRows.length} members with a known location.

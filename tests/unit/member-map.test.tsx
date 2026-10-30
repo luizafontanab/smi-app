@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemberMap } from "@/components/MemberMap";
 
-// The real PinMapImpl (and its react-leaflet import) is covered by its own
+// The real PinMapImpl (and its Google Maps import) is covered by its own
 // test — this one is about the next/dynamic(ssr:false) wrapper plus the
 // MemberMap adapter: show a loading skeleton, then swap to the real map once
 // the chunk resolves, with members translated into pins.

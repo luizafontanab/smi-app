@@ -97,6 +97,27 @@ Each service is independent; do them in any order.
       costs roughly 3–8p, so £10 a month is ample.
 
 ### Vercel
+### Google Maps (the directory, events and profile maps)
+
+- [ ] **1.22 — Set up the old site's Google Maps key for this site.** Until it's
+      set, the member directory's map, the events map and each member profile's
+      map show "Map unavailable"; everything else on those pages works.
+      In Google Cloud console → APIs & Services, for the key's project:
+      - Enable the **Maps JavaScript API** and check billing is on (Google
+        bills per map load after a free monthly credit).
+      - Under the key's restrictions, set **HTTP referrers** to
+        `https://sheetmetalindustries.com/*`, `https://*.sheetmetalindustries.com/*`,
+        the Vercel Preview domain and `http://localhost:3100/*`, replacing the
+        old site's domains if the old site is gone. Limit the key to the Maps
+        JavaScript API. The key is public in every browser by design, so the
+        restriction is what protects it.
+      - Optional: create a Map ID (Map Management) and set
+        `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID`. Without it Google's demo map id is used.
+      Then set `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in `.env.local` (restart
+      `pnpm dev`) and in Vercel (Production and Preview). It is read at build
+      time, so a redeploy is needed after setting it. Pin locations still come
+      from OpenStreetMap (2.12), so no Geocoding API is needed.
+
 
 - [ ] **1.18 — Set the remaining variables.**
       - `SITE_URL=https://sheetmetalindustries.com` (Production).
@@ -422,6 +443,9 @@ original numbers, because other items and docs refer to them.
 
 ---
 
+      Since 29 Oct, `event`, `member` and `member_slug` will also differ: their
+      maps are now Google Maps, and the visual run blocks outside requests, so
+      they show an empty map box (or "Map unavailable" with no key).
 ## Notes (no action)
 
 - `script-src 'unsafe-inline'` stays for now (`next.config.ts`). When nonces

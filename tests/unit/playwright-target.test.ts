@@ -10,12 +10,13 @@ import { connectSrcOrigins, isRemoteSupabaseRequest, serverTargetProblem } from 
  * keeps a test run off production.
  */
 
-// The header next.config.ts actually sends in dev, captured from the local
-// server on 16 Oct 2026 — the parser is pinned against the real shape.
+// The header next.config.ts sends in dev — captured from the local server on
+// 16 Oct 2026, Google Maps hosts added 29 Oct — so the parser is pinned
+// against the real shape.
 const LOCAL_CSP =
   "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://*.js.stripe.com https://checkout.stripe.com http://localhost:8400; " +
-  "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://i.ytimg.com https://*.stripe.com http://127.0.0.1:56321; " +
-  "font-src 'self' data:; connect-src 'self' https://api.stripe.com https://checkout.stripe.com http://127.0.0.1:56321 ws: wss: http://localhost:8400; " +
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://i.ytimg.com https://*.stripe.com http://127.0.0.1:56321; " +
+  "font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://*.gstatic.com https://api.stripe.com https://checkout.stripe.com http://127.0.0.1:56321 ws: wss: http://localhost:8400; " +
   "media-src 'self' https:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'";
 const withConnect = (origin: string) => LOCAL_CSP.replace("http://127.0.0.1:56321 ws:", `${origin} ws:`);
 
@@ -42,6 +43,9 @@ describe("isRemoteSupabaseRequest (the smoke suite's browser guard)", () => {
 describe("connectSrcOrigins", () => {
   it("reads the http(s) origins of connect-src only", () => {
     expect(connectSrcOrigins(LOCAL_CSP)).toEqual([
+      "https://*.googleapis.com",
+      "https://*.google.com",
+      "https://*.gstatic.com",
       "https://api.stripe.com",
       "https://checkout.stripe.com",
       "http://127.0.0.1:56321",
@@ -74,6 +78,12 @@ describe("serverTargetProblem (both suites' check of a reused server)", () => {
   it("refuses a server it can't verify rather than trusting it", () => {
     expect(serverTargetProblem(null, "http://127.0.0.1:56321")).toMatch(/cannot be verified/);
     expect(serverTargetProblem("connect-src 'self' https://api.stripe.com", "http://127.0.0.1:56321")).toMatch(/cannot be verified/);
+  });
+
+  it("doesn't mistake Google Maps' hosts for a database", () => {
+    expect(serverTargetProblem("connect-src 'self' https://*.googleapis.com https://*.google.com https://*.gstatic.com", "http://127.0.0.1:56321")).toMatch(
+      /cannot be verified/,
+    );
   });
 });
 
