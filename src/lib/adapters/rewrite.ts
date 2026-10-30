@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import * as cheerio from "cheerio";
 import { logError } from "@/lib/log";
 import { sanitizeRichText } from "@/lib/sanitize";
 
@@ -26,7 +27,10 @@ export interface Rewriter {
 
 export const REWRITE_MODEL = "claude-opus-5-5";
 
-/** Fixed, with nothing per-request in it, so it can be cached. */
+/**
+ * Fixed, with nothing per-request in it. Not prompt-cached: no cache_control
+ * is set, and the prompt is shorter than the minimum cacheable length anyway.
+ */
 export const REWRITE_SYSTEM = `You convert a company's own news article from first person to third person, for a trade news site that republishes members' news.
 
 The only change you make is to the words where the article speaks in the first person:
@@ -59,6 +63,8 @@ const OUTPUT_SCHEMA = {
 };
 
 const textOf = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+/** Text with entities decoded ("O&#8217;Brien" → "O’Brien") and apostrophes made straight, for matching a name against. */
+const plainText = (html: string) => cheerio.load(html, null, false).root().text().replace(/[‘’]/g, "'");
 const tagSequence = (html: string) => [...html.matchAll(/<\/?([a-z0-9]+)/gi)].map((m) => m[0].toLowerCase());
 const hrefs = (html: string) => [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).sort();
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
@@ -82,8 +88,8 @@ export function checkRewrite(input: RewriteInput, output: RewriteOutput): Rewrit
   // A writer's name must come from the article itself: a name it doesn't
   // contain was guessed, and a guessed byline is worse than none.
   const writer = output.writer.trim();
-  const source = `${input.title}\n${input.excerpt ?? ""}\n${textOf(input.html)}`;
-  if (writer && !source.includes(writer)) return { ok: false, reason: "The rewrite named a writer the article doesn't, so the article's own wording was kept." };
+  const source = plainText(`${input.title}\n${input.excerpt ?? ""}\n${input.html.replace(/<[^>]+>/g, " $& ")}`).replace(/\s+/g, " ");
+  if (writer && !source.includes(plainText(writer).replace(/\s+/g, " "))) return { ok: false, reason: "The rewrite named a writer the article doesn't, so the article's own wording was kept." };
   const name = writer.length > input.company.length ? writer : input.company;
   const html = sanitizeRichText(output.body);
   if (!html || !sameList(tagSequence(html), tagSequence(input.html)) || !sameList(hrefs(html), hrefs(input.html))) return rejected;

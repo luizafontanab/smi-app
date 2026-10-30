@@ -3,7 +3,7 @@ import {
   addSource, deleteSource, dismissSuggestion, recheckSource, startStoryFromSuggestion, syncSourcesFromBigin, updateSourceUrl,
 } from "@/app/console/sources/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
 import { UploadRejectedError } from "@/lib/upload-limits";
@@ -251,6 +251,51 @@ describe("startStoryFromSuggestion", () => {
     setup(suggestion({ state: "drafted", story_id: "story-9" }));
     await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-9");
     expect(prepareDraft).not.toHaveBeenCalled();
+  });
+
+  it("only claims a suggestion still in the state it was read in", async () => {
+    const items = suggestion();
+    setup(items);
+    await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-9");
+    expect(callsOf(items, "eq")).toEqual(expect.arrayContaining([["state", "new"]]));
+  });
+
+  describe("when another click started it first, while this draft was being prepared", () => {
+    const row = { id: "i1", url: "https://acme.test/news/laser", title: "New 12kW fibre laser installed", state: "new", story_id: null, source: { label: "Acme news", domain: "acme.test", bigin_account_name: null, member: null } };
+    // read → the claim (no row: someone else changed it) → the re-read
+    const raced = (after: Record<string, unknown> | null) => sequence(dbOk(row), dbOk(null), dbOk(after));
+    const setupRace = (after: Record<string, unknown> | null) => {
+      const stories = queryBuilder(dbOk({ id: "story-9" }));
+      vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+        from: fromByTable({ source_items: raced(after), stories: () => stories, story_originals: () => queryBuilder(dbOk(null)) }),
+      })));
+      return { stories };
+    };
+
+    it("removes its own draft and cover, and opens the one already started", async () => {
+      const { stories } = setupRace({ state: "drafted", story_id: "story-1" });
+      await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-1");
+      expect(callsOf(stories, "delete")).toHaveLength(1);
+      expect(callsOf(stories, "eq")).toEqual(expect.arrayContaining([["id", "story-9"]]));
+      expect(removeMedia).toHaveBeenCalledWith("stories/cover.jpg");
+    });
+
+    it("says so when it was dismissed instead", async () => {
+      const { stories } = setupRace({ state: "dismissed", story_id: null });
+      await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/sources\?error=/);
+      expect(callsOf(stories, "delete")).toHaveLength(1);
+    });
+  });
+
+  it("if the claim itself fails, the draft is kept and opened", async () => {
+    const row = { id: "i1", url: "https://acme.test/news/laser", title: "t", state: "new", story_id: null, source: { label: null, domain: "acme.test", bigin_account_name: null, member: null } };
+    const stories = queryBuilder(dbOk({ id: "story-9" }));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({ source_items: sequence(dbOk(row), dbError("timeout")), stories: () => stories, story_originals: () => queryBuilder(dbOk(null)) }),
+    })));
+    await expect(startStoryFromSuggestion(form({ id: "i1" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/story-9");
+    expect(callsOf(stories, "delete")).toHaveLength(0);
+    expect(logError).toHaveBeenCalled();
   });
 
   it("says so when the suggestion has gone", async () => {

@@ -71,6 +71,17 @@ describe("ukPostcode", () => {
     expect(ukPostcode("1 High St, London EC1A 1BB")).toBe("EC1A 1BB");
   });
 
+  it("doesn't mistake a floor or street ordinal for the postcode", () => {
+    // "B2 3rd" and "M1 2nd" are shaped like Birmingham and Manchester postcodes.
+    expect(ukPostcode("Acme Ltd, Unit B2 3rd Floor, Telford, TF1 6AH")).toBe("TF1 6AH");
+    expect(ukPostcode("Unit 4, M1 2nd Avenue, Leeds LS1 4AP")).toBe("LS1 4AP");
+    expect(ukPostcode("Acme Ltd, Unit B2 3rd Floor, Telford")).toBeNull();
+  });
+
+  it("takes the last postcode-shaped text, where a UK address puts it", () => {
+    expect(ukPostcode("Unit A1 1AA Trading Estate, Leeds, LS1 4AP")).toBe("LS1 4AP");
+  });
+
   it("returns null when there is no postcode", () => {
     expect(ukPostcode("Somewhere in Telford")).toBeNull();
     expect(ukPostcode("")).toBeNull();

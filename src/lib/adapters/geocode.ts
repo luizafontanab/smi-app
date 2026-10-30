@@ -39,7 +39,13 @@ export async function geocodeAddress(address: string): Promise<Coordinates | nul
  * place — but the postcode alone it nearly always can, to within a street.
  */
 export function ukPostcode(address: string): string | null {
-  const m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i.exec(address);
+  // Case-insensitive because imported postcodes are often lowercase ("cv34rs").
+  // That also lets "Unit B2 3rd Floor" look like "B2 3RD", so: an ordinal
+  // ("3rd", "2nd") followed by another word is a floor or a street, not an
+  // incode; and of what's left the last wins — a UK address ends with its postcode.
+  const candidates = [...address.matchAll(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b(?=(\s+[A-Z])?)/gi)]
+    .filter((m) => !(m[3] && /^\d(st|nd|rd|th)$/i.test(m[2])));
+  const m = candidates.at(-1);
   return m ? `${m[1]} ${m[2]}`.toUpperCase() : null;
 }
 

@@ -59,6 +59,14 @@ describe("checkRewrite", () => {
     expect(checkRewrite(input, column(body, "Mike Hawes"))).toEqual({ ok: false, reason: expect.stringMatching(/named a writer the article doesn't/) });
   });
 
+  it("matches a writer's name against the article's decoded text, not its entities", () => {
+    // WordPress writes the apostrophe as &#8217;; the model answers with a straight one.
+    const input = { ...COLUMN, html: "<p>I urge all companies to apply.</p><p>Sean O&#8217;Brien, Director</p>" };
+    const body = "<p>Sean O&#8217;Brien urges all companies to apply.</p><p>Sean O&#8217;Brien, Director</p>";
+    expect(checkRewrite(input, column(body, "Sean O'Brien"))).toEqual(expect.objectContaining({ ok: true }));
+    expect(checkRewrite(input, column(body, "Sean Murphy"))).toEqual({ ok: false, reason: expect.stringMatching(/named a writer the article doesn't/) });
+  });
+
   it("flags an article written as \"I\" with no writer named, attributed to the company", () => {
     const input = { ...COLUMN, html: "<p>I urge all companies to apply. I hope to see you there.</p>" };
     const body = "<p>SMMT urges all companies to apply. SMMT hopes to see you there.</p>";

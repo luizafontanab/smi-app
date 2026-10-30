@@ -206,7 +206,24 @@ export async function startStoryFromSuggestion(formData: FormData) {
       notes.push("The article's original text couldn't be saved alongside the draft.");
     }
   }
-  await db.from("source_items").update({ state: "drafted", story_id: story.id, updated_at: new Date().toISOString() }).eq("id", id);
+  // Claim the suggestion only if nobody else did while the draft was being
+  // prepared (up to a minute): a second admin, or a second tab. The loser's
+  // draft is removed rather than left orphaned, and it opens the winner's.
+  const { data: claimed, error: claimError } = await db.from("source_items")
+    .update({ state: "drafted", story_id: story.id, updated_at: new Date().toISOString() })
+    .eq("id", id).eq("state", item.state)
+    .select("id").maybeSingle();
+  if (claimError) {
+    // Couldn't tell — keep the draft and open it, as before this check existed.
+    logError({ source: "db", area: "action:startStoryFromSuggestion", error: claimError.message, context: { item: id, story: story.id } });
+  } else if (!claimed) {
+    await db.from("stories").delete().eq("id", story.id);
+    if (coverPath) await removeMedia(coverPath);
+    const { data: now } = await db.from("source_items").select("state, story_id").eq("id", id).maybeSingle();
+    revalidatePath(PAGE);
+    if (now?.state === "drafted" && now.story_id) redirect(`/console/stories/${now.story_id}`);
+    redirect(back(`error=${encodeURIComponent("That suggestion changed while the draft was being prepared, so no draft was made.")}`));
+  }
   revalidatePath(PAGE);
   revalidatePath("/console/stories");
   const query = new URLSearchParams();
