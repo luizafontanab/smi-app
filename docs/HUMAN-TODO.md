@@ -96,7 +96,6 @@ Each service is independent; do them in any order.
       services, not a personal one. Set a monthly spend limit: each Start story
       costs roughly 3–8p, so £10 a month is ample.
 
-### Vercel
 ### Google Maps (the directory, events and profile maps)
 
 - [ ] **1.22 — Set up the old site's Google Maps key for this site.** Until it's
@@ -118,6 +117,7 @@ Each service is independent; do them in any order.
       time, so a redeploy is needed after setting it. Pin locations still come
       from OpenStreetMap (2.12), so no Geocoding API is needed.
 
+### Vercel
 
 - [ ] **1.18 — Set the remaining variables.**
       - `SITE_URL=https://sheetmetalindustries.com` (Production).
@@ -433,6 +433,9 @@ original numbers, because other items and docs refer to them.
       Run `pnpm visual`, look, then `pnpm visual:accept <route-id>` per route,
       never `--all`. Eight routes are skipped until the local data has content
       for them (see `tests/visual/manifest.ts`).
+      Since 29 Oct, `event`, `member` and `member_slug` will also differ: their
+      maps are now Google Maps, and the visual run blocks outside requests, so
+      they show an empty map box (or "Map unavailable" with no key).
 - [ ] **6.7 — Set `CRON_SECRET` in `.env.local`** if you want the local job
       runner (`scripts/job-runner.ts`).
 - [ ] **6.8 — Move `docs/stripe_backup_code.txt` out of the repository** and
@@ -443,9 +446,6 @@ original numbers, because other items and docs refer to them.
 
 ---
 
-      Since 29 Oct, `event`, `member` and `member_slug` will also differ: their
-      maps are now Google Maps, and the visual run blocks outside requests, so
-      they show an empty map box (or "Map unavailable" with no key).
 ## Notes (no action)
 
 - `script-src 'unsafe-inline'` stays for now (`next.config.ts`). When nonces
