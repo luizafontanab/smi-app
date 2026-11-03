@@ -39,4 +39,4 @@ The local dev server and Supabase are long-lived — leave them running across a
 
 - **Plain source edits** are already covered by Turbopack's HMR — no server restart needed. Only run `pnpm dev:stop` for an env var change, an edit to `next.config.ts`, or a new/updated dependency.
 - `pnpm dev:start` is idempotent — it no-ops with "Already running" if the server's already up, so it's safe to call instead of checking first.
-- **Supabase** (Docker) keeps its containers running between sessions — check with `supabase status` before assuming it needs starting, and never `supabase db reset` unless the data is actually wrong or a migration just landed (it drops the database).
+- **Supabase** (Docker) keeps its containers running between sessions — check it with the liveness line in the run-smi-app skill before assuming it needs starting, and never `supabase db reset` unless the data is actually wrong or a migration just landed (it drops the database).

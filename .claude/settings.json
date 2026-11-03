@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(supabase status *)",
       "Bash(supabase migration list*)",
       "Bash(pnpm lint:*)",
       "Bash(pnpm check:*)",
