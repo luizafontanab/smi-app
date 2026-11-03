@@ -19,7 +19,7 @@ import type { SocialCaps } from "@/lib/social-caps";
 import { enqueueStoryLive } from "@/lib/story-members";
 import { canMoveStory, canScheduleStory, isMemberDraft, STORY_STATUS_LABELS } from "@/lib/story-board";
 import { canMoveVideo, canScheduleVideo } from "@/lib/video-board";
-import { canMoveEvent } from "@/lib/event-board";
+import { canMoveEvent, EVENT_STATUS_LABELS } from "@/lib/event-board";
 
 /* ---------- contract (frozen: callers and tests are written against this) ---------- */
 
@@ -29,7 +29,22 @@ type Enqueue = (kind: JobKind, payload?: Record<string, unknown>, dueAt?: Date) 
 export type LifecycleDeps = { db: Db; enqueue: Enqueue };
 export type ContentKind = "story" | "video" | "event";
 export type Actor = { userId: string };
-export type LifecycleResult = { ok: true } | { ok: false; error: string };
+/**
+ * Why a call was refused, for callers that route on it (the console sends a
+ * not_found back to the list, everything else to the item's editor). The
+ * message is for people; branch on the code, never on the message.
+ */
+export type RefusalCode = "not_found" | "refused" | "changed" | "failed";
+export type LifecycleResult = { ok: true } | { ok: false; code: RefusalCode; error: string };
+
+/**
+ * The editor's Industry box, sent with its publishing buttons. `industryId`
+ * present (a number, or null for "— none —") is written as chosen. Absent — the
+ * board, a drag — a member's item with no industry takes the member's own, so
+ * member content never goes Live untagged just because Jas approved it from
+ * the board.
+ */
+export type PublishOptions = { industryId?: number | null };
 
 export type PublishDueRow = { kind: "story" | "video"; id: string };
 export type PublishDueResult = {
@@ -46,10 +61,13 @@ export const LIFECYCLE_MESSAGES = {
   notFound: (kind: ContentKind) => `${KIND_NAME[kind]} not found.`,
   changed: "This item changed while you were looking at it — reload and try again.",
   publishFailed: (kind: ContentKind) => `The ${kind} couldn't be published — try again.`,
+  scheduleFailed: (kind: ContentKind) => `The ${kind} couldn't be scheduled — try again.`,
   moveFailed: (kind: ContentKind) => `The ${kind} couldn't be moved — try again.`,
   illegalMove: (kind: ContentKind, from: string, to: string) => `Can't move a ${from} ${kind} straight to ${to}.`,
   memberSendBack: (kind: ContentKind) => `A member's ${kind} is sent back from its editor, with a reason they'll see.`,
-  cantPublish: (kind: ContentKind, statusLabel: string) => `A ${statusLabel} ${kind} can't be published or scheduled.`,
+  // Events are never scheduled, so their message doesn't offer it.
+  cantPublish: (kind: ContentKind, statusLabel: string) =>
+    kind === "event" ? `A ${statusLabel} event can't be published.` : `A ${statusLabel} ${kind} can't be published or scheduled.`,
   notScheduled: "Events aren't scheduled — publish them instead.",
   alreadyDecided: (kind: ContentKind) => `This ${kind} has already been decided.`,
   reasonRequired: "Say why it's being sent back — the member will see it.",
@@ -70,44 +88,52 @@ type Policy = {
   canPublish: (from: string) => boolean;
   /** A member's story or video can't be dragged from Ready to review to Draft. */
   refuseMemberSendBack: boolean;
-  /** Decline: true → always Sent back (events); false → member's Sent back, desk's back to Draft. */
-  declineAlwaysRejects: boolean;
+  /** The status names this kind's console shows, for refusal messages. */
+  labels: Record<string, string>;
 };
 
 const POLICY: Record<ContentKind, Policy> = {
   story: {
     table: "stories",
-    cols: "id, status, member_id, member_draft, source",
+    cols: "id, status, member_id, member_draft, source, industry_id",
     publishedAt: true,
     updatedAt: false,
     canMove: canMoveStory,
     canPublish: canScheduleStory,
     refuseMemberSendBack: true,
-    declineAlwaysRejects: false,
+    labels: STORY_STATUS_LABELS,
   },
   video: {
     table: "videos",
-    cols: "id, status, member_id, source",
+    cols: "id, status, member_id, source, industry_id",
     publishedAt: true,
     updatedAt: true,
     canMove: canMoveVideo,
     canPublish: canScheduleVideo,
     refuseMemberSendBack: true,
-    declineAlwaysRejects: false,
+    // Videos have the same statuses and the Video Engine names them the same way.
+    labels: STORY_STATUS_LABELS,
   },
   event: {
     table: "events",
-    cols: "id, status, member_id, source",
+    cols: "id, status, member_id, source, industry_id",
     publishedAt: false,
     updatedAt: true,
     canMove: canMoveEvent,
     canPublish: (from) => canMoveEvent(from, "published"),
     refuseMemberSendBack: false,
-    declineAlwaysRejects: true,
+    labels: EVENT_STATUS_LABELS,
   },
 };
 
-type Row = { id: string; status: string; member_id: string | null; member_draft?: boolean | null; source: string | null };
+type Row = {
+  id: string;
+  status: string;
+  member_id: string | null;
+  member_draft?: boolean | null;
+  source: string | null;
+  industry_id?: number | null;
+};
 type WriteResult = { data: { id: string } | null; error: { message: string } | null };
 
 /**
@@ -145,15 +171,28 @@ async function writeFrom(d: LifecycleDeps, kind: ContentKind, id: string, from: 
 /** Map a write outcome to a refusal, or null when it landed. */
 function writeRefusal(outcome: Awaited<ReturnType<typeof writeFrom>>, failed: string): LifecycleResult | null {
   if (outcome === "ok") return null;
-  if (outcome === "changed") return { ok: false, error: LIFECYCLE_MESSAGES.changed };
-  return { ok: false, error: failed };
+  if (outcome === "changed") return { ok: false, code: "changed", error: LIFECYCLE_MESSAGES.changed };
+  return { ok: false, code: "failed", error: failed };
 }
 
 const OK: LifecycleResult = { ok: true };
-const fail = (error: string): LifecycleResult => ({ ok: false, error });
+const refuse = (error: string): LifecycleResult => ({ ok: false, code: "refused", error });
+const notFound = (kind: ContentKind): LifecycleResult => ({ ok: false, code: "not_found", error: LIFECYCLE_MESSAGES.notFound(kind) });
 
-function statusLabel(status: string): string {
-  return (STORY_STATUS_LABELS as Record<string, string>)[status] ?? status;
+function statusLabel(kind: ContentKind, status: string): string {
+  return POLICY[kind].labels[status] ?? status;
+}
+
+/**
+ * The industry to write alongside a publish or schedule (PublishOptions): the
+ * editor's choice when it sent one; otherwise, for a member's untagged item,
+ * the member's own industry; otherwise nothing.
+ */
+async function industryValues(d: LifecycleDeps, row: Row, opts?: PublishOptions): Promise<Record<string, unknown>> {
+  if (opts?.industryId !== undefined) return { industry_id: opts.industryId };
+  if (row.source !== "member" || row.industry_id != null || !row.member_id) return {};
+  const { data } = await d.db.from("members").select("industry_id").eq("id", row.member_id).maybeSingle();
+  return data?.industry_id ? { industry_id: data.industry_id } : {};
 }
 
 function socialTarget(kind: "story" | "video", id: string): SocialTarget {
@@ -178,9 +217,10 @@ async function recordApproval(d: LifecycleDeps, kind: ContentKind, id: string, f
 }
 
 /** Publish from a row already read (publish, and move's route to Live). */
-async function publishRow(d: LifecycleDeps, kind: ContentKind, row: Row, actor: Actor, approvalReason: string | null = null): Promise<LifecycleResult> {
+async function publishRow(d: LifecycleDeps, kind: ContentKind, row: Row, actor: Actor, approvalReason: string | null = null, opts?: PublishOptions): Promise<LifecycleResult> {
   const p = POLICY[kind];
-  const values: Record<string, unknown> = { status: "published" };
+  // The industry rides the same conditional write, so a refused publish tags nothing.
+  const values: Record<string, unknown> = { ...(await industryValues(d, row, opts)), status: "published" };
   if (p.publishedAt) values.published_at = new Date().toISOString();
   const refused = writeRefusal(await writeFrom(d, kind, row.id, row.status, values), LIFECYCLE_MESSAGES.publishFailed(kind));
   if (refused) return refused;
@@ -201,11 +241,11 @@ async function notYetRow(d: LifecycleDeps, kind: ContentKind, row: Row, actor: A
 /* ---------- operations ---------- */
 
 /** Make it Live now (Approve, Publish now, or a drag to Live). Writes an approval record when it leaves Ready to review. */
-export async function publish(d: LifecycleDeps, kind: ContentKind, id: string, actor: Actor): Promise<LifecycleResult> {
+export async function publish(d: LifecycleDeps, kind: ContentKind, id: string, actor: Actor, opts?: PublishOptions): Promise<LifecycleResult> {
   const row = await readRow(d, kind, id);
-  if (!row) return fail(LIFECYCLE_MESSAGES.notFound(kind));
-  if (!POLICY[kind].canPublish(row.status)) return fail(LIFECYCLE_MESSAGES.cantPublish(kind, statusLabel(row.status)));
-  return publishRow(d, kind, row, actor);
+  if (!row) return notFound(kind);
+  if (!POLICY[kind].canPublish(row.status)) return refuse(LIFECYCLE_MESSAGES.cantPublish(kind, statusLabel(kind, row.status)));
+  return publishRow(d, kind, row, actor, null, opts);
 }
 
 /**
@@ -213,36 +253,42 @@ export async function publish(d: LifecycleDeps, kind: ContentKind, id: string, a
  * review. A stale tab approving something another admin already Sent back or
  * published is refused, never published (the same rule as decline).
  */
-export async function approve(d: LifecycleDeps, kind: ContentKind, id: string, actor: Actor, reason?: string): Promise<LifecycleResult> {
+export async function approve(d: LifecycleDeps, kind: ContentKind, id: string, actor: Actor, reason?: string, opts?: PublishOptions): Promise<LifecycleResult> {
   const row = await readRow(d, kind, id);
-  if (!row) return fail(LIFECYCLE_MESSAGES.notFound(kind));
-  if (row.status !== "awaiting_approval") return fail(LIFECYCLE_MESSAGES.alreadyDecided(kind));
-  return publishRow(d, kind, row, actor, reason || null);
+  if (!row) return notFound(kind);
+  if (row.status !== "awaiting_approval") return refuse(LIFECYCLE_MESSAGES.alreadyDecided(kind));
+  return publishRow(d, kind, row, actor, reason || null, opts);
 }
 
 /** Set a story or video to go Live at `at`. Events are never scheduled. */
-export async function schedule(d: LifecycleDeps, kind: "story" | "video", id: string, at: Date, actor: Actor): Promise<LifecycleResult> {
-  if ((kind as ContentKind) === "event") return fail(LIFECYCLE_MESSAGES.notScheduled);
+export async function schedule(d: LifecycleDeps, kind: "story" | "video", id: string, at: Date, actor: Actor, opts?: PublishOptions): Promise<LifecycleResult> {
+  if ((kind as ContentKind) === "event") return refuse(LIFECYCLE_MESSAGES.notScheduled);
   const row = await readRow(d, kind, id);
-  if (!row) return fail(LIFECYCLE_MESSAGES.notFound(kind));
-  if (!POLICY[kind].canPublish(row.status)) return fail(LIFECYCLE_MESSAGES.cantPublish(kind, statusLabel(row.status)));
-  const outcome = await writeFrom(d, kind, id, row.status, { status: "scheduled", scheduled_at: at.toISOString() });
-  const refused = writeRefusal(outcome, LIFECYCLE_MESSAGES.publishFailed(kind));
+  if (!row) return notFound(kind);
+  if (!POLICY[kind].canPublish(row.status)) return refuse(LIFECYCLE_MESSAGES.cantPublish(kind, statusLabel(kind, row.status)));
+  const values = { ...(await industryValues(d, row, opts)), status: "scheduled", scheduled_at: at.toISOString() };
+  const outcome = await writeFrom(d, kind, id, row.status, values);
+  const refused = writeRefusal(outcome, LIFECYCLE_MESSAGES.scheduleFailed(kind));
   if (refused) return refused;
   await recordApproval(d, kind, id, row.status, "approved", null, actor);
   return OK;
 }
 
-/** Decline an item that is Ready to review: a member's is Sent back (reason required, emailed); the desk's own goes back to Draft. */
+/**
+ * Decline an item that is Ready to review: a member's is Sent back (reason
+ * required, emailed); the desk's own goes back to Draft with no email — its
+ * member_id is the company it is about, who didn't write it. Same for all
+ * three kinds.
+ */
 export async function decline(d: LifecycleDeps, kind: ContentKind, id: string, actor: Actor, reason?: string): Promise<LifecycleResult> {
   const row = await readRow(d, kind, id);
-  if (!row) return fail(LIFECYCLE_MESSAGES.notFound(kind));
-  if (row.status !== "awaiting_approval") return fail(LIFECYCLE_MESSAGES.alreadyDecided(kind));
+  if (!row) return notFound(kind);
+  if (row.status !== "awaiting_approval") return refuse(LIFECYCLE_MESSAGES.alreadyDecided(kind));
   const fromMember = row.source === "member";
   const text = reason ?? "";
-  if (fromMember && !text.trim()) return fail(LIFECYCLE_MESSAGES.reasonRequired);
+  if (fromMember && !text.trim()) return refuse(LIFECYCLE_MESSAGES.reasonRequired);
 
-  if (!fromMember && !POLICY[kind].declineAlwaysRejects) return notYetRow(d, kind, row, actor, text || null);
+  if (!fromMember) return notYetRow(d, kind, row, actor, text || null);
 
   const outcome = await writeFrom(d, kind, id, row.status, { status: "rejected", rejected_reason: text });
   const refused = writeRefusal(outcome, LIFECYCLE_MESSAGES.moveFailed(kind));
@@ -258,10 +304,10 @@ export async function decline(d: LifecycleDeps, kind: ContentKind, id: string, a
 export async function move(d: LifecycleDeps, kind: ContentKind, id: string, to: string, actor: Actor): Promise<LifecycleResult> {
   const p = POLICY[kind];
   const row = await readRow(d, kind, id);
-  if (!row) return fail(LIFECYCLE_MESSAGES.notFound(kind));
-  if (!p.canMove(row.status, to)) return fail(LIFECYCLE_MESSAGES.illegalMove(kind, row.status, to));
+  if (!row) return notFound(kind);
+  if (!p.canMove(row.status, to)) return refuse(LIFECYCLE_MESSAGES.illegalMove(kind, row.status, to));
   const sendBack = row.status === "awaiting_approval" && to === "draft";
-  if (sendBack && p.refuseMemberSendBack && row.source === "member") return fail(LIFECYCLE_MESSAGES.memberSendBack(kind));
+  if (sendBack && p.refuseMemberSendBack && row.source === "member") return refuse(LIFECYCLE_MESSAGES.memberSendBack(kind));
 
   if (to === "published") return publishRow(d, kind, row, actor);
   if (sendBack) return notYetRow(d, kind, row, actor, null);
@@ -270,6 +316,8 @@ export async function move(d: LifecycleDeps, kind: ContentKind, id: string, to: 
   const leavingLive = row.status === "published";
   const values: Record<string, unknown> = { status: to };
   if (leavingLive && p.publishedAt) values.published_at = null;
+  // Unscheduled: the old time goes too, so nothing keyed on scheduled_at still sees it as due.
+  if (row.status === "scheduled") values.scheduled_at = null;
   const refused = writeRefusal(await writeFrom(d, kind, id, row.status, values), LIFECYCLE_MESSAGES.moveFailed(kind));
   if (refused) return refused;
   // Taken down before its post went out: drop the post (the job re-checks too).

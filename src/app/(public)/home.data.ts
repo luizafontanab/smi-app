@@ -33,7 +33,7 @@ const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_fee
 export async function loadHome() {
   // Limits are sized so the hero can eat from the top of these lists (up to 3
   // stories and 2 videos) and every section below still fills.
-  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx, homeSections, topEvent] = await Promise.all([
+  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx, homeSections, topEvent, showIndustries] = await Promise.all([
     headlineStory(),
     publishedStories({ limit: 18 }),
     publishedStories({ limit: 8, memberOnly: true }),
@@ -54,8 +54,9 @@ export async function loadHome() {
     // Grid-only: the top card's event — booked, else the pinned backup, else
     // the next upcoming one (Featured Event, HUMAN-TODO 4.4).
     featuredEvent(),
+    // Industry captions on featured members (flag industries_public).
+    isFeatureEnabled("industries_public"),
   ]);
-  const showIndustries = await isFeatureEnabled("industries_public");
 
   const hero = buildHero(headline, stories, videos);
   // A second, much smaller round trip: only ~10% of stories carry an excerpt, so

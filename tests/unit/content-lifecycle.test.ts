@@ -4,6 +4,7 @@ import {
   type ContentKind, type LifecycleDeps,
 } from "@/lib/content-lifecycle";
 import { STORY_STATUS_LABELS } from "@/lib/story-board";
+import { EVENT_STATUS_LABELS } from "@/lib/event-board";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 
 /**
@@ -25,7 +26,7 @@ const spy = (b: Builder, method: string) => b[method] as Spy;
 const called = (b: Builder, method: string) => spy(b, method).mock.calls.length > 0;
 
 type Enqueue = LifecycleDeps["enqueue"];
-type Row = { id: string; status: string; member_id: string | null; source: string; member_draft?: boolean };
+type Row = { id: string; status: string; member_id: string | null; source: string; member_draft?: boolean; industry_id?: number | null };
 
 const TABLE = { story: "stories", video: "videos", event: "events" } as const;
 const KEY = { story: "story_id", video: "video_id", event: "event_id" } as const;
@@ -73,7 +74,7 @@ function contentTable(opts: TableOpts) {
   return { factory, builders };
 }
 
-function setup(o: { stories?: TableOpts; videos?: TableOpts; events?: TableOpts } = {}) {
+function setup(o: { stories?: TableOpts; videos?: TableOpts; events?: TableOpts; memberIndustry?: number | null } = {}) {
   const tables = {
     stories: contentTable(o.stories ?? {}),
     videos: contentTable(o.videos ?? {}),
@@ -87,6 +88,8 @@ function setup(o: { stories?: TableOpts; videos?: TableOpts; events?: TableOpts 
       stories: tables.stories.factory,
       videos: tables.videos.factory,
       events: tables.events.factory,
+      // The member's own industry, read when a member's untagged item is published without the editor's choice.
+      members: () => queryBuilder(dbOk({ industry_id: o.memberIndustry ?? null })),
       approvals: () => keep(approvals, queryBuilder(dbOk(null))),
       jobs: () => keep(jobs, queryBuilder(dbOk(null))),
       settings: () => queryBuilder(dbOk({ value: { delay_minutes: 30 } })),
@@ -163,19 +166,19 @@ describe("approve", () => {
     // never makes a Sent back or draft item Live.
     it.each(["draft", "rejected", "scheduled", "published", "withdrawn"])("refuses an item that is %s as already decided, touching nothing", async (status) => {
       const h = setup(forKind(kind, { row: row(kind, { status, member_id: "m1", source: "member" }) }));
-      expect(await approve(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, error: M.alreadyDecided(kind) });
+      expect(await approve(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, code: "refused", error: M.alreadyDecided(kind) });
       expectUntouched(h);
     });
 
     it("refuses a missing row as not found", async () => {
       const h = setup(forKind(kind, { row: null }));
-      expect(await approve(h.deps, kind, "nope", ADMIN)).toEqual({ ok: false, error: M.notFound(kind) });
+      expect(await approve(h.deps, kind, "nope", ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound(kind) });
       expectUntouched(h);
     });
 
     it("zero rows on the write: changed, and nothing follows", async () => {
       const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval", member_id: "m1" }), write: () => dbOk(null) }));
-      expect(await approve(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, error: M.changed });
+      expect(await approve(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, code: "changed", error: M.changed });
       expectNoSideEffects(h);
     });
   });
@@ -230,13 +233,13 @@ describe("publish", () => {
     it.each(["published", "withdrawn"] as const)("refuses a %s %s and touches nothing", async (status) => {
       const h = setup(forKind(kind, { row: row(kind, { status, member_id: "m1" }) }));
       expect(await publish(h.deps, kind, `${kind[0]}1`, ADMIN))
-        .toEqual({ ok: false, error: M.cantPublish(kind, STORY_STATUS_LABELS[status]) });
+        .toEqual({ ok: false, code: "refused", error: M.cantPublish(kind, STORY_STATUS_LABELS[status]) });
       expectUntouched(h);
     });
 
     it("refuses a missing row as not found", async () => {
       const h = setup(forKind(kind, { row: null }));
-      expect(await publish(h.deps, kind, "nope", ADMIN)).toEqual({ ok: false, error: M.notFound(kind) });
+      expect(await publish(h.deps, kind, "nope", ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound(kind) });
       expectUntouched(h);
     });
 
@@ -245,7 +248,7 @@ describe("publish", () => {
         row: row(kind, { status: "awaiting_approval", member_id: "m1", source: "member" }),
         write: () => dbError("boom"),
       }));
-      expect(await publish(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, error: M.publishFailed(kind) });
+      expect(await publish(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, code: "failed", error: M.publishFailed(kind) });
       expectNoSideEffects(h);
     });
 
@@ -254,14 +257,14 @@ describe("publish", () => {
         row: row(kind, { status: "awaiting_approval", member_id: "m1", source: "member" }),
         write: () => dbOk(null),
       }));
-      expect(await publish(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, error: M.changed });
+      expect(await publish(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, code: "changed", error: M.changed });
       expectNoSideEffects(h);
     });
   });
 
   it("refuses a member's unsubmitted story draft as not found", async () => {
     const h = setup({ stories: { row: row("story", { status: "draft", member_draft: true, member_id: "m1", source: "member" }) } });
-    expect(await publish(h.deps, "story", "s1", ADMIN)).toEqual({ ok: false, error: M.notFound("story") });
+    expect(await publish(h.deps, "story", "s1", ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound("story") });
     expectUntouched(h);
   });
 
@@ -289,28 +292,37 @@ describe("publish", () => {
       expect(h.approvalRows()).toEqual([approval("event", "e1", "approved", null)]);
     });
 
-    it.each(["rejected", "withdrawn"] as const)("refuses a %s event and touches nothing", async (status) => {
-      const h = setup({ events: { row: row("event", { status, member_id: "m1" }) } });
-      expect(await publish(h.deps, "event", "e1", ADMIN))
-        .toEqual({ ok: false, error: M.cantPublish("event", STORY_STATUS_LABELS[status]) });
+    // Named as the events console names them, and without offering to schedule.
+    it.each([["rejected", "A Rejected event can't be published."], ["published", "A Published event can't be published."]] as const)(
+      "refuses a %s event in the events console's words and touches nothing", async (status, message) => {
+        const h = setup({ events: { row: row("event", { status, member_id: "m1" }) } });
+        expect(M.cantPublish("event", EVENT_STATUS_LABELS[status])).toBe(message);
+        expect(await publish(h.deps, "event", "e1", ADMIN)).toEqual({ ok: false, code: "refused", error: message });
+        expectUntouched(h);
+      },
+    );
+
+    it("an unknown event status is named as stored", async () => {
+      const h = setup({ events: { row: row("event", { status: "withdrawn", member_id: "m1" }) } });
+      expect(await publish(h.deps, "event", "e1", ADMIN)).toEqual({ ok: false, code: "refused", error: M.cantPublish("event", "withdrawn") });
       expectUntouched(h);
     });
 
     it("refuses a missing event as not found", async () => {
       const h = setup({ events: { row: null } });
-      expect(await publish(h.deps, "event", "nope", ADMIN)).toEqual({ ok: false, error: M.notFound("event") });
+      expect(await publish(h.deps, "event", "nope", ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound("event") });
       expectUntouched(h);
     });
 
     it("a failed write: publishFailed, no email, no approval", async () => {
       const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1" }), write: () => dbError("boom") } });
-      expect(await publish(h.deps, "event", "e1", ADMIN)).toEqual({ ok: false, error: M.publishFailed("event") });
+      expect(await publish(h.deps, "event", "e1", ADMIN)).toEqual({ ok: false, code: "failed", error: M.publishFailed("event") });
       expectNoSideEffects(h);
     });
 
     it("zero rows: changed, no email, no approval", async () => {
       const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1" }), write: () => dbOk(null) } });
-      expect(await publish(h.deps, "event", "e1", ADMIN)).toEqual({ ok: false, error: M.changed });
+      expect(await publish(h.deps, "event", "e1", ADMIN)).toEqual({ ok: false, code: "changed", error: M.changed });
       expectNoSideEffects(h);
     });
   });
@@ -347,36 +359,33 @@ describe("schedule", () => {
     it.each(["published", "withdrawn"] as const)("refuses a %s item and touches nothing", async (status) => {
       const h = setup(forKind(kind, { row: row(kind, { status }) }));
       expect(await schedule(h.deps, kind, `${kind[0]}1`, at, ADMIN))
-        .toEqual({ ok: false, error: M.cantPublish(kind, STORY_STATUS_LABELS[status]) });
+        .toEqual({ ok: false, code: "refused", error: M.cantPublish(kind, STORY_STATUS_LABELS[status]) });
       expectUntouched(h);
     });
 
     it("refuses a missing row as not found", async () => {
       const h = setup(forKind(kind, { row: null }));
-      expect(await schedule(h.deps, kind, "nope", at, ADMIN)).toEqual({ ok: false, error: M.notFound(kind) });
+      expect(await schedule(h.deps, kind, "nope", at, ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound(kind) });
       expectUntouched(h);
     });
 
-    // Ambiguity: the contract names publishFailed/moveFailed for write errors but
-    // not which one schedule uses — accept either, insist on a refusal with no side effects.
-    it("a failed write: refused, no approval", async () => {
+    // Says "scheduled", not "published": that is the button the operator clicked.
+    it("a failed write: scheduleFailed, no approval", async () => {
       const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval" }), write: () => dbError("boom") }));
-      const r = await schedule(h.deps, kind, `${kind[0]}1`, at, ADMIN);
-      expect(r.ok).toBe(false);
-      expect([M.publishFailed(kind), M.moveFailed(kind)]).toContain(!r.ok && r.error);
+      expect(await schedule(h.deps, kind, `${kind[0]}1`, at, ADMIN)).toEqual({ ok: false, code: "failed", error: M.scheduleFailed(kind) });
       expectNoSideEffects(h);
     });
 
     it("zero rows: changed, no approval", async () => {
       const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval" }), write: () => dbOk(null) }));
-      expect(await schedule(h.deps, kind, `${kind[0]}1`, at, ADMIN)).toEqual({ ok: false, error: M.changed });
+      expect(await schedule(h.deps, kind, `${kind[0]}1`, at, ADMIN)).toEqual({ ok: false, code: "changed", error: M.changed });
       expectNoSideEffects(h);
     });
   });
 
   it("refuses a member's unsubmitted story draft as not found", async () => {
     const h = setup({ stories: { row: row("story", { status: "draft", member_draft: true, source: "member" }) } });
-    expect(await schedule(h.deps, "story", "s1", at, ADMIN)).toEqual({ ok: false, error: M.notFound("story") });
+    expect(await schedule(h.deps, "story", "s1", at, ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound("story") });
     expectUntouched(h);
   });
 
@@ -384,7 +393,7 @@ describe("schedule", () => {
     const h = setup({ events: { row: row("event", { status: "awaiting_approval" }) } });
     // The signature only admits story | video; a direct caller can still pass "event".
     const r = await schedule(h.deps, "event" as "story", "e1", at, ADMIN);
-    expect(r).toEqual({ ok: false, error: M.notScheduled });
+    expect(r).toEqual({ ok: false, code: "refused", error: M.notScheduled });
     expectUntouched(h);
   });
 });
@@ -424,19 +433,19 @@ describe("decline", () => {
 
     it.each([undefined, "", "   \n "])("a member's with no reason (%j) is refused and nothing is written", async (reason) => {
       const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval", member_id: "m1", source: "member" }) }));
-      expect(await decline(h.deps, kind, id, ADMIN, reason)).toEqual({ ok: false, error: M.reasonRequired });
+      expect(await decline(h.deps, kind, id, ADMIN, reason)).toEqual({ ok: false, code: "refused", error: M.reasonRequired });
       expectUntouched(h);
     });
 
     it.each(["draft", "published", "rejected", "scheduled"])("from %s it has already been decided", async (status) => {
       const h = setup(forKind(kind, { row: row(kind, { status, member_id: "m1", source: "member" }) }));
-      expect(await decline(h.deps, kind, id, ADMIN, "Needs a photo")).toEqual({ ok: false, error: M.alreadyDecided(kind) });
+      expect(await decline(h.deps, kind, id, ADMIN, "Needs a photo")).toEqual({ ok: false, code: "refused", error: M.alreadyDecided(kind) });
       expectUntouched(h);
     });
 
     it("a missing row is not found", async () => {
       const h = setup(forKind(kind, { row: null }));
-      expect(await decline(h.deps, kind, "nope", ADMIN, "x")).toEqual({ ok: false, error: M.notFound(kind) });
+      expect(await decline(h.deps, kind, "nope", ADMIN, "x")).toEqual({ ok: false, code: "not_found", error: M.notFound(kind) });
       expectUntouched(h);
     });
 
@@ -457,14 +466,14 @@ describe("decline", () => {
         row: row(kind, { status: "awaiting_approval", member_id: "m1", source: "member" }),
         write: () => dbOk(null),
       }));
-      expect(await decline(h.deps, kind, id, ADMIN, "Needs a photo")).toEqual({ ok: false, error: M.changed });
+      expect(await decline(h.deps, kind, id, ADMIN, "Needs a photo")).toEqual({ ok: false, code: "changed", error: M.changed });
       expectNoSideEffects(h);
     });
   });
 
   it("refuses a member's unsubmitted story draft as not found", async () => {
     const h = setup({ stories: { row: row("story", { status: "draft", member_draft: true, member_id: "m1", source: "member" }) } });
-    expect(await decline(h.deps, "story", "s1", ADMIN, "x")).toEqual({ ok: false, error: M.notFound("story") });
+    expect(await decline(h.deps, "story", "s1", ADMIN, "x")).toEqual({ ok: false, code: "not_found", error: M.notFound("story") });
     expectUntouched(h);
   });
 
@@ -480,38 +489,37 @@ describe("decline", () => {
       expect(h.approvalRows()).toEqual([approval("event", "e1", "rejected", "Wrong date")]);
     });
 
-    it("a desk event is rejected too (not sent to draft), and emails its linked member", async () => {
-      const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1", source: "manual" }) } });
+    // As stories and videos: the member it is about didn't write it, so they aren't told.
+    it("a desk event goes back to Draft with no email, even when it's about a member; the typed reason is recorded", async () => {
+      const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1", source: "admin" }) } });
       expect(await decline(h.deps, "event", "e1", ADMIN, "Duplicate")).toEqual({ ok: true });
-      expect(h.writes("events")[0]?.values).toEqual(expect.objectContaining({ status: "rejected", rejected_reason: "Duplicate" }));
-      expect(h.notices()).toEqual([{ member_id: "m1", kind: "event_rejected", event_id: "e1", reason: "Duplicate" }]);
-    });
-
-    it("a desk event with no member sends no email", async () => {
-      const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: null }) } });
-      expect(await decline(h.deps, "event", "e1", ADMIN, "Duplicate")).toEqual({ ok: true });
+      const [w] = h.writes("events");
+      expect(h.writes("events")).toHaveLength(1);
+      expect(w.values).toEqual(expect.objectContaining({ status: "draft" }));
+      expect(w.values).not.toHaveProperty("rejected_reason");
+      expect(w.eq).toContainEqual(["status", "awaiting_approval"]);
       expect(h.enqueue).not.toHaveBeenCalled();
       expect(h.approvalRows()).toEqual([approval("event", "e1", "rejected", "Duplicate")]);
     });
 
     // 3 Nov decision: the empty-reason refusal is for source === "member" only.
-    it("a desk event linked to a member may be rejected with an empty reason", async () => {
-      const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1", source: "manual" }) } });
+    it("a desk event linked to a member may be declined with an empty reason, and nobody is emailed", async () => {
+      const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1", source: "admin" }) } });
       expect(await decline(h.deps, "event", "e1", ADMIN, "")).toEqual({ ok: true });
-      expect(h.writes("events")[0]?.values).toEqual(expect.objectContaining({ status: "rejected" }));
-      expect(h.notices()).toEqual([expect.objectContaining({ member_id: "m1", kind: "event_rejected", event_id: "e1" })]);
+      expect(h.writes("events")[0]?.values).toEqual(expect.objectContaining({ status: "draft" }));
+      expect(h.enqueue).not.toHaveBeenCalled();
       expect(h.approvalRows()).toEqual([approval("event", "e1", "rejected", null)]);
     });
 
     it("a member's event with a blank reason is refused", async () => {
       const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1", source: "member" }) } });
-      expect(await decline(h.deps, "event", "e1", ADMIN, "  ")).toEqual({ ok: false, error: M.reasonRequired });
+      expect(await decline(h.deps, "event", "e1", ADMIN, "  ")).toEqual({ ok: false, code: "refused", error: M.reasonRequired });
       expectUntouched(h);
     });
 
     it("an event no longer Ready to review has already been decided", async () => {
       const h = setup({ events: { row: row("event", { status: "published", member_id: "m1", source: "member" }) } });
-      expect(await decline(h.deps, "event", "e1", ADMIN, "Wrong date")).toEqual({ ok: false, error: M.alreadyDecided("event") });
+      expect(await decline(h.deps, "event", "e1", ADMIN, "Wrong date")).toEqual({ ok: false, code: "refused", error: M.alreadyDecided("event") });
       expectUntouched(h);
     });
 
@@ -525,7 +533,7 @@ describe("decline", () => {
 
     it("zero rows: changed, no email, no approval", async () => {
       const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1", source: "member" }), write: () => dbOk(null) } });
-      expect(await decline(h.deps, "event", "e1", ADMIN, "Wrong date")).toEqual({ ok: false, error: M.changed });
+      expect(await decline(h.deps, "event", "e1", ADMIN, "Wrong date")).toEqual({ ok: false, code: "changed", error: M.changed });
       expectNoSideEffects(h);
     });
   });
@@ -545,19 +553,19 @@ describe("move", () => {
     ["event", "rejected", "published"],
   ] as const)("refuses an illegal %s move %s → %s and touches nothing", async (kind, from, to) => {
     const h = setup(forKind(kind, { row: row(kind, { status: from }) }));
-    expect(await move(h.deps, kind, `${kind[0]}1`, to, ADMIN)).toEqual({ ok: false, error: M.illegalMove(kind, from, to) });
+    expect(await move(h.deps, kind, `${kind[0]}1`, to, ADMIN)).toEqual({ ok: false, code: "refused", error: M.illegalMove(kind, from, to) });
     expectUntouched(h);
   });
 
   it.each(["story", "video", "event"] as const)("a missing %s is not found", async (kind) => {
     const h = setup(forKind(kind, { row: null }));
-    expect(await move(h.deps, kind, "nope", "published", ADMIN)).toEqual({ ok: false, error: M.notFound(kind) });
+    expect(await move(h.deps, kind, "nope", "published", ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound(kind) });
     expectUntouched(h);
   });
 
   it("a member's unsubmitted story draft is not found", async () => {
     const h = setup({ stories: { row: row("story", { status: "draft", member_draft: true, member_id: "m1", source: "member" }) } });
-    expect(await move(h.deps, "story", "s1", "published", ADMIN)).toEqual({ ok: false, error: M.notFound("story") });
+    expect(await move(h.deps, "story", "s1", "published", ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound("story") });
     expectUntouched(h);
   });
 
@@ -567,7 +575,7 @@ describe("move", () => {
 
     it("refuses dragging a member's item from Ready to review back to Draft", async () => {
       const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval", member_id: "m1", source: "member" }) }));
-      expect(await move(h.deps, kind, id, "draft", ADMIN)).toEqual({ ok: false, error: M.memberSendBack(kind) });
+      expect(await move(h.deps, kind, id, "draft", ADMIN)).toEqual({ ok: false, code: "refused", error: M.memberSendBack(kind) });
       expectUntouched(h);
     });
 
@@ -619,6 +627,15 @@ describe("move", () => {
       expect(h.tablesRead()).not.toContain("approvals");
     });
 
+    it("Scheduled back to Draft clears scheduled_at as well, with no side effects", async () => {
+      const h = setup(forKind(kind, { row: row(kind, { status: "scheduled", member_id: "m1" }) }));
+      expect(await move(h.deps, kind, id, "draft", ADMIN)).toEqual({ ok: true });
+      const [w] = h.writes(table);
+      expect(w.values).toEqual(expect.objectContaining({ status: "draft", scheduled_at: null }));
+      expect(w.eq).toContainEqual(["status", "scheduled"]);
+      expectNoSideEffects(h);
+    });
+
     it("Draft to Ready to review is a plain conditional write with no side effects", async () => {
       const h = setup(forKind(kind, { row: row(kind, { status: "draft", member_id: "m1" }) }));
       expect(await move(h.deps, kind, id, "awaiting_approval", ADMIN)).toEqual({ ok: true });
@@ -627,6 +644,7 @@ describe("move", () => {
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "awaiting_approval" }));
       expect(w.values).not.toHaveProperty("published_at");
+      expect(w.values).not.toHaveProperty("scheduled_at");
       expect(w.eq).toContainEqual(["id", id]);
       expect(w.eq).toContainEqual(["status", "draft"]);
       expectNoSideEffects(h);
@@ -634,19 +652,19 @@ describe("move", () => {
 
     it("a failed plain write: moveFailed, nothing else", async () => {
       const h = setup(forKind(kind, { row: row(kind, { status: "draft" }), write: () => dbError("boom") }));
-      expect(await move(h.deps, kind, id, "awaiting_approval", ADMIN)).toEqual({ ok: false, error: M.moveFailed(kind) });
+      expect(await move(h.deps, kind, id, "awaiting_approval", ADMIN)).toEqual({ ok: false, code: "failed", error: M.moveFailed(kind) });
       expectNoSideEffects(h);
     });
 
     it("a failed take-down write: moveFailed, the social post is not cancelled", async () => {
       const h = setup(forKind(kind, { row: row(kind, { status: "published" }), write: () => dbError("boom") }));
-      expect(await move(h.deps, kind, id, "draft", ADMIN)).toEqual({ ok: false, error: M.moveFailed(kind) });
+      expect(await move(h.deps, kind, id, "draft", ADMIN)).toEqual({ ok: false, code: "failed", error: M.moveFailed(kind) });
       expectNoSideEffects(h);
     });
 
     it("a failed desk 'Not yet' write: moveFailed, no approval", async () => {
       const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval" }), write: () => dbError("boom") }));
-      expect(await move(h.deps, kind, id, "draft", ADMIN)).toEqual({ ok: false, error: M.moveFailed(kind) });
+      expect(await move(h.deps, kind, id, "draft", ADMIN)).toEqual({ ok: false, code: "failed", error: M.moveFailed(kind) });
       expectNoSideEffects(h);
     });
 
@@ -656,7 +674,7 @@ describe("move", () => {
         row: row(kind, { status: "awaiting_approval", member_id: "m1", source: "member" }),
         write: () => dbError("boom"),
       }));
-      expect(await move(h.deps, kind, id, "published", ADMIN)).toEqual({ ok: false, error: M.publishFailed(kind) });
+      expect(await move(h.deps, kind, id, "published", ADMIN)).toEqual({ ok: false, code: "failed", error: M.publishFailed(kind) });
       expectNoSideEffects(h);
     });
 
@@ -667,7 +685,7 @@ describe("move", () => {
       ["awaiting_approval", "published"],
     ] as const)("zero rows on %s → %s: changed, no side effects", async (from, to) => {
       const h = setup(forKind(kind, { row: row(kind, { status: from, member_id: "m1" }), write: () => dbOk(null) }));
-      expect(await move(h.deps, kind, id, to, ADMIN)).toEqual({ ok: false, error: M.changed });
+      expect(await move(h.deps, kind, id, to, ADMIN)).toEqual({ ok: false, code: "changed", error: M.changed });
       expectNoSideEffects(h);
     });
   });
@@ -697,14 +715,109 @@ describe("move", () => {
 
     it("a failed Live → Draft write: moveFailed", async () => {
       const h = setup({ events: { row: row("event", { status: "published" }), write: () => dbError("boom") } });
-      expect(await move(h.deps, "event", "e1", "draft", ADMIN)).toEqual({ ok: false, error: M.moveFailed("event") });
+      expect(await move(h.deps, "event", "e1", "draft", ADMIN)).toEqual({ ok: false, code: "failed", error: M.moveFailed("event") });
       expectNoSideEffects(h);
     });
 
     it("zero rows on Ready to review → Live: changed, no email, no approval", async () => {
       const h = setup({ events: { row: row("event", { status: "awaiting_approval", member_id: "m1" }), write: () => dbOk(null) } });
-      expect(await move(h.deps, "event", "e1", "published", ADMIN)).toEqual({ ok: false, error: M.changed });
+      expect(await move(h.deps, "event", "e1", "published", ADMIN)).toEqual({ ok: false, code: "changed", error: M.changed });
       expectNoSideEffects(h);
+    });
+  });
+});
+
+/* ------------------------------------------------------------------ industry on publish */
+
+/**
+ * Members never pick an industry, so their items arrive untagged. The editor's
+ * publishing buttons send its Industry box (PublishOptions.industryId); the
+ * board's don't, and then a member's untagged item takes the member's own.
+ * Either way the industry rides the one conditional status write.
+ */
+describe("industry on publish", () => {
+  const at = new Date("2026-12-01T09:30:00.000Z");
+  const memberItem = (kind: ContentKind, o: Partial<Row> = {}) =>
+    row(kind, { status: "awaiting_approval", member_id: "m1", source: "member", industry_id: null, ...o });
+
+  describe.each(["story", "video", "event"] as const)("%s", (kind) => {
+    const table = TABLE[kind];
+    const id = `${kind[0]}1`;
+
+    it("approve writes the editor's choice in the status write, without reading the member", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind) }), memberIndustry: 4 });
+      expect(await approve(h.deps, kind, id, ADMIN, "", { industryId: 7 })).toEqual({ ok: true });
+      expect(h.writes(table)).toHaveLength(1);
+      expect(h.writes(table)[0]?.values).toEqual(expect.objectContaining({ status: "published", industry_id: 7 }));
+      expect(h.tablesRead()).not.toContain("members");
+    });
+
+    it("approve with the editor's '— none —' writes null, even for a member who has an industry", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind, { industry_id: 3 }) }), memberIndustry: 4 });
+      expect(await approve(h.deps, kind, id, ADMIN, "", { industryId: null })).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).toEqual(expect.objectContaining({ status: "published", industry_id: null }));
+    });
+
+    it("approve without a choice (the board) tags a member's untagged item with the member's industry", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind) }), memberIndustry: 4 });
+      expect(await approve(h.deps, kind, id, ADMIN)).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).toEqual(expect.objectContaining({ status: "published", industry_id: 4 }));
+    });
+
+    it("a drag to Live does the same", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind) }), memberIndustry: 4 });
+      expect(await move(h.deps, kind, id, "published", ADMIN)).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).toEqual(expect.objectContaining({ status: "published", industry_id: 4 }));
+    });
+
+    it("without a choice, an item already tagged keeps its industry", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind, { industry_id: 2 }) }), memberIndustry: 4 });
+      expect(await approve(h.deps, kind, id, ADMIN)).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).not.toHaveProperty("industry_id");
+      expect(h.tablesRead()).not.toContain("members");
+    });
+
+    it("without a choice, the desk's own untagged item is left alone", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind, { source: "admin" }) }), memberIndustry: 4 });
+      expect(await approve(h.deps, kind, id, ADMIN)).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).not.toHaveProperty("industry_id");
+      expect(h.tablesRead()).not.toContain("members");
+    });
+
+    it("without a choice, a member with no industry leaves the item untagged", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind) }), memberIndustry: null });
+      expect(await approve(h.deps, kind, id, ADMIN)).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).not.toHaveProperty("industry_id");
+    });
+
+    it("a refused approve tags nothing", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind, { status: "published" }) }), memberIndustry: 4 });
+      expect(await approve(h.deps, kind, id, ADMIN, "", { industryId: 7 })).toEqual({ ok: false, code: "refused", error: M.alreadyDecided(kind) });
+      expectUntouched(h);
+    });
+  });
+
+  describe.each(["story", "video"] as const)("%s", (kind) => {
+    const table = TABLE[kind];
+    const id = `${kind[0]}1`;
+
+    it("publish now carries the editor's choice", async () => {
+      const h = setup(forKind(kind, { row: memberItem(kind, { status: "rejected" }) }));
+      expect(await publish(h.deps, kind, id, ADMIN, { industryId: 5 })).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).toEqual(expect.objectContaining({ status: "published", industry_id: 5 }));
+    });
+
+    it("schedule carries the editor's choice in the scheduling write", async () => {
+      const h = setup(forKind(kind, { row: memberItem(kind) }));
+      expect(await schedule(h.deps, kind, id, at, ADMIN, { industryId: 5 })).toEqual({ ok: true });
+      expect(h.writes(table)).toHaveLength(1);
+      expect(h.writes(table)[0]?.values).toEqual(expect.objectContaining({ status: "scheduled", industry_id: 5 }));
+    });
+
+    it("schedule without a choice tags a member's untagged item with the member's industry", async () => {
+      const h = setup({ ...forKind(kind, { row: memberItem(kind) }), memberIndustry: 4 });
+      expect(await schedule(h.deps, kind, id, at, ADMIN)).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).toEqual(expect.objectContaining({ status: "scheduled", industry_id: 4 }));
     });
   });
 });

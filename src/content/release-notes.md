@@ -12,14 +12,15 @@
 
 ## 2026-11-03 — Clearer messages when publishing, scheduling or sending back
 - "Publish now" and "Schedule" are refused, with a message, on a story or video that is already Live or Withdrawn. The editor doesn't offer them there, so you'd only see this from a page left open from earlier.
-- If a publish fails, you now see a message saying so. Before, nothing happened and nothing told you. No social post or member emails go out for a publish that failed.
-- Sending back a member's story, video or event now needs a reason, because the member reads it. An event you made yourself can still be sent back without one.
+- If a publish or a schedule fails, you now see a message saying which one failed. Before, nothing happened and nothing told you. No social post or member emails go out for a publish that failed.
+- Sending back a member's story, video or event now needs a reason, because the member reads it. "Not yet" on an event you made yourself puts it back in Draft with no email, the same as your own stories and videos.
 - If two people publish the same item at the same moment, or you publish it just as its scheduled time comes, the member gets one set of emails, not two. Whoever was second sees "This item changed while you were looking at it".
-- Approving or sending back an item someone else has already dealt with now shows a message, instead of doing nothing.
+- Approving or sending back an item someone else has already dealt with now shows a message, instead of doing nothing. If it was deleted in the meantime, the message shows on the Story Engine, Video Engine or Events page.
+- Moving a scheduled story or video back to Draft also clears its publish time.
 
 ## 2026-11-02 — Industries are yours alone, with a switch for the public site
-- Members no longer see or choose an industry. The Industry field is gone from their story, video and event forms and from their company page. A member saving their page never changes the industries you set.
-- New member stories, videos and events arrive without an industry. Pick one in the story, video or event editor when you approve it. The editor suggests the member's own industry.
+- Members no longer see or choose an industry. The Industry field is gone from their story, video and event forms and from their company page. A member saving their page never changes the industries you set, and nor does approving a page edit they sent in before this change.
+- New member stories, videos and events arrive without an industry. When you approve one in its editor, it is saved with the industry the editor shows, which starts as the member's own; change it before approving if it's wrong. Approving from the board uses the member's own industry.
 - A new switch, "Industries on the public site", is under Console → Features. It starts off.
 - While it is off, visitors don't see industries: the industry strip under the header, the industry pages, the industry filters on News, Videos, Events and the member directory, and the industry under each member's name are all hidden. Old industry links take visitors to News.
 - Turn it on and everything comes back as it was. Your industry tags are kept either way.

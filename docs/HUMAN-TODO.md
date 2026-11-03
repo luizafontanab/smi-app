@@ -368,10 +368,13 @@ through Proof and approval first.
       the `/industry/*` pages (old links go to News), the industry filters on
       News, Videos, Events and the directory, and the industry under member
       names. Members never see industries either way. New member stories,
-      videos and events now arrive **untagged**, so Jas tags them in the console
-      editor when approving; untagged items are missing from industry pages
+      videos and events now arrive **untagged**. Approving one from its editor
+      saves the industry the editor shows (the member's own unless changed);
+      approving from the board fills in the member's own industry. An item whose
+      member has no industry stays untagged, and is missing from industry pages
       once the switch is on. No row is needed in production: a missing row
-      reads as off. *(Working tree, uncommitted.)*
+      reads as off. *(Committed in `f7ede08`, PR #2; approve tagging in PR #2's
+      review fixes.)*
 
 **Done:** 4.4 answered "sellable" (27 Oct): Featured Event is a dated, optionally
 priced placement, one at a time, billed to the event's member, with a pinned

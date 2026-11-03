@@ -76,6 +76,8 @@ export default async function EventsPage(props: PageProps<"/console/events">) {
         <h1 className="text-2xl font-bold text-ink">Events</h1>
         <Link href="/console/events/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New event</Link>
       </div>
+      {/* An editor that sent Jas back here, e.g. an event deleted in another tab. */}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <p className="mt-1 text-sm text-graphite">Nothing publishes without approval.</p>
 
       <FeaturedEventCard

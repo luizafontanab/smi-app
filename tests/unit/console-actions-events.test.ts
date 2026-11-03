@@ -140,13 +140,15 @@ describe("decideEvent", () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it("a desk event linked to a member can still be rejected without a reason", async () => {
+  // As stories and videos: the member it is about didn't write it, so it goes back to Draft and nobody is emailed.
+  it("a desk event linked to a member goes back to Draft without a reason, and the member isn't emailed", async () => {
     const eventsBuilder = queryBuilder(dbOk({ id: "e1", member_id: "m1", status: "awaiting_approval", source: "admin" }));
     db({ events: () => eventsBuilder, approvals: () => queryBuilder(dbOk(null)) });
 
     await decideEvent(form({ id: "e1", decision: "reject" }));
 
-    expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "rejected" }));
+    expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "draft" }));
+    expect(enqueue).not.toHaveBeenCalled();
     expect(revalidatePath).toHaveBeenCalledWith("/console/events");
   });
 
@@ -386,15 +388,15 @@ describe("decideRevision", () => {
     expect(typesBuilder.delete).not.toHaveBeenCalled();
   });
 
-  // A member can be in several industries (20261012000001): the primary rides
-  // as the industry_id column, the set as `industry_ids`.
-  it("approving applies industry_ids, keeps them out of the member row, and keeps the primary in the set", async () => {
+  // Industries are Jas's alone since 2 Nov. A revision submitted before then
+  // still carries the member's pick; approving it after Jas re-tagged them
+  // must not overwrite her tags — neither the primary nor the set.
+  it("approving a revision that carries industries applies the rest and leaves the member's industries alone", async () => {
     const membersBuilder = queryBuilder(dbOk(null));
     const industriesBuilder = queryBuilder(dbOk(null));
     db({
       member_revisions: () => queryBuilder(dbOk({
         id: "r1", member_id: "m1", status: "awaiting_approval",
-        // a tampered or stale payload whose set omits its own primary
         payload: { website: "https://x.example", industry_id: 8, industry_ids: [2, 7] },
       })),
       members: () => membersBuilder,
@@ -405,19 +407,12 @@ describe("decideRevision", () => {
     await decideRevision(form({ id: "r1", decision: "approve" }));
 
     const [payload] = (membersBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(payload).not.toHaveProperty("industry_ids");
-    expect(payload.industry_id).toBe(8);
-    expect(industriesBuilder.delete).toHaveBeenCalled();
-    expect(industriesBuilder.insert).toHaveBeenCalledWith([
-      { member_id: "m1", industry_id: 2 },
-      { member_id: "m1", industry_id: 7 },
-      { member_id: "m1", industry_id: 8 },
-    ]);
+    expect(payload).toEqual({ website: "https://x.example" });
+    expect(industriesBuilder.delete).not.toHaveBeenCalled();
+    expect(industriesBuilder.insert).not.toHaveBeenCalled();
   });
 
-  // Revisions written before members picked several industries carry no
-  // industry_ids — approving one must not wipe the backfilled set.
-  it("approving a revision with no industry_ids leaves the member's industries alone", async () => {
+  it("approving a revision with no industry fields leaves the member's industries alone", async () => {
     const industriesBuilder = queryBuilder(dbOk(null));
     db({
       member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "https://x.example" } })),
@@ -431,20 +426,22 @@ describe("decideRevision", () => {
     expect(industriesBuilder.delete).not.toHaveBeenCalled();
   });
 
-  it("approving an empty industry_ids with no primary clears the member's industries", async () => {
+  it("approving an empty industry_ids with no primary doesn't clear the member's industries", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
     const industriesBuilder = queryBuilder(dbOk(null));
     db({
       member_revisions: () => queryBuilder(dbOk({
         id: "r1", member_id: "m1", status: "awaiting_approval", payload: { industry_id: null, industry_ids: [] },
       })),
-      members: () => queryBuilder(dbOk(null)),
+      members: () => membersBuilder,
       member_industries: () => industriesBuilder,
       approvals: () => queryBuilder(dbOk(null)),
     });
 
     await decideRevision(form({ id: "r1", decision: "approve" }));
 
-    expect(industriesBuilder.delete).toHaveBeenCalled();
+    expect(membersBuilder.update).not.toHaveBeenCalled();
+    expect(industriesBuilder.delete).not.toHaveBeenCalled();
     expect(industriesBuilder.insert).not.toHaveBeenCalled();
   });
 

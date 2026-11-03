@@ -9,7 +9,6 @@ const M = "11111111-1111-1111-1111-111111111111";
 const sets: RevisionSets = {
   services: { all: [{ id: 3, name: "Laser cutting" }, { id: 7, name: "Welding" }], current: [3] },
   membershipTypes: { all: [], current: [] },
-  industries: { all: [{ id: 1, name: "Aerospace" }, { id: 2, name: "Automotive" }], current: [1] },
 };
 const mediaUrl = (p: string | null) => (p ? `https://cdn.test/${p}` : null);
 
@@ -20,15 +19,20 @@ function show(payload: Record<string, unknown>, current: Record<string, unknown>
 
 describe("RevisionChanges", () => {
   it("shows each changed field as now → proposed", () => {
-    show({ website: "https://new.test", industry_id: 2, name: "Acme" }, { website: "https://old.test", industry_id: 1, name: "Acme" });
+    show({ website: "https://new.test", name: "Acme" }, { website: "https://old.test", name: "Acme" });
     const website = screen.getByRole("rowheader", { name: "Website" }).closest("tr")!;
     expect(within(website).getByText("https://old.test")).toBeInTheDocument();
     expect(within(website).getByText("https://new.test")).toBeInTheDocument();
-    const industry = screen.getByRole("rowheader", { name: "Primary industry" }).closest("tr")!;
-    expect(within(industry).getByText("Aerospace")).toBeInTheDocument();
-    expect(within(industry).getByText("Automotive")).toBeInTheDocument();
     // unchanged fields aren't listed
     expect(screen.queryByRole("rowheader", { name: "Company name" })).not.toBeInTheDocument();
+  });
+
+  // Industries are Jas's alone (2 Nov): an old revision's industry fields are
+  // never applied, so they aren't shown as changes or as "not applied" noise.
+  it("never lists a revision's industries", () => {
+    show({ website: "https://new.test", industry_id: 2, industry_ids: [2] }, { website: "https://old.test", industry_id: 1 });
+    expect(screen.queryByRole("rowheader", { name: /industr/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 
   it("shows service changes by name", () => {

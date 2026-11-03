@@ -277,6 +277,15 @@ describe("scheduleStory", () => {
     expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, expect.any(Date));
   });
 
+  it("Approve & schedule saves the editor's Industry box in the scheduling write", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member", industry_id: null }));
+    db({ stories: () => storiesBuilder, approvals: () => queryBuilder(dbOk(null)) });
+
+    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00", industry_id: "5" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
+
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled", industry_id: 5 }));
+  });
+
   it("does not record an approval when scheduling from a status other than awaiting_approval", async () => {
     const storiesBuilder = queryBuilder(dbOk({ member_id: "m1", status: "draft" }));
     const from = db({ stories: () => storiesBuilder });
@@ -400,6 +409,30 @@ describe("decideStory", () => {
       .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.publishFailed("story")));
     expect(enqueue).not.toHaveBeenCalled();
     expect(from).not.toHaveBeenCalledWith("approvals");
+  });
+
+  // Review fix, 3 Nov: member stories arrive untagged, and the editor's Industry
+  // box lives in the Save form. Its Approve buttons now carry the box's value
+  // (MirrorInput), saved in the same write that publishes.
+  it("approving from the editor saves the Industry box with the publish", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member", industry_id: null }));
+    db({ stories: () => storiesBuilder, members: () => queryBuilder(dbOk({ industry_id: 4 })), approvals: () => queryBuilder(dbOk(null)) });
+    await decideStory(form({ id: "s1", decision: "approve", industry_id: "7" }));
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published", industry_id: 7 }));
+  });
+
+  it("approving from the editor with '— none —' saves no industry", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member", industry_id: null }));
+    db({ stories: () => storiesBuilder, members: () => queryBuilder(dbOk({ industry_id: 4 })), approvals: () => queryBuilder(dbOk(null)) });
+    await decideStory(form({ id: "s1", decision: "approve", industry_id: "" }));
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published", industry_id: null }));
+  });
+
+  it("approving from the board (no Industry box) tags a member's untagged story with the member's industry", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member", industry_id: null }));
+    db({ stories: () => storiesBuilder, members: () => queryBuilder(dbOk({ industry_id: 4 })), approvals: () => queryBuilder(dbOk(null)) });
+    await decideStory(form({ id: "s1", decision: "approve" }));
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published", industry_id: 4 }));
   });
 
   // Pinning is a separate, optional step once a story is live (15 Oct) —

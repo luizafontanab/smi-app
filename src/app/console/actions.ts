@@ -25,7 +25,7 @@ import { EMAIL_RE, safeInternalPath, UUID_RE } from "@/lib/validate";
 import { eventLastDay, FEATURED_EVENT_BACKUP_KEY } from "@/lib/featured-event";
 import { isMemberDraft } from "@/lib/story-board";
 import { replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
-import { approve, decline, LIFECYCLE_MESSAGES, move, publish, schedule, type ContentKind, type LifecycleDeps } from "@/lib/content-lifecycle";
+import { approve, decline, move, publish, schedule, type ContentKind, type LifecycleDeps, type LifecycleResult, type PublishOptions } from "@/lib/content-lifecycle";
 import { FEATURED_SLOTS, penniesFromPounds } from "@/lib/pricing";
 import { BANNER_SPOTS_KEY } from "@/lib/banner-spots";
 import { raiseInvoice } from "@/lib/invoicing";
@@ -203,10 +203,19 @@ function lifecycleDeps(): LifecycleDeps {
  * when there is no console editor to land on (not found — which includes a
  * member's unsubmitted story draft). Not exported: "use server".
  */
-function lifecycleErrorPath(kind: ContentKind, id: string, error: string): string {
+function lifecycleErrorPath(kind: ContentKind, id: string, res: Extract<LifecycleResult, { ok: false }>): string {
   const list = `/console/${kind === "story" ? "stories" : `${kind}s`}`;
-  const base = error === LIFECYCLE_MESSAGES.notFound(kind) ? list : `${list}/${id}`;
-  return `${base}?error=${encodeURIComponent(error)}`;
+  const base = res.code === "not_found" ? list : `${list}/${id}`;
+  return `${base}?error=${encodeURIComponent(res.error)}`;
+}
+
+/**
+ * The editor's Industry box, which its publishing forms carry (MirrorInput).
+ * Undefined when the form didn't send one — the board's buttons — so the
+ * lifecycle falls back to the member's own industry. Not exported: "use server".
+ */
+function industryChoice(formData: FormData): PublishOptions | undefined {
+  return formData.has("industry_id") ? { industryId: Number(formData.get("industry_id")) || null } : undefined;
 }
 
 export async function scheduleStory(formData: FormData) {
@@ -223,9 +232,9 @@ export async function scheduleStory(formData: FormData) {
   // an approval. Legality, the social post, the emails and the approval record
   // all live in lib/content-lifecycle.
   const res = now
-    ? await publish(lifecycleDeps(), "story", id, { userId: user.userId })
-    : at ? await schedule(lifecycleDeps(), "story", id, at, { userId: user.userId }) : null;
-  if (res && !res.ok) redirect(lifecycleErrorPath("story", id, res.error));
+    ? await publish(lifecycleDeps(), "story", id, { userId: user.userId }, industryChoice(formData))
+    : at ? await schedule(lifecycleDeps(), "story", id, at, { userId: user.userId }, industryChoice(formData)) : null;
+  if (res && !res.ok) redirect(lifecycleErrorPath("story", id, res));
   revalidatePath("/console/stories");
   // come back to whichever Story Engine view the operator came from (board,
   // calendar or list). Validated, not trusted — this is POST-reachable like every action.
@@ -246,9 +255,9 @@ export async function decideStory(formData: FormData) {
   const reason = String(formData.get("reason") ?? "");
   const actor = { userId: user.userId };
   const res = decision === "approve"
-    ? await approve(lifecycleDeps(), "story", id, actor, reason)
+    ? await approve(lifecycleDeps(), "story", id, actor, reason, industryChoice(formData))
     : await decline(lifecycleDeps(), "story", id, actor, reason);
-  if (!res.ok) redirect(lifecycleErrorPath("story", id, res.error));
+  if (!res.ok) redirect(lifecycleErrorPath("story", id, res));
   revalidatePath("/console");
   revalidatePath("/console/stories");
 }
@@ -371,9 +380,9 @@ export async function scheduleVideo(formData: FormData) {
   }
   // As scheduleStory: the rules and side effects live in lib/content-lifecycle.
   const res = now
-    ? await publish(lifecycleDeps(), "video", id, { userId: user.userId })
-    : at ? await schedule(lifecycleDeps(), "video", id, at, { userId: user.userId }) : null;
-  if (res && !res.ok) redirect(lifecycleErrorPath("video", id, res.error));
+    ? await publish(lifecycleDeps(), "video", id, { userId: user.userId }, industryChoice(formData))
+    : at ? await schedule(lifecycleDeps(), "video", id, at, { userId: user.userId }, industryChoice(formData)) : null;
+  if (res && !res.ok) redirect(lifecycleErrorPath("video", id, res));
   revalidatePath("/console/videos");
   const back = String(formData.get("return_to") ?? "");
   redirect(/^\/console\/videos(\?[\w=&-]*)?$/.test(back) ? back : "/console/videos");
@@ -387,9 +396,9 @@ export async function decideVideo(formData: FormData) {
   const reason = String(formData.get("reason") ?? "");
   const actor = { userId: user.userId };
   const res = decision === "approve"
-    ? await approve(lifecycleDeps(), "video", id, actor, reason)
+    ? await approve(lifecycleDeps(), "video", id, actor, reason, industryChoice(formData))
     : await decline(lifecycleDeps(), "video", id, actor, reason);
-  if (!res.ok) redirect(lifecycleErrorPath("video", id, res.error));
+  if (!res.ok) redirect(lifecycleErrorPath("video", id, res));
   revalidatePath("/console");
   revalidatePath("/console/videos");
 }
@@ -572,7 +581,7 @@ export async function saveEvent(formData: FormData) {
   redirect(`/console/events/${eventId}?saved=1`);
 }
 
-/** As decideStory, except a declined event is always Sent back (with an email if it has a member). */
+/** As decideStory: approve publishes; a member's event is Sent back with the reason, the desk's own goes back to Draft. */
 export async function decideEvent(formData: FormData) {
   const user = await requireConsole();
   const id = String(formData.get("id"));
@@ -580,9 +589,9 @@ export async function decideEvent(formData: FormData) {
   const reason = String(formData.get("reason") ?? "");
   const actor = { userId: user.userId };
   const res = decision === "approve"
-    ? await approve(lifecycleDeps(), "event", id, actor, reason)
+    ? await approve(lifecycleDeps(), "event", id, actor, reason, industryChoice(formData))
     : await decline(lifecycleDeps(), "event", id, actor, reason);
-  if (!res.ok) redirect(lifecycleErrorPath("event", id, res.error));
+  if (!res.ok) redirect(lifecycleErrorPath("event", id, res));
   revalidatePath("/console");
   revalidatePath("/console/events");
 }
@@ -627,11 +636,12 @@ export async function decideRevision(formData: FormData) {
     // Only what the member's own profile form can produce, each value re-checked
     // (member-revision.ts) — the payload is member-written and reachable by a
     // direct PostgREST insert, so applying it wholesale let a member set their
-    // own status, billing or paid_at by having Jas click Approve. Services,
-    // membership types and industries ride it as id lists (they're join tables,
-    // not columns); null means the revision predates that picker, so the
-    // member's existing set is left alone rather than wiped.
-    const { values: payload, serviceIds, membershipTypeIds, industryIds, ignored } = parseRevisionPayload(rev.payload, rev.member_id);
+    // own status, billing or paid_at by having Jas click Approve. Services and
+    // membership types ride it as id lists (they're join tables, not columns);
+    // null means the revision predates that picker, so the member's existing
+    // set is left alone rather than wiped. Industries are Jas's alone: a
+    // revision's industry fields are never applied (member-revision.ts).
+    const { values: payload, serviceIds, membershipTypeIds, ignored } = parseRevisionPayload(rev.payload, rev.member_id);
     if (ignored.length) {
       logError({
         source: "server",
@@ -671,17 +681,6 @@ export async function decideRevision(formData: FormData) {
         await replaceMemberMembershipTypes(db, rev.member_id, membershipTypeIds);
       } catch (e) {
         return memberFail(rev.member_id, e instanceof Error ? e.message : "Could not save membership types.");
-      }
-    }
-    // Same null rule again: a revision from before members picked several
-    // industries leaves their set alone. The form already put the primary in
-    // the set; re-adding it guards a payload that says otherwise.
-    if (industryIds) {
-      const primary = typeof payload.industry_id === "number" ? [payload.industry_id] : [];
-      try {
-        await replaceMemberIndustries(db, rev.member_id, [...industryIds, ...primary]);
-      } catch (e) {
-        return memberFail(rev.member_id, e instanceof Error ? e.message : "Could not save industries.");
       }
     }
     // Same redirect bookkeeping saveMember does — a live member's old URL has

@@ -23,6 +23,14 @@ export const LEGAL_EVENT_MOVES: Record<BoardStatus, readonly BoardStatus[]> = {
   published: ["draft"],
 };
 
+/** What the events console calls each status, including Rejected (off the board). */
+export const EVENT_STATUS_LABELS: Record<BoardStatus | "rejected", string> = {
+  draft: "Draft",
+  awaiting_approval: "Awaiting approval",
+  published: "Published",
+  rejected: "Rejected",
+};
+
 export function isBoardStatus(value: string): value is BoardStatus {
   return (BOARD_STATUSES as readonly string[]).includes(value);
 }

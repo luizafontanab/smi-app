@@ -64,6 +64,8 @@ export default async function VideosPage(props: PageProps<"/console/videos">) {
         <h1 className="text-2xl font-bold text-ink">Video Engine</h1>
         <Link href="/console/videos/new" className="rounded bg-ink px-4 py-2 text-sm text-white">+ New video</Link>
       </div>
+      {/* An editor that sent Jas back here, e.g. a video deleted in another tab. */}
+      {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
       <p className="mt-1 text-sm text-graphite">Nothing publishes without approval.</p>
 
       <div className="mt-4 flex gap-1 border-b text-sm">

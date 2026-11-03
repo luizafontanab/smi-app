@@ -184,7 +184,6 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               sets={{
                 services: { all: svcs ?? [], current: [...memberServiceIds] },
                 membershipTypes: { all: types ?? [], current: [...memberTypeIds] },
-                industries: { all: inds ?? [], current: [...memberIndustryIds] },
               }}
             />
           )}
