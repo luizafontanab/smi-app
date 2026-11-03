@@ -4,10 +4,12 @@ import { notifyConsole } from "./notify-admin";
 import { siteUrl } from "./site-url";
 import { londonAt, londonDayStart } from "./london-time";
 import { excerptFromHtml } from "./sanitize";
-import { composeSocialText, fillStoryPostLinks, queueSocialPush, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
+import { composeSocialText, fillStoryPostLinks, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
 import type { SentPost, SocialPost } from "./adapters/social";
-import { enqueueStoryLive, taggedMembers } from "./story-members";
+import { taggedMembers } from "./story-members";
 import { isMemberLinkable } from "./member-visibility";
+import { publishDue } from "./content-lifecycle";
+import { logError } from "./log";
 
 /**
  * Postgres-backed job queue (TECH-DECISIONS #13).
@@ -341,29 +343,13 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
   const db = serviceDb();
   switch (kind) {
     case "publish_scheduled": {
-      const caps = await readSocialCaps(db);
-      const { data: ready } = await db
-        .from("stories")
-        .select("id, member_id")
-        .eq("status", "scheduled")
-        .lte("scheduled_at", new Date().toISOString());
-      for (const s of ready ?? []) {
-        await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", s.id);
-        await queueSocialPush(db, { story_id: s.id }, enqueue, caps);
-        // every member the story features hears it's live (Jas 13/10 item 12)
-        await enqueueStoryLive(db, s, enqueue);
-      }
-      const { data: readyVideos } = await db
-        .from("videos")
-        .select("id, member_id")
-        .eq("status", "scheduled")
-        .lte("scheduled_at", new Date().toISOString());
-      for (const v of readyVideos ?? []) {
-        await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", v.id);
-        await queueSocialPush(db, { video_id: v.id }, enqueue, caps);
-        if (v.member_id) {
-          await enqueue("notify_member", { member_id: v.member_id, kind: "video_live", video_id: v.id });
-        }
+      // The content lifecycle owns the status write (conditional on "scheduled")
+      // and what it sets off. One bad row is logged and skipped; the rest still
+      // go Live (content-lifecycle Q12). A row someone else moved first is skipped
+      // silently — nothing went wrong.
+      const { failed } = await publishDue({ db, enqueue });
+      for (const f of failed) {
+        logError({ source: "job", area: "job:publish_scheduled", error: f.error, context: { kind: f.kind, id: f.id } });
       }
       break;
     }

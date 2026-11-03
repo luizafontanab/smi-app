@@ -3,9 +3,10 @@ import {
   consoleUploadVideoImage, decideVideo, moveVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
+import { LIFECYCLE_MESSAGES } from "@/lib/content-lifecycle";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
@@ -112,10 +113,10 @@ describe("saveVideo", () => {
 
 describe("scheduleVideo", () => {
   it("publishing now enqueues social push and, when there's a member, a notification", async () => {
-    const videosBuilder = queryBuilder(dbOk({ member_id: "m1" }));
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", member_id: "m1", status: "draft" }));
     db({ videos: () => videosBuilder });
 
-    await expect(scheduleVideo(form({ id: "v1", mode: "now" }))).rejects.toThrow("NEXT_REDIRECT:/console/videos");
+    await expect(scheduleVideo(form({ id: "v1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/videos$/);
 
     expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published" }));
     expect(enqueue).toHaveBeenCalledWith("social_push", { video_id: "v1" }, expect.any(Date));
@@ -131,7 +132,7 @@ describe("scheduleVideo", () => {
     const approvalsBuilder = queryBuilder(dbOk(null));
     db({ videos: () => videosBuilder, approvals: () => approvalsBuilder });
 
-    await expect(scheduleVideo(form({ id: "v1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(scheduleVideo(form({ id: "v1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/videos$/);
 
     expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled" }));
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", decision: "approved", decided_by: "admin1" }));
@@ -142,16 +143,95 @@ describe("scheduleVideo", () => {
     const videosBuilder = queryBuilder(dbOk({ member_id: "m1", status: "draft" }));
     const from = db({ videos: () => videosBuilder });
 
-    await expect(scheduleVideo(form({ id: "v1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(scheduleVideo(form({ id: "v1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/videos$/);
 
+    expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled" }));
     expect(from).not.toHaveBeenCalledWith("approvals");
   });
 });
 
+describe("scheduleVideo — a refusal says why on the editor (Q8, Q12)", () => {
+  const errorAt = (path: string, message: string) => `NEXT_REDIRECT:${path}?error=${encodeURIComponent(message)}`;
+
+  it("Publish now on a Live video is refused on its editor, with nothing written or queued", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", member_id: "m1", status: "published", source: "member" }));
+    const from = db({ videos: () => videosBuilder });
+
+    await expect(scheduleVideo(form({ id: "v1", mode: "now" })))
+      .rejects.toThrow(errorAt("/console/videos/v1", LIFECYCLE_MESSAGES.cantPublish("video", "Live")));
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("approvals");
+  });
+
+  it("scheduling a Withdrawn video is refused on its editor", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", member_id: "m1", status: "withdrawn", source: "member" }));
+    db({ videos: () => videosBuilder });
+
+    await expect(scheduleVideo(form({ id: "v1", scheduled_at: "2026-09-01T10:00" })))
+      .rejects.toThrow(errorAt("/console/videos/v1", LIFECYCLE_MESSAGES.cantPublish("video", "Withdrawn")));
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("a video that isn't there goes back to the list", async () => {
+    db({ videos: () => queryBuilder(dbOk(null)) });
+
+    await expect(scheduleVideo(form({ id: "gone", mode: "now" })))
+      .rejects.toThrow(errorAt("/console/videos", LIFECYCLE_MESSAGES.notFound("video")));
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("a failed publish write says so on the editor, and queues no post or email", async () => {
+    db({ videos: sequence(dbOk({ id: "v1", member_id: "m1", status: "draft", source: "admin" }), dbError("boom")) });
+
+    await expect(scheduleVideo(form({ id: "v1", mode: "now" })))
+      .rejects.toThrow(errorAt("/console/videos/v1", LIFECYCLE_MESSAGES.publishFailed("video")));
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+});
+
 describe("decideVideo", () => {
-  it("ignores a video that isn't awaiting approval", async () => {
+  const errorAt = (path: string, message: string) => `NEXT_REDIRECT:${path}?error=${encodeURIComponent(message)}`;
+
+  // Was a silent no-op; now the editor says why (Q12, Q8).
+  it("approving a video that's already Live is refused on its editor, with no approval recorded", async () => {
     const from = db({ videos: () => queryBuilder(dbOk({ id: "v1", status: "published" })) });
-    await decideVideo(form({ id: "v1", decision: "approve" }));
+    await expect(decideVideo(form({ id: "v1", decision: "approve" })))
+      .rejects.toThrow(errorAt("/console/videos/v1", LIFECYCLE_MESSAGES.alreadyDecided("video")));
+    expect(from).not.toHaveBeenCalledWith("approvals");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("sending back a video that's already been decided is refused on its editor", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "rejected", source: "member", member_id: "m1" }));
+    db({ videos: () => videosBuilder });
+    await expect(decideVideo(form({ id: "v1", decision: "reject", reason: "Again" })))
+      .rejects.toThrow(errorAt("/console/videos/v1", LIFECYCLE_MESSAGES.alreadyDecided("video")));
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("a video that isn't there goes back to the list with the error", async () => {
+    db({ videos: () => queryBuilder(dbOk(null)) });
+    await expect(decideVideo(form({ id: "gone", decision: "reject", reason: "x" })))
+      .rejects.toThrow(errorAt("/console/videos", LIFECYCLE_MESSAGES.notFound("video")));
+  });
+
+  it("sending back a member's video with no reason is refused on its editor (Q10)", async () => {
+    const videosBuilder = queryBuilder(dbOk({ id: "v1", member_id: "m1", status: "awaiting_approval", source: "member" }));
+    const from = db({ videos: () => videosBuilder });
+    await expect(decideVideo(form({ id: "v1", decision: "reject" })))
+      .rejects.toThrow(errorAt("/console/videos/v1", LIFECYCLE_MESSAGES.reasonRequired));
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("approvals");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("a send-back that matched no row is 'changed', with no email or approval (Q11)", async () => {
+    const from = db({ videos: sequence(dbOk({ id: "v1", member_id: "m1", status: "awaiting_approval", source: "member" }), dbOk(null)) });
+    await expect(decideVideo(form({ id: "v1", decision: "reject", reason: "Poor audio" })))
+      .rejects.toThrow(errorAt("/console/videos/v1", LIFECYCLE_MESSAGES.changed));
+    expect(enqueue).not.toHaveBeenCalled();
     expect(from).not.toHaveBeenCalledWith("approvals");
   });
 
@@ -365,11 +445,11 @@ describe("per-video social posts", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-07-01T12:00:00Z"));
     db({
-      videos: () => queryBuilder(dbOk({ member_id: null, status: "draft", social_at: null, social_posted_at: null, published_at: null })),
+      videos: () => queryBuilder(dbOk({ id: "v1", member_id: null, status: "draft", social_at: null, social_posted_at: null, published_at: null })),
       settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
     });
 
-    await expect(scheduleVideo(form({ id: "v1", mode: "now" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(scheduleVideo(form({ id: "v1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/videos$/);
 
     expect(enqueue).toHaveBeenCalledWith("social_push", { video_id: "v1" }, new Date("2026-07-01T12:45:00Z"));
   });

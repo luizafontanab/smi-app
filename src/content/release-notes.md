@@ -10,6 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-03 — Clearer messages when publishing, scheduling or sending back
+- "Publish now" and "Schedule" are refused, with a message, on a story or video that is already Live or Withdrawn. The editor doesn't offer them there, so you'd only see this from a page left open from earlier.
+- If a publish fails, you now see a message saying so. Before, nothing happened and nothing told you. No social post or member emails go out for a publish that failed.
+- Sending back a member's story, video or event now needs a reason, because the member reads it. An event you made yourself can still be sent back without one.
+- If two people publish the same item at the same moment, or you publish it just as its scheduled time comes, the member gets one set of emails, not two. Whoever was second sees "This item changed while you were looking at it".
+- Approving or sending back an item someone else has already dealt with now shows a message, instead of doing nothing.
+
 ## 2026-11-02 — Industries are yours alone, with a switch for the public site
 - Members no longer see or choose an industry. The Industry field is gone from their story, video and event forms and from their company page. A member saving their page never changes the industries you set.
 - New member stories, videos and events arrive without an industry. Pick one in the story, video or event editor when you approve it. The editor suggests the member's own industry.

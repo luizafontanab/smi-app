@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, type Mock } from "vitest";
 import {
-  LIFECYCLE_MESSAGES as M, decline, move, publish, publishDue, schedule,
+  LIFECYCLE_MESSAGES as M, approve, decline, move, publish, publishDue, schedule,
   type ContentKind, type LifecycleDeps,
 } from "@/lib/content-lifecycle";
 import { STORY_STATUS_LABELS } from "@/lib/story-board";
@@ -136,6 +136,49 @@ function expectNoSideEffects(h: Harness) {
 
 const approval = (kind: ContentKind, id: string, decision: "approved" | "rejected", reason: string | null) => ({
   kind, subject_id: id, decision, reason, decided_by: ADMIN.userId,
+});
+
+/* ------------------------------------------------------------------ approve */
+
+describe("approve", () => {
+  describe.each(["story", "video", "event"] as const)("%s", (kind) => {
+    const table = TABLE[kind];
+
+    it("publishes an item that is Ready to review, emails its member, and records the approval with any reason typed", async () => {
+      const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval", member_id: "m1", source: "member" }) }));
+      expect(await approve(h.deps, kind, `${kind[0]}1`, ADMIN, "Lovely")).toEqual({ ok: true });
+      expect(h.writes(table)[0]?.values).toEqual(expect.objectContaining({ status: "published" }));
+      expect(h.writes(table)[0]?.eq).toContainEqual(["status", "awaiting_approval"]);
+      expect(h.notices()).toContainEqual({ member_id: "m1", kind: LIVE[kind], [KEY[kind]]: `${kind[0]}1` });
+      expect(h.approvalRows()).toEqual([approval(kind, `${kind[0]}1`, "approved", "Lovely")]);
+    });
+
+    it("records a blank reason as null", async () => {
+      const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval" }) }));
+      expect(await approve(h.deps, kind, `${kind[0]}1`, ADMIN, "")).toEqual({ ok: true });
+      expect(h.approvalRows()).toEqual([approval(kind, `${kind[0]}1`, "approved", null)]);
+    });
+
+    // A stale tab: someone else already decided it. Unlike publish, approve
+    // never makes a Sent back or draft item Live.
+    it.each(["draft", "rejected", "scheduled", "published", "withdrawn"])("refuses an item that is %s as already decided, touching nothing", async (status) => {
+      const h = setup(forKind(kind, { row: row(kind, { status, member_id: "m1", source: "member" }) }));
+      expect(await approve(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, error: M.alreadyDecided(kind) });
+      expectUntouched(h);
+    });
+
+    it("refuses a missing row as not found", async () => {
+      const h = setup(forKind(kind, { row: null }));
+      expect(await approve(h.deps, kind, "nope", ADMIN)).toEqual({ ok: false, error: M.notFound(kind) });
+      expectUntouched(h);
+    });
+
+    it("zero rows on the write: changed, and nothing follows", async () => {
+      const h = setup(forKind(kind, { row: row(kind, { status: "awaiting_approval", member_id: "m1" }), write: () => dbOk(null) }));
+      expect(await approve(h.deps, kind, `${kind[0]}1`, ADMIN)).toEqual({ ok: false, error: M.changed });
+      expectNoSideEffects(h);
+    });
+  });
 });
 
 /* ------------------------------------------------------------------ publish */

@@ -50,6 +50,8 @@ const { storyCrawlerOn, runSourceWatch, syncBiginSources } = vi.hoisted(() => ({
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: storyCrawlerOn }));
 vi.mock("@/lib/sources/check", () => ({ runSourceWatch }));
 vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
 
 afterEach(() => {
   resetDbServerMocks();
@@ -63,6 +65,7 @@ afterEach(() => {
   syncContacts.mockReset().mockResolvedValue({ pushed: 3, failed: 0 });
   sendIssue.mockReset().mockResolvedValue({ ok: true, recipients: 10 });
   newsletterIsLive.mockReset().mockReturnValue(true);
+  logError.mockReset();
 });
 
 function job(kind: JobKind, overrides: Partial<{
@@ -513,8 +516,8 @@ describe("runJob kinds", () => {
     const j = job("publish_scheduled");
     const jobsTail = queryBuilder(dbOk(null));
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
-      // ready list → publish update → queueSocialPush's read of the row
-      stories: sequence<unknown>(dbOk([{ id: "s1", member_id: null }]), dbOk(null), dbOk({ social_at: at, social_posted_at: null, published_at: new Date().toISOString() })),
+      // ready list → publish update (the conditional write returns the row it changed) → queueSocialPush's read of the row
+      stories: sequence<unknown>(dbOk([{ id: "s1", member_id: null }]), dbOk({ id: "s1" }), dbOk({ social_at: at, social_posted_at: null, published_at: new Date().toISOString() })),
       videos: () => queryBuilder(dbOk([])),
       settings: () => queryBuilder(dbOk({ value: { delay_minutes: 30 } })),
     });
@@ -523,6 +526,58 @@ describe("runJob kinds", () => {
 
     const push = callsOf(jobsTail.insert).map(([row]) => row as { kind: string; due_at: string }).find((r) => r.kind === "social_push");
     expect(push?.due_at).toBe(at);
+  });
+
+  it("publish_scheduled — a row whose write fails is logged, and the next row is still published", async () => {
+    const j = job("publish_scheduled");
+    const jobsTail = queryBuilder(dbOk(null));
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
+      // ready list → s1's write fails → s2's write lands → queueSocialPush's read of s2
+      stories: sequence<unknown>(
+        dbOk([{ id: "s1", member_id: "m1" }, { id: "s2", member_id: "m2" }]),
+        dbError("deadlock detected"),
+        dbOk({ id: "s2" }),
+        dbOk({ social_at: null, social_posted_at: null, published_at: new Date().toISOString() }),
+      ),
+      videos: () => queryBuilder(dbOk([])),
+      story_members: () => queryBuilder(dbOk([])),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 30 } })),
+    });
+
+    await runJobById(j.id);
+
+    expect(logError).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({
+      source: "job",
+      area: "job:publish_scheduled",
+      error: "deadlock detected",
+      context: { kind: "story", id: "s1" },
+    }));
+    const rows = callsOf(jobsTail.insert).map(([row]) => row as { kind: string; payload: Record<string, unknown> });
+    expect(rows.filter((r) => r.kind === "social_push").map((r) => r.payload)).toEqual([{ story_id: "s2" }]);
+    expect(rows.filter((r) => r.kind === "notify_member").map((r) => r.payload.member_id)).toEqual(["m2"]);
+    // the job itself still completes — one bad row doesn't fail the sweep
+    expect(callsOf(jobsTail.update)).toContainEqual([expect.objectContaining({ status: "done" })]);
+  });
+
+  it("publish_scheduled — a row someone else already moved is skipped: no post, no email, no log", async () => {
+    const j = job("publish_scheduled");
+    const jobsTail = queryBuilder(dbOk(null));
+    const stories = sequence<unknown>(dbOk([{ id: "s1", member_id: "m1" }]), dbOk(null)); // the write matched no row
+    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
+      stories,
+      videos: () => queryBuilder(dbOk([])),
+      story_members: () => queryBuilder(dbOk([{ member: { id: "m1", slug: "a", name: "A", logo_path: null, social: {}, status: "active", archived_at: null } }])),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 30 } })),
+    });
+
+    await runJobById(j.id);
+
+    const kinds = callsOf(jobsTail.insert).map(([row]) => (row as { kind: string }).kind);
+    expect(kinds).not.toContain("social_push");
+    expect(kinds).not.toContain("notify_member");
+    expect(send).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
   });
 
   // 21 Oct: the story's post-link fields are filled from Buffer, not pasted.

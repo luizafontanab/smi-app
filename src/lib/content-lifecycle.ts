@@ -178,7 +178,7 @@ async function recordApproval(d: LifecycleDeps, kind: ContentKind, id: string, f
 }
 
 /** Publish from a row already read (publish, and move's route to Live). */
-async function publishRow(d: LifecycleDeps, kind: ContentKind, row: Row, actor: Actor): Promise<LifecycleResult> {
+async function publishRow(d: LifecycleDeps, kind: ContentKind, row: Row, actor: Actor, approvalReason: string | null = null): Promise<LifecycleResult> {
   const p = POLICY[kind];
   const values: Record<string, unknown> = { status: "published" };
   if (p.publishedAt) values.published_at = new Date().toISOString();
@@ -186,7 +186,7 @@ async function publishRow(d: LifecycleDeps, kind: ContentKind, row: Row, actor: 
   if (refused) return refused;
   if (kind !== "event") await queueSocialPush(d.db, socialTarget(kind, row.id), d.enqueue);
   await notifyLive(d, kind, row);
-  await recordApproval(d, kind, row.id, row.status, "approved", null, actor);
+  await recordApproval(d, kind, row.id, row.status, "approved", approvalReason, actor);
   return OK;
 }
 
@@ -206,6 +206,18 @@ export async function publish(d: LifecycleDeps, kind: ContentKind, id: string, a
   if (!row) return fail(LIFECYCLE_MESSAGES.notFound(kind));
   if (!POLICY[kind].canPublish(row.status)) return fail(LIFECYCLE_MESSAGES.cantPublish(kind, statusLabel(row.status)));
   return publishRow(d, kind, row, actor);
+}
+
+/**
+ * The editor's Approve: publish, but only an item that is still Ready to
+ * review. A stale tab approving something another admin already Sent back or
+ * published is refused, never published (the same rule as decline).
+ */
+export async function approve(d: LifecycleDeps, kind: ContentKind, id: string, actor: Actor, reason?: string): Promise<LifecycleResult> {
+  const row = await readRow(d, kind, id);
+  if (!row) return fail(LIFECYCLE_MESSAGES.notFound(kind));
+  if (row.status !== "awaiting_approval") return fail(LIFECYCLE_MESSAGES.alreadyDecided(kind));
+  return publishRow(d, kind, row, actor, reason || null);
 }
 
 /** Set a story or video to go Live at `at`. Events are never scheduled. */
