@@ -42,3 +42,10 @@ export function isBoardStatus(value: string): value is BoardStatus {
 export function canMoveVideo(from: string, to: string): to is BoardStatus {
   return isBoardStatus(from) && isBoardStatus(to) && LEGAL_VIDEO_MOVES[from].includes(to);
 }
+
+/** Where Schedule and "Publish now" may start from, as story-board's SCHEDULABLE_FROM: never Live or Withdrawn. */
+export const SCHEDULABLE_FROM = ["draft", "awaiting_approval", "rejected", "scheduled"] as const;
+
+export function canScheduleVideo(from: string): boolean {
+  return (SCHEDULABLE_FROM as readonly string[]).includes(from);
+}
