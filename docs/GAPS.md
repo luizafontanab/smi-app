@@ -129,7 +129,7 @@ Per [`PHASE-1-TECHNICAL.md §04`](../../proposal/PHASE-1-TECHNICAL.md), these ar
 These are not engineering gaps either, so they are tracked elsewhere:
 
 - **The WordPress agency's liquidation and hosting takeover** (USE-CASES gap 26) is external and time-sensitive. → HUMAN-TODO §19.2.
-- **Industries** became their own table, directly linked from stories, videos and events, on 10 Sep (migration `20260909000002`). On 12 Oct Jas's ten replaced ours and a member can be in several, with one primary (`20261012000001`, `member_industries`). Every assignment is backfilled from his mapping of Services and news topics (`scripts/lib/industry-map.ts`, `pnpm industries:backfill`); a story's industry is a snapshot, not a join. Production steps: HUMAN-TODO §26; open questions: ask-jas § Industries. *(Committed in `4f14b9b`.)*
+- **Industries** became their own table, directly linked from stories, videos and events, on 10 Sep (migration `20260909000002`). On 12 Oct Jas's ten replaced ours and a member can be in several, with one primary (`20261012000001`, `member_industries`). Every assignment is backfilled from his mapping of Services and news topics (`scripts/lib/industry-map.ts`, `pnpm industries:backfill`); a story's industry is a snapshot, not a join. Production steps: HUMAN-TODO §26; open questions: ask-jas § Industries. *(Committed in `4f14b9b`.)* **2 Nov:** industries are now Jas's alone. Members never see or set one: the dashboard forms have no field, and their saves ignore any posted (new member content lands untagged). The public site shows them only behind the `industries_public` flag, which is off by default; `/industry/*` redirects to /news while off. See HUMAN-TODO 4.12. *(Working tree, uncommitted.)*
 
 ## What is solid — do not re-litigate
 

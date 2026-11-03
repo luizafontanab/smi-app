@@ -15,7 +15,8 @@ export type CompanyPageMember = {
   name: string;
   slug: string;
   status: string;
-  industry_id: number | null;
+  /** Console only — the member's own page never reads or shows it. */
+  industry_id?: number | null;
   description: string | null;
   address: string | null;
   phone: string | null;
@@ -42,9 +43,11 @@ export type Taxonomy = { id: number; name: string };
  * social inputs posted different field names, only the console could clear a
  * logo, and only the member page could set Services.
  *
- * `mode` gates exactly one thing, and nothing cosmetic: the slug confirmation
- * — the console's operator ticks it deliberately; a member's rename is
- * approval-gated anyway, so Jas is the confirmation.
+ * `mode` gates two things, neither cosmetic:
+ *  - the slug confirmation — the console's operator ticks it deliberately; a
+ *    member's rename is approval-gated anyway, so Jas is the confirmation;
+ *  - industries — Jas's alone. Members never see or set them, and their save
+ *    (ownCompanyPageValuesFromForm) ignores any industry field posted.
  *
  * Membership types used to be a second gate (read-only for members, decided
  * 13 Sep). The 18 Sep call reversed that — members pick their own, up to six
@@ -66,13 +69,14 @@ export function CompanyPageForm({
 }: {
   mode: "console" | "member";
   member: CompanyPageMember;
-  industries: Taxonomy[];
+  /** Console only; ignored in member mode. */
+  industries?: Taxonomy[];
   services: Taxonomy[];
   membershipTypes: Taxonomy[];
   selectedServiceIds: Set<number>;
   selectedMembershipTypeIds: Set<number>;
-  /** member_industries — every industry they are in, the primary included. */
-  selectedIndustryIds: Set<number>;
+  /** member_industries — every industry they are in, the primary included. Console only. */
+  selectedIndustryIds?: Set<number>;
   uploadImage: (formData: FormData) => Promise<UploadResult>;
   logoUrl: string | null;
   heroUrl: string | null;
@@ -80,6 +84,8 @@ export function CompanyPageForm({
   const social = (member.social ?? {}) as Record<string, string>;
   const isDraft = member.status === "draft";
   const isConsole = mode === "console";
+  // Industries are Jas's alone: never rendered on the member's own page.
+  const consoleIndustries = isConsole ? industries : undefined;
 
   return (
     <fieldset className="space-y-4">
@@ -88,38 +94,41 @@ export function CompanyPageForm({
           <label htmlFor="name" className={label}>Company name</label>
           <input id="name" name="name" defaultValue={member.name} required className={field} />
         </div>
-        <div>
-          <label htmlFor="industry_id" className={label}>Primary industry</label>
-          <select id="industry_id" name="industry_id" defaultValue={member.industry_id ?? ""} className={field}>
-            <option value="">— none —</option>
-            {industries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-        </div>
+        {consoleIndustries && (
+          <div>
+            <label htmlFor="industry_id" className={label}>Primary industry</label>
+            <select id="industry_id" name="industry_id" defaultValue={member.industry_id ?? ""} className={field}>
+              <option value="">— none —</option>
+              {consoleIndustries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* A set plus a primary (migration 20261012000001): listed under every
           ticked industry, labelled with the primary. resolveIndustryPick
           reconciles the two on save. */}
-      <fieldset>
-        <legend className={label}>Industries</legend>
-        <p className="text-xs text-graphite">
-          {isConsole ? "They appear" : "You appear"} under every industry ticked here; the primary industry above is
-          the one shown on {isConsole ? "their" : "your"} listing.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
-          {industries.map((i) => (
-            <label key={i.id} className="flex items-center gap-1.5 text-sm">
-              <input type="checkbox" name="industries" value={i.id} defaultChecked={selectedIndustryIds.has(i.id)} />
-              {i.name}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {consoleIndustries && (
+        <fieldset>
+          <legend className={label}>Industries</legend>
+          <p className="text-xs text-graphite">
+            They appear under every industry ticked here; the primary industry above is the one shown on their listing.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+            {consoleIndustries.map((i) => (
+              <label key={i.id} className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" name="industries" value={i.id} defaultChecked={selectedIndustryIds?.has(i.id) ?? false} />
+                {i.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <fieldset>
         <legend className={label}>Membership types</legend>
         <p className="text-xs text-graphite">
-          Shown on the public directory as a filter — distinct from Industries above, and from the Services list.
+          Shown on the public directory as a filter — distinct from {consoleIndustries ? "Industries above, and from " : ""}the Services list.
           Tick every one that applies, up to {MAX_MEMBERSHIP_TYPES}.
         </p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">

@@ -5,8 +5,13 @@ import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const isFeatureEnabled = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
 
-afterEach(() => resetDbServerMocks());
+afterEach(() => {
+  resetDbServerMocks();
+  isFeatureEnabled.mockImplementation(async () => true);
+});
 
 function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
   vi.mocked(publicDb).mockReturnValue(asDb(mockDb({ from: fromByTable(map, () => queryBuilder(dbOk(null))) })));
@@ -42,5 +47,16 @@ describe("sitemap", () => {
     expect(paths.some((u) => u.endsWith("/newsletters/issue-47"))).toBe(true);
     expect(paths.some((u) => u.endsWith("/pages/about"))).toBe(true);
     expect(paths.some((u) => u.endsWith("/industry/laser-cutting"))).toBe(true);
+    expect(isFeatureEnabled).toHaveBeenCalledWith("industries_public");
+  });
+
+  it("leaves out industry pages while industries are hidden from the public", async () => {
+    isFeatureEnabled.mockImplementation(async () => false);
+    db({ industries: () => queryBuilder(dbOk([{ slug: "laser-cutting" }])) });
+
+    const paths = (await sitemap()).map((e) => e.url);
+
+    expect(paths.some((u) => u.includes("/industry/"))).toBe(false);
+    expect(paths.some((u) => u.endsWith("/news"))).toBe(true);
   });
 });

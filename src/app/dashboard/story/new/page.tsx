@@ -10,10 +10,9 @@ export const metadata = { title: "Add a story" };
 export default async function NewMemberStory(props: PageProps<"/dashboard/story/new">) {
   const user = await requireMemberView();
   const sp = await props.searchParams;
-  const [{ data: cats }, { data: member }, { data: inds }] = await Promise.all([
+  const [{ data: cats }, { data: member }] = await Promise.all([
     publicDb().from("categories").select("id, name, slug").order("name"),
-    serviceDb().from("members").select("name, slug, logo_path, industry_id").eq("id", user.memberId).single(),
-    publicDb().from("industries").select("id, name").order("sort_order"),
+    serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single(),
   ]);
   return (
     <div className="mx-auto max-w-2xl">
@@ -29,8 +28,6 @@ export default async function NewMemberStory(props: PageProps<"/dashboard/story/
         uploadImage={memberUploadImage}
         previewBody={previewStoryBody}
         categories={cats ?? []}
-        industries={inds ?? []}
-        defaultIndustryId={member?.industry_id ?? null}
         member={{ name: member?.name ?? "", slug: member?.slug ?? "", logoUrl: mediaUrl(member?.logo_path) }}
       />
     </div>

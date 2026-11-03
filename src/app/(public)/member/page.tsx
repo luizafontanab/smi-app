@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { mediaUrl } from "@/lib/db/server";
 import { narrowOptions } from "@/lib/member-facets";
 import { featuredMembers, industries as industryList, memberDirectory, memberFacets, memberPins, membershipTypes, services as allServices } from "@/lib/queries";
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 12;
 
 const TITLE = "Member Directory";
-const DESCRIPTION = "Find UK sheet metal, fabrication and welding companies — search SMI's member directory by name, industry or location.";
+const DESCRIPTION = "Find UK sheet metal, fabrication and welding companies — search SMI's member directory by name, service or location.";
 
 // openGraph/twitter restated in full: Next merges metadata shallowly, so a
 // page-level openGraph would drop the layout's — and without one, shares of
@@ -40,7 +41,10 @@ export default async function MembersPage(props: PageProps<"/member">) {
   // `?industry=` since 20260909000002 renamed the taxonomy. `?category=` is
   // still read because it is a public URL surface — /industry/[slug] linked to
   // it and external links may exist — but nothing emits it any more.
-  const industrySlugs = [...asArray(sp.industry), ...asArray(sp.category)];
+  // Industries hidden from the public (flag industries_public): no pills or
+  // labels, and an old ?industry= link is ignored rather than filtering invisibly.
+  const showIndustries = await isFeatureEnabled("industries_public");
+  const industrySlugs = showIndustries ? [...asArray(sp.industry), ...asArray(sp.category)] : [];
   const services = asArray(sp.service);
   const membershipTypeSlugs = asArray(sp.type);
   const rawQ = typeof sp.q === "string" ? sp.q : "";
@@ -63,7 +67,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const [dir, pins, inds, serviceList, typeList, facets, featuredPlacements, banners, showPlaceholders, ctx] = await Promise.all([
     isMap ? null : memberDirectory({ ...filters, ...(isList ? { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE } : {}) }),
     isMap ? memberPins(filters) : null,
-    industryList(),
+    showIndustries ? industryList() : [],
     allServices(),
     membershipTypes(),
     // Which options still lead to a member, given the other filters (GAPS A9.1).
@@ -136,7 +140,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
                 )}
                 <div className="min-w-0">
                   <p className="truncate font-bold text-ink">{m.name}</p>
-                  {m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
+                  {showIndustries && m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
                 </div>
               </Link>
             ))}
@@ -182,14 +186,16 @@ export default async function MembersPage(props: PageProps<"/member">) {
       {/* Industry pills, single-select — same pattern and same underlying data
           as /news's industry filter (the `industries` table), plain Links so
           they work with no JS and need no noscript fallback. */}
-      <nav aria-label="Filter by industry" className="mt-3 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
-        <Link href={qs({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${industrySlugs.length === 0 ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
-        {industryOptions.map((c) => (
-          <Link key={c.slug} href={qs({ industry: [c.slug] })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industrySlugs.includes(c.slug) ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
-            {c.name}
-          </Link>
-        ))}
-      </nav>
+      {showIndustries && (
+        <nav aria-label="Filter by industry" className="mt-3 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+          <Link href={qs({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${industrySlugs.length === 0 ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+          {industryOptions.map((c) => (
+            <Link key={c.slug} href={qs({ industry: [c.slug] })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industrySlugs.includes(c.slug) ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+              {c.name}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         {/* aria-live: a soft router.push transition doesn't announce itself */}
@@ -247,11 +253,11 @@ export default async function MembersPage(props: PageProps<"/member">) {
       ) : (
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {members.slice(0, 6).map((m) => <MemberTile key={m.slug} member={m} />)}
+            {members.slice(0, 6).map((m) => <MemberTile key={m.slug} member={m} showIndustry={showIndustries} />)}
           </div>
           {members.length > 6 && (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {members.slice(6).map((m) => <MemberTile key={m.slug} member={m} />)}
+              {members.slice(6).map((m) => <MemberTile key={m.slug} member={m} showIndustry={showIndustries} />)}
             </div>
           )}
           <Pagination page={page} pages={pages} hrefFor={(p) => qs({ page: p })} />

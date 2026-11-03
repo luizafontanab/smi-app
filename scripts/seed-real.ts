@@ -1218,6 +1218,9 @@ async function main() {
     // script runs against production (pnpm seed:prod), and checking ~724 real
     // company sites daily is switched on by a person, from /console/features.
     { key: "feature:story_crawler", value: false },
+    // Industries hidden from the public site, matching the code default; Jas
+    // turns them on from /console/features when ready.
+    { key: "feature:industries_public", value: false },
   ]));
   // No `prospect_marks` here, unlike scripts/seed.ts: those marks point at the
   // LeadGenSource mock's fictional prospects, and this seed builds the real

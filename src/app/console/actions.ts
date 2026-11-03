@@ -2280,6 +2280,7 @@ export async function saveFeatureFlag(formData: FormData) {
   revalidatePath("/dashboard", "layout");
   revalidatePath("/console/features");
   revalidatePath("/console/sources"); // shows whether the story crawler is on
+  revalidatePath("/", "layout"); // industries_public changes the public header and pages
   redirect(`/console/features?saved=${flag}`);
 }
 

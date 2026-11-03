@@ -73,6 +73,29 @@ export function companyPageValuesFromForm(
   existing: MemberFormExisting,
   uploaded: { logo_path?: string | null; hero_path?: string | null } = {},
 ): CompanyPageResult {
+  return parseCompanyPage(formData, existing, uploaded, true) as CompanyPageResult;
+}
+
+/**
+ * The member's own /dashboard/profile save. Same fields minus industries:
+ * members never see or set an industry — only Jas does, in the console. Any
+ * industry fields a crafted form posts are ignored, and `values` carries no
+ * `industry_id`, so a save can't change or clear what Jas set.
+ */
+export function ownCompanyPageValuesFromForm(
+  formData: FormData,
+  existing: MemberFormExisting,
+  uploaded: { logo_path?: string | null; hero_path?: string | null } = {},
+): { error: string } | { values: MemberUpdate } {
+  return parseCompanyPage(formData, existing, uploaded, false);
+}
+
+function parseCompanyPage(
+  formData: FormData,
+  existing: MemberFormExisting,
+  uploaded: { logo_path?: string | null; hero_path?: string | null },
+  withIndustries: boolean,
+): { error: string } | { values: MemberUpdate; industryIds?: number[] } {
   const name = text(formData, "name");
   if (!name) return { error: "Company name is required." };
 
@@ -88,8 +111,10 @@ export function companyPageValuesFromForm(
   const lng = coordinate(formData, "lng", 180);
   if (lng && typeof lng === "object") return lng;
 
-  const industries = resolveIndustryPick(industryIdsFromForm(formData), Number(formData.get("industry_id")) || null);
-  if ("error" in industries) return industries;
+  const industries = withIndustries
+    ? resolveIndustryPick(industryIdsFromForm(formData), Number(formData.get("industry_id")) || null)
+    : null;
+  if (industries && "error" in industries) return industries;
 
   const phone = parsePhone(text(formData, "phone"));
   if (phone && typeof phone === "object") return phone;
@@ -115,7 +140,7 @@ export function companyPageValuesFromForm(
   const values: MemberUpdate = {
     name,
     slug,
-    industry_id: industries.primaryId,
+    ...(industries ? { industry_id: industries.primaryId } : {}),
     description: sanitizeRichText(String(formData.get("description") ?? "")),
     address: nullable(formData, "address"),
     phone,
@@ -129,7 +154,7 @@ export function companyPageValuesFromForm(
     ...(uploaded.hero_path ? { hero_path: uploaded.hero_path } : checked(formData, "remove_hero") ? { hero_path: null } : {}),
   };
 
-  return { values, industryIds: industries.industryIds };
+  return industries ? { values, industryIds: industries.industryIds } : { values };
 }
 
 /**

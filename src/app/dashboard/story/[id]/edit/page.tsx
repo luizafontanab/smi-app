@@ -15,12 +15,11 @@ export default async function EditMemberStory(props: PageProps<"/dashboard/story
   const sp = await props.searchParams;
   const user = await requireMemberView();
   const db = serviceDb();
-  const [{ data: story }, { data: cats }, { data: member }, { data: link }, { data: inds }] = await Promise.all([
-    db.from("stories").select("id, title, excerpt, body, cover_path, cover_focus, status, member_id, member_draft, source, industry_id, updated_at").eq("id", id).single(),
+  const [{ data: story }, { data: cats }, { data: member }, { data: link }] = await Promise.all([
+    db.from("stories").select("id, title, excerpt, body, cover_path, cover_focus, status, member_id, member_draft, source, updated_at").eq("id", id).single(),
     publicDb().from("categories").select("id, name, slug").order("name"),
-    serviceDb().from("members").select("name, slug, logo_path, industry_id").eq("id", user.memberId).single(),
+    serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single(),
     db.from("story_categories").select("category_id").eq("story_id", id).maybeSingle(),
-    publicDb().from("industries").select("id, name").order("sort_order"),
   ]);
   if (!story || !memberCanEditStory(story, user.memberId)) notFound();
   const draft = isMemberDraft(story);
@@ -46,8 +45,6 @@ export default async function EditMemberStory(props: PageProps<"/dashboard/story
         uploadImage={memberUploadImage}
         previewBody={previewStoryBody}
         categories={cats ?? []}
-        industries={inds ?? []}
-        defaultIndustryId={member?.industry_id ?? null}
         member={{ name: member?.name ?? "", slug: member?.slug ?? "", logoUrl: mediaUrl(member?.logo_path) }}
         initial={{
           id: story.id,
@@ -58,7 +55,6 @@ export default async function EditMemberStory(props: PageProps<"/dashboard/story
           body: renderableHtml(story.body),
           coverUrl: mediaUrl(story.cover_path),
           categoryId: link?.category_id ?? null,
-          industryId: story.industry_id,
         }}
       />
     </div>

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Update your page" };
 
 const SELECT =
-  "name, slug, status, industry_id, description, address, phone, website, video_url, social, contact_email, lat, lng, logo_path, hero_path";
+  "name, slug, status, description, address, phone, website, video_url, social, contact_email, lat, lng, logo_path, hero_path";
 
 /**
  * The member editing their own company page.
@@ -23,12 +23,11 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
   const user = await requireMemberView();
   const sp = await props.searchParams;
   const db = serviceDb();
-  const [{ data: m }, { data: pendingRev }, { data: inds }, { data: myInds }, { data: svcs }, { data: mySvcs }, { data: types }, { data: myTypes }] =
+  // No industries: they are Jas's alone, set in the console.
+  const [{ data: m }, { data: pendingRev }, { data: svcs }, { data: mySvcs }, { data: types }, { data: myTypes }] =
     await Promise.all([
       db.from("members").select(SELECT).eq("id", user.memberId).single(),
       db.from("member_revisions").select("id").eq("member_id", user.memberId).eq("status", "awaiting_approval").limit(1),
-      db.from("industries").select("id, name").order("sort_order"),
-      db.from("member_industries").select("industry_id").eq("member_id", user.memberId),
       db.from("services").select("id, name").order("name"),
       db.from("member_services").select("service_id").eq("member_id", user.memberId),
       db.from("membership_types").select("id, name").order("sort_order"),
@@ -57,12 +56,10 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
         <CompanyPageForm
           mode="member"
           member={m}
-          industries={inds ?? []}
           services={svcs ?? []}
           membershipTypes={types ?? []}
           selectedServiceIds={new Set((mySvcs ?? []).map((r) => r.service_id))}
           selectedMembershipTypeIds={new Set((myTypes ?? []).map((r) => r.membership_type_id))}
-          selectedIndustryIds={new Set((myInds ?? []).map((r) => r.industry_id))}
           uploadImage={memberUploadImage}
           logoUrl={mediaUrl(m.logo_path)}
           heroUrl={mediaUrl(m.hero_path)}

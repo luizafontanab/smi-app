@@ -14,16 +14,13 @@ import type { UploadResult } from "@/lib/upload-limits";
 import { removeMedia, removeMediaIfUnused, uploadImage } from "@/lib/media";
 import { memberUploads, submittedFile } from "@/lib/staged-upload";
 import { canRenewBooking, renewalDatesProblem } from "@/lib/advert-renewal";
-import { companyPageValuesFromForm } from "@/lib/member-form";
+import { ownCompanyPageValuesFromForm } from "@/lib/member-form";
 import { resolveCoordinates } from "@/lib/member-geocode";
 import {
-  memberIndustriesError,
   membershipTypeIdsFromForm,
   membershipTypesError,
-  replaceMemberIndustries,
   replaceMemberMembershipTypes,
   replaceMemberServices,
-  UNKNOWN_INDUSTRY_ERROR,
 } from "@/lib/member-services";
 import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
 import { companyLinksFor, withCompanyLines } from "@/lib/company-link";
@@ -172,7 +169,8 @@ export async function submitStory(formData: FormData) {
     is_member_news: true,
     member_id: user.memberId,
     submitted_by: user.userId,
-    industry_id: Number(formData.get("industry_id")) || null,
+    // Members never pick an industry; Jas tags it in the console.
+    industry_id: null,
     cover_path: cover,
     ...(formData.get("focus_x")
       ? { cover_focus: { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) } }
@@ -322,7 +320,7 @@ export async function editStory(formData: FormData) {
     body: sanitizeRichText(String(formData.get("body") ?? "")),
     status: asDraft ? "draft" : "awaiting_approval",
     member_draft: asDraft,
-    industry_id: Number(formData.get("industry_id")) || null,
+    // industry_id deliberately absent: it is Jas's to set, so a member edit keeps it
     // cleared so the member is not still shown last time's reason once they act on it
     rejected_reason: null,
     updated_at: new Date().toISOString(),
@@ -390,7 +388,7 @@ export async function submitVideo(formData: FormData) {
     title,
     url,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
-    industry_id: Number(formData.get("industry_id")) || null,
+    industry_id: null, // members never pick one; Jas tags it in the console
     status: "awaiting_approval",
     source: "member",
     member_id: user.memberId,
@@ -433,7 +431,7 @@ export async function editVideo(formData: FormData) {
     title,
     url,
     description: sanitizeRichText(String(formData.get("description") ?? "")),
-    industry_id: Number(formData.get("industry_id")) || null,
+    // industry_id deliberately absent: it is Jas's to set, so a member edit keeps it
     status: "awaiting_approval",
     rejected_reason: null,
     updated_at: new Date().toISOString(),
@@ -481,7 +479,7 @@ export async function submitEvent(formData: FormData) {
     link: String(formData.get("link") ?? "") || null,
     member_id: user.memberId,
     type: eventType,
-    industry_id: Number(formData.get("industry_id")) || null,
+    industry_id: null, // members never pick one; Jas tags it in the console
     status: "awaiting_approval",
     source: "member",
     submitted_by: user.userId,
@@ -543,7 +541,7 @@ export async function editEvent(formData: FormData) {
     ends_on: String(formData.get("ends_on") ?? "") || null,
     link: String(formData.get("link") ?? "") || null,
     type: eventType,
-    industry_id: Number(formData.get("industry_id")) || null,
+    // industry_id deliberately absent: it is Jas's to set, so a member edit keeps it
     status: "awaiting_approval",
     rejected_reason: null,
     updated_at: new Date().toISOString(),
@@ -590,26 +588,12 @@ export async function submitProfileEdit(formData: FormData) {
     return;
   }
 
-  const parsed = companyPageValuesFromForm(formData, member, uploaded);
+  // Industries are Jas's alone: the member's form has none, and this parser
+  // ignores any a crafted post sends, so neither the primary (industry_id) nor
+  // the member_industries set is touched here or carried on a revision.
+  const parsed = ownCompanyPageValuesFromForm(formData, member, uploaded);
   if ("error" in parsed) return back(parsed.error);
   const values = { ...parsed.values };
-  // Industries: the set, reconciled with the primary in values.industry_id.
-  // Like services, it travels as `industry_ids` on a live member's revision.
-  const industryIds = parsed.industryIds;
-  // Capped — but a set they already hold (the backfill can give four) may
-  // stay, so past the cap their current set is read before refusing.
-  if (memberIndustriesError(industryIds)) {
-    const { data: held } = await db.from("member_industries").select("industry_id").eq("member_id", user.memberId);
-    const tooManyIndustries = memberIndustriesError(industryIds, (held ?? []).map((r) => r.industry_id));
-    if (tooManyIndustries) return back(tooManyIndustries);
-  }
-  // An id that isn't an industry used to reach the foreign key and throw the
-  // member onto the error page — or, on a live member, sit in a revision until
-  // Jas's approval threw instead.
-  if (industryIds.length) {
-    const { data: known } = await db.from("industries").select("id").in("id", industryIds);
-    if ((known ?? []).length !== new Set(industryIds).size) return back(UNKNOWN_INDUSTRY_ERROR);
-  }
 
   // The member owns their own URL now that the form is shared, so the same
   // guards the console applies have to apply here: a clash would violate the
@@ -649,7 +633,6 @@ export async function submitProfileEdit(formData: FormData) {
     // so its services apply straight away rather than through a revision.
     await replaceMemberServices(db, user.memberId, serviceIds);
     await replaceMemberMembershipTypes(db, user.memberId, membershipTypeIds);
-    await replaceMemberIndustries(db, user.memberId, industryIds);
     if (firstSubmit) {
       const { notifyAdminFunnel } = await import("@/lib/notify-admin");
       await notifyAdminFunnel({
@@ -668,7 +651,7 @@ export async function submitProfileEdit(formData: FormData) {
 
   await db.from("member_revisions").insert({
     member_id: user.memberId,
-    payload: { ...values, service_ids: serviceIds, membership_type_ids: membershipTypeIds, industry_ids: industryIds } as import("@/lib/db/types").Json,
+    payload: { ...values, service_ids: serviceIds, membership_type_ids: membershipTypeIds } as import("@/lib/db/types").Json,
   });
   // Like every other member submission, it lands in the console as a
   // notification linking to where it's approved (GAPS A1.12).

@@ -2,44 +2,53 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { VideoForm } from "@/app/dashboard/video/new/VideoForm";
+import { EventForm } from "@/app/dashboard/event/new/EventForm";
+import { StoryForm } from "@/app/dashboard/story/new/StoryForm";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const noop = async () => {};
-const props = {
-  action: noop,
-  uploadImage: async () => ({ error: "not in this test" }),
-  industries: [{ id: 1, name: "Fabrication" }, { id: 2, name: "Laser cutting" }],
-  member: { name: "Acme Metal", slug: "acme", logoUrl: null },
-  defaultIndustryId: 2,
-};
-const edit = (industryId: number | null) => ({
-  id: "v1", title: "Bending 101", url: "https://www.youtube.com/watch?v=abc123",
-  description: "", thumbnailUrl: null, industryId,
-});
-const industrySelect = () => screen.getByLabelText("Industry") as HTMLSelectElement;
+const uploadImage = async () => ({ error: "not in this test" });
+const member = { name: "Acme Metal", slug: "acme", logoUrl: null };
 
-// The member's industry is a convenience for a first submission, not a rule
-// about the row. Applying it in edit mode too meant a member who deliberately
-// chose "— none —" had it silently replaced every time they resubmitted.
-describe("VideoForm industry default", () => {
-  it("starts a new video on the member's own industry", () => {
-    render(<VideoForm {...props} />);
-    expect(industrySelect().value).toBe("2");
+// Industries are Jas's alone: members never see or pick one, on a new
+// submission or an edit. The console's own editors keep the field.
+describe("member content forms have no industry field", () => {
+  const noIndustry = () => {
+    expect(screen.queryByLabelText(/industry/i)).toBeNull();
+    expect(document.querySelector('[name="industry_id"]')).toBeNull();
+  };
+
+  it("VideoForm, new and edit", () => {
+    const { unmount } = render(<VideoForm action={noop} uploadImage={uploadImage} member={member} />);
+    noIndustry();
+    unmount();
+    render(
+      <VideoForm
+        action={noop}
+        uploadImage={uploadImage}
+        member={member}
+        initial={{ id: "v1", title: "Bending 101", url: "https://www.youtube.com/watch?v=abc123", description: "", thumbnailUrl: null }}
+      />,
+    );
+    noIndustry();
   });
 
-  it("keeps a deliberate none on edit instead of falling back to the member's", () => {
-    render(<VideoForm {...props} initial={edit(null)} />);
-    expect(industrySelect().value).toBe("");
+  it("EventForm", () => {
+    render(<EventForm action={noop} uploadImage={uploadImage} member={{ name: "Acme Metal", slug: "acme" }} />);
+    noIndustry();
   });
 
-  it("keeps the saved industry on edit", () => {
-    render(<VideoForm {...props} initial={edit(1)} />);
-    expect(industrySelect().value).toBe("1");
-  });
-
-  it("falls back to none on a new video when the member has no industry either", () => {
-    render(<VideoForm {...props} defaultIndustryId={null} />);
-    expect(industrySelect().value).toBe("");
+  it("StoryForm", () => {
+    render(
+      <StoryForm
+        action={noop}
+        uploadImage={uploadImage}
+        previewBody={async (html) => html}
+        categories={[{ id: 1, name: "Machinery" }]}
+        member={member}
+      />,
+    );
+    noIndustry();
   });
 });

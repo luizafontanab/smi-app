@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { companyPageValuesFromForm, memberValuesFromForm, WEBSITE_INVALID, type MemberFormExisting } from "@/lib/member-form";
+import { companyPageValuesFromForm, memberValuesFromForm, ownCompanyPageValuesFromForm, WEBSITE_INVALID, type MemberFormExisting } from "@/lib/member-form";
 
 const existing: MemberFormExisting = {
   slug: "acme-fabrication",
@@ -227,6 +227,19 @@ describe("companyPageValuesFromForm", () => {
 
     it("allows none at all", () => {
       expect(pick(withIndustries([]))).toEqual({ primary: null, set: [] });
+    });
+
+    // The member's own page: industries are Jas's alone, so whatever a crafted
+    // post sends — even a combination the console parser refuses — is ignored,
+    // and no industry_id reaches the write.
+    it("the member's own parser ignores industry fields entirely", () => {
+      for (const fd of [withIndustries(["2", "7"]), withIndustries(["4"], { industry_id: "9" }), withIndustries([])]) {
+        const r = ownCompanyPageValuesFromForm(fd, existing);
+        if ("error" in r) throw new Error(`expected values, got error: ${r.error}`);
+        expect(r.values).not.toHaveProperty("industry_id");
+        expect(r).not.toHaveProperty("industryIds");
+        expect(r.values.name).toBe("Acme Fabrication Ltd");
+      }
     });
   });
 

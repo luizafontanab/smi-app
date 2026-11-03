@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { headlineVideo, industries, publishedVideos } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
 import { Pagination } from "@/components/Pagination";
@@ -19,14 +20,17 @@ export const metadata = {
 export default async function VideosPage(props: PageProps<"/video">) {
   const sp = await props.searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
-  const industry = typeof sp.industry === "string" ? sp.industry : undefined;
+  // Industries hidden from the public (flag industries_public): no pills, and
+  // an old ?industry= link is ignored rather than filtering invisibly.
+  const showIndustries = await isFeatureEnabled("industries_public");
+  const industry = showIndustries && typeof sp.industry === "string" ? sp.industry : undefined;
 
   const [{ videos, total }, headline, inds, banners, showPlaceholders, ctx] = await Promise.all([
     publishedVideos({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, industry }),
     // The pin is site-wide, not per-industry, so a filtered view has no
     // headline — otherwise a Welding page would be led by someone else's video.
     page === 1 && !industry ? headlineVideo() : Promise.resolve(null),
-    industries(),
+    showIndustries ? industries() : [],
     liveAdverts("banner"),
     showAdPlaceholders(),
     requestContext(),
@@ -56,14 +60,16 @@ export default async function VideosPage(props: PageProps<"/video">) {
       <SearchForm className="mt-4 flex gap-2" />
       {/* Industry pills, same shape and data as the newsroom's — this is where
           /industry/[slug]'s Videos section sends its "See all". */}
-      <nav aria-label="Filter by industry" className="mt-4 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
-        <Link href={href({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
-        {inds.map((i) => (
-          <Link key={i.slug} href={href({ industry: i.slug })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
-            {i.name}
-          </Link>
-        ))}
-      </nav>
+      {showIndustries && (
+        <nav aria-label="Filter by industry" className="mt-4 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+          <Link href={href({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+          {inds.map((i) => (
+            <Link key={i.slug} href={href({ industry: i.slug })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+              {i.name}
+            </Link>
+          ))}
+        </nav>
+      )}
       {headline && (
         <div className="mt-6">
           <p className="text-xs uppercase tracking-widest text-graphite">Featured</p>
