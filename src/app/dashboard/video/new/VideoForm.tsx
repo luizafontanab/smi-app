@@ -13,14 +13,10 @@ import { UploadField } from "@/components/UploadField";
 type Props = {
   action: (formData: FormData) => Promise<void>;
   uploadImage: (formData: FormData) => Promise<UploadResult>;
-  industries: { id: number; name: string }[];
   member: { name: string; slug: string; logoUrl: string | null };
   /** Present only in edit mode — pre-fills the form and switches the copy/actions. */
-  initial?: { id: string; title: string; url: string; description: string; thumbnailUrl: string | null; industryId: number | null };
+  initial?: { id: string; title: string; url: string; description: string; thumbnailUrl: string | null };
   withdrawAction?: (formData: FormData) => Promise<void>;
-  /** The member's own industry — the starting value for a *new* submission only.
-   *  Never applied in edit mode: there, "no industry" is a choice to preserve. */
-  defaultIndustryId?: number | null;
 };
 
 /**
@@ -28,7 +24,7 @@ type Props = {
  * exactly as it will publish — same pattern as StoryForm. Doubles as the edit
  * form for a pending/rejected submission when `initial` is given.
  */
-export function VideoForm({ action, uploadImage, industries, member, initial, withdrawAction, defaultIndustryId }: Props) {
+export function VideoForm({ action, uploadImage, member, initial, withdrawAction }: Props) {
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(initial?.thumbnailUrl ?? null);
@@ -49,19 +45,7 @@ export function VideoForm({ action, uploadImage, industries, member, initial, wi
           <input id="title" name="title" required value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
         <YoutubePreview name="url" defaultValue={initial?.url} />
-        <div>
-          {/* Defaults to the member's own industry on a new video, which is what
-              migration 20260909000002 backfilled for existing rows. On an edit
-              the saved value wins outright, including when it is none: falling
-              back there would silently undo a deliberate "— none —" every time
-              the member resubmitted. */}
-          <label htmlFor="industry_id" className="text-sm font-medium">Industry</label>
-          <select id="industry_id" name="industry_id" defaultValue={initial ? initial.industryId ?? "" : defaultIndustryId ?? ""} className="mt-1 w-full rounded border px-3 py-2">
-            <option value="">— none —</option>
-            {industries.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-          <p className="mt-1 text-xs text-graphite">Helps buyers find your video on the matching industry page.</p>
-        </div>
+        {/* No Industry field: members never pick one — Jas tags it in the console. */}
         <div>
           <span className="block text-sm font-medium">Description</span>
           <RichTextEditor name="description" ariaLabel="Description" uploadImage={uploadImage} minHeightClass="min-h-32" initialHtml={initial?.description} />

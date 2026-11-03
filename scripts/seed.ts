@@ -627,6 +627,9 @@ async function main() {
     // Story crawler defaults off in code; on here so the console shows it running.
     // The synthetic sources below are paused, so no real site is ever fetched.
     { key: "feature:story_crawler", value: true },
+    // Public industries default off in code; on here so the smoke, a11y and
+    // visual suites keep covering the industry strip, pages and filters.
+    { key: "feature:industries_public", value: true },
   ]));
   // Lead-gen marks (GAPS A8.3). Refs are copied from the LeadGenSource mock's
   // fixtures rather than imported from it: the adapter pulls in src/lib/db/server,

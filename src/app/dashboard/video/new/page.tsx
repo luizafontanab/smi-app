@@ -11,10 +11,7 @@ export default async function NewMemberVideo(props: PageProps<"/dashboard/video/
   const user = await requireMemberView();
   const sp = await props.searchParams;
   const db = serviceDb();
-  const [{ data: member }, { data: inds }] = await Promise.all([
-    db.from("members").select("name, slug, logo_path, industry_id").eq("id", user.memberId).single(),
-    db.from("industries").select("id, name").order("sort_order"),
-  ]);
+  const { data: member } = await db.from("members").select("name, slug, logo_path").eq("id", user.memberId).single();
   return (
     <div className="mx-auto max-w-2xl">
       <AddContentTabs active="video" />
@@ -27,8 +24,6 @@ export default async function NewMemberVideo(props: PageProps<"/dashboard/video/
       <VideoForm
         action={submitVideo}
         uploadImage={memberUploadVideoImage}
-        industries={inds ?? []}
-        defaultIndustryId={member?.industry_id ?? null}
         member={{ name: member?.name ?? "", slug: member?.slug ?? "", logoUrl: mediaUrl(member?.logo_path) }}
       />
     </div>

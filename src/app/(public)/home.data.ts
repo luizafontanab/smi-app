@@ -1,6 +1,7 @@
 import "server-only";
 import { liveAdvertsByFormat, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { buildHero, withIntros } from "@/lib/hero";
 import { activePlacements, featuredEvent, featuredMemberPlacements, headlineStory, homeSectionsSetting, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
 
@@ -32,7 +33,7 @@ const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_fee
 export async function loadHome() {
   // Limits are sized so the hero can eat from the top of these lists (up to 3
   // stories and 2 videos) and every section below still fills.
-  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx, homeSections, topEvent] = await Promise.all([
+  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx, homeSections, topEvent, showIndustries] = await Promise.all([
     headlineStory(),
     publishedStories({ limit: 18 }),
     publishedStories({ limit: 8, memberOnly: true }),
@@ -53,6 +54,8 @@ export async function loadHome() {
     // Grid-only: the top card's event — booked, else the pinned backup, else
     // the next upcoming one (Featured Event, HUMAN-TODO 4.4).
     featuredEvent(),
+    // Industry captions on featured members (flag industries_public).
+    isFeatureEnabled("industries_public"),
   ]);
 
   const hero = buildHero(headline, stories, videos);
@@ -74,7 +77,11 @@ export async function loadHome() {
     events,
     // Shared filter (queries.ts) — the member directory's featured strip uses
     // the same definition via featuredMembers().
-    featuredMembers: featuredMemberPlacements(placements),
+    // Industry captions dropped here, once, for both designs while industries
+    // are hidden from the public (flag industries_public).
+    featuredMembers: featuredMemberPlacements(placements).map((p) =>
+      showIndustries || !p.member ? p : { ...p, member: { ...p.member, industry: null } },
+    ),
     featuredMachine: placements.find((p) => p.kind === "featured_machine"),
     featuredEvent: topEvent.event,
     newsletters: newsletters.slice(0, 3),

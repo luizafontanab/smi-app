@@ -42,3 +42,9 @@ export function isBoardStatus(value: string): value is BoardStatus {
 export function canMoveVideo(from: string, to: string): to is BoardStatus {
   return isBoardStatus(from) && isBoardStatus(to) && LEGAL_VIDEO_MOVES[from].includes(to);
 }
+
+/**
+ * Where Schedule and "Publish now" may start from: never Live or Withdrawn.
+ * One rule for stories and videos, kept in story-board so the two can't drift.
+ */
+export { canScheduleStory as canScheduleVideo } from "@/lib/story-board";

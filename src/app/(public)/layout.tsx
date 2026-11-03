@@ -6,6 +6,7 @@ import { GridSiteFooter } from "@/components/GridSiteFooter";
 import { CookieConsent } from "@/components/CookieConsent";
 import { SkipLink } from "@/components/SkipLink";
 import { currentUser } from "@/lib/auth";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { mediaUrl } from "@/lib/db/server";
 import { organizationLd, webSiteLd } from "@/lib/jsonld";
 import { unreadNotificationCount } from "@/lib/notifications";
@@ -14,7 +15,14 @@ import { siteVariant } from "@/lib/variant";
 import { IndustryBar } from "@/components/IndustryBar";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  const [user, takeover, industries, variant] = await Promise.all([currentUser(), activeTakeover(), industryList(), siteVariant()]);
+  // The industry strip only exists while Jas has industries on for the public
+  // site (feature flag industries_public); off, it isn't even fetched.
+  const [user, takeover, industries, variant] = await Promise.all([
+    currentUser(),
+    activeTakeover(),
+    isFeatureEnabled("industries_public").then((on) => (on ? industryList() : [])),
+    siteVariant(),
+  ]);
 
   // The header is one structure in two tones — grid's the light bar from the
   // client's comps, forge's near-black — with the menus right of the mark on

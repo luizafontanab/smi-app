@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { parseDateParam, parseViewedCats, VIEWED_CATS_COOKIE } from "@/lib/news-prefs";
 import { forYouStories, industries as industryList, mostViewedStories, publishedStories, storyCategories, storyFilterMember } from "@/lib/queries";
 import { AdSlot, SupplierLogos } from "@/components/AdSlot";
@@ -24,7 +25,10 @@ export default async function NewsPage(props: PageProps<"/news">) {
   const sp = await props.searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const category = typeof sp.category === "string" ? sp.category : undefined;
-  const industry = typeof sp.industry === "string" ? sp.industry : undefined;
+  // Industries hidden from the public (flag industries_public): no pills, and
+  // an old ?industry= link is ignored rather than filtering invisibly.
+  const showIndustries = await isFeatureEnabled("industries_public");
+  const industry = showIndustries && typeof sp.industry === "string" ? sp.industry : undefined;
   const from = parseDateParam(sp.from);
   const to = parseDateParam(sp.to);
   // The old top-of-page "Member news" toggle is gone (the rail + industry
@@ -42,7 +46,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
     publishedStories({ limit: RAIL_SIZE, memberOnly: true }),
     publishedStories({ limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, category, memberOnly, industry, memberId: member?.id, from, to }),
     storyCategories(),
-    industryList(),
+    showIndustries ? industryList() : [],
     liveAdverts("banner"),
     liveAdverts("supplier_logo"),
     showAdPlaceholders(),
@@ -123,14 +127,16 @@ export default async function NewsPage(props: PageProps<"/news">) {
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         {/* Industry pills — the member-kind list, same data as the industries
             strip; ~69 entries, so it scrolls sideways rather than wrapping. */}
-        <nav aria-label="Filter by industry" className="flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
-          <Link href={qs({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
-          {industries.map((c) => (
-            <Link key={c.slug} href={qs({ industry: c.slug })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
-              {c.name}
-            </Link>
-          ))}
-        </nav>
+        {showIndustries && (
+          <nav aria-label="Filter by industry" className="flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+            <Link href={qs({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+            {industries.map((c) => (
+              <Link key={c.slug} href={qs({ industry: c.slug })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+                {c.name}
+              </Link>
+            ))}
+          </nav>
+        )}
         <CategoryCombobox
           options={cats.map((c) => ({ slug: c.slug, name: c.name, href: qs({ category: c.slug }) }))}
           allHref={qs({ category: undefined })}

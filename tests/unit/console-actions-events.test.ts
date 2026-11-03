@@ -7,6 +7,7 @@ import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from
 import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
 import type { CurrentUser } from "@/lib/auth";
+import { LIFECYCLE_MESSAGES } from "@/lib/content-lifecycle";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
@@ -90,9 +91,72 @@ describe("saveEvent", () => {
 });
 
 describe("decideEvent", () => {
-  it("ignores an event that isn't awaiting approval", async () => {
+  const errorAt = (path: string, message: string) => `NEXT_REDIRECT:${path}?error=${encodeURIComponent(message)}`;
+
+  // Was a silent no-op; now the editor says why (Q12). A Live event can't be
+  // published again (LEGAL_EVENT_MOVES has no published → published).
+  it("approving an event that's already Live is refused on its editor, with no approval recorded", async () => {
     const from = db({ events: () => queryBuilder(dbOk({ id: "e1", status: "published" })) });
-    await decideEvent(form({ id: "e1", decision: "approve" }));
+    await expect(decideEvent(form({ id: "e1", decision: "approve" })))
+      .rejects.toThrow(errorAt("/console/events/e1", LIFECYCLE_MESSAGES.alreadyDecided("event")));
+    expect(from).not.toHaveBeenCalledWith("approvals");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("rejecting an event that's already been decided is refused on its editor", async () => {
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "published", member_id: "m1", source: "member" }));
+    db({ events: () => eventsBuilder });
+    await expect(decideEvent(form({ id: "e1", decision: "reject", reason: "Late" })))
+      .rejects.toThrow(errorAt("/console/events/e1", LIFECYCLE_MESSAGES.alreadyDecided("event")));
+    expect(eventsBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("an event that isn't there goes back to the list with the error", async () => {
+    db({ events: () => queryBuilder(dbOk(null)) });
+    await expect(decideEvent(form({ id: "gone", decision: "approve" })))
+      .rejects.toThrow(errorAt("/console/events", LIFECYCLE_MESSAGES.notFound("event")));
+  });
+
+  it("rejecting a member's event sets the reason, emails them, and records it", async () => {
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1", member_id: "m1", status: "awaiting_approval", source: "member" }));
+    const approvalsBuilder = queryBuilder(dbOk(null));
+    db({ events: () => eventsBuilder, approvals: () => approvalsBuilder });
+
+    await decideEvent(form({ id: "e1", decision: "reject", reason: "Wrong date" }));
+
+    expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "rejected", rejected_reason: "Wrong date" }));
+    expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "event_rejected", event_id: "e1", reason: "Wrong date" }));
+    expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "event", decision: "rejected", reason: "Wrong date", decided_by: "admin1" }));
+  });
+
+  it("rejecting a member's event with no reason is refused on its editor (Q10)", async () => {
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1", member_id: "m1", status: "awaiting_approval", source: "member" }));
+    const from = db({ events: () => eventsBuilder });
+    await expect(decideEvent(form({ id: "e1", decision: "reject", reason: "" })))
+      .rejects.toThrow(errorAt("/console/events/e1", LIFECYCLE_MESSAGES.reasonRequired));
+    expect(eventsBuilder.update).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("approvals");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  // As stories and videos: the member it is about didn't write it, so it goes back to Draft and nobody is emailed.
+  it("a desk event linked to a member goes back to Draft without a reason, and the member isn't emailed", async () => {
+    const eventsBuilder = queryBuilder(dbOk({ id: "e1", member_id: "m1", status: "awaiting_approval", source: "admin" }));
+    db({ events: () => eventsBuilder, approvals: () => queryBuilder(dbOk(null)) });
+
+    await decideEvent(form({ id: "e1", decision: "reject" }));
+
+    expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "draft" }));
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith("/console/events");
+  });
+
+  it("a failed approve write is shown on the editor, with no email or approval (Q3)", async () => {
+    const from = db({ events: sequence(dbOk({ id: "e1", member_id: "m1", status: "awaiting_approval", source: "member" }), dbError("boom")) });
+    await expect(decideEvent(form({ id: "e1", decision: "approve" })))
+      .rejects.toThrow(errorAt("/console/events/e1", LIFECYCLE_MESSAGES.publishFailed("event")));
+    expect(enqueue).not.toHaveBeenCalled();
     expect(from).not.toHaveBeenCalledWith("approvals");
   });
 
@@ -145,6 +209,14 @@ describe("moveEvent", () => {
 
     expect(result).toEqual({ ok: true });
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ decision: "approved" }));
+  });
+
+  it("a stale move that matched no row says the event changed, and emails nobody (Q11)", async () => {
+    db({ events: sequence(dbOk({ id: "e1", status: "awaiting_approval", member_id: "m1", source: "member" }), dbOk(null)) });
+
+    expect(await moveEvent({ id: "e1", to: "published" })).toEqual({ ok: false, error: LIFECYCLE_MESSAGES.changed });
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("taking a published event back to draft just updates the status", async () => {
@@ -316,15 +388,15 @@ describe("decideRevision", () => {
     expect(typesBuilder.delete).not.toHaveBeenCalled();
   });
 
-  // A member can be in several industries (20261012000001): the primary rides
-  // as the industry_id column, the set as `industry_ids`.
-  it("approving applies industry_ids, keeps them out of the member row, and keeps the primary in the set", async () => {
+  // Industries are Jas's alone since 2 Nov. A revision submitted before then
+  // still carries the member's pick; approving it after Jas re-tagged them
+  // must not overwrite her tags — neither the primary nor the set.
+  it("approving a revision that carries industries applies the rest and leaves the member's industries alone", async () => {
     const membersBuilder = queryBuilder(dbOk(null));
     const industriesBuilder = queryBuilder(dbOk(null));
     db({
       member_revisions: () => queryBuilder(dbOk({
         id: "r1", member_id: "m1", status: "awaiting_approval",
-        // a tampered or stale payload whose set omits its own primary
         payload: { website: "https://x.example", industry_id: 8, industry_ids: [2, 7] },
       })),
       members: () => membersBuilder,
@@ -335,19 +407,12 @@ describe("decideRevision", () => {
     await decideRevision(form({ id: "r1", decision: "approve" }));
 
     const [payload] = (membersBuilder.update as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(payload).not.toHaveProperty("industry_ids");
-    expect(payload.industry_id).toBe(8);
-    expect(industriesBuilder.delete).toHaveBeenCalled();
-    expect(industriesBuilder.insert).toHaveBeenCalledWith([
-      { member_id: "m1", industry_id: 2 },
-      { member_id: "m1", industry_id: 7 },
-      { member_id: "m1", industry_id: 8 },
-    ]);
+    expect(payload).toEqual({ website: "https://x.example" });
+    expect(industriesBuilder.delete).not.toHaveBeenCalled();
+    expect(industriesBuilder.insert).not.toHaveBeenCalled();
   });
 
-  // Revisions written before members picked several industries carry no
-  // industry_ids — approving one must not wipe the backfilled set.
-  it("approving a revision with no industry_ids leaves the member's industries alone", async () => {
+  it("approving a revision with no industry fields leaves the member's industries alone", async () => {
     const industriesBuilder = queryBuilder(dbOk(null));
     db({
       member_revisions: () => queryBuilder(dbOk({ id: "r1", member_id: "m1", status: "awaiting_approval", payload: { website: "https://x.example" } })),
@@ -361,20 +426,22 @@ describe("decideRevision", () => {
     expect(industriesBuilder.delete).not.toHaveBeenCalled();
   });
 
-  it("approving an empty industry_ids with no primary clears the member's industries", async () => {
+  it("approving an empty industry_ids with no primary doesn't clear the member's industries", async () => {
+    const membersBuilder = queryBuilder(dbOk(null));
     const industriesBuilder = queryBuilder(dbOk(null));
     db({
       member_revisions: () => queryBuilder(dbOk({
         id: "r1", member_id: "m1", status: "awaiting_approval", payload: { industry_id: null, industry_ids: [] },
       })),
-      members: () => queryBuilder(dbOk(null)),
+      members: () => membersBuilder,
       member_industries: () => industriesBuilder,
       approvals: () => queryBuilder(dbOk(null)),
     });
 
     await decideRevision(form({ id: "r1", decision: "approve" }));
 
-    expect(industriesBuilder.delete).toHaveBeenCalled();
+    expect(membersBuilder.update).not.toHaveBeenCalled();
+    expect(industriesBuilder.delete).not.toHaveBeenCalled();
     expect(industriesBuilder.insert).not.toHaveBeenCalled();
   });
 

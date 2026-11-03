@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOARD_STATUSES, canMoveVideo, COLUMN_LABELS, isBoardStatus, LEGAL_VIDEO_MOVES } from "@/lib/video-board";
+import { BOARD_STATUSES, canMoveVideo, canScheduleVideo, COLUMN_LABELS, isBoardStatus, LEGAL_VIDEO_MOVES } from "@/lib/video-board";
 
 // Mirrors tests/unit/story-board.test.ts. The two matrices are separate modules
 // on purpose (events already has a different column set), so each needs its own
@@ -62,5 +62,15 @@ describe("COLUMN_LABELS", () => {
   it("uses Jas's names for the review and live columns, same as stories", () => {
     expect(COLUMN_LABELS.awaiting_approval).toBe("Ready to review");
     expect(COLUMN_LABELS.published).toBe("Live");
+  });
+});
+
+describe("canScheduleVideo", () => {
+  it("allows Schedule / Publish now from draft, ready to review, sent back and scheduled", () => {
+    for (const from of ["draft", "awaiting_approval", "rejected", "scheduled"]) expect(canScheduleVideo(from)).toBe(true);
+  });
+
+  it("refuses a Live or Withdrawn video, and anything unknown", () => {
+    for (const from of ["published", "withdrawn", "bogus", ""]) expect(canScheduleVideo(from)).toBe(false);
   });
 });

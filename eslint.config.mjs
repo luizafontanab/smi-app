@@ -18,6 +18,10 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "coverage/**",
+    // Agent tooling, not app code: plugin skills vendor their own scripts
+    // (164 warnings from .claude/skills/impeccable alone), which buried the
+    // app's own lint output.
+    ".claude/**",
   ]),
 ]);
 

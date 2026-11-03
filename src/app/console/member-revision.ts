@@ -15,7 +15,7 @@ import { youtubeId } from "@/lib/youtube";
  * carrying `status`, `billing_mode`, `paid_at`, `is_bundle_account`,
  * `archived_at` — and decideRevision used to apply the payload wholesale on
  * Approve. Now only the fields the member's own form can produce are applied
- * (lib/member-form companyPageValuesFromForm, as submitted by dashboard
+ * (lib/member-form ownCompanyPageValuesFromForm, as submitted by dashboard
  * submitProfileEdit), each re-checked the way that parser checks it, and
  * anything else is reported back as ignored rather than written.
  *
@@ -26,11 +26,10 @@ import { youtubeId } from "@/lib/youtube";
 
 type MemberUpdate = Database["public"]["Tables"]["members"]["Update"];
 
-/** Every field companyPageValuesFromForm writes, with the label Jas sees for it. */
+/** Every field ownCompanyPageValuesFromForm (the member's own save) writes, with the label Jas sees for it. */
 export const REVISION_FIELD_LABELS = {
   name: "Company name",
   slug: "Web address",
-  industry_id: "Primary industry",
   description: "Description",
   address: "Address",
   phone: "Phone",
@@ -47,15 +46,19 @@ export const REVISION_FIELD_LABELS = {
 export type RevisionField = keyof typeof REVISION_FIELD_LABELS;
 
 /** Not members columns: join tables the payload carries as id lists, applied separately. */
-const SET_KEYS = ["service_ids", "membership_type_ids", "industry_ids"] as const;
+const SET_KEYS = ["service_ids", "membership_type_ids"] as const;
 
 /**
- * Keys a revision written before a column was dropped can still carry —
- * 20260902000003 removed testimonials, 20260909000002 renamed category_id. Both
- * migrations scrubbed stored rows; this covers anything written in between.
- * Dropped silently: they're history, not tampering.
+ * Keys a revision can carry that are never applied, dropped silently.
+ * - testimonials, category_id: written before a column was dropped
+ *   (20260902000003 removed testimonials, 20260909000002 renamed category_id;
+ *   both migrations scrubbed stored rows, this covers anything in between).
+ * - industry_id, industry_ids: revisions submitted before 2 Nov, when members
+ *   could still pick an industry. Industries are Jas's alone now, so approving
+ *   an old revision must not overwrite the tags she has set since.
+ * They're history, not tampering, so they aren't reported as ignored.
  */
-const LEGACY_KEYS = new Set(["testimonials", "category_id"]);
+const LEGACY_KEYS = new Set(["testimonials", "category_id", "industry_id", "industry_ids"]);
 
 export type ParsedRevision = {
   /** Only allowlisted fields the payload actually carries, each validated. */
@@ -63,7 +66,6 @@ export type ParsedRevision = {
   /** null when the payload has no such key — "leave the set alone", not "clear it". */
   serviceIds: number[] | null;
   membershipTypeIds: number[] | null;
-  industryIds: number[] | null;
   /** Keys that were not applied, and why. */
   ignored: { key: string; reason: string }[];
 };
@@ -83,8 +85,6 @@ function field(key: RevisionField, v: unknown, memberId: string): MemberUpdate[R
       return typeof v === "string" && v.trim() ? v.trim() : undefined;
     case "slug":
       return typeof v === "string" ? slugify(v) || undefined : undefined;
-    case "industry_id":
-      return v === null || isPositiveInt(v) ? v : undefined;
     case "description":
       // never apply unsanitised markup
       return typeof v === "string" ? renderableHtml(v) : undefined;
@@ -141,7 +141,7 @@ function idList(v: unknown): number[] | undefined {
 export function parseRevisionPayload(payload: unknown, memberId: string): ParsedRevision {
   const raw = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
   const values: Record<string, unknown> = {};
-  const sets: Record<(typeof SET_KEYS)[number], number[] | null> = { service_ids: null, membership_type_ids: null, industry_ids: null };
+  const sets: Record<(typeof SET_KEYS)[number], number[] | null> = { service_ids: null, membership_type_ids: null };
   const ignored: ParsedRevision["ignored"] = [];
 
   for (const [key, v] of Object.entries(raw)) {
@@ -165,7 +165,6 @@ export function parseRevisionPayload(payload: unknown, memberId: string): Parsed
     values: values as MemberUpdate,
     serviceIds: sets.service_ids,
     membershipTypeIds: sets.membership_type_ids,
-    industryIds: sets.industry_ids,
     ignored,
   };
 }

@@ -25,6 +25,12 @@ export const FEATURE_FLAGS = {
       "Checks every story source once a day — the imported spreadsheet list plus each Bigin company's News Page URL — and lists new articles as suggestions on Story sources. Off stops all checks and the Bigin sync; existing sources and suggestions are kept, and stories can still be written by hand.",
     default: false,
   },
+  industries_public: {
+    label: "Industries on the public site",
+    description:
+      "Industries for visitors: the industry strip under the header, the industry pages, the industry filters on News, Videos, Events and the member directory, and the industry under each member's name. Off hides all of it, and old industry links go to News. Members never see industries either way; you still tag them here in the console.",
+    default: false,
+  },
 } as const satisfies Record<string, { label: string; description: string; default: boolean }>;
 
 export type FeatureFlag = keyof typeof FEATURE_FLAGS;

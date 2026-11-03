@@ -2,17 +2,18 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/db/types";
 import { parseRevisionPayload, revisionChanges, REVISION_FIELD_LABELS } from "@/app/console/member-revision";
-import { companyPageValuesFromForm } from "@/lib/member-form";
+import { ownCompanyPageValuesFromForm } from "@/lib/member-form";
 
 const M = "11111111-1111-1111-1111-111111111111";
 
 describe("parseRevisionPayload", () => {
   it("keeps exactly the fields the member's own profile form writes", () => {
-    // The allowlist must cover what companyPageValuesFromForm produces — if the
+    // The allowlist must cover what the member's own save produces — if the
     // form grows a field, a member's edit to it would otherwise be dropped.
+    // And no more: that save writes no industry, so neither does a revision.
     const fd = new FormData();
     fd.set("name", "Acme");
-    const parsed = companyPageValuesFromForm(fd, { slug: "acme", status: "active", social: {} }, { logo_path: `members/${M}/a1.png`, hero_path: `members/${M}/b2.png` });
+    const parsed = ownCompanyPageValuesFromForm(fd, { slug: "acme", status: "active", social: {} }, { logo_path: `members/${M}/a1.png`, hero_path: `members/${M}/b2.png` });
     if ("error" in parsed) throw new Error(parsed.error);
     expect(Object.keys(parsed.values).sort()).toEqual(Object.keys(REVISION_FIELD_LABELS).sort());
   });
@@ -33,11 +34,11 @@ describe("parseRevisionPayload", () => {
   it("re-checks each value the way the form's parser does", () => {
     const r = parseRevisionPayload({
       name: "  ", slug: "Acme Ltd!", phone: "call me", contact_email: "nope", video_url: "https://vimeo.com/1",
-      lat: 200, lng: -0.1, industry_id: "7", social: ["x"], logo_path: "members/other/a.png", hero_path: "../../etc",
+      lat: 200, lng: -0.1, social: ["x"], logo_path: "members/other/a.png", hero_path: "../../etc",
     }, M);
     expect(r.values).toEqual({ slug: "acme-ltd", lng: -0.1 });
     expect(r.ignored.map((i) => i.key).sort()).toEqual(
-      ["contact_email", "hero_path", "industry_id", "lat", "logo_path", "name", "phone", "social", "video_url"],
+      ["contact_email", "hero_path", "lat", "logo_path", "name", "phone", "social", "video_url"],
     );
   });
 
@@ -66,12 +67,20 @@ describe("parseRevisionPayload", () => {
     const r = parseRevisionPayload({ service_ids: [3, 3, 7], membership_type_ids: [1, "x"] }, M);
     expect(r.serviceIds).toEqual([3, 7]);
     expect(r.membershipTypeIds).toBeNull();
-    expect(r.industryIds).toBeNull();
     expect(r.ignored).toEqual([{ key: "membership_type_ids", reason: "not a list of ids" }]);
   });
 
   it("legacy keys from dropped columns are dropped silently", () => {
     expect(parseRevisionPayload({ testimonials: [], category_id: 3 }, M)).toMatchObject({ values: {}, ignored: [] });
+  });
+
+  // Industries are Jas's alone since 2 Nov. A revision submitted before then
+  // still carries the member's pick; approving it must not overwrite her tags.
+  it("industry fields from a revision submitted before 2 Nov are dropped silently", () => {
+    const r = parseRevisionPayload({ website: "https://x.example", industry_id: 8, industry_ids: [2, 7] }, M);
+    expect(r.values).toEqual({ website: "https://x.example" });
+    expect(r).not.toHaveProperty("industryIds");
+    expect(r.ignored).toEqual([]);
   });
 
   it("a payload that isn't an object applies nothing", () => {

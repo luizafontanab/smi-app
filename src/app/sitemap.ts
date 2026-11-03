@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { publicDb } from "@/lib/db/server";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { siteUrl } from "@/lib/site-url";
 
 const BASE = siteUrl();
@@ -41,7 +42,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     db.from("events").select("slug").eq("status", "published"),
     db.from("newsletter_issues").select("web_slug").eq("status", "sent"),
     db.from("static_pages").select("slug, updated_at"),
-    db.from("industries").select("slug"),
+    // Only while industries are public (flag industries_public); off, those
+    // URLs redirect to /news and have no place here.
+    (async () => ((await isFeatureEnabled("industries_public")) ? (await db.from("industries").select("slug")).data ?? [] : []))(),
   ]);
 
   return [
@@ -52,6 +55,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...(events.data ?? []).map((e) => ({ url: `${BASE}/event/${e.slug}`, priority: 0.5 })),
     ...(newsletters.data ?? []).map((n) => ({ url: `${BASE}/newsletters/${n.web_slug}`, priority: 0.4 })),
     ...(pages.data ?? []).map((p) => ({ url: `${BASE}/pages/${p.slug}`, lastModified: p.updated_at, priority: 0.4 })),
-    ...(industries.data ?? []).map((c) => ({ url: `${BASE}/industry/${c.slug}`, changeFrequency: "daily" as const, priority: 0.6 })),
+    ...industries.map((c) => ({ url: `${BASE}/industry/${c.slug}`, changeFrequency: "daily" as const, priority: 0.6 })),
   ];
 }

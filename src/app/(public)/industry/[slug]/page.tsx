@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { industryBySlug } from "@/lib/queries";
 import { Carousel, StoryCard } from "@/components/StoryCard";
 import { EventCard, MemberTile, VideoCard } from "@/components/cards";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(props: PageProps<"/industry/[slug]">) {
   const { slug } = await props.params;
+  if (!(await isFeatureEnabled("industries_public"))) return {};
   // cache()d, so this costs nothing on top of the page body's own lookup.
   const ind = await industryBySlug(slug);
   return {
@@ -27,6 +29,11 @@ const CARD = "w-64 shrink-0";
 
 export default async function IndustryPage(props: PageProps<"/industry/[slug]">) {
   const { slug } = await props.params;
+  // Industries hidden from the public (flag industries_public): an old link —
+  // a bookmark, a search result — lands on News instead of an error. redirect()
+  // is a 307, so nothing is cached as permanent and turning the flag back on
+  // restores the page.
+  if (!(await isFeatureEnabled("industries_public"))) redirect("/news");
   const hub = await loadIndustryHub(slug);
   if (!hub) notFound();
   const { industry, stories, storyTotal, members, memberTotal, videos, videoTotal, events, eventTotal, eventsTense } = hub;

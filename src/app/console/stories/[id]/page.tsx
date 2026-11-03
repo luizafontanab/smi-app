@@ -17,6 +17,7 @@ import { StorySocialLinks } from "@/components/StorySocialLinks";
 import { socialChannel, STORY_POST_CHANNELS } from "@/lib/social";
 import { isMemberLinkable } from "@/lib/member-visibility";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Badge } from "@/components/console/ui";
 import { STORY_STATUS_LABELS, isMemberDraft, parseStoryListFilters, storyListHref } from "@/lib/story-board";
@@ -93,6 +94,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   // fall back to the subject member's — which is what migration 20260909000002
   // backfilled, and is right for the stories written before this field existed.
   const industryDefault = story?.industry_id ?? story?.member?.industry_id ?? "";
+  // Approve / Schedule send the Industry box as it stands, so what Jas sees is what goes Live.
+  const industryField = <MirrorInput source="industry_id" name="industry_id" defaultValue={String(industryDefault)} />;
   const storedPosts = (story?.social_posts && typeof story.social_posts === "object" && !Array.isArray(story.social_posts)
     ? story.social_posts
     : {}) as Partial<Record<string, string>>;
@@ -272,6 +275,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="return_to" value={backTo} />
+                {industryField}
                 <label htmlFor="approve_at" className="sr-only">Publish at (UK time)</label>
                 <input id="approve_at" type="datetime-local" name="scheduled_at" required defaultValue={londonInputValue(story.scheduled_at)} className="rounded border bg-white px-3 py-1.5 text-sm" />
                 <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</button>
@@ -279,6 +283,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <form action={decideStory} className="mt-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="approve" />
+                {industryField}
                 <button className="rounded border border-ink bg-white px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</button>
               </form>
               <p className="mt-2 text-xs text-graphite">
@@ -307,6 +312,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <form action={scheduleStory} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="return_to" value={backTo} />
+                {industryField}
                 <label htmlFor="schedule_at" className="sr-only">Publish at (UK time)</label>
                 <input id="schedule_at" type="datetime-local" name="scheduled_at" defaultValue={londonInputValue(story.scheduled_at)} className="rounded border bg-white px-3 py-1.5 text-sm" />
                 <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>

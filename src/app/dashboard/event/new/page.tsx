@@ -11,10 +11,7 @@ export default async function NewMemberEvent(props: PageProps<"/dashboard/event/
   const user = await requireMemberView();
   const sp = await props.searchParams;
   const db = serviceDb();
-  const [{ data: member }, { data: inds }] = await Promise.all([
-    db.from("members").select("name, slug, industry_id").eq("id", user.memberId).single(),
-    db.from("industries").select("id, name").order("sort_order"),
-  ]);
+  const { data: member } = await db.from("members").select("name, slug").eq("id", user.memberId).single();
   return (
     <div className="mx-auto max-w-2xl">
       <AddContentTabs active="event" />
@@ -24,8 +21,6 @@ export default async function NewMemberEvent(props: PageProps<"/dashboard/event/
       <EventForm
         action={submitEvent}
         uploadImage={memberUploadEventImage}
-        industries={inds ?? []}
-        defaultIndustryId={member?.industry_id ?? null}
         member={{ name: member?.name ?? "", slug: member?.slug ?? "" }}
       />
     </div>

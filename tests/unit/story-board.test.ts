@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  BOARD_STATUSES, canMoveStory, isBoardStatus, LEGAL_STORY_MOVES, LIST_STATUSES, STORY_STATUS_LABELS,
+  BOARD_STATUSES, canMoveStory, canScheduleStory, isBoardStatus, LEGAL_STORY_MOVES, LIST_STATUSES, STORY_STATUS_LABELS,
   parseStoryListFilters, parseStoryView, storyEditorHrefFromList, storyListHref,
 } from "@/lib/story-board";
 
@@ -100,5 +100,15 @@ describe("storyListHref / storyEditorHrefFromList", () => {
     // mirrors the regex in scheduleStory (src/app/console/actions.ts)
     const allow = /^\/console\/stories(\?[\w=&-]*)?$/;
     expect(allow.test(storyListHref({ status: "awaiting_approval", page: 4 }))).toBe(true);
+  });
+});
+
+describe("canScheduleStory", () => {
+  it("allows Schedule / Publish now from draft, ready to review, sent back and scheduled", () => {
+    for (const from of ["draft", "awaiting_approval", "rejected", "scheduled"]) expect(canScheduleStory(from)).toBe(true);
+  });
+
+  it("refuses a Live or Withdrawn story, and anything unknown", () => {
+    for (const from of ["published", "withdrawn", "bogus", ""]) expect(canScheduleStory(from)).toBe(false);
   });
 });

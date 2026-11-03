@@ -15,10 +15,9 @@ export default async function EditMemberVideo(props: PageProps<"/dashboard/video
   const sp = await props.searchParams;
   const user = await requireMemberView();
   const db = serviceDb();
-  const [{ data: video }, { data: member }, { data: inds }] = await Promise.all([
-    db.from("videos").select("id, title, url, description, thumbnail_path, status, member_id, industry_id").eq("id", id).single(),
-    db.from("members").select("name, slug, logo_path, industry_id").eq("id", user.memberId).single(),
-    db.from("industries").select("id, name").order("sort_order"),
+  const [{ data: video }, { data: member }] = await Promise.all([
+    db.from("videos").select("id, title, url, description, thumbnail_path, status, member_id").eq("id", id).single(),
+    db.from("members").select("name, slug, logo_path").eq("id", user.memberId).single(),
   ]);
   if (!video || video.member_id !== user.memberId || !EDITABLE_STATUSES.includes(video.status)) notFound();
 
@@ -33,8 +32,6 @@ export default async function EditMemberVideo(props: PageProps<"/dashboard/video
         action={editVideo}
         withdrawAction={withdrawVideo}
         uploadImage={memberUploadVideoImage}
-        industries={inds ?? []}
-        defaultIndustryId={member?.industry_id ?? null}
         member={{ name: member?.name ?? "", slug: member?.slug ?? "", logoUrl: mediaUrl(member?.logo_path) }}
         initial={{
           id: video.id,
@@ -42,7 +39,6 @@ export default async function EditMemberVideo(props: PageProps<"/dashboard/video
           url: video.url,
           description: renderableHtml(video.description),
           thumbnailUrl: mediaUrl(video.thumbnail_path),
-          industryId: video.industry_id,
         }}
       />
     </div>

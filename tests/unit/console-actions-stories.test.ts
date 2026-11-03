@@ -10,6 +10,7 @@ import { UPLOAD_EXPIRED } from "@/lib/upload-limits";
 import { revalidatePath } from "next/cache";
 import type { CurrentUser } from "@/lib/auth";
 import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
+import { LIFECYCLE_MESSAGES } from "@/lib/content-lifecycle";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
@@ -223,10 +224,10 @@ describe("saveStory", () => {
 
 describe("scheduleStory", () => {
   it("publishes immediately and enqueues the social push + member notification", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ member_id: "m1" }));
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "draft" }));
     db({ stories: () => storiesBuilder });
 
-    await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories");
+    await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
 
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published" }));
     expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, expect.any(Date));
@@ -234,10 +235,10 @@ describe("scheduleStory", () => {
   });
 
   it("schedules for later without touching jobs directly", async () => {
-    const storiesBuilder = queryBuilder(dbOk(null));
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: null, status: "draft" }));
     db({ stories: () => storiesBuilder });
 
-    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
 
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled" }));
     expect(enqueue).not.toHaveBeenCalled();
@@ -258,7 +259,7 @@ describe("scheduleStory", () => {
     const approvalsBuilder = queryBuilder(dbOk(null));
     db({ stories: () => storiesBuilder, approvals: () => approvalsBuilder });
 
-    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
 
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled" }));
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "story", decision: "approved", decided_by: "admin1" }));
@@ -266,31 +267,172 @@ describe("scheduleStory", () => {
   });
 
   it("publishing now from awaiting_approval also records the approval", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ member_id: "m1", status: "awaiting_approval" }));
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval" }));
     const approvalsBuilder = queryBuilder(dbOk(null));
     db({ stories: () => storiesBuilder, approvals: () => approvalsBuilder });
 
-    await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories");
+    await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
 
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "story", decision: "approved" }));
     expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, expect.any(Date));
+  });
+
+  it("Approve & schedule saves the editor's Industry box in the scheduling write", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member", industry_id: null }));
+    db({ stories: () => storiesBuilder, approvals: () => queryBuilder(dbOk(null)) });
+
+    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00", industry_id: "5" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
+
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled", industry_id: 5 }));
   });
 
   it("does not record an approval when scheduling from a status other than awaiting_approval", async () => {
     const storiesBuilder = queryBuilder(dbOk({ member_id: "m1", status: "draft" }));
     const from = db({ stories: () => storiesBuilder });
 
-    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
 
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "scheduled" }));
     expect(from).not.toHaveBeenCalledWith("approvals");
   });
 });
 
-describe("decideStory", () => {
-  it("is a no-op once the story has already been decided", async () => {
-    const from = db({ stories: () => queryBuilder(dbOk({ id: "s1", status: "published" })) });
-    await decideStory(form({ id: "s1", decision: "approve" }));
+describe("scheduleStory — a refusal says why on the editor (Q8, Q12)", () => {
+  const errorAt = (path: string, message: string) => `NEXT_REDIRECT:${path}?error=${encodeURIComponent(message)}`;
+
+  it("Publish now on a Live story is refused on its editor, with nothing written or queued", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "published", source: "admin" }));
+    const from = db({ stories: () => storiesBuilder });
+
+    await expect(scheduleStory(form({ id: "s1", mode: "now" })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.cantPublish("story", "Live")));
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
     expect(from).not.toHaveBeenCalledWith("approvals");
+  });
+
+  it("scheduling a Withdrawn story is refused on its editor", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "withdrawn", source: "member" }));
+    db({ stories: () => storiesBuilder });
+
+    await expect(scheduleStory(form({ id: "s1", scheduled_at: "2026-09-01T10:00" })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.cantPublish("story", "Withdrawn")));
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("a story that isn't there goes back to the list, not to an editor that can't open", async () => {
+    db({ stories: () => queryBuilder(dbOk(null)) });
+
+    await expect(scheduleStory(form({ id: "gone", mode: "now" })))
+      .rejects.toThrow(errorAt("/console/stories", LIFECYCLE_MESSAGES.notFound("story")));
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("a failed publish write says so on the editor, and queues no post or email", async () => {
+    db({ stories: sequence(dbOk({ id: "s1", member_id: "m1", status: "draft", source: "admin" }), dbError("boom")) });
+
+    await expect(scheduleStory(form({ id: "s1", mode: "now" })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.publishFailed("story")));
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("a publish that matched no row (someone else moved it) is 'changed', with nothing queued", async () => {
+    db({ stories: sequence(dbOk({ id: "s1", member_id: "m1", status: "draft", source: "admin" }), dbOk(null)) });
+
+    await expect(scheduleStory(form({ id: "s1", mode: "now" })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.changed));
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("with neither Publish now nor a time, it just goes back without touching the story", async () => {
+    const from = db({});
+
+    await expect(scheduleStory(form({ id: "s1" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
+    expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe("decideStory", () => {
+  const errorAt = (path: string, message: string) => `NEXT_REDIRECT:${path}?error=${encodeURIComponent(message)}`;
+
+  // Was a silent no-op; now the editor says why (Q12). Approve on a Live story
+  // is the publish refusal (Q8); a decline on one is "already decided".
+  it("approving a story that's already Live is refused on its editor, with no approval recorded", async () => {
+    const from = db({ stories: () => queryBuilder(dbOk({ id: "s1", status: "published" })) });
+    await expect(decideStory(form({ id: "s1", decision: "approve" })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.alreadyDecided("story")));
+    expect(from).not.toHaveBeenCalledWith("approvals");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  // A stale tab: another admin Sent it back first. Approve must not publish it
+  // and email the member that it's live.
+  it("approving a story another admin already Sent back is refused, and nothing is published or sent", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "rejected", source: "member", member_id: "m1" }));
+    const from = db({ stories: () => storiesBuilder });
+    await expect(decideStory(form({ id: "s1", decision: "approve" })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.alreadyDecided("story")));
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("approvals");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("sending back a story that's already been decided is refused on its editor", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", status: "published", source: "member", member_id: "m1" }));
+    const from = db({ stories: () => storiesBuilder });
+    await expect(decideStory(form({ id: "s1", decision: "reject", reason: "Late" })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.alreadyDecided("story")));
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("approvals");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("a story that isn't there goes back to the list with the error", async () => {
+    db({ stories: () => queryBuilder(dbOk(null)) });
+    await expect(decideStory(form({ id: "gone", decision: "approve" })))
+      .rejects.toThrow(errorAt("/console/stories", LIFECYCLE_MESSAGES.notFound("story")));
+  });
+
+  it("sending back a member's story with no reason is refused on its editor (Q10)", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member" }));
+    const from = db({ stories: () => storiesBuilder });
+    await expect(decideStory(form({ id: "s1", decision: "reject", reason: "  " })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.reasonRequired));
+    expect(storiesBuilder.update).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("approvals");
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("a failed approve write is shown on the editor, with no post, email or approval (Q3)", async () => {
+    const from = db({ stories: sequence(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member" }), dbError("boom")) });
+    await expect(decideStory(form({ id: "s1", decision: "approve" })))
+      .rejects.toThrow(errorAt("/console/stories/s1", LIFECYCLE_MESSAGES.publishFailed("story")));
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("approvals");
+  });
+
+  // Review fix, 3 Nov: member stories arrive untagged, and the editor's Industry
+  // box lives in the Save form. Its Approve buttons now carry the box's value
+  // (MirrorInput), saved in the same write that publishes.
+  it("approving from the editor saves the Industry box with the publish", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member", industry_id: null }));
+    db({ stories: () => storiesBuilder, members: () => queryBuilder(dbOk({ industry_id: 4 })), approvals: () => queryBuilder(dbOk(null)) });
+    await decideStory(form({ id: "s1", decision: "approve", industry_id: "7" }));
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published", industry_id: 7 }));
+  });
+
+  it("approving from the editor with '— none —' saves no industry", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member", industry_id: null }));
+    db({ stories: () => storiesBuilder, members: () => queryBuilder(dbOk({ industry_id: 4 })), approvals: () => queryBuilder(dbOk(null)) });
+    await decideStory(form({ id: "s1", decision: "approve", industry_id: "" }));
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published", industry_id: null }));
+  });
+
+  it("approving from the board (no Industry box) tags a member's untagged story with the member's industry", async () => {
+    const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "awaiting_approval", source: "member", industry_id: null }));
+    db({ stories: () => storiesBuilder, members: () => queryBuilder(dbOk({ industry_id: 4 })), approvals: () => queryBuilder(dbOk(null)) });
+    await decideStory(form({ id: "s1", decision: "approve" }));
+    expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published", industry_id: 4 }));
   });
 
   // Pinning is a separate, optional step once a story is live (15 Oct) —
@@ -371,7 +513,8 @@ describe("member drafts are out of the console's reach", () => {
   it("scheduleStory's Publish now refuses one", async () => {
     const storiesBuilder = queryBuilder(dbOk(memberDraft));
     db({ stories: () => storiesBuilder });
-    await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories");
+    await expect(scheduleStory(form({ id: "s1", mode: "now" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/stories?error=${encodeURIComponent(LIFECYCLE_MESSAGES.notFound("story"))}`);
     expect(storiesBuilder.update).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
   });
@@ -460,6 +603,13 @@ describe("moveStory — a failed write is reported, not swallowed", () => {
   it("any other move", async () => {
     db({ stories: sequence(dbOk({ id: "s1", status: "draft", member_id: null, member_draft: false }), dbError("boom")) });
     expect(await moveStory({ id: "s1", to: "awaiting_approval" })).toEqual({ ok: false, error: expect.stringContaining("couldn't be moved") });
+  });
+
+  it("a stale drag that matched no row says the story changed, and queues nothing (Q11)", async () => {
+    db({ stories: sequence(dbOk({ id: "s1", status: "draft", member_id: "m1", member_draft: false }), dbOk(null)) });
+    expect(await moveStory({ id: "s1", to: "published" })).toEqual({ ok: false, error: LIFECYCLE_MESSAGES.changed });
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });
 

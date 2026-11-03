@@ -25,13 +25,21 @@ describe("featureFlags", () => {
   it("the story crawler ships off, and one flag's row never sets another", async () => {
     expect(FEATURE_FLAGS.story_crawler.default).toBe(false);
     stored(dbOk([{ key: "feature:story_crawler", value: true }]));
-    expect(await featureFlags()).toEqual({ member_leads: false, story_crawler: true });
+    expect(await featureFlags()).toEqual({ member_leads: false, story_crawler: true, industries_public: false });
+  });
+
+  it("public industries ship hidden, and turn on from their own row", async () => {
+    expect(FEATURE_FLAGS.industries_public.default).toBe(false);
+    stored(dbOk([]));
+    expect(await isFeatureEnabled("industries_public")).toBe(false);
+    stored(dbOk([{ key: "feature:industries_public", value: true }]));
+    expect(await isFeatureEnabled("industries_public")).toBe(true);
   });
 
   it("reads each flag from its own feature: row, both ways", async () => {
     const settings = stored(dbOk([{ key: "feature:member_leads", value: true }]));
     expect(await isFeatureEnabled("member_leads")).toBe(true);
-    expect(settings.in).toHaveBeenCalledWith("key", ["feature:member_leads", "feature:story_crawler"]);
+    expect(settings.in).toHaveBeenCalledWith("key", ["feature:member_leads", "feature:story_crawler", "feature:industries_public"]);
 
     stored(dbOk([{ key: "feature:member_leads", value: false }]));
     expect(await isFeatureEnabled("member_leads")).toBe(false);
@@ -44,7 +52,7 @@ describe("featureFlags", () => {
 
   it("ignores rows for flags that aren't in the registry", async () => {
     stored(dbOk([{ key: "feature:retired_thing", value: true }]));
-    expect(await featureFlags()).toEqual({ member_leads: false, story_crawler: false });
+    expect(await featureFlags()).toEqual({ member_leads: false, story_crawler: false, industries_public: false });
   });
 
   // A hidden feature must stay hidden when settings can't be read.

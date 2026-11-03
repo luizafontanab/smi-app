@@ -13,7 +13,7 @@ you type on purpose.
 
 ## Running it
 
-Supabase must be up and seeded (`supabase status`; see the `run-smi-app` skill).
+Supabase must be up and seeded (check it as the `run-smi-app` skill shows).
 The dev server on 3100 can stay running — this builds into its own directory and
 serves on its own port.
 

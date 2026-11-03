@@ -13,22 +13,18 @@ type Named = { id: number; name: string };
 export type RevisionSets = {
   services: { all: Named[]; current: number[] };
   membershipTypes: { all: Named[]; current: number[] };
-  industries: { all: Named[]; current: number[] };
 };
 
 const plain = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 const clip = (s: string, max = 280) => (s.length > max ? `${s.slice(0, max)}…` : s);
 
-function Value({ change, value, industries, mediaUrl }: {
+function Value({ change, value, mediaUrl }: {
   change: RevisionChange;
   value: unknown;
-  industries: Named[];
   mediaUrl: (path: string | null) => string | null;
 }) {
   if (value == null || value === "") return <span className="text-graphite">—</span>;
   switch (change.field) {
-    case "industry_id":
-      return <>{industries.find((i) => i.id === value)?.name ?? `#${String(value)}`}</>;
     case "description":
       return <>{clip(plain(String(value))) || <span className="text-graphite">(empty)</span>}</>;
     case "social": {
@@ -67,14 +63,13 @@ export function RevisionChanges({
   mediaUrl,
 }: {
   changes: RevisionChange[];
-  parsed: Pick<ParsedRevision, "serviceIds" | "membershipTypeIds" | "industryIds" | "ignored">;
+  parsed: Pick<ParsedRevision, "serviceIds" | "membershipTypeIds" | "ignored">;
   sets: RevisionSets;
   mediaUrl: (path: string | null) => string | null;
 }) {
   const setChanges = [
     setDiff("Services", parsed.serviceIds, sets.services),
     setDiff("Membership types", parsed.membershipTypeIds, sets.membershipTypes),
-    setDiff("Industries", parsed.industryIds, sets.industries),
   ].filter((d) => d !== null);
 
   return (
@@ -96,8 +91,8 @@ export function RevisionChanges({
               {changes.map((c) => (
                 <tr key={c.field} className="border-t align-top">
                   <th scope="row" className="py-1.5 pr-3 text-left font-medium">{c.label}</th>
-                  <td className="py-1.5 pr-3 text-graphite"><Value change={c} value={c.from} industries={sets.industries.all} mediaUrl={mediaUrl} /></td>
-                  <td className="py-1.5"><Value change={c} value={c.to} industries={sets.industries.all} mediaUrl={mediaUrl} /></td>
+                  <td className="py-1.5 pr-3 text-graphite"><Value change={c} value={c.from} mediaUrl={mediaUrl} /></td>
+                  <td className="py-1.5"><Value change={c} value={c.to} mediaUrl={mediaUrl} /></td>
                 </tr>
               ))}
               {setChanges.map((d) => (

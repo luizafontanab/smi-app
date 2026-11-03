@@ -9,6 +9,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from "@/lib/event-types";
 import { isBoardStatus, LEGAL_EVENT_MOVES } from "@/lib/event-board";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { UploadField } from "@/components/UploadField";
 
@@ -148,15 +149,27 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
                 <form action={decideEvent}>
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="approve" />
+                  {/* The Industry box as it stands, so what Jas sees is what goes Live. */}
+                  <MirrorInput source="industry_id" name="industry_id" defaultValue={String(industryDefault)} />
                   <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
                 </form>
               </div>
-              <form action={decideEvent} className="mt-3 flex gap-2">
-                <input type="hidden" name="id" value={id} />
-                <input type="hidden" name="decision" value="reject" />
-                <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
-              </form>
+              {/* As stories and videos: a member is told why; the desk's own event just goes back to draft. */}
+              {event.source === "member" ? (
+                <form action={decideEvent} className="mt-3 flex gap-2">
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="decision" value="reject" />
+                  <input name="reason" aria-label="Reason (sent to the member)" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
+                  <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
+                </form>
+              ) : (
+                <form action={decideEvent} className="mt-3">
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="decision" value="reject" />
+                  <button className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Not yet — back to draft</button>
+                  <p className="mt-1 text-xs text-graphite">Nobody is emailed.</p>
+                </form>
+              )}
             </div>
           )}
           {event.status === "published" && (

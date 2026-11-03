@@ -3,6 +3,7 @@ import { dealSlots, liveAdverts, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { dayKey, monthGrid, parseMonth } from "@/lib/calendar";
 import { EVENT_TYPES, EVENT_TYPE_LABELS, isEventType } from "@/lib/event-types";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { eventsInRange, industries, pastEvents, upcomingEventPins, upcomingEvents } from "@/lib/queries";
 import { AdSlot } from "@/components/AdSlot";
 import { Pagination } from "@/components/Pagination";
@@ -30,7 +31,10 @@ export default async function EventsPage(props: PageProps<"/event">) {
   const upcomingPage = Math.max(1, Number(sp.upcoming_page) || 1);
   const pastPage = Math.max(1, Number(sp.past_page) || 1);
   const type = typeof sp.type === "string" && isEventType(sp.type) ? sp.type : undefined;
-  const industry = typeof sp.industry === "string" ? sp.industry : undefined;
+  // Industries hidden from the public (flag industries_public): no pills, and
+  // an old ?industry= link is ignored rather than filtering invisibly.
+  const showIndustries = await isFeatureEnabled("industries_public");
+  const industry = showIndustries && typeof sp.industry === "string" ? sp.industry : undefined;
   const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 80) : "";
   // Only a well-formed month is worth carrying in links; parseMonth already
   // falls back to the current month for anything else.
@@ -46,7 +50,7 @@ export default async function EventsPage(props: PageProps<"/event">) {
     pastEvents({ limit: PAGE_SIZE_PAST, offset: (pastPage - 1) * PAGE_SIZE_PAST, industry }),
     eventsInRange(dayKey(grid.start), dayKey(grid.end), { industry }),
     upcomingEventPins({ industry }),
-    industries(),
+    showIndustries ? industries() : [],
     liveAdverts("banner"),
     showAdPlaceholders(),
     requestContext(),
@@ -118,14 +122,16 @@ export default async function EventsPage(props: PageProps<"/event">) {
           {/* A second axis, kept on its own row: this one also re-filters the
               calendar and the map, where the type pills only touch the list.
               Both page families reset — a filtered page 3 is nonsense. */}
-          <nav aria-label="Filter by industry" className="mt-2 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
-            <Link href={qs({ industry: undefined, upcoming_page: undefined, past_page: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
-            {inds.map((i) => (
-              <Link key={i.slug} href={qs({ industry: i.slug, upcoming_page: undefined, past_page: undefined })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
-                {i.name}
-              </Link>
-            ))}
-          </nav>
+          {showIndustries && (
+            <nav aria-label="Filter by industry" className="mt-2 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+              <Link href={qs({ industry: undefined, upcoming_page: undefined, past_page: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+              {inds.map((i) => (
+                <Link key={i.slug} href={qs({ industry: i.slug, upcoming_page: undefined, past_page: undefined })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+                  {i.name}
+                </Link>
+              ))}
+            </nav>
+          )}
 
           <div className="mt-5 space-y-4">
             {events.slice(0, 3).map((e) => <EventCard key={e.slug} event={e} />)}

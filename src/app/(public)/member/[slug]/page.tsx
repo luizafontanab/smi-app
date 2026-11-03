@@ -6,6 +6,7 @@ import { currentUser, isAdmin } from "@/lib/auth";
 import { getLayout } from "@/lib/blocks/layouts";
 import { adSlotKeys } from "@/lib/blocks/schema";
 import { mediaUrl } from "@/lib/db/server";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { breadcrumbLd, localBusinessLd } from "@/lib/jsonld";
 import { memberMetadata } from "@/lib/member-seo";
 import { memberBySlug, publishedStories } from "@/lib/queries";
@@ -32,14 +33,25 @@ const viewerIsAdmin = async () => isAdmin(await currentUser());
 
 export async function generateMetadata(props: PageProps<"/member/[slug]">) {
   const { slug } = await props.params;
-  const m = await memberBySlug(slug, { includeArchived: await viewerIsAdmin() });
-  return memberMetadata(m && { ...m, heroUrl: mediaUrl(m.hero_path), logoUrl: mediaUrl(m.logo_path) }, slug);
+  const [m, showIndustries] = await Promise.all([
+    memberBySlug(slug, { includeArchived: await viewerIsAdmin() }),
+    isFeatureEnabled("industries_public"),
+  ]);
+  // Industry stays out of the fallback description while hidden from the public.
+  return memberMetadata(
+    m && { ...m, industry: showIndustries ? m.industry : null, heroUrl: mediaUrl(m.hero_path), logoUrl: mediaUrl(m.logo_path) },
+    slug,
+  );
 }
 
 export default async function MemberPage(props: PageProps<"/member/[slug]">) {
   const { slug } = await props.params;
   const admin = await viewerIsAdmin();
-  const [member, ctx] = await Promise.all([memberBySlug(slug, { includeArchived: admin }), requestContext()]);
+  const [member, ctx, showIndustries] = await Promise.all([
+    memberBySlug(slug, { includeArchived: admin }),
+    requestContext(),
+    isFeatureEnabled("industries_public"),
+  ]);
   // renamed in the console? honour the recorded 301 before 404ing. serviceDb
   // because `redirects` has RLS on with no public policy; the extra query only
   // ever runs on a miss, never on the hot path.
@@ -64,6 +76,8 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
 
   const socials = socialLinks(member.social);
   const hero = mediaUrl(member.hero_path);
+  // Hidden from the page and its structured data while industries are off for the public.
+  const industryName = showIndustries ? member.industry?.name : undefined;
 
   const profileMain = (
     <>
@@ -73,7 +87,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
             ...member,
             logoUrl: mediaUrl(member.logo_path),
             socialUrls: socials.map((s) => s.href).filter((h): h is string => Boolean(h)),
-            industryName: member.industry?.name,
+            industryName,
           }),
           breadcrumbLd([
             { name: "Members", path: "/member" },
@@ -115,7 +129,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           ) : null}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs uppercase tracking-widest text-brand-text">SMI Member{member.industry ? ` · ${member.industry.name}` : ""}</p>
+          <p className="text-xs uppercase tracking-widest text-brand-text">SMI Member{industryName ? ` · ${industryName}` : ""}</p>
           <h1 className="text-2xl font-bold text-ink">{member.name}</h1>
           <p className="text-sm text-graphite">{member.address}</p>
           {member.services.length > 0 && (

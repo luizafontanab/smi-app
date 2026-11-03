@@ -259,12 +259,13 @@ describe("submitStory", () => {
     const categoriesLinkBuilder = queryBuilder(dbOk(null));
     db({ stories: () => storiesBuilder, story_categories: () => categoriesLinkBuilder });
 
-    await expect(submitStory(form({ title: "My Story!", category: "3" })))
+    // industry_id crafted into the post: members never pick one, so it lands untagged for Jas
+    await expect(submitStory(form({ title: "My Story!", category: "3", industry_id: "5" })))
       .rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
 
     expect(storiesBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
       title: "My Story!", status: "awaiting_approval", source: "member", is_member_news: true, member_id: "mem1", submitted_by: "u1",
-      cover_path: "stories/mem1/cover.jpg",
+      cover_path: "stories/mem1/cover.jpg", industry_id: null,
     }));
     expect(categoriesLinkBuilder.insert).toHaveBeenCalledWith({ story_id: "s1", category_id: 3 });
     // Until fix-list 71 nothing here told the console at all: the only signal
@@ -318,10 +319,10 @@ describe("submitVideo", () => {
     const videosBuilder = queryBuilder(dbOk(null));
     db({ videos: () => videosBuilder });
 
-    await expect(submitVideo(form({ title: "t", url: "https://youtube.com/watch?v=x" })))
+    await expect(submitVideo(form({ title: "t", url: "https://youtube.com/watch?v=x", industry_id: "5" })))
       .rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=video");
 
-    expect(videosBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_id: "mem1" }));
+    expect(videosBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_id: "mem1", industry_id: null }));
   });
 });
 
@@ -336,8 +337,8 @@ describe("submitEvent", () => {
     const eventsBuilder = queryBuilder(dbOk(null));
     db({ events: () => eventsBuilder });
 
-    await expect(submitEvent(form({ title: "t", type: "webinar", starts_on: "2026-09-01" }))).rejects.toThrow(/NEXT_REDIRECT/);
-    expect(eventsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ type: "webinar" }));
+    await expect(submitEvent(form({ title: "t", type: "webinar", starts_on: "2026-09-01", industry_id: "5" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(eventsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ type: "webinar", industry_id: null }));
 
     await expect(submitEvent(form({ title: "t", type: "bogus", starts_on: "2026-09-01" }))).rejects.toThrow(/NEXT_REDIRECT/);
     expect(eventsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ type: null }));
@@ -415,78 +416,43 @@ describe("submitProfileEdit", () => {
     expect(from).not.toHaveBeenCalledWith("member_membership_types");
   });
 
-  // Several industries per member, one primary (migration 20261012000001).
+  // Industries are Jas's alone: the member's form has none, and a crafted post
+  // that sends some changes nothing — neither the primary nor the set.
   const withIndustries = (fields: Record<string, string>, ids: number[]) => {
     const fd = form(fields);
     for (const id of ids) fd.append("industries", String(id));
     return fd;
   };
 
-  it("an active member's industries ride the revision as industry_ids, primary included", async () => {
+  it("an active member's revision carries no industries, even from a crafted post", async () => {
     const revisionsBuilder = queryBuilder(dbOk(null));
     const from = db({
       members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })),
       member_revisions: () => revisionsBuilder,
-      industries: () => queryBuilder(dbOk([{ id: 2 }, { id: 7 }, { id: 9 }])),
     });
 
-    // primary 9 not ticked — picking it as primary is enough
+    // several ticks and no primary used to be refused; now it is simply ignored
+    await expect(submitProfileEdit(withIndustries({ name: "Acme" }, [2, 7]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
     await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "9" }, [2, 7]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
 
-    expect(revisionsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
-      payload: expect.objectContaining({ industry_id: 9, industry_ids: [2, 7, 9] }),
-    }));
+    for (const [row] of callsOf(revisionsBuilder.insert) as unknown as [{ payload: Record<string, unknown> }][]) {
+      expect(row.payload).not.toHaveProperty("industry_id");
+      expect(row.payload).not.toHaveProperty("industry_ids");
+    }
+    expect(revisionsBuilder.insert).toHaveBeenCalledTimes(2);
     expect(from).not.toHaveBeenCalledWith("member_industries");
+    expect(from).not.toHaveBeenCalledWith("industries");
   });
 
-  it("a draft member's industries apply straight away, a single tick becoming the primary", async () => {
+  it("a draft member's save leaves their industries exactly as Jas set them", async () => {
     const membersBuilder = queryBuilder(dbOk({ slug: "acme", status: "draft", draft_submitted_at: "2026-01-01T00:00:00.000Z", social: null, address: "", lat: null, lng: null }));
-    const industriesBuilder = queryBuilder(dbOk(null));
-    db({ members: () => membersBuilder, member_industries: () => industriesBuilder, industries: () => queryBuilder(dbOk([{ id: 4 }])) });
+    const from = db({ members: () => membersBuilder });
 
-    await expect(submitProfileEdit(withIndustries({ name: "Acme" }, [4]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
+    await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "4" }, [4]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=page");
 
-    expect(membersBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ industry_id: 4 }));
-    expect(industriesBuilder.insert).toHaveBeenCalledWith([{ member_id: "mem1", industry_id: 4 }]);
-  });
-
-  it("refuses several industries with no primary before writing anything", async () => {
-    const from = db({ members: () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null })) });
-
-    await expect(submitProfileEdit(withIndustries({ name: "Acme" }, [2, 7])))
-      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/profile\?error=Choose%20which/);
-    expect(from).not.toHaveBeenCalledWith("member_revisions");
+    const [written] = callsOf(membersBuilder.update)[0] as unknown as [Record<string, unknown>];
+    expect(written).not.toHaveProperty("industry_id");
     expect(from).not.toHaveBeenCalledWith("member_industries");
-  });
-
-  // Review finding 16 Oct: no cap, and an unknown id reached the foreign key
-  // and threw the member onto the error page.
-  const activeMember = () => queryBuilder(dbOk({ slug: "acme", status: "active", draft_submitted_at: null, social: null, address: "", lat: null, lng: null }));
-
-  it("refuses more industries than the cap before writing anything", async () => {
-    const from = db({ members: activeMember, member_industries: () => queryBuilder(dbOk([{ industry_id: 1 }])) });
-    await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "1" }, [1, 2, 3, 4])))
-      .rejects.toThrow("NEXT_REDIRECT:/dashboard/profile?error=Choose%20up%20to%203%20industries.");
-    expect(from).not.toHaveBeenCalledWith("member_revisions");
-  });
-
-  it("lets a member keep a set past the cap that they already hold", async () => {
-    const revisionsBuilder = queryBuilder(dbOk(null));
-    db({
-      members: activeMember,
-      member_revisions: () => revisionsBuilder,
-      member_industries: () => queryBuilder(dbOk([1, 2, 3, 4].map((industry_id) => ({ industry_id })))),
-      industries: () => queryBuilder(dbOk([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }])),
-    });
-    await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "1" }, [1, 2, 3, 4]))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=profile");
-    expect(revisionsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ industry_ids: [1, 2, 3, 4] }) }));
-  });
-
-  it("refuses an industry id that doesn't exist with a form error, not a thrown foreign key", async () => {
-    const from = db({ members: activeMember, industries: () => queryBuilder(dbOk([{ id: 2 }])) });
-    await expect(submitProfileEdit(withIndustries({ name: "Acme", industry_id: "2" }, [2, 999])))
-      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/profile\?error=One%20of%20the%20industries/);
-    expect(from).not.toHaveBeenCalledWith("member_revisions");
   });
 
   // GAPS A1.12: a live page's edit notifies the console like every other submission.
@@ -609,11 +575,13 @@ describe("withdrawStory / editStory", () => {
     const storiesBuilder = storyTable(memberStory({ status: "rejected" }));
     db({ stories: () => storiesBuilder });
 
-    await expect(editStory(form({ id: "s1", title: "Fixed title" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
+    await expect(editStory(form({ id: "s1", title: "Fixed title", industry_id: "5" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=story");
 
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({
       title: "Fixed title", status: "awaiting_approval", rejected_reason: null,
     }));
+    // the industry is Jas's: a member edit never writes it, so Jas's tag survives
+    expect(callsOf(storiesBuilder.update)[0][0]).not.toHaveProperty("industry_id");
   });
 
   it("editStory requires a cover on a legacy story that has neither an existing one nor a new upload", async () => {
@@ -883,9 +851,10 @@ describe("withdrawVideo / editVideo", () => {
     const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "mem1" }));
     db({ videos: () => videosBuilder });
 
-    await expect(editVideo(form({ id: "v1", title: "t", url: "https://youtu.be/abc" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=video");
+    await expect(editVideo(form({ id: "v1", title: "t", url: "https://youtu.be/abc", industry_id: "5" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=video");
 
     expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", rejected_reason: null }));
+    expect(callsOf(videosBuilder.update)[0][0]).not.toHaveProperty("industry_id");
   });
 });
 
@@ -902,9 +871,10 @@ describe("withdrawEvent / editEvent", () => {
     const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "rejected", member_id: "mem1" }));
     db({ events: () => eventsBuilder });
 
-    await expect(editEvent(form({ id: "e1", title: "t", type: "webinar" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=event");
+    await expect(editEvent(form({ id: "e1", title: "t", type: "webinar", industry_id: "5" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=event");
 
     expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ type: "webinar", status: "awaiting_approval" }));
+    expect(callsOf(eventsBuilder.update)[0][0]).not.toHaveProperty("industry_id");
   });
 
   it("editEvent does nothing for a blank title", async () => {

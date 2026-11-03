@@ -5,6 +5,8 @@ import StoriesPage from "@/app/console/stories/page";
 import MembersAdminPage from "@/app/console/members/page";
 import CrmAdminPage from "@/app/console/crm/page";
 import PageLayoutsPage from "@/app/console/pages/page";
+import VideosPage from "@/app/console/videos/page";
+import EventsPage from "@/app/console/events/page";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -21,7 +23,12 @@ vi.mock("@/lib/blocks/layouts", () => ({ getLayout: vi.fn(async () => ({ blocks:
 vi.mock("@/lib/variant", async (orig) => ({ ...(await orig<typeof import("@/lib/variant")>()), defaultVariant: vi.fn(async () => "grid") }));
 vi.mock("@/lib/queries", async (orig) => {
   const { resolveHomeSections } = await import("@/lib/home-sections");
-  return { ...(await orig<typeof import("@/lib/queries")>()), homeSectionsSetting: vi.fn(async () => resolveHomeSections(null)) };
+  return {
+    ...(await orig<typeof import("@/lib/queries")>()),
+    homeSectionsSetting: vi.fn(async () => resolveHomeSections(null)),
+    // The events page's Featured Event card; nothing booked, pinned or upcoming.
+    featuredEvent: vi.fn(async () => ({ event: null, source: "fallback" as const, placement: null })),
+  };
 });
 vi.mock("@/app/console/pages/LayoutEditor", () => ({ LayoutEditor: () => null }));
 
@@ -94,6 +101,25 @@ describe("/console/stories", () => {
     })));
     render(await StoriesPage(props({ view: "calendar", error: "Can't move a published story straight to awaiting_approval." })));
     expect(screen.getByRole("alert")).toHaveTextContent("Can't move a published story straight to awaiting_approval.");
+  });
+});
+
+// Review fix, 3 Nov: an Approve or Publish now on a video or event deleted in
+// another tab lands here with ?error=, which used to be dropped unshown.
+describe.each([
+  ["/console/videos", VideosPage, "Video not found."],
+  ["/console/events", EventsPage, "Event not found."],
+] as const)("%s", (_path, Page, message) => {
+  it("shows the ?error= an editor sends back", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({}, () => queryBuilder(dbOk([]))) })));
+    render(await Page(props({ view: "calendar", error: message })));
+    expect(screen.getByRole("alert")).toHaveTextContent(message);
+  });
+
+  it("shows no alert without one", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({}, () => queryBuilder(dbOk([]))) })));
+    render(await Page(props({ view: "calendar" })));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 

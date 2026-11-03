@@ -9,6 +9,7 @@ import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVide
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { UploadField } from "@/components/UploadField";
 import { SocialPostFields } from "@/components/console/SocialPostFields";
@@ -52,6 +53,8 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
   // filtered to active members, so a grace or lapsed member's video would
   // silently get no fallback at all. Matches the story and event editors.
   const industryDefault = video?.industry_id ?? video?.member?.industry_id ?? "";
+  // Approve / Schedule send the Industry box as it stands, so what Jas sees is what goes Live.
+  const industryField = <MirrorInput source="industry_id" name="industry_id" defaultValue={String(industryDefault)} />;
   const isPinned = !!video?.pinned_until && new Date(video.pinned_until) > new Date();
   const socialStatus = video
     ? socialStatusLine({ ...video, job: socialJob, caps: socialCaps, live: isSocialLive() })
@@ -128,6 +131,7 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
               <form action={scheduleVideo} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="return_to" value={backTo} />
+                {industryField}
                 <label htmlFor="approve_at" className="sr-only">Publish at (UK time)</label>
                 <input id="approve_at" type="datetime-local" name="scheduled_at" required defaultValue={londonInputValue(video.scheduled_at)} className="rounded border px-3 py-1.5 text-sm" />
                 <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</button>
@@ -135,6 +139,7 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
               <form action={decideVideo} className="mt-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="approve" />
+                {industryField}
                 <button className="rounded border border-ink px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</button>
               </form>
               {video.source === "member" ? (
@@ -160,6 +165,7 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
               <form action={scheduleVideo} className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="return_to" value={backTo} />
+                {industryField}
                 <label htmlFor="schedule_at" className="sr-only">Publish at (UK time)</label>
                 <input id="schedule_at" type="datetime-local" name="scheduled_at" defaultValue={londonInputValue(video.scheduled_at)} className="rounded border px-3 py-1.5 text-sm" />
                 <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>

@@ -52,6 +52,19 @@ export function canMoveStory(from: string, to: string): to is BoardStatus {
   return isBoardStatus(from) && isBoardStatus(to) && LEGAL_STORY_MOVES[from].includes(to);
 }
 
+/**
+ * Where the editor's Schedule and "Publish now" may start from. Wider than the
+ * board matrix (a Sent back story can be published straight from its editor),
+ * but never from Live or Withdrawn. A member's own draft is refused separately
+ * (isMemberDraft), since its status alone says "draft". Videos use this same
+ * rule (video-board re-exports it as canScheduleVideo).
+ */
+export const SCHEDULABLE_FROM = ["draft", "awaiting_approval", "rejected", "scheduled"] as const;
+
+export function canScheduleStory(from: string): boolean {
+  return (SCHEDULABLE_FROM as readonly string[]).includes(from);
+}
+
 /* ---------- views (fix-list 75) ---------- */
 
 export const STORY_VIEWS = ["board", "calendar", "list"] as const;

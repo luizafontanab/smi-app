@@ -14,10 +14,12 @@ Three moving parts. Only the first two are needed to look at a page.
 ## Start
 
 ```bash
-supabase status        # already up? then skip the next line
-supabase start         # ~30s cold; leaves Docker containers running between sessions
-pnpm dev:start          # idempotent: no-ops with "Already running" if it's already up
+docker ps --filter name=supabase_db_app --format '{{.Status}}'   # "Up …"? then skip the next line
+supabase start >/dev/null   # ~30s cold; leaves Docker containers running between sessions
+pnpm dev:start              # idempotent: no-ops with "Already running" if it's already up
 ```
+
+`supabase status` and `supabase start` print the stack's API keys, so the secrets hook blocks the first and asks about the second. The `docker ps` line is the liveness check; URLs and variable names are in `.env.example`.
 
 `dev:start` (`scripts/dev-server.sh`) runs `next dev --turbopack -p 3100` detached, so it survives this session ending — don't use `run_in_background: true` for it, it isn't needed. It polls `http://127.0.0.1:3100/` itself and only returns once the server answers (or after ~60s if something's wrong), so the command finishing is your readiness signal — no separate curl loop to write.
 
@@ -46,7 +48,19 @@ node scripts/screenshot.mjs / shot.png '[data-stage-card]'   # 3rd arg hovers fi
 | `media@smi.local` | member (external contributor) — `/dashboard/*`, drafts only |
 | `member1@smi.local` … `member3@smi.local` | members — `/dashboard/*` |
 
-Sign in at `/login` (`input[name="email"]`, `input[name="password"]`); `tests/e2e/flows.spec.ts` has the helper if you need it in a script.
+**Act as a user** — `scripts/console-session.mjs` signs in and runs a steps file you write (put it in the scratchpad), handing it a signed-in `page` and a `sql` helper. The header comment shows the steps-file shape.
+
+```bash
+node scripts/console-session.mjs jas@smi.local steps.mjs <args...>
+```
+
+Use it for manual checks after a console change: click through the flow, then read the rows it should have written (`jobs`, `approvals`, the content table).
+
+**Query the database** — the container's own `psql`, no connection string needed:
+
+```bash
+docker exec supabase_db_app psql -U postgres -At -F'|' -c "select status from stories limit 5"
+```
 
 **Route groups:** `/` and the public pages (`/member/*` is the PUBLIC directory), `/dashboard/*` (member area), `/console/*` (operator console). Anything under the latter two redirects to `/login` when signed out — a redirect there is correct behaviour, not a failure.
 

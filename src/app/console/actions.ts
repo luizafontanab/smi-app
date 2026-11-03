@@ -10,7 +10,7 @@ import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
 import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
 import { keepUntouchedPosts, parseStoryPosts } from "@/lib/social";
-import { cancelSocialPush, queueSocialPush, rescheduleSocialPush, socialFieldsFromForm } from "@/lib/social-push";
+import { rescheduleSocialPush, socialFieldsFromForm } from "@/lib/social-push";
 import { parseLondonInput } from "@/lib/london-time";
 import type { SocialChannels } from "@/lib/social-channels";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
@@ -23,10 +23,9 @@ import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
 import { EMAIL_RE, safeInternalPath, UUID_RE } from "@/lib/validate";
 import { eventLastDay, FEATURED_EVENT_BACKUP_KEY } from "@/lib/featured-event";
-import { canMoveStory, isMemberDraft } from "@/lib/story-board";
-import { enqueueStoryLive, replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
-import { canMoveEvent } from "@/lib/event-board";
-import { canMoveVideo } from "@/lib/video-board";
+import { isMemberDraft } from "@/lib/story-board";
+import { replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
+import { approve, decline, move, publish, schedule, type ContentKind, type LifecycleDeps, type LifecycleResult, type PublishOptions } from "@/lib/content-lifecycle";
 import { FEATURED_SLOTS, penniesFromPounds } from "@/lib/pricing";
 import { BANNER_SPOTS_KEY } from "@/lib/banner-spots";
 import { raiseInvoice } from "@/lib/invoicing";
@@ -194,34 +193,48 @@ export async function saveStory(formData: FormData) {
   redirect(`/console/stories/${storyId}?saved=1`);
 }
 
+/** The content lifecycle's dependencies: the service client and the real job queue. Not exported: "use server". */
+function lifecycleDeps(): LifecycleDeps {
+  return { db: serviceDb(), enqueue };
+}
+
+/**
+ * Where a decide/schedule refusal is shown: the item's editor, or its list
+ * when there is no console editor to land on (not found — which includes a
+ * member's unsubmitted story draft). Not exported: "use server".
+ */
+function lifecycleErrorPath(kind: ContentKind, id: string, res: Extract<LifecycleResult, { ok: false }>): string {
+  const list = `/console/${kind === "story" ? "stories" : `${kind}s`}`;
+  const base = res.code === "not_found" ? list : `${list}/${id}`;
+  return `${base}?error=${encodeURIComponent(res.error)}`;
+}
+
+/**
+ * The editor's Industry box, which its publishing forms carry (MirrorInput).
+ * Undefined when the form didn't send one — the board's buttons — so the
+ * lifecycle falls back to the member's own industry. Not exported: "use server".
+ */
+function industryChoice(formData: FormData): PublishOptions | undefined {
+  return formData.has("industry_id") ? { industryId: Number(formData.get("industry_id")) || null } : undefined;
+}
+
 export async function scheduleStory(formData: FormData) {
   const user = await requireConsole();
   const id = String(formData.get("id"));
   const when = String(formData.get("scheduled_at") ?? "");
-  const db = serviceDb();
-  const { data: story } = await db.from("stories").select("member_id, status, member_draft").eq("id", id).single();
-  // "Publish now" on a member's unsubmitted draft would skip their approval.
-  if (story && isMemberDraft(story)) redirect("/console/stories");
-  const wasAwaitingApproval = story?.status === "awaiting_approval";
   const now = formData.get("mode") === "now";
   // The editor's time is UK wall-clock; read on the server it was UTC, an hour out all summer.
   const at = when && !now ? parseLondonInput(when) : null;
   if (when && !now && !at) {
     redirect(`/console/stories/${id}?error=${encodeURIComponent("That publish time isn't a date and time we can read.")}`);
   }
-  if (now) {
-    // urgent override — publish immediately, social push follows at its own time or the delay
-    await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", id);
-    await queueSocialPush(db, { story_id: id }, enqueue);
-    // every member the story features hears it's live (Jas 13/10 item 12)
-    if (story) await enqueueStoryLive(db, { id, member_id: story.member_id }, enqueue);
-  } else if (at) {
-    await db.from("stories").update({ status: "scheduled", scheduled_at: at.toISOString() }).eq("id", id);
-  }
-  // scheduling from awaiting_approval is also an approval — record it same as decideStory's approve branch
-  if (wasAwaitingApproval) {
-    await db.from("approvals").insert({ kind: "story", subject_id: id, decision: "approved", reason: null, decided_by: user.userId });
-  }
+  // Publish now is the urgent override; scheduling from Ready to review is also
+  // an approval. Legality, the social post, the emails and the approval record
+  // all live in lib/content-lifecycle.
+  const res = now
+    ? await publish(lifecycleDeps(), "story", id, { userId: user.userId }, industryChoice(formData))
+    : at ? await schedule(lifecycleDeps(), "story", id, at, { userId: user.userId }, industryChoice(formData)) : null;
+  if (res && !res.ok) redirect(lifecycleErrorPath("story", id, res));
   revalidatePath("/console/stories");
   // come back to whichever Story Engine view the operator came from (board,
   // calendar or list). Validated, not trusted — this is POST-reachable like every action.
@@ -229,30 +242,22 @@ export async function scheduleStory(formData: FormData) {
   redirect(/^\/console\/stories(\?[\w=&-]*)?$/.test(back) ? back : "/console/stories");
 }
 
+/**
+ * Approve publishes; anything else declines (lib/content-lifecycle): a
+ * member's story is Sent back with the reason; the desk's own goes back to
+ * Draft with no email — its member_id is the company it is *about*, who didn't
+ * write it (Jas's flow chart, 16 Oct).
+ */
 export async function decideStory(formData: FormData) {
   const user = await requireConsole();
   const id = String(formData.get("id"));
   const decision = String(formData.get("decision"));
   const reason = String(formData.get("reason") ?? "");
-  const db = serviceDb();
-  const { data: story } = await db.from("stories").select("id, member_id, status, source").eq("id", id).single();
-  if (!story || story.status !== "awaiting_approval") return;
-
-  if (decision === "approve") {
-    await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", id);
-    await queueSocialPush(db, { story_id: id }, enqueue);
-    await enqueueStoryLive(db, { id, member_id: story.member_id }, enqueue);
-  } else if (story.source === "member") {
-    // working assumption #1: member is notified with a reason
-    await db.from("stories").update({ status: "rejected", rejected_reason: reason }).eq("id", id);
-    if (story.member_id) await enqueue("notify_member", { member_id: story.member_id, kind: "story_rejected", story_id: id, reason });
-  } else {
-    // The desk's own story: "not yet" goes back to draft (Jas's flow chart,
-    // 16 Oct). member_id here is the company it is *about*, who didn't write
-    // it — before 20 Oct they were emailed that "their" story was sent back.
-    await db.from("stories").update({ status: "draft" }).eq("id", id);
-  }
-  await db.from("approvals").insert({ kind: "story", subject_id: id, decision: decision === "approve" ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
+  const actor = { userId: user.userId };
+  const res = decision === "approve"
+    ? await approve(lifecycleDeps(), "story", id, actor, reason, industryChoice(formData))
+    : await decline(lifecycleDeps(), "story", id, actor, reason);
+  if (!res.ok) redirect(lifecycleErrorPath("story", id, res));
   revalidatePath("/console");
   revalidatePath("/console/stories");
 }
@@ -271,53 +276,14 @@ export async function pinStory(formData: FormData) {
  * Kanban drop handler — a typed server action called directly from the client
  * board, same "not FormData" precedent as moveDevTask. Unlike moveDevTask, any
  * move here can be illegal (see LEGAL_STORY_MOVES), so this returns {ok,error}
- * rather than void, and re-reads the row's current status from the DB rather
- * than trusting the client's idea of "from" — a stale drag can't apply an
- * illegal transition.
+ * rather than void. lib/content-lifecycle re-reads the row's current status
+ * rather than trusting the client's idea of "from", so a stale drag can't apply
+ * an illegal transition.
  */
 export async function moveStory(input: { id: string; to: string }): Promise<{ ok: boolean; error?: string }> {
   const user = await requireConsole();
-  const db = serviceDb();
-  const { data: story } = await db.from("stories").select("id, status, member_id, member_draft, source").eq("id", input.id).single();
-  // A member's unsubmitted draft is theirs until they submit it — never the
-  // desk's to publish or move (lib/story-board isMemberDraft).
-  if (!story || isMemberDraft(story)) return { ok: false, error: "Story not found." };
-  if (!canMoveStory(story.status, input.to)) {
-    return { ok: false, error: `Can't move a ${story.status} story straight to ${input.to}.` };
-  }
-  // A member's submission is sent back with a reason they're told, never
-  // dragged silently to draft (LEGAL_STORY_MOVES).
-  if (story.status === "awaiting_approval" && input.to === "draft" && story.source === "member") {
-    return { ok: false, error: "A member's story is sent back from its editor, with a reason they'll see." };
-  }
-  if (input.to === "published") {
-    // Checked: an unchecked failure here still queued the social push and the
-    // "your story is live" emails for a story that never published.
-    const { error } = await db.from("stories").update({ status: "published", published_at: new Date().toISOString() }).eq("id", input.id);
-    if (error) return { ok: false, error: "The story couldn't be published — try again." };
-    await queueSocialPush(db, { story_id: input.id }, enqueue);
-    await enqueueStoryLive(db, { id: input.id, member_id: story.member_id }, enqueue);
-    if (story.status === "awaiting_approval") {
-      // mirror decideStory's approve branch so the audit trail is identical
-      // whether an operator clicked Approve or dragged the card.
-      await db.from("approvals").insert({ kind: "story", subject_id: input.id, decision: "approved", reason: null, decided_by: user.userId });
-    }
-  } else {
-    // Leaving published clears published_at, same reasoning as moveVideo: a
-    // re-publish stamps a fresh date, and a draft carrying a publication date is
-    // a claim the row cannot support.
-    const { error } = await db.from("stories").update({
-      status: input.to,
-      ...(story.status === "published" ? { published_at: null } : {}),
-    }).eq("id", input.id);
-    if (error) return { ok: false, error: "The story couldn't be moved — try again." };
-    // Taken down before its post went out: drop the post (the job re-checks too).
-    if (story.status === "published") await cancelSocialPush(db, { story_id: input.id });
-    if (story.status === "awaiting_approval" && input.to === "draft") {
-      // mirror decideStory's "not yet" so the review leaves the same trail either way
-      await db.from("approvals").insert({ kind: "story", subject_id: input.id, decision: "rejected", reason: null, decided_by: user.userId });
-    }
-  }
+  const res = await move(lifecycleDeps(), "story", input.id, input.to, { userId: user.userId });
+  if (!res.ok) return { ok: false, error: res.error };
   revalidatePath("/console");
   revalidatePath("/console/stories");
   return { ok: true };
@@ -406,54 +372,33 @@ export async function scheduleVideo(formData: FormData) {
   const user = await requireConsole();
   const id = String(formData.get("id"));
   const when = String(formData.get("scheduled_at") ?? "");
-  const db = serviceDb();
-  const { data: video } = await db.from("videos").select("member_id, status").eq("id", id).single();
-  const wasAwaitingApproval = video?.status === "awaiting_approval";
   const now = formData.get("mode") === "now";
   // UK wall-clock, as scheduleStory.
   const at = when && !now ? parseLondonInput(when) : null;
   if (when && !now && !at) {
     redirect(`/console/videos/${id}?error=${encodeURIComponent("That publish time isn't a date and time we can read.")}`);
   }
-  if (now) {
-    // urgent override — publish immediately, social push follows at its own time or the delay
-    await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
-    await queueSocialPush(db, { video_id: id }, enqueue);
-    if (video?.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: id });
-  } else if (at) {
-    await db.from("videos").update({ status: "scheduled", scheduled_at: at.toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
-  }
-  // scheduling from awaiting_approval is also an approval — record it same as decideVideo's approve branch
-  if (wasAwaitingApproval) {
-    await db.from("approvals").insert({ kind: "video", subject_id: id, decision: "approved", reason: null, decided_by: user.userId });
-  }
+  // As scheduleStory: the rules and side effects live in lib/content-lifecycle.
+  const res = now
+    ? await publish(lifecycleDeps(), "video", id, { userId: user.userId }, industryChoice(formData))
+    : at ? await schedule(lifecycleDeps(), "video", id, at, { userId: user.userId }, industryChoice(formData)) : null;
+  if (res && !res.ok) redirect(lifecycleErrorPath("video", id, res));
   revalidatePath("/console/videos");
   const back = String(formData.get("return_to") ?? "");
   redirect(/^\/console\/videos(\?[\w=&-]*)?$/.test(back) ? back : "/console/videos");
 }
 
+/** As decideStory: approve publishes, anything else declines. */
 export async function decideVideo(formData: FormData) {
   const user = await requireConsole();
   const id = String(formData.get("id"));
   const decision = String(formData.get("decision"));
   const reason = String(formData.get("reason") ?? "");
-  const db = serviceDb();
-  const { data: video } = await db.from("videos").select("id, member_id, status, source").eq("id", id).single();
-  if (!video || video.status !== "awaiting_approval") return;
-
-  if (decision === "approve") {
-    await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
-    await queueSocialPush(db, { video_id: id }, enqueue);
-    if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: id });
-  } else if (video.source === "member") {
-    await db.from("videos").update({ status: "rejected", rejected_reason: reason, updated_at: new Date().toISOString() }).eq("id", id);
-    if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_rejected", video_id: id, reason });
-  } else {
-    // The desk's own video: "not yet" goes back to draft, and the member it
-    // features isn't emailed about a video they didn't send in (as decideStory).
-    await db.from("videos").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", id);
-  }
-  await db.from("approvals").insert({ kind: "video", subject_id: id, decision: decision === "approve" ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
+  const actor = { userId: user.userId };
+  const res = decision === "approve"
+    ? await approve(lifecycleDeps(), "video", id, actor, reason, industryChoice(formData))
+    : await decline(lifecycleDeps(), "video", id, actor, reason);
+  if (!res.ok) redirect(lifecycleErrorPath("video", id, res));
   revalidatePath("/console");
   revalidatePath("/console/videos");
 }
@@ -471,45 +416,14 @@ export async function pinVideo(formData: FormData) {
 
 /**
  * Video Engine kanban drop handler — the sibling of `moveStory`, same contract:
- * re-read the current status from the DB rather than trusting the client's idea
- * of it, refuse anything outside LEGAL_VIDEO_MOVES, and return the reason so the
- * board can revert its optimistic update and say why.
+ * lib/content-lifecycle re-reads the current status, refuses anything outside
+ * LEGAL_VIDEO_MOVES, and returns the reason so the board can revert its
+ * optimistic update and say why.
  */
 export async function moveVideo(input: { id: string; to: string }): Promise<{ ok: boolean; error?: string }> {
   const user = await requireConsole();
-  const db = serviceDb();
-  const { data: video } = await db.from("videos").select("id, status, member_id, source").eq("id", input.id).single();
-  if (!video) return { ok: false, error: "Video not found." };
-  if (!canMoveVideo(video.status, input.to)) {
-    return { ok: false, error: `Can't move a ${video.status} video straight to ${input.to}.` };
-  }
-  if (video.status === "awaiting_approval" && input.to === "draft" && video.source === "member") {
-    return { ok: false, error: "A member's video is sent back from its editor, with a reason they'll see." };
-  }
-  if (input.to === "published") {
-    await db.from("videos").update({ status: "published", published_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", input.id);
-    await queueSocialPush(db, { video_id: input.id }, enqueue);
-    if (video.member_id) await enqueue("notify_member", { member_id: video.member_id, kind: "video_live", video_id: input.id });
-    if (video.status === "awaiting_approval") {
-      // mirror decideVideo's approve branch so the audit trail is identical
-      // whether an operator clicked Approve or dragged the card.
-      await db.from("approvals").insert({ kind: "video", subject_id: input.id, decision: "approved", reason: null, decided_by: user.userId });
-    }
-  } else {
-    // Leaving published clears published_at: a later re-publish must stamp a
-    // fresh date, and "published_at set while status is draft" is a lie the
-    // public queries would eventually trip over.
-    await db.from("videos").update({
-      status: input.to,
-      updated_at: new Date().toISOString(),
-      ...(video.status === "published" ? { published_at: null } : {}),
-    }).eq("id", input.id);
-    // Taken down before its post went out: drop the post (the job re-checks too).
-    if (video.status === "published") await cancelSocialPush(db, { video_id: input.id });
-    if (video.status === "awaiting_approval" && input.to === "draft") {
-      await db.from("approvals").insert({ kind: "video", subject_id: input.id, decision: "rejected", reason: null, decided_by: user.userId });
-    }
-  }
+  const res = await move(lifecycleDeps(), "video", input.id, input.to, { userId: user.userId });
+  if (!res.ok) return { ok: false, error: res.error };
   revalidatePath("/console");
   revalidatePath("/console/videos");
   return { ok: true };
@@ -667,23 +581,17 @@ export async function saveEvent(formData: FormData) {
   redirect(`/console/events/${eventId}?saved=1`);
 }
 
+/** As decideStory: approve publishes; a member's event is Sent back with the reason, the desk's own goes back to Draft. */
 export async function decideEvent(formData: FormData) {
   const user = await requireConsole();
   const id = String(formData.get("id"));
   const decision = String(formData.get("decision"));
   const reason = String(formData.get("reason") ?? "");
-  const db = serviceDb();
-  const { data: event } = await db.from("events").select("id, member_id, status").eq("id", id).single();
-  if (!event || event.status !== "awaiting_approval") return;
-
-  if (decision === "approve") {
-    await db.from("events").update({ status: "published", updated_at: new Date().toISOString() }).eq("id", id);
-    if (event.member_id) await enqueue("notify_member", { member_id: event.member_id, kind: "event_published", event_id: id });
-  } else {
-    await db.from("events").update({ status: "rejected", rejected_reason: reason, updated_at: new Date().toISOString() }).eq("id", id);
-    if (event.member_id) await enqueue("notify_member", { member_id: event.member_id, kind: "event_rejected", event_id: id, reason });
-  }
-  await db.from("approvals").insert({ kind: "event", subject_id: id, decision: decision === "approve" ? "approved" : "rejected", reason: reason || null, decided_by: user.userId });
+  const actor = { userId: user.userId };
+  const res = decision === "approve"
+    ? await approve(lifecycleDeps(), "event", id, actor, reason, industryChoice(formData))
+    : await decline(lifecycleDeps(), "event", id, actor, reason);
+  if (!res.ok) redirect(lifecycleErrorPath("event", id, res));
   revalidatePath("/console");
   revalidatePath("/console/events");
 }
@@ -691,28 +599,12 @@ export async function decideEvent(formData: FormData) {
 /**
  * Board/dropdown status moves for events (A1.10-style, mirroring moveStory).
  * Console-created events start at "draft" with no other code path to
- * "published" — this is that path, reusing the exact writes decideEvent's
- * approve branch and returnToDraft's event branch already perform.
+ * "published" — this is that path (lib/content-lifecycle move).
  */
 export async function moveEvent(input: { id: string; to: string }): Promise<{ ok: boolean; error?: string }> {
   const user = await requireConsole();
-  const db = serviceDb();
-  const { data: event } = await db.from("events").select("id, status, member_id").eq("id", input.id).single();
-  if (!event) return { ok: false, error: "Event not found." };
-  if (!canMoveEvent(event.status, input.to)) {
-    return { ok: false, error: `Can't move a ${event.status} event straight to ${input.to}.` };
-  }
-  if (input.to === "published") {
-    await db.from("events").update({ status: "published", updated_at: new Date().toISOString() }).eq("id", input.id);
-    if (event.member_id) await enqueue("notify_member", { member_id: event.member_id, kind: "event_published", event_id: input.id });
-    if (event.status === "awaiting_approval") {
-      // mirror decideEvent's approve branch so the audit trail is identical
-      // whether an operator clicked Approve or moved the card/dropdown.
-      await db.from("approvals").insert({ kind: "event", subject_id: input.id, decision: "approved", reason: null, decided_by: user.userId });
-    }
-  } else {
-    await db.from("events").update({ status: input.to, updated_at: new Date().toISOString() }).eq("id", input.id);
-  }
+  const res = await move(lifecycleDeps(), "event", input.id, input.to, { userId: user.userId });
+  if (!res.ok) return { ok: false, error: res.error };
   revalidatePath("/console");
   revalidatePath("/console/events");
   return { ok: true };
@@ -744,11 +636,12 @@ export async function decideRevision(formData: FormData) {
     // Only what the member's own profile form can produce, each value re-checked
     // (member-revision.ts) — the payload is member-written and reachable by a
     // direct PostgREST insert, so applying it wholesale let a member set their
-    // own status, billing or paid_at by having Jas click Approve. Services,
-    // membership types and industries ride it as id lists (they're join tables,
-    // not columns); null means the revision predates that picker, so the
-    // member's existing set is left alone rather than wiped.
-    const { values: payload, serviceIds, membershipTypeIds, industryIds, ignored } = parseRevisionPayload(rev.payload, rev.member_id);
+    // own status, billing or paid_at by having Jas click Approve. Services and
+    // membership types ride it as id lists (they're join tables, not columns);
+    // null means the revision predates that picker, so the member's existing
+    // set is left alone rather than wiped. Industries are Jas's alone: a
+    // revision's industry fields are never applied (member-revision.ts).
+    const { values: payload, serviceIds, membershipTypeIds, ignored } = parseRevisionPayload(rev.payload, rev.member_id);
     if (ignored.length) {
       logError({
         source: "server",
@@ -788,17 +681,6 @@ export async function decideRevision(formData: FormData) {
         await replaceMemberMembershipTypes(db, rev.member_id, membershipTypeIds);
       } catch (e) {
         return memberFail(rev.member_id, e instanceof Error ? e.message : "Could not save membership types.");
-      }
-    }
-    // Same null rule again: a revision from before members picked several
-    // industries leaves their set alone. The form already put the primary in
-    // the set; re-adding it guards a payload that says otherwise.
-    if (industryIds) {
-      const primary = typeof payload.industry_id === "number" ? [payload.industry_id] : [];
-      try {
-        await replaceMemberIndustries(db, rev.member_id, [...industryIds, ...primary]);
-      } catch (e) {
-        return memberFail(rev.member_id, e instanceof Error ? e.message : "Could not save industries.");
       }
     }
     // Same redirect bookkeeping saveMember does — a live member's old URL has
@@ -2280,6 +2162,7 @@ export async function saveFeatureFlag(formData: FormData) {
   revalidatePath("/dashboard", "layout");
   revalidatePath("/console/features");
   revalidatePath("/console/sources"); // shows whether the story crawler is on
+  revalidatePath("/", "layout"); // industries_public changes the public header and pages
   redirect(`/console/features?saved=${flag}`);
 }
 
