@@ -26,6 +26,8 @@ export type Route = {
   pin?: string;
   /** Explicit, never silent. A skipped route is listed in every report. */
   skip?: string;
+  /** Desktop (1280) unless set. The @phone copies below set "phone". */
+  device?: "desktop" | "phone";
 };
 
 /** `/` -> home, `/console/adverts/banners` -> console_adverts_banners, `/search?q=x` -> search */
@@ -274,6 +276,19 @@ const CONSOLE_PINNED: Route[] = [
  *   /go/[memberId], /visit/[id]          redirect handlers, no UI
  *   /reset/confirm                       route handler, no UI
  */
+/**
+ * #33: the public site and the member area again at phone width (390×844).
+ * Grid drifted on phones unnoticed because every baseline was 1280 wide. The
+ * console is left out on purpose — on a phone it only has to not scroll
+ * sideways, which tests/e2e/mobile.spec.ts asserts on every route.
+ * Run just these with `pnpm visual --only '*@phone'`.
+ */
+const PHONE: Route[] = [...PUBLIC, ...PUBLIC_PINNED, ...DASHBOARD].map((r) => ({
+  ...r,
+  id: `${r.id}@phone`,
+  device: "phone",
+}));
+
 export const ROUTES: Route[] = [
   ...PUBLIC,
   ...PUBLIC_PINNED,
@@ -281,6 +296,7 @@ export const ROUTES: Route[] = [
   ...CONSOLE,
   ...CONSOLE_NEW,
   ...CONSOLE_PINNED,
+  ...PHONE,
 ];
 
 /** Guards against a copy-paste that would silently overwrite another baseline. */

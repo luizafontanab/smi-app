@@ -33,6 +33,13 @@ export default defineConfig({
       testMatch: /mobile\.spec\.ts/,
       use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
     },
+    // #33: 768 is a real target, not a spot check — the header is still the
+    // drawer here (below lg) while card grids have stepped up from one column.
+    {
+      name: "tablet",
+      testMatch: /mobile\.spec\.ts/,
+      use: { viewport: { width: 768, height: 1024 }, isMobile: true, hasTouch: true },
+    },
   ],
   webServer: {
     command: "pnpm dev",

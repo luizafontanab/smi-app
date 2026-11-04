@@ -18,16 +18,29 @@ The dev server on 3100 can stay running — this builds into its own directory a
 serves on its own port.
 
 ```sh
-pnpm visual                      # build, serve, capture all ~86 routes, compare
+pnpm visual                      # build, serve, capture every route, compare
 pnpm visual --no-build           # reuse the last visual build (much faster)
 pnpm visual --only 'console_*'   # just one area
 pnpm visual --only home          # one route, by id
+pnpm visual --only '*@phone'     # just the phone-width group
 pnpm visual --role member        # everything behind the member login
 pnpm visual:report               # open the last report
 ```
 
-`pnpm visual` takes a few minutes: a production build, two logins, then ~86
-full-page captures at concurrency 2.
+`pnpm visual` takes a few minutes: a production build, two logins, then about
+150 full-page captures at concurrency 2.
+
+### Phone width
+
+Every public and member-area route is captured a second time at 390×844 with
+touch emulation, under the same id plus `@phone` (`home@phone`,
+`dashboard@phone`). Grid drifted on phones unnoticed while every baseline was
+1280 wide (#33). The console has no phone copies: on a phone it only has to
+not scroll sideways, which `tests/e2e/mobile.spec.ts` checks on every route.
+
+The group was added on 4 Nov 2026 without baselines, so until they are
+accepted a full run reports each `@phone` route as missing and exits 2. Review
+them with `pnpm visual --only '*@phone'` and accept them route by route.
 
 ### Exit codes
 

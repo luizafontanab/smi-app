@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { THEME_SWITCHER_ENABLED } from "../../src/lib/theme-switcher-flag";
 
 /**
  * The hero's contract, in one test:
@@ -14,6 +15,8 @@ import { expect, test } from "@playwright/test";
  * HomeHero is forge's alone — the grid homepage, the default, has no hero — so
  * every test here pins forge.
  */
+test.skip(!THEME_SWITCHER_ENABLED, "forge is unreachable while the design switcher is off — the site serves grid whatever the cookie says (#33)");
+
 test.beforeEach(async ({ context, baseURL }) => {
   await context.addCookies([{ name: "smi-theme", value: "forge", url: baseURL! }]);
 });

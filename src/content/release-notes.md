@@ -10,6 +10,9 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-04 — Console calendars fit a phone
+- On a phone, the console overview and the Story, Video, Events and Newsletter calendars no longer make the whole page slide sideways. The calendar scrolls inside its own box, and the Live/Scheduled key moves under the month name when there isn't room beside it.
+
 ## 2026-11-04 — Everyone sees the same design
 - Every visitor now gets the current design. Before, a browser that had used the old design switcher could keep showing the older dark design for up to 30 days, so a phone and a desktop could look different and show the featured machine and events in different places.
 - The "Homepage design" card no longer appears on Console → Pages, since there is only one design to choose.

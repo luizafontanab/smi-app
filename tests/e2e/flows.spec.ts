@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { THEME_SWITCHER_ENABLED } from "../../src/lib/theme-switcher-flag";
 import sharp from "sharp";
 
 const PASSWORD = "local-dev-password";
@@ -20,6 +21,7 @@ async function pinForge(context: import("@playwright/test").BrowserContext, base
 test.describe("reader (V1/V2)", () => {
   // Forge-only: the hero rail is forge's, and grid's top slot is a sold banner by design.
   test("homepage renders news-first with rotating adverts", async ({ page, context, baseURL }) => {
+    test.skip(!THEME_SWITCHER_ENABLED, "forge is unreachable while the design switcher is off — the site serves grid whatever the cookie says (#33)");
     await pinForge(context, baseURL);
     await page.goto("/");
     // the headline story is card 1 of the hero rail, and the hero stage opens on it
@@ -234,8 +236,10 @@ test.describe("public header follows the session", () => {
   // Pinned to forge for the page-level checks: they expect forge's navy join
   // band, which hides for signed-in visitors. Grid's homepage band shows to
   // everyone. The header itself is one structure on both designs
-  // (site-header.test.tsx covers the light tone).
-  test.beforeEach(async ({ context, baseURL }) => pinForge(context, baseURL));
+  // (site-header.test.tsx covers the light tone). With the switcher off the
+  // cookie is ignored (#33): the header checks run on grid and the band
+  // checks, which are forge's, are left out.
+  test.beforeEach(async ({ context, baseURL }) => { if (THEME_SWITCHER_ENABLED) await pinForge(context, baseURL); });
 
   test("anonymous visitors get the join/login pair", async ({ page }) => {
     await page.goto("/");
@@ -243,7 +247,7 @@ test.describe("public header follows the session", () => {
     await expect(header.getByRole("link", { name: "Become a Member", exact: true })).toBeVisible();
     await expect(header.getByRole("link", { name: "Login" })).toBeVisible();
     // and the navy CTA band is still there for them
-    await expect(page.getByRole("main").getByRole("link", { name: "Become a Member", exact: true })).toBeVisible();
+    if (THEME_SWITCHER_ENABLED) await expect(page.getByRole("main").getByRole("link", { name: "Become a Member", exact: true })).toBeVisible();
   });
 
   test("signed-in member gets the account menu with member links, and no join CTA", async ({ page }) => {
@@ -259,7 +263,7 @@ test.describe("public header follows the session", () => {
     await expect(trigger).toBeVisible();
 
     // the navy "Become a Member" band is gone for signed-in visitors too
-    await expect(page.getByRole("link", { name: "Become a Member", exact: true })).toHaveCount(0);
+    if (THEME_SWITCHER_ENABLED) await expect(page.getByRole("link", { name: "Become a Member", exact: true })).toHaveCount(0);
 
     await trigger.click();
     await expect(trigger).toHaveAttribute("aria-expanded", "true");

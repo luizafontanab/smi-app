@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { ROUTES, type Role } from "../visual/manifest";
 
 /**
  * Runs only under the `mobile` Playwright project (390×844, touch — see
@@ -56,7 +57,7 @@ test("member billing table is reachable and contained", async ({ page }) => {
 });
 
 test("the member cloud reveals a logo on first tap and follows the link on the second", async ({ page }) => {
-  await page.goto("/member");
+  await page.goto("/member?view=cloud"); // bare /member is the tile list since 28 Oct
   // A phone has no hover, so the logo needs a tap of its own — but the name must
   // still be a link, not a button, for everyone else.
   const item = page.locator("li.cloud-item").first();
@@ -73,8 +74,86 @@ test("the member cloud reveals a logo on first tap and follows the link on the s
 });
 
 test("the member cloud does not push the page sideways", async ({ page }) => {
-  await page.goto("/member");
+  await page.goto("/member?view=cloud"); // bare /member is the tile list since 28 Oct
   await expect(page.locator("#member-cloud")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+/*
+ * ── #33: every page, at phone and tablet width ────────────────────────────
+ *
+ * The route list is the visual suite's manifest, so a page added there is
+ * swept here too without a second list to keep in step. One test per role,
+ * looping its routes with soft assertions: a failure names every offending
+ * route at once, and each role logs in once instead of once per page.
+ *
+ * Only sideways page scroll is asserted. It is the one mobile defect that is
+ * always wrong, on every page, whatever the design — anything subtler is
+ * pinned by its own test below once it is fixed.
+ */
+
+const ACCOUNT: Record<Exclude<Role, "anon">, string> = { member: "member1@smi.local", admin: "jas@smi.local" };
+
+for (const role of ["anon", "member", "admin"] as const) {
+  // Desktop entries only: the @phone copies are the same paths, and this
+  // project already sets the viewport.
+  const routes = ROUTES.filter((r) => r.role === role && !r.skip && r.device !== "phone");
+
+  test(`no ${role} page scrolls sideways (${routes.length} routes)`, async ({ page }) => {
+    test.setTimeout(routes.length * 15_000);
+    if (role !== "anon") await login(page, ACCOUNT[role]);
+    for (const route of routes) {
+      if (route.cookies) await page.context().addCookies(route.cookies.map((c) => ({ ...c, url: page.url() })));
+      const response = await page.goto(route.path, { waitUntil: "load" });
+      // A pinned example that has gone (after a reseed) is a stale pin, not a
+      // layout pass — say so rather than measuring the not-found page.
+      expect.soft(response?.status(), `${route.id}: ${route.path} did not load`).toBeLessThan(400);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect.soft(overflow, `${route.id}: ${route.path} scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(0);
+    }
+  });
+}
+
+// Jas (4 Nov): "I have added an event and featured machine to the desktop
+// version but cannot see them in the mobile". Grid's homepage shows both at
+// every width; this keeps them there.
+//
+// The featured event always shows (booked, else the backup, else the next
+// upcoming one). The machine shows only while a booking is running, so the
+// test takes the machine from /featured-machine, the site's own answer to
+// "what is featured today", rather than assuming the seed has one booked.
+test("the homepage shows whatever machine is featured, and the featured event", async ({ page }) => {
+  await page.goto("/featured-machine");
+  // The public routes stream behind a loading skeleton, and count() doesn't
+  // wait — hold for the page's own heading before asking what it lists.
+  await expect(page.getByRole("heading", { level: 1, name: "Featured Machine" })).toBeVisible();
+  const featured = page.locator("main article h2").first();
+  const machine = (await featured.count()) > 0 ? (await featured.textContent())!.trim() : null;
+
+  await page.goto("/");
+  // Scoped to main: the header carries a "Featured Machine" nav link of its
+  // own, hidden below md, which would otherwise be the first match.
+  const main = page.locator("main");
+  await expect(main.getByText(/^featured event$/i)).toBeVisible();
+  if (machine) {
+    await expect(main.locator('a[href="/featured-machine"]').filter({ hasText: machine })).toBeVisible();
+  } else {
+    test.info().annotations.push({ type: "note", description: "no featured machine is booked today in this database — machine half not exercised" });
+  }
+});
+
+// #33: the console calendars widened the page on a phone two ways — the day
+// labels' sr-only spans escaped the scroller's clipping, and the month bar
+// couldn't wrap. The sweep above only sees the overview's calendar (the
+// others sit behind ?view=calendar, which the manifest doesn't list).
+test("console calendar views do not scroll sideways", async ({ page }) => {
+  test.setTimeout(90_000);
+  await login(page, "jas@smi.local");
+  for (const path of ["/console/stories", "/console/videos", "/console/events", "/console/newsletter"]) {
+    await page.goto(`${path}?view=calendar`);
+    await expect(page.locator("div.min-w-\\[720px\\]")).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect.soft(overflow, `${path} calendar scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(0);
+  }
 });

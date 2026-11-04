@@ -14,10 +14,21 @@ import type { Route } from "../manifest";
 export const VIEWPORT = { width: 1280, height: 900 };
 
 /**
- * A page taller than this is a bug (an infinite list, a broken layout), not a
- * screenshot — capturing it would write a ~200MB PNG into the baseline.
+ * The phone group (#33): every public and dashboard route again at phone
+ * width, ids suffixed @phone. Same width as the e2e `mobile` project, and the
+ * same touch emulation, so a tap-only reveal renders the way a phone shows it.
  */
-const MAX_PAGE_HEIGHT = 20_000;
+export const PHONE_VIEWPORT = { width: 390, height: 844 };
+
+export type Device = "desktop" | "phone";
+
+/**
+ * A page bigger than this is a bug (an infinite list, a broken layout), not a
+ * screenshot — capturing it would write a ~200MB PNG into the baseline. A pixel
+ * budget rather than a height: a phone page is a third the width and so
+ * legitimately about three times as tall as the same page on desktop.
+ */
+const MAX_PAGE_PIXELS = 1280 * 20_000;
 
 export type Capture = { png: Buffer; elements: ElementBox[]; height: number };
 
@@ -33,11 +44,19 @@ export async function launch(): Promise<Browser> {
   });
 }
 
-export async function makeContext(browser: Browser, baseURL: string, storageState: string): Promise<BrowserContext> {
+export async function makeContext(
+  browser: Browser,
+  baseURL: string,
+  storageState: string,
+  device: Device = "desktop",
+): Promise<BrowserContext> {
+  const phone = device === "phone";
   const context = await browser.newContext({
     baseURL,
     storageState,
-    viewport: VIEWPORT,
+    viewport: phone ? PHONE_VIEWPORT : VIEWPORT,
+    isMobile: phone,
+    hasTouch: phone,
     // 1, not 2: halves the bytes committed to git, and removes any retina drift.
     deviceScaleFactor: 1,
     // Triggers the existing @media (prefers-reduced-motion: reduce) block in
@@ -170,8 +189,9 @@ export async function capture(context: BrowserContext, route: Route): Promise<Ca
     }
 
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
-    if (height > MAX_PAGE_HEIGHT) {
-      throw new Error(`page is ${height}px tall (limit ${MAX_PAGE_HEIGHT}) — refusing to capture`);
+    const limit = Math.floor(MAX_PAGE_PIXELS / (page.viewportSize()?.width ?? VIEWPORT.width));
+    if (height > limit) {
+      throw new Error(`page is ${height}px tall (limit ${limit} at this width) — refusing to capture`);
     }
 
     const png = await page.screenshot({

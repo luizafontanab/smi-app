@@ -19,7 +19,7 @@ import type { BrowserContext } from "playwright";
 
 import { ROUTES, type Role, type Route } from "./manifest";
 import { DEFAULT_COOKIES, ensureStates, verifyStates } from "./lib/auth";
-import { capture, launch, makeContext } from "./lib/capture";
+import { capture, launch, makeContext, type Device } from "./lib/capture";
 import { diff } from "./lib/diff";
 import type { ElementBox } from "./lib/elements";
 import {
@@ -117,10 +117,16 @@ async function main(): Promise<void> {
     const states = await ensureStates(browser, BASE_URL);
     await verifyStates(browser, BASE_URL, states);
 
-    const contexts: Partial<Record<Role, BrowserContext>> = {};
-    for (const role of ["anon", "member", "admin"] as Role[]) {
-      contexts[role] = await makeContext(browser, BASE_URL, states[role]);
-    }
+    // One context per role and device, created on first use — a run limited
+    // to desktop routes never opens a phone context, and vice versa.
+    // The promise is cached, not the context, so routes running concurrently
+    // in the pool share one context rather than each opening their own.
+    const contexts = new Map<string, Promise<BrowserContext>>();
+    const contextFor = (role: Role, device: Device): Promise<BrowserContext> => {
+      const key = `${role}:${device}`;
+      if (!contexts.has(key)) contexts.set(key, makeContext(browser, BASE_URL, states[role], device));
+      return contexts.get(key)!;
+    };
 
     let done = 0;
     await pool(routes, concurrency, async (route) => {
@@ -133,10 +139,11 @@ async function main(): Promise<void> {
       }
 
       // A route with its own cookies (the grid homepage) needs its own context.
-      let context = contexts[route.role]!;
+      const device: Device = route.device ?? "desktop";
+      let context = await contextFor(route.role, device);
       let temp: BrowserContext | null = null;
       if (route.cookies?.length) {
-        temp = await makeContext(browser, BASE_URL, states[route.role]);
+        temp = await makeContext(browser, BASE_URL, states[route.role], device);
         await temp.addCookies(
           [...DEFAULT_COOKIES, ...route.cookies].map((c) => ({ ...c, url: BASE_URL })),
         );

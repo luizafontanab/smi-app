@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { THEME_SWITCHER_ENABLED } from "../../src/lib/theme-switcher-flag";
 
 /**
  * Automated WCAG 2.x A/AA scan over the key public pages. Serious/critical
@@ -41,6 +42,7 @@ for (const path of PAGES) {
 // The forge design variant renders a different homepage composition, so the
 // scan above — which runs on the default, grid — never sees it.
 test("axe: / (forge variant) has no serious or critical violations", async ({ page, context, baseURL }) => {
+  test.skip(!THEME_SWITCHER_ENABLED, "forge is unreachable while the design switcher is off — the site serves grid whatever the cookie says (#33)");
   await context.addCookies([{ name: "smi-theme", value: "forge", url: baseURL! }]);
   await page.goto("/");
   await page.waitForLoadState("networkidle");

@@ -68,7 +68,10 @@ export function OverviewCalendar({ month, items }: { month: Date; items: Overvie
         </p>
       </div>
 
-      <div className="mt-3 overflow-x-auto rounded-xl bg-white p-3 shadow-sm">
+      {/* relative: the day labels' sr-only spans are absolutely positioned, and
+          without a positioned box here they escape this scroller's clipping and
+          widen the whole page on a phone (#33). */}
+      <div className="relative mt-3 overflow-x-auto rounded-xl bg-white p-3 shadow-sm">
         <div className="min-w-[720px]">
           <div className="grid grid-cols-7 gap-px">
             {WEEKDAYS.map((d, i) => (

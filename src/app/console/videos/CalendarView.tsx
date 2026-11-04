@@ -40,7 +40,9 @@ export function CalendarView({ month, videos }: { month: Date; videos: CalendarV
 
   return (
     <div className="mt-5">
-      <div className="flex items-center gap-2">
+      {/* flex-wrap: on a phone the key drops under the month nav instead of
+          running off the right edge (#33). */}
+      <div className="flex flex-wrap items-center gap-2">
         <Link href={`/console/videos?view=calendar&month=${monthKey(shiftMonth(month, -1))}`} className={navLink} aria-label="Previous month">‹</Link>
         <h2 className="min-w-40 text-center text-lg font-bold text-ink">
           {month.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
@@ -57,7 +59,10 @@ export function CalendarView({ month, videos }: { month: Date; videos: CalendarV
         </p>
       </div>
 
-      <div className="mt-3 overflow-x-auto rounded-xl bg-white p-3 shadow-sm">
+      {/* relative: the day labels' sr-only spans are absolutely positioned, and
+          without a positioned box here they escape this scroller's clipping and
+          widen the whole page on a phone (#33). */}
+      <div className="relative mt-3 overflow-x-auto rounded-xl bg-white p-3 shadow-sm">
         <div className="min-w-[720px]">
           <div className="grid grid-cols-7 gap-px">
             {WEEKDAYS.map((d, i) => (
