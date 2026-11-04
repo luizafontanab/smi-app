@@ -3,6 +3,7 @@ import { replaceMemberMembershipTypes } from "./member-services";
 import { notifyConsole } from "./notify-admin";
 import { invoiceNumber } from "./invoicing";
 import { websiteUrl } from "./website-url";
+import { graceUntilFrom } from "./grace-period";
 import type { CheckoutResult } from "./adapters/payments";
 
 export const slugify = (s: string) =>
@@ -252,8 +253,8 @@ export async function recordMembershipCheckout(
 
 /**
  * A Stripe `invoice.payment_failed` (recurring card decline, not the initial
- * checkout) moves the member straight to grace — the same state and 30-day
- * `grace_until` window `jobs.ts`'s `comp_expiry` case already uses for an
+ * checkout) moves the member straight to grace — the same state and
+ * `GRACE_PERIOD_DAYS` window `jobs.ts`'s `comp_expiry` case already uses for an
  * expired promo comp, so "Needs You Today" and the lapse job (A4.3) treat both
  * the same way without knowing which path put a member into grace.
  */
@@ -264,9 +265,7 @@ export async function applyPaymentFailure(memberId: string): Promise<void> {
   const { data: member } = await db.from("members").select("name").eq("id", memberId).single();
   if (!member) return;
 
-  const graceUntil = new Date(`${new Date().toISOString().slice(0, 10)}T12:00:00Z`);
-  graceUntil.setUTCDate(graceUntil.getUTCDate() + 30);
-  const until = graceUntil.toISOString().slice(0, 10);
+  const until = graceUntilFrom(new Date().toISOString().slice(0, 10));
 
   await db.from("members").update({ status: "grace", grace_until: until }).eq("id", memberId);
   // A notification, not an enquiry (fix-list 71). It used to be written as a
