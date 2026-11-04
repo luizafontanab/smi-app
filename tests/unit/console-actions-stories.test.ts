@@ -4,7 +4,7 @@ import {
   saveSiteVariant, clearMyVariantOverride, saveHomeSections, setErrorStatus, saveFeatureFlag,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, readThenUpdate, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import { UPLOAD_EXPIRED } from "@/lib/upload-limits";
 import { revalidatePath } from "next/cache";
@@ -14,16 +14,17 @@ import { LIFECYCLE_MESSAGES } from "@/lib/content-lifecycle";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireConsole, uploadImage, removeMedia, enqueue } = vi.hoisted(() => ({
+const { requireConsole, uploadImage, removeMedia, removeMediaIfUnused, enqueue } = vi.hoisted(() => ({
   requireConsole: vi.fn(async (): Promise<CurrentUser> => ({
     userId: "admin1", email: "jas@smi.local", role: "admin", memberId: null, displayName: "Jas",
   })),
   uploadImage: vi.fn<(file: File | null, prefix: string) => Promise<string | null>>(async () => null),
   removeMedia: vi.fn<(path: string | null | undefined) => Promise<void>>(async () => {}),
+  removeMediaIfUnused: vi.fn<(paths: readonly (string | null | undefined)[]) => Promise<void>>(async () => {}),
   enqueue: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
-vi.mock("@/lib/media", () => ({ uploadImage, removeMedia }));
+vi.mock("@/lib/media", () => ({ uploadImage, removeMedia, removeMediaIfUnused }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
 
 afterEach(() => {
@@ -91,7 +92,7 @@ describe("saveStory — tagging several members", () => {
   const B = "22222222-2222-2222-2222-222222222222";
 
   it("writes the subject member and every tagged member to story_members, primary first", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    const storiesBuilder = readThenUpdate({ id: "s1", cover_path: null, member_draft: false });
     const from = db({ stories: () => storiesBuilder });
     const f = form({ id: "s1", title: "Southern Manufacturing", member_id: A });
     f.append("tagged_member_ids", B);
@@ -105,7 +106,7 @@ describe("saveStory — tagging several members", () => {
   });
 
   it("a failed retag says so on the editor instead of throwing to the error page", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    const storiesBuilder = readThenUpdate({ id: "s1", cover_path: null, member_draft: false });
     db({ stories: () => storiesBuilder }, async () => dbError("insert or update on table \"story_members\" violates foreign key constraint"));
     await expect(saveStory(form({ id: "s1", title: "T", member_id: A })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/s1\?error=.*tagged%20members/);
@@ -123,7 +124,7 @@ describe("saveStory — tagging several members", () => {
 // Jas 13/10 item 8.
 describe("saveStory — SMI's posts of the story", () => {
   it("stores the pasted post links, leaving blank networks out", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    const storiesBuilder = readThenUpdate({ id: "s1", cover_path: null, member_draft: false });
     db({ stories: () => storiesBuilder });
     await expect(saveStory(form({ id: "s1", title: "T", post_linkedin: "https://www.linkedin.com/posts/a", post_x: "" })))
       .rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?saved=1");
@@ -165,14 +166,16 @@ describe("saveStory", () => {
   });
 
   it("updates an existing story, and removes the old cover only when it's actually replaced", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ cover_path: "old.jpg" }));
+    const storiesBuilder = readThenUpdate({ id: "s1", cover_path: "old.jpg" });
     db({ stories: () => storiesBuilder });
     uploadImage.mockResolvedValue("new.jpg");
 
     await expect(saveStory(form({ id: "s1", title: "Updated" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories/s1");
 
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ title: "Updated", cover_path: "new.jpg" }));
-    expect(removeMedia).toHaveBeenCalledWith("old.jpg");
+    // Through the in-use check: the media library lets the desk reuse a cover on another story.
+    expect(removeMediaIfUnused).toHaveBeenCalledWith(["old.jpg"]);
+    expect(removeMedia).not.toHaveBeenCalledWith("old.jpg");
   });
 
   it("redirects with the upload error and never touches the database", async () => {
@@ -209,7 +212,7 @@ describe("saveStory", () => {
   it("writes the industry, and clears it when the select is left blank", async () => {
     // industry_id is what /industry/[slug] filters on. Before this field the
     // column could only be set by migration 20260909000002's backfill.
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1" }));
+    const storiesBuilder = readThenUpdate({ id: "s1" });
     db({ stories: () => storiesBuilder });
 
     await expect(saveStory(form({ id: "s1", title: "Tagged", industry_id: "4" })))
@@ -464,7 +467,7 @@ describe("decideStory", () => {
 
     await decideStory(form({ id: "s1", decision: "reject", reason: "Needs a photo" }));
 
-    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "rejected", rejected_reason: "Needs a photo" });
+    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "rejected", rejected_reason: "Needs a photo", updated_at: expect.any(String) });
     expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "story_rejected", reason: "Needs a photo" }));
   });
 
@@ -478,7 +481,7 @@ describe("decideStory", () => {
 
     await decideStory(form({ id: "s1", decision: "reject" }));
 
-    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "draft" });
+    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "draft", updated_at: expect.any(String) });
     expect(enqueue).not.toHaveBeenCalled();
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "story", decision: "rejected", reason: null }));
   });
@@ -567,7 +570,7 @@ describe("moveStory", () => {
     const result = await moveStory({ id: "s1", to: "awaiting_approval" });
 
     expect(result).toEqual({ ok: true });
-    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "awaiting_approval" });
+    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "awaiting_approval", updated_at: expect.any(String) });
     expect(from).not.toHaveBeenCalledWith("approvals");
   });
 });
@@ -587,7 +590,7 @@ describe("moveStory — review back to draft", () => {
     db({ stories: () => storiesBuilder, approvals: () => approvalsBuilder });
 
     expect(await moveStory({ id: "s1", to: "draft" })).toEqual({ ok: true });
-    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "draft" });
+    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "draft", updated_at: expect.any(String) });
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "story", decision: "rejected" }));
     expect(enqueue).not.toHaveBeenCalled();
   });
@@ -861,7 +864,7 @@ describe("per-story social posts", () => {
   });
 
   it("saving stores the post time as UK time, a lead-in left as the prefill as null, and the opt-out", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    const storiesBuilder = readThenUpdate({ id: "s1", cover_path: null, member_draft: false });
     db({ stories: () => storiesBuilder, jobs: () => queryBuilder(dbOk([])) });
 
     await expect(saveStory(form({
@@ -874,7 +877,7 @@ describe("per-story social posts", () => {
   });
 
   it("saving refuses a lead-in over the budget before writing anything", async () => {
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false }));
+    const storiesBuilder = readThenUpdate({ id: "s1", cover_path: null, member_draft: false });
     db({ stories: () => storiesBuilder });
 
     await expect(saveStory(form({ id: "s1", title: "T", social_at: "", social_text: "x".repeat(201) })))
@@ -888,7 +891,7 @@ describe("per-story social posts", () => {
     const update = queryBuilder(dbOk(null));
     let jobsCalls = 0;
     db({
-      stories: () => queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false, social_at: "2099-01-01T10:00:00Z", published_at: NOW.toISOString() })),
+      stories: () => readThenUpdate({ id: "s1", cover_path: null, member_draft: false, social_at: "2099-01-01T10:00:00Z", published_at: NOW.toISOString() }),
       jobs: () => (jobsCalls++ === 0 ? pending : update),
       settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
     });
@@ -916,7 +919,7 @@ describe("per-story social posts", () => {
 describe("saveStory — SMI's post links filled from Buffer", () => {
   it("saving a form opened before Buffer's link arrived keeps the link", async () => {
     const LI = "https://www.linkedin.com/feed/update/urn:li:share:1";
-    const storiesBuilder = queryBuilder(dbOk({ id: "s1", cover_path: null, member_draft: false, social_posts: { linkedin: LI } }));
+    const storiesBuilder = readThenUpdate({ id: "s1", cover_path: null, member_draft: false, social_posts: { linkedin: LI } });
     db({ stories: () => storiesBuilder, jobs: () => queryBuilder(dbOk([])) });
 
     await expect(saveStory(form({ id: "s1", title: "T", post_linkedin: "", post_linkedin_was: "", post_facebook: "", post_facebook_was: "", post_x: "", post_x_was: "" })))

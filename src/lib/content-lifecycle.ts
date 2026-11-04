@@ -87,7 +87,11 @@ type Policy = {
   cols: string;
   /** Stories and videos carry published_at; events don't. */
   publishedAt: boolean;
-  /** Videos and events stamp updated_at on every status write; stories don't here. */
+  /**
+   * Stamp updated_at on every status write. All three kinds do: the member's
+   * edit page posts updated_at as its version, so a send-back that left it
+   * alone would let a form opened before it save over the reason.
+   */
   updatedAt: boolean;
   canMove: (from: string, to: string) => boolean;
   /** Where Publish now / Schedule may start from. */
@@ -103,7 +107,7 @@ const POLICY: Record<ContentKind, Policy> = {
     table: "stories",
     cols: "id, status, member_id, member_draft, source, industry_id",
     publishedAt: true,
-    updatedAt: false,
+    updatedAt: true,
     canMove: canMoveStory,
     canPublish: canScheduleStory,
     refuseMemberSendBack: true,
@@ -352,7 +356,7 @@ export async function withdraw(d: LifecycleDeps, kind: ContentKind, id: string, 
 
   const values: Record<string, unknown> = { status: "withdrawn" };
   if (p.updatedAt) values.updated_at = new Date().toISOString();
-  let q = (d.db.from(p.table) as unknown as MemberWriteTable).update(values)
+  let q = (d.db.from(p.table) as unknown as { update(values: Record<string, unknown>): CountedUpdate }).update(values)
     .eq("id", id).eq("status", row.status).eq("member_id", member.memberId).eq("source", "member");
   if (kind === "story") q = q.eq("member_draft", false);
   const { data, error } = await q.select("id");
@@ -360,12 +364,15 @@ export async function withdraw(d: LifecycleDeps, kind: ContentKind, id: string, 
   return data?.length ? OK : changed;
 }
 
-/** The chain withdraw's member write uses (see StatusTable for why it is narrowed). */
-type MemberFilter = {
-  eq(col: string, v: string | boolean): MemberFilter;
+/**
+ * A conditional update that counts the rows it changed: any number of `.eq`
+ * filters, then `.select("id")`. Narrowed for the same reason as StatusTable.
+ * Withdraw uses it here, and lib/content-intake for every write it makes.
+ */
+export type CountedUpdate = {
+  eq(col: string, v: string | boolean): CountedUpdate;
   select(cols: "id"): PromiseLike<{ data: { id: string }[] | null; error: { message: string } | null }>;
 };
-type MemberWriteTable = { update(values: Record<string, unknown>): MemberFilter };
 
 /** The publish_scheduled job: every story and video whose time has come goes Live. One bad row never stops the rest. */
 export async function publishDue(d: LifecycleDeps, now: Date = new Date()): Promise<PublishDueResult> {

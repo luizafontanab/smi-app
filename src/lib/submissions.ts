@@ -98,8 +98,11 @@ export async function memberContent(
     // the desk's work stays the desk's until it's published (lib/member-content,
     // and the member_read_own_stories policy in 20261016000020).
     capped(db.from("stories").select(`${cols}, member_draft, source`, { count: "exact" }).eq("member_id", memberId).in("status", statuses).or("status.neq.draft,member_draft.eq.true").or("source.eq.member,status.eq.published,member_draft.eq.true").order("created_at", { ascending: false })),
-    capped(db.from("videos").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
-    capped(db.from("events").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
+    // Videos and events follow the same line since 3 Nov (lib/member-content):
+    // the desk's item about the member is listed once it's live, not before,
+    // so the list never shows Edit or Withdraw on something the member can't touch.
+    capped(db.from("videos").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).or("source.eq.member,status.eq.published").order("created_at", { ascending: false })),
+    capped(db.from("events").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).or("source.eq.member,status.eq.published").order("created_at", { ascending: false })),
     // featured_machines has no slug column — it has no page of its own to link to.
     capped(db.from("featured_machines").select("id, name, status, rejected_reason, created_at", { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),
     // Page edits queue for the same approval as content, so they belong in the

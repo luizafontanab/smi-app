@@ -200,6 +200,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
         />
         <fieldset>
           <legend className="text-sm font-medium">Categories</legend>
+          {/* Unticked boxes send nothing: this tells the save the box was here, so none ticked clears them. */}
+          <input type="hidden" name="categories_sent" value="1" />
           <div className="mt-1 flex max-h-36 flex-wrap gap-2 overflow-y-auto rounded border p-2 text-sm">
             {(cats ?? []).map((c) => (
               <label key={c.id} className="flex items-center gap-1.5">

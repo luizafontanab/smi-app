@@ -197,7 +197,7 @@ describe("publish", () => {
       const [w] = h.writes(table);
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "published", published_at: expect.any(String) }));
-      if (kind === "video") expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["id", `${kind[0]}1`]);
       expect(w.eq).toContainEqual(["status", "draft"]);
       expect(h.enqueue).toHaveBeenCalledWith("social_push", { [KEY[kind]]: `${kind[0]}1` }, expect.any(Date));
@@ -343,7 +343,7 @@ describe("schedule", () => {
       const [w] = h.writes(table);
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "scheduled", scheduled_at: at.toISOString() }));
-      if (kind === "video") expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["id", `${kind[0]}1`]);
       expect(w.eq).toContainEqual(["status", "draft"]);
       expectNoSideEffects(h);
@@ -412,7 +412,7 @@ describe("decline", () => {
       const [w] = h.writes(table);
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "rejected", rejected_reason: "Needs a photo" }));
-      if (kind === "video") expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["id", id]);
       expect(w.eq).toContainEqual(["status", "awaiting_approval"]);
       expect(h.notices()).toEqual([{ member_id: "m1", kind: REJECTED[kind], [KEY[kind]]: id, reason: "Needs a photo" }]);
@@ -620,7 +620,7 @@ describe("move", () => {
       const [w] = h.writes(table);
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "draft", published_at: null }));
-      if (kind === "video") expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["status", "published"]);
       expect(h.jobDeletes()).toContainEqual(expect.arrayContaining([[`payload->>${KEY[kind]}`, "eq", id]]));
       expect(h.enqueue).not.toHaveBeenCalled();
@@ -880,7 +880,7 @@ describe("publishDue", () => {
       expect(w.values).toEqual(expect.objectContaining({ status: "published", published_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["status", "scheduled"]);
     }
-    for (const w of h.writes("videos")) expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+    for (const w of all) expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
   });
 
   it("queues the social post and live email only for rows it actually published, and never records an approval", async () => {
@@ -932,7 +932,7 @@ describe("withdraw", () => {
         ["id", `${kind[0]}1`], ["status", status], ["member_id", "m1"], ["source", "member"],
       ]));
       if (kind === "story") expect(w.eq).toContainEqual(["member_draft", false]);
-      else expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expectNoSideEffects(h);
     });
 

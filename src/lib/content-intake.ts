@@ -17,6 +17,7 @@
  * post links) are read only for the console, so a crafted member post can't
  * set them.
  */
+import { LIFECYCLE_MESSAGES, type CountedUpdate } from "@/lib/content-lifecycle";
 import type { serviceDb } from "@/lib/db/server";
 import { isEventType } from "@/lib/event-types";
 import { MEMBER_CHANGED_ERROR, memberCanEdit } from "@/lib/member-content";
@@ -61,6 +62,8 @@ export type IntakeDeps = {
   geocode: Geocoder;
   /** The console notification for a member's submission. Must not throw. */
   notify: (n: SubmittedNotice) => Promise<void>;
+  /** Record a failure the caller isn't told about because the save itself landed. Must not throw. */
+  log: (area: string, error: unknown, context?: Record<string, unknown>) => void;
 };
 
 export type IntakeMember = { userId: string; memberId: string };
@@ -98,7 +101,8 @@ export const INTAKE_MESSAGES = {
     required: "A title and a start date are both required.",
     coverFailed: "The cover didn't upload — please try again.",
   },
-  notFound: (kind: IntakeKind) => `${kind[0].toUpperCase()}${kind.slice(1)} not found.`,
+  // The lifecycle's wording, so a missing item reads the same whichever button found it.
+  notFound: LIFECYCLE_MESSAGES.notFound,
   submitFailed: "That didn't save — please try again in a moment. If it keeps happening, contact us.",
   resubmitFailed: "Your changes couldn't be saved just now — please try again.",
   saveFailed: (kind: IntakeKind) => `The ${kind} couldn't be saved — try again.`,
@@ -114,6 +118,11 @@ const contentSlug = (title: string) => `${slugify(title)}-${Date.now().toString(
 
 type Mode = "member" | "admin";
 type Values = Record<string, unknown>;
+/**
+ * `categories` (console) is undefined when the form carried no category box,
+ * so a form without one leaves them alone; an empty list means "none" and
+ * clears them.
+ */
 type Parsed = { values: Values; title: string; asDraft?: boolean; category?: number; categories?: number[]; tagged?: string[]; posts?: Values };
 type ParseResult = Parsed | { error: string };
 
@@ -166,7 +175,10 @@ function parseStory(form: FormData, mode: Mode, opts: { draftAllowed: boolean })
     title,
     tagged: tagged.ids,
     posts: posts.value,
-    categories: form.getAll("categories").map(Number).filter(Boolean),
+    // Unticked boxes send nothing, so the editor marks that its box was there.
+    categories: form.has("categories_sent") || form.has("categories")
+      ? form.getAll("categories").map(Number).filter(Boolean)
+      : undefined,
   };
 }
 
@@ -213,6 +225,8 @@ type Policy = {
   adminSource: string;
   /** Columns the member resubmit reads. */
   memberCols: string;
+  /** Columns the console save reads from an existing row: the image it may replace, and what else the save keeps. */
+  adminCols: string;
 };
 
 const POLICY: Record<IntakeKind, Policy> = {
@@ -221,18 +235,21 @@ const POLICY: Record<IntakeKind, Policy> = {
     image: { field: "cover", folder: "stories", column: "cover_path", memberArea: "upload:story-cover", memberFallback: INTAKE_MESSAGES.story.coverFailed },
     adminSource: "admin",
     memberCols: "id, status, member_id, member_draft, source, cover_path, updated_at",
+    adminCols: "id, cover_path, member_draft, social_posts",
   },
   video: {
     table: "videos",
     image: { field: "thumbnail", folder: "videos", column: "thumbnail_path", memberArea: "upload:video-thumbnail", memberFallback: INTAKE_MESSAGES.video.thumbnailFailed },
     adminSource: "manual",
-    memberCols: "id, status, member_id, source, updated_at",
+    memberCols: "id, status, member_id, source, thumbnail_path, updated_at",
+    adminCols: "id, thumbnail_path",
   },
   event: {
     table: "events",
     image: { field: "cover", folder: "events", column: "cover_path", memberArea: "upload:event-cover", memberFallback: INTAKE_MESSAGES.event.coverFailed },
     adminSource: "admin",
-    memberCols: "id, status, member_id, source, updated_at, location, lat, lng",
+    memberCols: "id, status, member_id, source, cover_path, updated_at, location, lat, lng",
+    adminCols: "id, cover_path, location, lat, lng",
   },
 };
 
@@ -245,16 +262,13 @@ function parse(kind: IntakeKind, form: FormData, mode: Mode, opts: { draftAllowe
 /**
  * The tables' Insert/Update types differ, and a union of them collapses the
  * payload to never — so writes go through this narrow shape, which is exactly
- * the chain the module uses (as lib/content-lifecycle does).
+ * the chain the module uses. Every update counts its rows (CountedUpdate, from
+ * lib/content-lifecycle), so a write that matched nothing is never a success.
  */
-type Filter = {
-  eq(col: string, v: string | boolean): Filter;
-  select(cols: "id"): PromiseLike<{ data: { id: string }[] | null; error: { message: string } | null }>;
-} & PromiseLike<{ error: { message: string } | null }>;
 type ContentTable = {
   select(cols: string): { eq(col: "id", v: string): { maybeSingle(): PromiseLike<{ data: Values | null }> } };
   insert(values: Values): { select(cols: "id"): { single(): PromiseLike<{ data: { id: string } | null; error: { message: string } | null }> } };
-  update(values: Values): Filter;
+  update(values: Values): CountedUpdate;
 };
 const tableOf = (d: IntakeDeps, kind: IntakeKind) => d.db.from(POLICY[kind].table) as unknown as ContentTable;
 
@@ -264,9 +278,14 @@ async function storeImage(d: IntakeDeps, kind: IntakeKind, form: FormData, mode:
   return d.upload.store(form, img.field, img.folder, failure);
 }
 
-/** The event's map pin: geocode only a changed location, keep the old pin on failure (resolveCoordinates). */
+/**
+ * The event's map pin: geocode only a changed location, keep the old pin on
+ * failure (resolveCoordinates). No location means no pin — resolveCoordinates
+ * would keep the old one, which left a cleared event pinned where it was.
+ */
 async function withCoordinates(d: IntakeDeps, kind: IntakeKind, values: Values, existing: Values | null): Promise<Values> {
   if (kind !== "event") return values;
+  if (!String(values.location ?? "").trim()) return { ...values, lat: null, lng: null };
   const coords = await resolveCoordinates(
     { lat: null, lng: null },
     {
@@ -325,7 +344,14 @@ export async function submit(d: IntakeDeps, kind: IntakeKind, form: FormData, me
     if (parsed.category) await d.db.from("story_categories").insert({ story_id: data.id, category_id: parsed.category });
     // story_members holds every member a story features, the primary included
     // (migration 20261015000003) — a member's own story features them.
-    await replaceStoryMembers(d.db, data.id, [member.memberId]);
+    try {
+      await replaceStoryMembers(d.db, data.id, [member.memberId]);
+    } catch (e) {
+      // The story is saved, so the member is told it went in and the console
+      // still hears about it. The row's member_id still names them; the next
+      // console save rewrites story_members.
+      d.log("intake:story-members", e, { story_id: data.id });
+    }
   }
   if (!asDraft) await notifySubmitted(d, kind, member.memberId, data.id, submittedMessage(kind, parsed.title));
   return { ok: true, id: data.id, draft: asDraft };
@@ -393,10 +419,10 @@ export async function resubmit(d: IntakeDeps, kind: IntakeKind, id: string, form
     return error ? { ok: false, code: "failed", error: INTAKE_MESSAGES.resubmitFailed } : changed;
   }
 
+  // The image it replaced, unless something else still shows it (the media
+  // library lets the desk reuse any upload).
+  if (image && previousImage && previousImage !== image) await d.upload.removeIfUnused([previousImage]);
   if (kind === "story") {
-    // The cover it replaced, unless something else still shows it (the media
-    // library lets the desk reuse any upload).
-    if (image && previousImage && previousImage !== image) await d.upload.removeIfUnused([previousImage]);
     if (parsed.category) {
       await d.db.from("story_categories").delete().eq("story_id", id);
       await d.db.from("story_categories").insert({ story_id: id, category_id: parsed.category });
@@ -415,9 +441,12 @@ export async function resubmit(d: IntakeDeps, kind: IntakeKind, id: string, form
  * edited time, a story's tagged members, categories, and SMI's post links (a
  * link the editor didn't touch keeps what Buffer filled in since).
  *
- * A failed write removes the image this save uploaded and says so (D11). A
- * story's existence is checked before the upload, so a stale id — or a
- * member's private draft, which is theirs — leaves no orphaned cover.
+ * A failed write removes the image this save uploaded and says so (D11). The
+ * item's existence is checked before the upload, so a stale id — or a
+ * member's private story draft, which is theirs — leaves no orphaned image;
+ * the update counts its rows too, for an item deleted in between. A replaced
+ * image is removed only if nothing else shows it (the media library lets the
+ * desk reuse any upload).
  */
 export async function save(d: IntakeDeps, kind: IntakeKind, id: string | null, form: FormData, admin: IntakeAdmin): Promise<SaveResult> {
   const p = POLICY[kind];
@@ -425,10 +454,13 @@ export async function save(d: IntakeDeps, kind: IntakeKind, id: string | null, f
   if ("error" in parsed) return invalid(parsed.error);
   let values: Values = { ...parsed.values };
 
+  const notFound: IntakeRefusal = {
+    ok: false, code: "not_found", error: kind === "story" ? INTAKE_MESSAGES.story.notAvailable : INTAKE_MESSAGES.notFound(kind),
+  };
   let previous: Values | null = null;
-  if (kind === "story" && id) {
-    previous = (await d.db.from("stories").select("cover_path, member_draft, social_posts").eq("id", id).maybeSingle()).data;
-    if (!previous || isMemberDraft(previous)) return { ok: false, code: "not_found", error: INTAKE_MESSAGES.story.notAvailable };
+  if (id) {
+    previous = (await tableOf(d, kind).select(p.adminCols).eq("id", id).maybeSingle()).data;
+    if (!previous || (kind === "story" && isMemberDraft(previous))) return notFound;
   }
   if (kind === "story") {
     values.social_posts = previous
@@ -440,21 +472,19 @@ export async function save(d: IntakeDeps, kind: IntakeKind, id: string | null, f
   if ("error" in stored) return { ok: false, code: "upload", error: stored.error };
   const image = stored.path;
 
-  if (kind === "event") {
-    const existing = id ? (await d.db.from("events").select("location, lat, lng").eq("id", id).maybeSingle()).data : null;
-    values = await withCoordinates(d, kind, values, existing);
-  }
+  values = await withCoordinates(d, kind, values, previous);
   values = { ...values, updated_at: new Date().toISOString(), ...(image ? { [p.image.column]: image } : {}) };
 
   let savedId: string;
   if (id) {
-    const { error } = await tableOf(d, kind).update(values).eq("id", id);
-    if (error) {
+    const { data: saved, error } = await tableOf(d, kind).update(values).eq("id", id).select("id");
+    if (error || !saved?.length) {
       await d.upload.remove(image);
-      return { ok: false, code: "failed", error: INTAKE_MESSAGES.saveFailed(kind) };
+      return error ? { ok: false, code: "failed", error: INTAKE_MESSAGES.saveFailed(kind) } : notFound;
     }
     savedId = id;
-    if (kind === "story" && image && previous?.cover_path && previous.cover_path !== image) await d.upload.remove(previous.cover_path as string);
+    const previousImage = (previous?.[p.image.column] as string | null | undefined) ?? null;
+    if (image && previousImage && previousImage !== image) await d.upload.removeIfUnused([previousImage]);
     // A push already waiting moves to the edited time; none is ever created here.
     if (kind !== "event") await rescheduleSocialPush(d.db, kind === "story" ? { story_id: id } : { video_id: id });
   } else {
@@ -473,16 +503,20 @@ export async function save(d: IntakeDeps, kind: IntakeKind, id: string | null, f
   }
 
   if (kind === "story") {
+    // Categories first, so a failed retag below leaves only the members
+    // unsaved — which is all its message says. An empty list clears them.
+    if (parsed.categories) {
+      await d.db.from("story_categories").delete().eq("story_id", savedId);
+      if (parsed.categories.length) {
+        await d.db.from("story_categories").insert(parsed.categories.map((category_id) => ({ story_id: savedId, category_id })));
+      }
+    }
     // One transaction (replace_story_members): if it fails the story keeps the
     // members it had, so say so rather than throwing to the error page.
     try {
       await replaceStoryMembers(d.db, savedId, parsed.tagged ?? []);
     } catch {
       return { ok: false, code: "partial", error: INTAKE_MESSAGES.story.membersFailed, id: savedId };
-    }
-    if (parsed.categories?.length) {
-      await d.db.from("story_categories").delete().eq("story_id", savedId);
-      await d.db.from("story_categories").insert(parsed.categories.map((category_id) => ({ story_id: savedId, category_id })));
     }
   }
   return { ok: true, id: savedId };

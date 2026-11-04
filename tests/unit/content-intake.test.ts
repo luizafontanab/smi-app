@@ -60,7 +60,8 @@ function setup(o: Partial<Record<Table, TableOpts>> & { rpc?: () => Promise<DbRe
   const removeIfUnused = vi.fn<IntakeDeps["upload"]["removeIfUnused"]>(async () => {});
   const geocode = vi.fn<IntakeDeps["geocode"]>(async () => null);
   const notify = vi.fn<IntakeDeps["notify"]>(async () => {});
-  const deps: IntakeDeps = { db: asDb(db), upload: { store, remove, removeIfUnused }, geocode, notify };
+  const log = vi.fn<IntakeDeps["log"]>();
+  const deps: IntakeDeps = { db: asDb(db), upload: { store, remove, removeIfUnused }, geocode, notify, log };
 
   const ops = (t: Table, method: "insert" | "update") =>
     tables[t].builders.filter((b) => called(b, method)).map((b) => ({
@@ -76,7 +77,8 @@ function setup(o: Partial<Record<Table, TableOpts>> & { rpc?: () => Promise<DbRe
     }
   };
   const sideInserts = (name: string) => (side[name] ?? []).flatMap((b) => spy(b, "insert").mock.calls.map(([r]) => r));
-  return { deps, db, store, remove, removeIfUnused, geocode, notify, inserts, updates, nothingWritten, sideInserts };
+  const sideDeletes = (name: string) => (side[name] ?? []).filter((b) => called(b, "delete")).length;
+  return { deps, db, store, remove, removeIfUnused, geocode, notify, log, inserts, updates, nothingWritten, sideInserts, sideDeletes };
 }
 
 function form(fields: Record<string, string | string[]>) {
@@ -195,6 +197,14 @@ describe("video", () => {
       expect(h.remove).toHaveBeenCalledWith("videos/new.jpg");
     });
 
+    it("a new thumbnail frees the one it replaced, through the in-use check", async () => {
+      const h = setup({ videos: { row: own({ thumbnail_path: "videos/old.jpg" }) } });
+      h.store.mockResolvedValue({ path: "videos/new.jpg" });
+      expect(await resubmit(h.deps, "video", "x1", form({ title: "t", url: YT }), MEMBER)).toEqual({ ok: true, id: "x1", draft: false });
+      expect(h.removeIfUnused).toHaveBeenCalledWith(["videos/old.jpg"]);
+      expect(h.remove).not.toHaveBeenCalled();
+    });
+
     it("blank fields say why, as on submit", async () => {
       const h = setup({ videos: { row: own() } });
       expect(await resubmit(h.deps, "video", "x1", form({ title: "t", url: "" }), MEMBER)).toEqual({ ok: false, code: "invalid", error: M.video.required });
@@ -213,7 +223,7 @@ describe("video", () => {
     });
 
     it("updates an existing video, and a blank industry clears it", async () => {
-      const h = setup();
+      const h = setup({ videos: { row: { id: "v1", thumbnail_path: null } } });
       expect(await save(h.deps, "video", "v1", form({ title: "T", url: YT, industry_id: "" }), ADMIN)).toEqual({ ok: true, id: "v1" });
       const [w] = h.updates("videos");
       expect(w.values).toEqual(expect.objectContaining({ title: "T", industry_id: null, member_id: null }));
@@ -235,12 +245,36 @@ describe("video", () => {
     // D11: an insert failure used to crash on data!.id; an update failure was silent.
     it.each([
       ["create", null, { insert: dbError("boom") }],
-      ["update", "v1", { write: dbError("boom") }],
+      ["update", "v1", { row: { id: "v1", thumbnail_path: null }, write: dbError("boom") }],
     ] as const)("a failed %s says so and removes the new thumbnail", async (_label, id, t) => {
       const h = setup({ videos: t });
       h.store.mockResolvedValue({ path: "videos/new.jpg" });
       expect(await save(h.deps, "video", id, form({ title: "T", url: YT }), ADMIN)).toEqual({ ok: false, code: "failed", error: M.saveFailed("video") });
       expect(h.remove).toHaveBeenCalledWith("videos/new.jpg");
+    });
+
+    it("a video that isn't there is not found, before the upload", async () => {
+      const h = setup({ videos: { row: null } });
+      h.store.mockResolvedValue({ path: "videos/new.jpg" });
+      expect(await save(h.deps, "video", "v1", form({ title: "T", url: YT }), ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound("video") });
+      expect(h.store).not.toHaveBeenCalled();
+      h.nothingWritten();
+    });
+
+    // Deleted in another tab between the read and the write: zero rows is not a save.
+    it("an update that matches no row is not found, and removes the new thumbnail", async () => {
+      const h = setup({ videos: { row: { id: "v1", thumbnail_path: null }, write: dbOk([]) } });
+      h.store.mockResolvedValue({ path: "videos/new.jpg" });
+      expect(await save(h.deps, "video", "v1", form({ title: "T", url: YT }), ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound("video") });
+      expect(h.remove).toHaveBeenCalledWith("videos/new.jpg");
+    });
+
+    it("a new thumbnail frees the one it replaced, through the in-use check", async () => {
+      const h = setup({ videos: { row: { id: "v1", thumbnail_path: "videos/old.jpg" } } });
+      h.store.mockResolvedValue({ path: "videos/new.jpg" });
+      expect(await save(h.deps, "video", "v1", form({ title: "T", url: YT }), ADMIN)).toEqual({ ok: true, id: "v1" });
+      expect(h.removeIfUnused).toHaveBeenCalledWith(["videos/old.jpg"]);
+      expect(h.remove).not.toHaveBeenCalled();
     });
   });
 });
@@ -330,6 +364,20 @@ describe("event", () => {
       stale.nothingWritten();
     });
 
+    it("a cleared location clears the pin, without a lookup", async () => {
+      const h = setup({ events: { row: pinned } });
+      await resubmit(h.deps, "event", "x1", form({ ...base, location: "" }), MEMBER);
+      expect(h.geocode).not.toHaveBeenCalled();
+      expect(h.updates("events")[0].values).toEqual(expect.objectContaining({ location: null, lat: null, lng: null }));
+    });
+
+    it("a new cover frees the one it replaced, through the in-use check", async () => {
+      const h = setup({ events: { row: { ...pinned, cover_path: "events/old.jpg" } } });
+      h.store.mockResolvedValue({ path: "events/new.jpg" });
+      await resubmit(h.deps, "event", "x1", form({ ...base, location: "Leeds" }), MEMBER);
+      expect(h.removeIfUnused).toHaveBeenCalledWith(["events/old.jpg"]);
+    });
+
     it("a missing start date says why (D6)", async () => {
       const h = setup({ events: { row: pinned } });
       expect(await resubmit(h.deps, "event", "x1", form({ title: "t" }), MEMBER)).toEqual({ ok: false, code: "invalid", error: M.event.required });
@@ -352,12 +400,37 @@ describe("event", () => {
 
     it.each([
       ["create", null, { insert: dbError("boom") }],
-      ["update", "e1", { write: dbError("boom") }],
+      ["update", "e1", { row: { id: "e1", cover_path: null }, write: dbError("boom") }],
     ] as const)("a failed %s says so and removes the new cover (D11)", async (_label, id, t) => {
       const h = setup({ events: t });
       h.store.mockResolvedValue({ path: "events/new.jpg" });
       expect(await save(h.deps, "event", id, form(base), ADMIN)).toEqual({ ok: false, code: "failed", error: M.saveFailed("event") });
       expect(h.remove).toHaveBeenCalledWith("events/new.jpg");
+    });
+
+    it("a cleared location clears the stored pin", async () => {
+      const h = setup({ events: { row: { id: "e1", location: "Birmingham NEC", lat: 52.45, lng: -1.72 } } });
+      await save(h.deps, "event", "e1", form({ ...base, location: "" }), ADMIN);
+      expect(h.geocode).not.toHaveBeenCalled();
+      expect(h.updates("events")[0].values).toEqual(expect.objectContaining({ location: null, lat: null, lng: null }));
+    });
+
+    it("an event that isn't there, or is gone by the write, is not found", async () => {
+      const missing = setup({ events: { row: null } });
+      expect(await save(missing.deps, "event", "e1", form(base), ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound("event") });
+      expect(missing.store).not.toHaveBeenCalled();
+
+      const gone = setup({ events: { row: { id: "e1", cover_path: null }, write: dbOk([]) } });
+      gone.store.mockResolvedValue({ path: "events/new.jpg" });
+      expect(await save(gone.deps, "event", "e1", form(base), ADMIN)).toEqual({ ok: false, code: "not_found", error: M.notFound("event") });
+      expect(gone.remove).toHaveBeenCalledWith("events/new.jpg");
+    });
+
+    it("a new cover frees the one it replaced, through the in-use check", async () => {
+      const h = setup({ events: { row: { id: "e1", cover_path: "events/old.jpg" } } });
+      h.store.mockResolvedValue({ path: "events/new.jpg" });
+      await save(h.deps, "event", "e1", form(base), ADMIN);
+      expect(h.removeIfUnused).toHaveBeenCalledWith(["events/old.jpg"]);
     });
   });
 });
@@ -380,6 +453,14 @@ describe("story", () => {
       expect(h.sideInserts("story_categories")).toEqual([{ story_id: "s9", category_id: 3 }]);
       expect(h.db.rpc).toHaveBeenCalledWith("replace_story_members", { p_story_id: "s9", p_member_ids: ["mem1"] });
       expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ kind: "story_submitted", payload: { story_id: "s9" } }));
+    });
+
+    it("a failed member link still lands the story and tells the console, and is logged", async () => {
+      const h = setup({ stories: { insert: dbOk({ id: "s9" }) }, rpc: async () => dbError("rpc down") });
+      h.store.mockResolvedValue({ path: "stories/c.jpg" });
+      expect(await submit(h.deps, "story", form({ title: "t" }), MEMBER)).toEqual({ ok: true, id: "s9", draft: false });
+      expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ kind: "story_submitted", payload: { story_id: "s9" } }));
+      expect(h.log).toHaveBeenCalledWith("intake:story-members", expect.anything(), { story_id: "s9" });
     });
 
     it("needs a cover to go to the editor", async () => {
@@ -518,7 +599,9 @@ describe("story", () => {
       const [w] = h.updates("stories");
       expect(w.values).toEqual(expect.objectContaining({ cover_path: "stories/new.jpg" }));
       expect(w.values.social_posts).toEqual(expect.objectContaining({ x: "https://x.com/smi/status/9", linkedin: "https://www.linkedin.com/posts/a" }));
-      expect(h.remove).toHaveBeenCalledWith("stories/old.jpg");
+      // Only if nothing else shows it: the media library lets the desk reuse a cover on another story.
+      expect(h.removeIfUnused).toHaveBeenCalledWith(["stories/old.jpg"]);
+      expect(h.remove).not.toHaveBeenCalled();
     });
 
     it("tagged members without a subject, or a bad post link, are refused before anything is read or uploaded", async () => {
@@ -534,6 +617,24 @@ describe("story", () => {
       const h = setup({ stories: { row: { cover_path: null, member_draft: false } }, rpc: async () => dbError("fk violation") });
       expect(await save(h.deps, "story", "s1", form({ title: "T", member_id: A }), ADMIN))
         .toEqual({ ok: false, code: "partial", error: M.story.membersFailed, id: "s1" });
+    });
+
+    // The partial message says only the members are unchanged, so the categories must have saved.
+    it("a failed retag still saves the categories", async () => {
+      const h = setup({ stories: { row: { cover_path: null, member_draft: false } }, rpc: async () => dbError("fk violation") });
+      await save(h.deps, "story", "s1", form({ title: "T", member_id: A, categories_sent: "1", categories: ["5"] }), ADMIN);
+      expect(h.sideInserts("story_categories")).toEqual([[{ story_id: "s1", category_id: 5 }]]);
+    });
+
+    it("no box ticked clears the categories; a form without the box leaves them alone", async () => {
+      const cleared = setup({ stories: { row: { cover_path: null, member_draft: false } } });
+      await save(cleared.deps, "story", "s1", form({ title: "T", categories_sent: "1" }), ADMIN);
+      expect(cleared.sideDeletes("story_categories")).toBe(1);
+      expect(cleared.sideInserts("story_categories")).toEqual([]);
+
+      const untouched = setup({ stories: { row: { cover_path: null, member_draft: false } } });
+      await save(untouched.deps, "story", "s1", form({ title: "T" }), ADMIN);
+      expect(untouched.sideDeletes("story_categories")).toBe(0);
     });
 
     it("a failed update removes the new cover and keeps the old one", async () => {

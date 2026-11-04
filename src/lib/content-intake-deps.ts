@@ -4,6 +4,7 @@ import type { LifecycleDeps } from "@/lib/content-lifecycle";
 import { serviceDb } from "@/lib/db/server";
 import { uploadFailureMessage } from "@/lib/editor-upload";
 import { enqueue } from "@/lib/jobs";
+import { logError } from "@/lib/log";
 import { removeMedia, removeMediaIfUnused, uploadImage } from "@/lib/media";
 import { CONSOLE_UPLOADS, memberUploads, submittedFile, type UploadOwner } from "@/lib/staged-upload";
 
@@ -29,17 +30,25 @@ function uploads(owner: UploadOwner): IntakeUploads {
   };
 }
 
+/**
+ * Tell the console a member has put something in front of Jas. Loaded on use,
+ * as the dashboard always has. Never throws — notifyConsole swallows its own
+ * failures, since the submission is already saved by the time this runs. The
+ * one copy: the dashboard's other submissions (equipment, adverts, page edits)
+ * call it too.
+ */
+export async function notifyConsoleOnUse(n: Parameters<typeof import("@/lib/notify-admin").notifyConsole>[0]): Promise<void> {
+  const { notifyConsole } = await import("@/lib/notify-admin");
+  await notifyConsole(n);
+}
+
 function deps(owner: UploadOwner): IntakeDeps {
   return {
     db: serviceDb(),
     upload: uploads(owner),
     geocode: geocodeAddress,
-    notify: async (n) => {
-      // Loaded on use, as the dashboard always has. notifyConsole swallows its
-      // own failures: the submission is already saved by the time this runs.
-      const { notifyConsole } = await import("@/lib/notify-admin");
-      await notifyConsole(n);
-    },
+    notify: notifyConsoleOnUse,
+    log: (area, error, context) => logError({ source: "server", area, error, context }),
   };
 }
 

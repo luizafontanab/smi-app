@@ -57,6 +57,21 @@ export function queryBuilder<T = unknown>(result: DbResult<T> | (() => DbResult<
 }
 
 /**
+ * One builder for code that reads a row and then updates it, as the console
+ * saves do (lib/content-intake): a chain whose last terminal call was
+ * `.maybeSingle()` / `.single()` gets `row`; once `.update()` is the latest
+ * call, it gets `write` — rows, as `.update().select("id")` returns them. One
+ * builder, so a test can still spy on `.update` across several saves.
+ */
+export function readThenUpdate(row: Record<string, unknown> | null, write: DbResult = dbOk([{ id: row?.id ?? "x" }])) {
+  const last = (m: unknown) => Math.max(0, ...(m as ReturnType<typeof vi.fn>).mock.invocationCallOrder);
+  const b: ReturnType<typeof queryBuilder> = queryBuilder(() =>
+    last(b.update) > Math.max(last(b.maybeSingle), last(b.single)) ? write : dbOk(row),
+  );
+  return b;
+}
+
+/**
  * Routes `.from(table)` calls by table name. With no `fallback`, an
  * unconfigured table throws so a missing case fails loudly rather than
  * silently returning nulls — pass one (e.g. `() => queryBuilder()`) for code

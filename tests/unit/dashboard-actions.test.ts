@@ -569,7 +569,7 @@ describe("withdrawStory / editStory", () => {
     db({ stories: () => storiesBuilder });
 
     await expect(withdrawStory(form({ id: "s1" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard");
-    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "withdrawn" });
+    expect(storiesBuilder.update).toHaveBeenCalledWith({ status: "withdrawn", updated_at: expect.any(String) });
     expect(storiesBuilder.eq).toHaveBeenCalledWith("status", "rejected");
     expect(storiesBuilder.eq).toHaveBeenCalledWith("member_id", "mem1");
     expect(storiesBuilder.eq).toHaveBeenCalledWith("source", "member");

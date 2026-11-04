@@ -25,7 +25,7 @@ import { companyLinksFor, withCompanyLines } from "@/lib/company-link";
 import { isMemberLinkable } from "@/lib/member-visibility";
 import { memberCanDeleteStory, memberCanEdit, memberStoryImagePaths, STORY_CHANGED_ERROR } from "@/lib/member-content";
 import { resubmit, submit, type IntakeKind, type IntakeRefusal } from "@/lib/content-intake";
-import { memberIntakeDeps, memberLifecycleDeps } from "@/lib/content-intake-deps";
+import { memberIntakeDeps, memberLifecycleDeps, notifyConsoleOnUse } from "@/lib/content-intake-deps";
 import { withdraw } from "@/lib/content-lifecycle";
 import { HOUR, withinLimit } from "@/lib/rate-limit";
 import { advertLinkFromForm } from "@/lib/advert-link";
@@ -50,9 +50,9 @@ const SAVE_FAILED = "That didn't save — please try again in a moment. If it ke
  * Every submission route calls this, resubmits included: a sent-back item that
  * comes back edited is back in the queue and needs the same nudge as a new one.
  *
- * Cannot throw: `notifyConsole` swallows its own failures. That is the point —
- * the submission is already saved by the time this runs, so losing the receipt
- * must never cost the member their work.
+ * Cannot throw (lib/content-intake-deps notifyConsoleOnUse, which stories,
+ * videos and events go through as well): the submission is already saved by
+ * the time this runs, so losing the receipt must never cost the member their work.
  */
 async function notifySubmitted(
   kind: import("@/lib/console-notification-links").InboxNotificationKind,
@@ -60,16 +60,15 @@ async function notifySubmitted(
   payload: import("@/lib/console-notification-links").InboxPayload,
   message: string,
 ): Promise<void> {
-  const { notifyConsole } = await import("@/lib/notify-admin");
-  await notifyConsole({ kind, memberId, payload, message });
+  await notifyConsoleOnUse({ kind, memberId, payload, message });
 }
 
 
 /**
  * These member-area actions use the service role, which bypasses RLS, so
- * ownership has to be checked by hand before every read or write. The four
- * helpers below are the single place that happens, so a new action can't
- * forget the check the way a one-off inline comparison could.
+ * ownership has to be checked by hand before every read or write. The three
+ * assert helpers below are the single place that happens, so a new action
+ * can't forget the check the way a one-off inline comparison could.
  */
 
 /**
