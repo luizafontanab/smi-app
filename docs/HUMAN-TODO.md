@@ -146,7 +146,8 @@ account and £40/month Price created, `STRIPE_PRICE_ID` set. Staging-only items
 just one. Deploy the `staging` code at the same moment: old code against the new
 schema breaks member profiles, the directory and the CRM page. Pending, as far
 as this repo knows: none. Everything through `20261027000004` was pushed to
-`bvyxeujhecxulzwvpxfr` on 28 Oct, without the backup or pre-checks below.
+`bvyxeujhecxulzwvpxfr` on 28 Oct, without the backup or pre-checks below;
+`20261028000001` and `20261029000001` followed on 4 Nov.
 Confirm with `supabase migration list --linked`. From `20261020000005` on, nothing sends
 until it is approved in the console: any newsletter issue already *scheduled*
 when it lands is marked approved so it still goes out, but a draft must go
