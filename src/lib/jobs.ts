@@ -41,7 +41,8 @@ export type JobKind =
   | "log_retention"          // daily: error logs past 90 days; audit_events per purge_audit_events()
   | "upload_staging_sweep"   // hourly: removes direct uploads staged but never saved (lib/staged-upload)
   | "source_watch"           // hourly: checks the story sources due their daily read (lib/sources/check)
-  | "source_bigin_sync";     // daily: Bigin companies' News Page URLs → story sources (lib/sources/bigin)
+  | "source_bigin_sync"      // daily: Bigin companies' News Page URLs → story sources (lib/sources/bigin)
+  | "social_followers";      // daily: Facebook/Instagram/YouTube follower counts for /console/social-reach (lib/adapters/social-followers)
 
 /**
  * In development only, a job that is due now runs as soon as the response is
@@ -164,6 +165,7 @@ export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   // once-a-day cron (GAPS A3.1) would reach one batch a day — see docs/story-sources.md.
   await ensurePeriodic("source_watch", 60 * 60);
   await ensurePeriodic("source_bigin_sync", 24 * 60 * 60);
+  await ensurePeriodic("social_followers", 24 * 60 * 60);
 
   const { data: due } = await db
     .from("jobs")
@@ -607,6 +609,19 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       if (!(await storyCrawlerOn())) break;
       const { syncBiginSources } = await import("./sources/bigin");
       await syncBiginSources();
+      break;
+    }
+    case "social_followers": {
+      // Guidance for the console's Social reach page (issue #4); the homepage
+      // figure is never touched here. Platforms without credentials are skipped
+      // inside, and a fetch failure is stored on the platform's row rather than
+      // thrown. A failed settings read/write throws (and retries); so does a
+      // failed Instagram token refresh, deliberately: left alone, the token
+      // dies 60 days later, so the job dead-letters into "Needs You Today"
+      // with the reason.
+      const { refreshSocialFollowers } = await import("./adapters/social-followers");
+      const { instagramProblem } = await refreshSocialFollowers({ db });
+      if (instagramProblem) throw new Error(instagramProblem);
       break;
     }
     case "comp_expiry": {

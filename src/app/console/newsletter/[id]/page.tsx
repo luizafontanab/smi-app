@@ -18,6 +18,7 @@ import { readNewsletterFooter } from "@/lib/newsletter-footer";
 import { NEWSLETTER_SHELL_KIND } from "@/lib/email/defaults";
 import { loadEmailTemplates } from "@/lib/email/store";
 import { newsletterTemplateProblem } from "@/lib/email/templates";
+import { newsletterAudience } from "@/lib/newsletter-audience";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
   // Gap review area 4: the audience check compares against the most recent
   // other issue that recorded how many it went to.
   const [{ count: subscribers }, lastSent, people, footer, templateProblem] = await Promise.all([
-    mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null).is("bounced_at", null), "console/newsletter subscriber count"),
+    mustList(newsletterAudience(db), "console/newsletter subscriber count"),
     must(
       db.from("newsletter_issues").select("number, sent_count").eq("status", "sent").not("sent_count", "is", null).neq("id", id)
         .order("sent_at", { ascending: false }).limit(1).maybeSingle(),

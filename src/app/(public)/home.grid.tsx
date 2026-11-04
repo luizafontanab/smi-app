@@ -53,7 +53,7 @@ import { excluding, type HomeData } from "./home.data";
  */
 export function GridHome({
   stories, memberNews, videos, events, newsletters, featuredMembers, featuredMachine, featuredEvent,
-  adverts, showPlaceholders, storyTotal, memberCount, homeSections,
+  adverts, showPlaceholders, storyTotal, memberCount, reach, homeSections,
 }: HomeData) {
   // One call, because a slot family is a FORMAT and all three positions now
   // take the same full-width banner. The keys match forge's so impression
@@ -257,7 +257,7 @@ export function GridHome({
       </Band>
     ),
     home_3: home3,
-    stats: <GhStatsBand storyTotal={storyTotal} memberCount={memberCount} />,
+    stats: <GhStatsBand storyTotal={storyTotal} memberCount={memberCount} reach={reach} />,
   };
   const seq = belowFoldSequence(rendered);
   // Whether a phone lifts Upcoming events to the top of the run (#33 C9).

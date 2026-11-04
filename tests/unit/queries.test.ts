@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   activePlacements, activeTakeover, eventBySlug, eventsInRange, featuredEvent, featuredMemberPlacements, featuredMembers,
-  forYouStories, headlineStory, headlineVideo, ilikeTerm, industries, latestVideos,
+  forYouStories, headlineStory, headlineVideo, homepageReach, ilikeTerm, industries, latestVideos,
   industryBySlug, MEMBER_STORY_CAROUSEL, memberBySlug, memberDirectory, memberFacets, memberPins, membershipTypes, mostViewedStories, newsletterBySlug,
   pastEvents, publishedStories, publishedVideos,
   searchSite, sentNewsletters, services, staticPage, storyBySlug, storyFilterMember, storyForPreview, storyMembers, storyCategories, storyIndustrySlug, storyIntros,
@@ -1063,5 +1063,26 @@ describe("memberPins", () => {
       { count: "exact" },
     );
     expect(membersBuilder.in).not.toHaveBeenCalled();
+  });
+});
+
+/* ---------- homepage reach figure (issue #4) ---------- */
+
+describe("homepageReach", () => {
+  it("returns the admin's saved number and caption", async () => {
+    const settings = queryBuilder(dbOk({ value: { value: 12500, label: "Followers across our channels", as_of: "2026-11-04T12:00:00.000Z" } }));
+    db({ settings: () => settings });
+    expect(await homepageReach()).toEqual({ value: 12500, label: "Followers across our channels" });
+    expect(settings.eq).toHaveBeenCalledWith("key", "social_reach_homepage");
+  });
+
+  it("is null with nothing saved, so the band hides the stat", async () => {
+    db({ settings: () => queryBuilder(dbOk(null)) });
+    expect(await homepageReach()).toBeNull();
+  });
+
+  it("is null when the read fails — the homepage never breaks over this figure", async () => {
+    db({ settings: () => { throw new Error("db down"); } });
+    expect(await homepageReach()).toBeNull();
   });
 });

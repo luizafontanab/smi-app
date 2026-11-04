@@ -7,6 +7,7 @@ import { formatLondon } from "@/lib/london-time";
 import { createIssue, saveNewsletterFooter, scheduleIssue, sendIssue, unscheduleIssue } from "../actions";
 import { DEFAULT_REASON_LINE, POSTAL_ADDRESS_MAX, readNewsletterFooter, REASON_LINE_MAX } from "@/lib/newsletter-footer";
 import { CalendarView, type CalendarIssue } from "./CalendarView";
+import { newsletterAudience } from "@/lib/newsletter-audience";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
     must(db.from("stories").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter stories"),
     must(db.from("videos").select("id, title, published_at").eq("status", "published").order("published_at", { ascending: false }).limit(20), "console/newsletter videos"),
     // head:true — the count is the only thing this one returns.
-    mustList(db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null).is("bounced_at", null), "console/newsletter subscriber count"),
+    mustList(newsletterAudience(db), "console/newsletter subscriber count"),
     readNewsletterFooter(db),
   ]);
 

@@ -4,6 +4,7 @@ import {
   replyToInboxMessage, saveCategory, saveResource,
   markProspect, saveContentPage, saveIndustry, saveSocialChannels,
 } from "@/app/console/actions";
+import { clearSocialReachHomepage, saveSocialReachHomepage, saveSocialReachPlatforms } from "@/app/console/social-reach/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -468,5 +469,98 @@ describe("markProspect", () => {
     await markProspect(form({ ref: "  ", action: "call" }));
 
     expect(builder.upsert).not.toHaveBeenCalled();
+  });
+});
+
+/* ---------- social reach (/console/social-reach, issue #4) ---------- */
+
+describe("social reach actions", () => {
+  /** A settings table whose read returns `stored`, with every upsert/delete spied on. */
+  function settings(stored: unknown = null, write = dbOk(null)) {
+    const b: ReturnType<typeof queryBuilder> = queryBuilder(() =>
+      callsOf(b.upsert).length || callsOf(b.delete).length ? write : dbOk(stored === null ? null : { value: stored }),
+    );
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ settings: () => b }) })));
+    return b;
+  }
+  const callsOf = (fn: unknown) => (fn as ReturnType<typeof vi.fn>).mock.calls;
+  const redirectUrl = async (p: Promise<unknown>) => {
+    const e = await p.then(() => null, (err: Error) => err);
+    const m = /^NEXT_REDIRECT:(.*)$/.exec(e?.message ?? "");
+    if (!m) throw new Error(`expected a redirect, got ${e?.message}`);
+    return new URL(m[1], "http://x");
+  };
+
+  it.each([
+    ["anonymous visitor", "NEXT_REDIRECT:/login?next=/console"],
+    ["member", "NEXT_REDIRECT:/dashboard"],
+  ])("refuses a %s and writes nothing", async (_who, bounce) => {
+    const b = settings();
+    const fields = form({ value: "100", label: "Reach", "linkedin.followers": "5" });
+    for (const run of [() => saveSocialReachHomepage(fields), () => clearSocialReachHomepage(), () => saveSocialReachPlatforms(fields)]) {
+      requireConsole.mockRejectedValueOnce(new Error(bounce));
+      await expect(run()).rejects.toThrow(bounce);
+    }
+    expect(b.upsert).not.toHaveBeenCalled();
+    expect(b.delete).not.toHaveBeenCalled();
+  });
+
+  it("saves the homepage number and caption with today's date", async () => {
+    const b = settings();
+    const url = await redirectUrl(saveSocialReachHomepage(form({ value: "12,500", label: "Followers across our channels" })));
+    expect(url.pathname).toBe("/console/social-reach");
+    expect(url.searchParams.get("saved")).toBe("homepage");
+    expect(b.upsert).toHaveBeenCalledWith({
+      key: "social_reach_homepage",
+      value: { value: 12500, label: "Followers across our channels", as_of: expect.any(String) },
+    });
+  });
+
+  it.each([
+    [{ value: "-1", label: "Reach" }, "e_value"],
+    [{ value: "1.5", label: "Reach" }, "e_value"],
+    [{ value: "", label: "Reach" }, "e_value"],
+    [{ value: "10", label: "" }, "e_label"],
+    [{ value: "10", label: "x".repeat(61) }, "e_label"],
+  ])("rejects %j with a field error and keeps what was typed", async (fields, errorParam) => {
+    const b = settings();
+    const url = await redirectUrl(saveSocialReachHomepage(form(fields)));
+    expect(url.searchParams.get(errorParam)).toBeTruthy();
+    expect(url.searchParams.get("value")).toBe(fields.value);
+    expect(url.searchParams.get("label")).toBe(fields.label);
+    expect(b.upsert).not.toHaveBeenCalled();
+  });
+
+  it("removes the homepage figure, hiding the stat again", async () => {
+    const b = settings();
+    const url = await redirectUrl(clearSocialReachHomepage());
+    expect(url.searchParams.get("saved")).toBe("cleared");
+    expect(b.delete).toHaveBeenCalled();
+    expect(b.eq).toHaveBeenCalledWith("key", "social_reach_homepage");
+  });
+
+  it("saves the hand-entered platform figures, keeping the dates of unchanged ones", async () => {
+    const old = "2026-10-01T09:00:00.000Z";
+    const b = settings({ linkedin: { followers: { value: 4200, at: old }, views: null } });
+    const url = await redirectUrl(saveSocialReachPlatforms(form({ "linkedin.followers": "4200", "x.followers": "310", "x.views": "9000", "x.period": "last 30 days" })));
+    expect(url.searchParams.get("saved")).toBe("platforms");
+    const [[row]] = callsOf(b.upsert) as [[{ key: string; value: Record<string, unknown> }]];
+    expect(row.key).toBe("social_reach_manual");
+    expect(row.value.linkedin).toEqual({ followers: { value: 4200, at: old }, views: null });
+    expect(row.value.x).toEqual({ followers: { value: 310, at: expect.any(String) }, views: { value: 9000, period: "last 30 days", at: expect.any(String) } });
+  });
+
+  it("rejects a bad platform figure, naming the field, and writes nothing", async () => {
+    const b = settings();
+    const url = await redirectUrl(saveSocialReachPlatforms(form({ "facebook.followers": "-3", "x.followers": "12" })));
+    expect(url.searchParams.get("pe_facebook.followers")).toBeTruthy();
+    expect(url.searchParams.get("pv_x.followers")).toBe("12");
+    expect(b.upsert).not.toHaveBeenCalled();
+  });
+
+  it("says so when the database refuses the write", async () => {
+    settings(null, dbError("boom"));
+    const url = await redirectUrl(saveSocialReachHomepage(form({ value: "10", label: "Reach" })));
+    expect(url.searchParams.get("error")).toMatch(/couldn't be saved/);
   });
 });

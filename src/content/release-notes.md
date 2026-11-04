@@ -10,6 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-04 — You set the homepage's social reach figure
+- The homepage's stats band no longer shows the placeholder reach number copied from the design mock-up. Until you save a figure, it shows just Published articles and Member companies.
+- A new page, Console → Site Config → Social Reach, is where you type the number and the caption under it. Saving it changes the homepage from the next page load, and "Remove from homepage" takes it off again.
+- The same page has a row for each of LinkedIn, Facebook, Instagram, YouTube, X and TikTok, where you can note followers and views from each platform's own analytics, with the period they cover. These are only there to help you decide the number; they never reach the homepage on their own.
+- Once their accounts are connected, Facebook, Instagram and YouTube follower counts fill in by themselves each day. Until then, every row says "Not connected: enter by hand".
+- Newsletter subscribers are shown there too, for reference, using the same count as the newsletter page.
+
 ## 2026-11-04 — The site on phones and tablets
 - On phones the top bar shows the full-size logo and a larger menu button; "Become a Member" and "Login" are in the menu. On tablets the bar no longer squeezes onto two lines, and News, Videos and Newsletters are in the bar.
 - The menu that slides out on phones is now light to match the header, reaches the bottom of the screen and has larger links. The industry list under the header is a single row you swipe, with a fade to show there's more.

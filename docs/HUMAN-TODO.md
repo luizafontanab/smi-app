@@ -89,6 +89,38 @@ Each service is independent; do them in any order.
 - [ ] **1.17 — Enter the Buffer channel ids** at `/console/stories` → "Buffer
       channels". Until then, every post fails closed.
 
+### Social reach — follower counts ([#4](https://github.com/luizafontanab/smi-app/issues/4))
+
+Each one is optional and independent. Until a platform's credentials are set,
+its row on `/console/social-reach` says "Not connected: enter by hand" and the
+admin types the figure in. Setting one turns on the daily fetch of that
+platform's follower count. The homepage figure stays whatever the admin types,
+whatever is set here. Endpoints and token lifetimes: `docs/social-reach.md`.
+
+- [ ] **1.23 — Facebook Page token.** Create a Meta developer app (Business
+      type; Standard Access, no App Review, because only Page admins use it),
+      add `pages_read_engagement` and `pages_show_list`, then exchange a
+      long-lived user token for a **long-lived Page token** for the SMIUK Page.
+      Set `FACEBOOK_PAGE_ID` and `FACEBOOK_PAGE_ACCESS_TOKEN` (Production
+      only). Turns on: the Facebook row's followers fetched daily. The token has
+      no fixed expiry, but Meta can invalidate it; the row then shows the error
+      and the last good value.
+- [ ] **1.24 — Instagram token.** In the same Meta app, add Instagram (API with
+      Instagram Login), connect the sheetmetalindustries business account with
+      `instagram_business_basic`, and generate a long-lived token. Set
+      `INSTAGRAM_ACCESS_TOKEN` (Production only) **the same day you generate
+      it**: the app assumes it's new and refreshes it weekly from then on,
+      storing the refreshed token in the database. Turns on: the Instagram row's
+      followers fetched daily. If a refresh fails, the `social_followers` job
+      fails into "Needs You Today" with the days left; past 60 days without a
+      refresh, generate a new token and set it again.
+- [ ] **1.25 — YouTube API key.** In Google Cloud (the Maps project in 1.22 is
+      fine), enable **YouTube Data API v3**, create an API key restricted to
+      that API, and set `YOUTUBE_API_KEY` (Production only). Turns on: the
+      YouTube row's subscriber count fetched daily. YouTube's terms forbid
+      keeping a count over 30 days old, so if fetching stops for 30 days the
+      count is cleared and the row asks for a figure by hand.
+
 ### Anthropic (the third-person rewrite)
 
 - [ ] **1.21 — Create an SMI-owned Anthropic account and set `ANTHROPIC_API_KEY`**

@@ -181,6 +181,7 @@ const CONSOLE: Route[] = [
   admin("/console/email-templates"),
   admin("/console/events"),
   admin("/console/features"),
+  admin("/console/social-reach"),
   admin("/console/leads"),
   admin("/console/machines"),
   admin("/console/media"),

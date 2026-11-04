@@ -74,6 +74,8 @@ const CONSOLE_SECTIONS: NavSection[] = [
       { href: "/console/pages", label: "Page Layouts" },
       // Feature flags — switch parts of the site on or off (lib/feature-flags.ts).
       { href: "/console/features", label: "Features" },
+      // The homepage stats band's third figure, typed in with per-platform guidance (issue #4).
+      { href: "/console/social-reach", label: "Social Reach" },
       { href: "/console/categories", label: "News Categories" },
       { href: "/console/industries", label: "Industries" },
       { href: "/console/media", label: "Media Library" },

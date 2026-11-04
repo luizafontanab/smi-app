@@ -120,7 +120,7 @@ describe("GhFeaturedMembers", () => {
 
 describe("GhStatsBand", () => {
   it("shows the join CTA to signed-out visitors, with the real counts", () => {
-    render(GhStatsBand({ storyTotal: 1968, memberCount: 82 }));
+    render(GhStatsBand({ storyTotal: 1968, memberCount: 82, reach: null }));
     expect(screen.getByText("1,968")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Become a Member/i })).toHaveAttribute("href", "/join");
@@ -131,9 +131,33 @@ describe("GhStatsBand", () => {
   // it too. The band no longer reads the session at all.
   it("keeps the CTA for a signed-in member", () => {
     currentUser.mockResolvedValue({ email: "member1@smi.local" });
-    render(GhStatsBand({ storyTotal: 1968, memberCount: 82 }));
+    render(GhStatsBand({ storyTotal: 1968, memberCount: 82, reach: null }));
     expect(screen.getByText("1,968")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Become a Member/i })).toHaveAttribute("href", "/join");
+  });
+
+  // Issue #4: the third figure is whatever an admin saved on /console/social-reach.
+  // Until then the band shows the two real counts and nothing else — never a
+  // placeholder (the comp's 347,000 used to sit here).
+  it("hides the reach stat while nothing has been saved", () => {
+    const { container } = render(GhStatsBand({ storyTotal: 1968, memberCount: 82, reach: null }));
+    expect(container.querySelectorAll("dl > div")).toHaveLength(2);
+    expect(screen.queryByText(/Social media reach/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Promote your business")).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/347/);
+  });
+
+  it("shows the saved reach number and label, en-GB formatted, under the fixed heading", () => {
+    const { container } = render(GhStatsBand({ storyTotal: 1968, memberCount: 82, reach: { value: 12500, label: "Followers across our channels" } }));
+    expect(container.querySelectorAll("dl > div")).toHaveLength(3);
+    expect(screen.getByText("12,500")).toBeInTheDocument();
+    expect(screen.getByText("Followers across our channels")).toBeInTheDocument();
+    expect(screen.getByText("Promote your business")).toBeInTheDocument();
+  });
+
+  it("shows a saved zero rather than hiding it", () => {
+    render(GhStatsBand({ storyTotal: 1968, memberCount: 82, reach: { value: 0, label: "Social media reach" } }));
+    expect(screen.getByText("Social media reach")).toBeInTheDocument();
   });
 });
 
@@ -212,6 +236,7 @@ const homeData = (over: Partial<HomeData> = {}): HomeData => ({
   directory: [],
   memberCount: 0,
   storyTotal: 0,
+  reach: null,
   categories: [],
   adverts: { banner: [], banner_narrow: [], supplier_logo: [], skyscraper: [], mpu: [], in_feed: [] },
   showPlaceholders: true,

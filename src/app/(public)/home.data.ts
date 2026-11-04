@@ -3,7 +3,7 @@ import { liveAdvertsByFormat, showAdPlaceholders } from "@/lib/adverts";
 import { record, requestContext } from "@/lib/analytics";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { buildHero, withIntros } from "@/lib/hero";
-import { activePlacements, featuredEvent, featuredMemberPlacements, headlineStory, homeSectionsSetting, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
+import { activePlacements, featuredEvent, featuredMemberPlacements, headlineStory, homeSectionsSetting, homepageReach, memberDirectory, publishedStories, publishedVideos, sentNewsletters, storyCategories, storyIntros, upcomingEvents } from "@/lib/queries";
 
 /**
  * Every advert format either design places on the home page.
@@ -33,7 +33,7 @@ const HOME_AD_FORMATS = ["banner", "supplier_logo", "skyscraper", "mpu", "in_fee
 export async function loadHome() {
   // Limits are sized so the hero can eat from the top of these lists (up to 3
   // stories and 2 videos) and every section below still fills.
-  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx, homeSections, topEvent, showIndustries] = await Promise.all([
+  const [headline, { stories, total: storyTotal }, { stories: memberNews }, { videos }, { events }, placements, adverts, newsletters, { members: directory, total: memberCount }, categories, showPlaceholders, ctx, homeSections, topEvent, showIndustries, reach] = await Promise.all([
     headlineStory(),
     publishedStories({ limit: 18 }),
     publishedStories({ limit: 8, memberOnly: true }),
@@ -56,6 +56,8 @@ export async function loadHome() {
     featuredEvent(),
     // Industry captions on featured members (flag industries_public).
     isFeatureEnabled("industries_public"),
+    // Grid-only: the stats band's admin-entered reach figure (issue #4).
+    homepageReach(),
   ]);
 
   const hero = buildHero(headline, stories, videos);
@@ -92,6 +94,8 @@ export async function loadHome() {
     // Every published story, not the 18 fetched above — the count already
     // rides along on that query's response, so grid's stats band is free.
     storyTotal,
+    // Null until an admin saves one on /console/social-reach; the band then shows two stats.
+    reach,
     categories,
     adverts,
     showPlaceholders,

@@ -50,6 +50,10 @@ const { storyCrawlerOn, runSourceWatch, syncBiginSources } = vi.hoisted(() => ({
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: storyCrawlerOn }));
 vi.mock("@/lib/sources/check", () => ({ runSourceWatch }));
 vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
+const { refreshSocialFollowers } = vi.hoisted(() => ({
+  refreshSocialFollowers: vi.fn(async (): Promise<{ instagramProblem: string | null }> => ({ instagramProblem: null })),
+}));
+vi.mock("@/lib/adapters/social-followers", () => ({ refreshSocialFollowers }));
 const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
 vi.mock("@/lib/log", () => ({ logError }));
 
@@ -231,6 +235,7 @@ describe("runDueJobs", () => {
         "newsletter_sync",
         "publish_scheduled",
         "rollup_daily",
+        "social_followers",
         "source_bigin_sync",
         "source_watch",
         "stats_summary",
@@ -1289,6 +1294,29 @@ describe("runJob kinds", () => {
     dbFor(happyPath(job("newsletter_sync", { id: "job2" })));
     await runJobById("job2");
     expect(syncContacts).toHaveBeenCalled();
+  });
+
+  describe("social_followers (issue #4)", () => {
+    afterEach(() => refreshSocialFollowers.mockReset().mockResolvedValue({ instagramProblem: null }));
+
+    it("refreshes the follower counts and completes", async () => {
+      const [select, claim, tail] = happyPath(job("social_followers"));
+      dbFor([select, claim, tail]);
+      await runJobById("job1");
+      expect(refreshSocialFollowers).toHaveBeenCalledTimes(1);
+      expect(callsOf(tail.update)).toContainEqual([expect.objectContaining({ status: "done" })]);
+    });
+
+    // A dying Instagram token must reach a person: the job fails, retries, and
+    // dead-letters into "Needs You Today" with the reason as its last_error.
+    it("fails with the reason when the Instagram token couldn't be refreshed", async () => {
+      refreshSocialFollowers.mockResolvedValue({ instagramProblem: "Instagram token refresh failed (HTTP 400). It expires in about 40 days" });
+      const j = job("social_followers", { attempts: 2, max_attempts: 3 });
+      const tail = queryBuilder(dbOk(null));
+      dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), tail]);
+      await runJobById(j.id);
+      expect(callsOf(tail.update)).toContainEqual([expect.objectContaining({ status: "dead", last_error: expect.stringContaining("Instagram token refresh failed") })]);
+    });
   });
 
   it("rejects an unknown job kind rather than silently succeeding", async () => {

@@ -24,6 +24,7 @@ const PAGES = [
   "/console/newsletter",
   "/console/leads",
   "/console/features",
+  "/console/social-reach",
   "/console/crm",
   "/console/releases",
 ];

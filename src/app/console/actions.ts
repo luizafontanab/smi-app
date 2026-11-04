@@ -13,6 +13,7 @@ import type { SocialChannels } from "@/lib/social-channels";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
 import { optInEvidence } from "@/lib/newsletter-consent";
 import { NEWSLETTER_FOOTER_KEY, newsletterFooterFromForm } from "@/lib/newsletter-footer";
+import { newsletterAudience } from "@/lib/newsletter-audience";
 import { meetsWcagAA } from "@/lib/contrast";
 import { serviceDb } from "@/lib/db/server";
 import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } from "@/lib/dev-tasks";
@@ -2312,9 +2313,9 @@ async function clearApproval(db: ReturnType<typeof serviceDb>, id: string, statu
   }).eq("id", id);
 }
 
-/** Who the issue would go to right now: subscribed, never unsubscribed and not bounced, as the sender counts them. */
+/** Who the issue would go to right now (lib/newsletter-audience). Not exported: this is a "use server" module. */
 async function subscriberCount(db: ReturnType<typeof serviceDb>): Promise<number> {
-  const { count } = await db.from("contacts").select("*", { count: "exact", head: true }).eq("subscribed", true).is("unsubscribed_at", null).is("bounced_at", null);
+  const { count } = await newsletterAudience(db);
   return count ?? 0;
 }
 

@@ -8,6 +8,7 @@ import { computeFacets, type FacetMember, type Facets } from "./member-facets";
 import { allRows } from "./db/all-rows";
 import { eventLastDay, FEATURED_EVENT_BACKUP_KEY, type FeaturedEventSource } from "./featured-event";
 import { HOME_SECTIONS_KEY, resolveHomeSections, type HomeSections } from "./home-sections";
+import { parseHomepageReach, SOCIAL_REACH_HOMEPAGE_KEY } from "./social-reach";
 
 export type StoryCard = {
   id: string;
@@ -798,6 +799,22 @@ export async function homeSectionsSetting(): Promise<HomeSections> {
     return resolveHomeSections(data?.value);
   } catch {
     return resolveHomeSections(null);
+  }
+}
+
+/**
+ * The grid homepage's third stat: the number and caption an admin saved on
+ * /console/social-reach (issue #4), or null — and the band then hides the
+ * stat. serviceDb because `settings` has RLS with no policies. A failed read
+ * hides the stat too, rather than breaking the homepage over one figure.
+ */
+export async function homepageReach(): Promise<{ value: number; label: string } | null> {
+  try {
+    const { data, error } = await serviceDb().from("settings").select("value").eq("key", SOCIAL_REACH_HOMEPAGE_KEY).maybeSingle();
+    const reach = error ? null : parseHomepageReach(data?.value);
+    return reach && { value: reach.value, label: reach.label };
+  } catch {
+    return null;
   }
 }
 

@@ -536,12 +536,8 @@ export function GhNewsletterPanel() {
   );
 }
 
-/**
- * Social reach has no source in the database — the other two figures are real
- * (published stories and active members, both already loaded for this page).
- * Logged for Jas to confirm or drop in docs/HUMAN-TODO.md; the comp's number.
- */
-const SOCIAL_REACH = 347_000;
+/** The admin-entered reach figure (lib/social-reach.ts), or null while none is saved. */
+export type GhReach = { value: number; label: string } | null;
 
 /**
  * Comp v1's stats band, closing the page above the footer — on a light ground
@@ -549,12 +545,16 @@ const SOCIAL_REACH = 347_000;
  * straight into the dark footer, over 1000px of continuous dark. The figures
  * move from orange to the deepened text orange, since #ff8200 on white fails
  * contrast even at this size.
+ *
+ * The first two figures are counted from the database. The third is whatever
+ * an admin last saved on /console/social-reach (issue #4); with nothing saved
+ * it is left out entirely rather than filled with a placeholder.
  */
-export function GhStatsBand({ storyTotal, memberCount }: { storyTotal: number; memberCount: number }) {
+export function GhStatsBand({ storyTotal, memberCount, reach }: { storyTotal: number; memberCount: number; reach: GhReach }) {
   const stats = [
     { label: "Relevant, up-to-date news", value: storyTotal, caption: "Published articles" },
     { label: "Grow your connections", value: memberCount, caption: "Member companies" },
-    { label: "Promote your business", value: SOCIAL_REACH, caption: "Social media reach" },
+    ...(reach ? [{ label: "Promote your business", value: reach.value, caption: reach.label }] : []),
   ];
   return (
     <Band className="border-t border-line" inner="py-10 text-center">
@@ -563,12 +563,12 @@ export function GhStatsBand({ storyTotal, memberCount }: { storyTotal: number; m
         SMI publishes the UK sheet metal trade&apos;s news, and helps the companies in it promote their
         strengths, products and services to the people specifying and buying equipment.
       </p>
-      <dl className="mx-auto mt-8 grid max-w-3xl gap-8 sm:grid-cols-3">
+      <dl className={`mx-auto mt-8 grid gap-8 ${stats.length === 3 ? "max-w-3xl sm:grid-cols-3" : "max-w-xl sm:grid-cols-2"}`}>
         {/* Each div holds exactly one dt then one dd — axe's definition-list
             rule rejects any other direct child, so the caption lives inside
             the dd rather than as a sibling <p>. */}
         {stats.map((s) => (
-          <div key={s.caption}>
+          <div key={s.label}>
             <dt className="text-sm font-bold">{s.label}</dt>
             <dd className="mt-2">
               {/* #ac5800 on white is 5.1:1; the brighter #ff8200 would be 2.5:1. */}
