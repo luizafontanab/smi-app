@@ -12,7 +12,7 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
 import type { CurrentUser, MemberView } from "@/lib/auth";
 import { IMAGE_TOO_LARGE, UPLOAD_EXPIRED, UploadRejectedError } from "@/lib/upload-limits";
-import { STORY_CHANGED_ERROR } from "@/lib/member-story";
+import { MEMBER_CHANGED_ERROR, STORY_CHANGED_ERROR } from "@/lib/member-content";
 import { featuredMonths } from "@/lib/featured-availability";
 import { FEATURED_SLOTS } from "@/lib/pricing";
 
@@ -238,9 +238,11 @@ describe("staged uploads", () => {
 });
 
 describe("submitStory", () => {
-  it("does nothing for a blank title", async () => {
+  // D6 (submission intake): was a silent return; now it says why.
+  it("says a blank title needs filling in, and writes nothing", async () => {
     const from = db({});
-    await submitStory(form({ title: "  " }));
+    await expect(submitStory(form({ title: "  " })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/story/new?error=${encodeURIComponent("Give the story a title before saving.")}`);
     expect(from).not.toHaveBeenCalled();
   });
 
@@ -316,7 +318,7 @@ describe("submitVideo", () => {
   });
 
   it("inserts awaiting approval and redirects", async () => {
-    const videosBuilder = queryBuilder(dbOk(null));
+    const videosBuilder = queryBuilder(dbOk({ id: "v1" }));
     db({ videos: () => videosBuilder });
 
     await expect(submitVideo(form({ title: "t", url: "https://youtube.com/watch?v=x", industry_id: "5" })))
@@ -324,12 +326,28 @@ describe("submitVideo", () => {
 
     expect(videosBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", member_id: "mem1", industry_id: null }));
   });
+
+  // Was ignored: the member was told "submitted" when nothing had saved (Luiza, 3 Nov).
+  it("a failed insert goes back to the form, drops the thumbnail and tells nobody", async () => {
+    uploadImage.mockResolvedValue("videos/t.jpg");
+    db({ videos: () => queryBuilder(dbError("boom")) });
+    await expect(submitVideo(form({ title: "t", url: "https://youtube.com/watch?v=x" })))
+      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/video\/new\?error=That%20didn't%20save/);
+    expect(removeMedia).toHaveBeenCalledWith("videos/t.jpg");
+    expect(notifyConsole).not.toHaveBeenCalled();
+  });
 });
 
 describe("submitEvent", () => {
-  it("does nothing for a blank title", async () => {
+  // D6 (submission intake): a blank title returned silently, and the start
+  // date was only required by the browser.
+  it.each([
+    ["a blank title", { title: "", starts_on: "2026-09-01" }],
+    ["no start date", { title: "t" }],
+  ])("says why on %s, and writes nothing", async (_label, fields) => {
     const from = db({});
-    await submitEvent(form({ title: "" }));
+    await expect(submitEvent(form(fields)))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/event/new?error=${encodeURIComponent("A title and a start date are both required.")}`);
     expect(from).not.toHaveBeenCalled();
   });
 
@@ -820,25 +838,57 @@ describe("previewStoryBody", () => {
   });
 });
 
+/**
+ * A `videos` or `events` table for the resubmit and withdraw paths: reads get
+ * `row`, the conditional write gets `write` (the rows it changed). Submission
+ * intake D6: these writes are now conditional, like editStory's.
+ */
+function contentTable(row: Record<string, unknown> | null, write: DbResult = dbOk([{ id: "x" }])) {
+  const builder: ReturnType<typeof queryBuilder> = queryBuilder<unknown>((): DbResult => (callsOf(builder.update).length ? write : dbOk(row)));
+  return builder;
+}
+const OPENED = "2026-11-03T09:00:00.123456+00:00";
+const memberVideo = (over: Record<string, unknown> = {}) => ({ id: "v1", status: "awaiting_approval", member_id: "mem1", source: "member", updated_at: OPENED, ...over });
+const memberEvent = (over: Record<string, unknown> = {}) => ({ id: "e1", status: "rejected", member_id: "mem1", source: "member", updated_at: OPENED, location: null, lat: null, lng: null, ...over });
+
 describe("withdrawVideo / editVideo", () => {
-  it("withdrawVideo requires ownership of a still-pending video", async () => {
-    const from = db({ videos: () => queryBuilder(dbOk(null)) });
+  it("withdrawVideo does nothing for a video that isn't the member's", async () => {
+    const videosBuilder = contentTable(null);
+    db({ videos: () => videosBuilder });
     await expect(withdrawVideo(form({ id: "v1" }))).resolves.toBeUndefined();
-    expect(from).not.toHaveBeenCalledWith("videos", expect.anything());
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("withdrawVideo marks an owned, pending video withdrawn, conditional on the status it read", async () => {
+    const videosBuilder = contentTable(memberVideo());
+    db({ videos: () => videosBuilder });
+    await expect(withdrawVideo(form({ id: "v1" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard");
+    expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "withdrawn" }));
+    expect(videosBuilder.eq).toHaveBeenCalledWith("status", "awaiting_approval");
+    expect(videosBuilder.eq).toHaveBeenCalledWith("member_id", "mem1");
+  });
+
+  // Was an unconditional write: a video Jas published in between was taken down.
+  it("withdrawVideo on a video that went Live says it changed, and writes nothing", async () => {
+    const videosBuilder = contentTable(memberVideo({ status: "published" }));
+    db({ videos: () => videosBuilder });
+    await expect(withdrawVideo(form({ id: "v1" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(MEMBER_CHANGED_ERROR.video)}`);
+    expect(videosBuilder.update).not.toHaveBeenCalled();
   });
 
   it("editVideo requires both a title and a url on resubmission", async () => {
-    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "mem1" }));
+    const videosBuilder = contentTable(memberVideo());
     db({ videos: () => videosBuilder });
 
     await expect(editVideo(form({ id: "v1", title: "t", url: "" })))
-      .rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/video\/v1\/edit\?error=/);
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/video/v1/edit?error=${encodeURIComponent("A title and a YouTube link are both required.")}`);
 
     expect(videosBuilder.update).not.toHaveBeenCalled();
   });
 
   it("editVideo refuses a link that isn't YouTube", async () => {
-    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "mem1" }));
+    const videosBuilder = contentTable(memberVideo());
     db({ videos: () => videosBuilder });
 
     await expect(editVideo(form({ id: "v1", title: "t", url: "https://vimeo.com/123" })))
@@ -848,7 +898,7 @@ describe("withdrawVideo / editVideo", () => {
   });
 
   it("editVideo resubmits with the new details", async () => {
-    const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "mem1" }));
+    const videosBuilder = contentTable(memberVideo());
     db({ videos: () => videosBuilder });
 
     await expect(editVideo(form({ id: "v1", title: "t", url: "https://youtu.be/abc", industry_id: "5" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=video");
@@ -856,34 +906,79 @@ describe("withdrawVideo / editVideo", () => {
     expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "awaiting_approval", rejected_reason: null }));
     expect(callsOf(videosBuilder.update)[0][0]).not.toHaveProperty("industry_id");
   });
+
+  // D6: the race the plan names — Jas approved while the form sat open.
+  it("editVideo from a form opened before the desk acted is refused, and the video left as it is", async () => {
+    const videosBuilder = contentTable(memberVideo({ status: "published", updated_at: "2026-11-03T10:00:00+00:00" }));
+    db({ videos: () => videosBuilder });
+    await expect(editVideo(form({ id: "v1", title: "t", url: "https://youtu.be/abc", version: OPENED })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(MEMBER_CHANGED_ERROR.video)}`);
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+    expect(notifyConsole).not.toHaveBeenCalled();
+  });
+
+  it("editVideo whose conditional write matched nothing says it changed and drops the new thumbnail", async () => {
+    uploadImage.mockResolvedValue("videos/new.jpg");
+    db({ videos: () => contentTable(memberVideo(), dbOk([])) });
+    await expect(editVideo(form({ id: "v1", title: "t", url: "https://youtu.be/abc", version: OPENED })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(MEMBER_CHANGED_ERROR.video)}`);
+    expect(removeMedia).toHaveBeenCalledWith("videos/new.jpg");
+  });
+
+  it("a video the desk made about the member is not theirs to edit or withdraw", async () => {
+    const videosBuilder = contentTable(memberVideo({ source: "manual" }));
+    db({ videos: () => videosBuilder });
+    await expect(editVideo(form({ id: "v1", title: "t", url: "https://youtu.be/abc" }))).resolves.toBeUndefined();
+    await expect(withdrawVideo(form({ id: "v1" }))).resolves.toBeUndefined();
+    expect(videosBuilder.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("withdrawEvent / editEvent", () => {
   it("withdrawEvent marks an owned, pending event withdrawn", async () => {
-    const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "awaiting_approval", member_id: "mem1" }));
+    const eventsBuilder = contentTable(memberEvent({ status: "awaiting_approval" }));
     db({ events: () => eventsBuilder });
 
     await expect(withdrawEvent(form({ id: "e1" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard");
-    expect(eventsBuilder.update).toHaveBeenCalledWith({ status: "withdrawn" });
+    expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "withdrawn" }));
+    expect(eventsBuilder.eq).toHaveBeenCalledWith("status", "awaiting_approval");
+  });
+
+  it("withdrawEvent after Jas published says it changed, instead of taking it down", async () => {
+    const eventsBuilder = contentTable(memberEvent({ status: "published" }));
+    db({ events: () => eventsBuilder });
+    await expect(withdrawEvent(form({ id: "e1" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/submissions?error=${encodeURIComponent(MEMBER_CHANGED_ERROR.event)}`);
+    expect(eventsBuilder.update).not.toHaveBeenCalled();
   });
 
   it("editEvent stores a recognised type and resubmits", async () => {
-    const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "rejected", member_id: "mem1" }));
+    const eventsBuilder = contentTable(memberEvent());
     db({ events: () => eventsBuilder });
 
-    await expect(editEvent(form({ id: "e1", title: "t", type: "webinar", industry_id: "5" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=event");
+    await expect(editEvent(form({ id: "e1", title: "t", starts_on: "2026-09-01", type: "webinar", industry_id: "5" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=event");
 
     expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ type: "webinar", status: "awaiting_approval" }));
     expect(callsOf(eventsBuilder.update)[0][0]).not.toHaveProperty("industry_id");
   });
 
-  it("editEvent does nothing for a blank title", async () => {
-    const eventsBuilder = queryBuilder(dbOk({ id: "e1", status: "rejected", member_id: "mem1" }));
+  // D6: was a silent return.
+  it("editEvent says a blank title needs filling in", async () => {
+    const eventsBuilder = contentTable(memberEvent());
     db({ events: () => eventsBuilder });
 
-    await editEvent(form({ id: "e1", title: "  " }));
+    await expect(editEvent(form({ id: "e1", title: "  ", starts_on: "2026-09-01" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/dashboard/event/e1/edit?error=${encodeURIComponent("A title and a start date are both required.")}`);
 
     expect(eventsBuilder.update).not.toHaveBeenCalled();
+  });
+
+  it("editEvent keeps the old map pin when a changed location fails to geocode", async () => {
+    const eventsBuilder = contentTable(memberEvent({ location: "Leeds", lat: 53.8, lng: -1.5 }));
+    db({ events: () => eventsBuilder });
+    await expect(editEvent(form({ id: "e1", title: "t", starts_on: "2026-09-01", location: "Nowhere" }))).rejects.toThrow("NEXT_REDIRECT:/dashboard?submitted=event");
+    expect(geocodeAddress).toHaveBeenCalledWith("Nowhere");
+    expect(eventsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ location: "Nowhere", lat: 53.8, lng: -1.5 }));
   });
 });
 

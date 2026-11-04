@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { memberCanEdit } from "@/lib/member-content";
 import { renderableHtml } from "@/lib/sanitize";
 import { RequiredMark } from "@/components/RequiredMark";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -11,8 +12,6 @@ import { UploadField } from "@/components/UploadField";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edit your equipment listing" };
 
-const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
-
 export default async function EditMemberMachine(props: PageProps<"/dashboard/equipment/[id]/edit">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
@@ -21,7 +20,7 @@ export default async function EditMemberMachine(props: PageProps<"/dashboard/equ
   const { data: machine } = await db.from("featured_machines")
     .select("id, name, description, external_url, image_path, video_url, status, member_id")
     .eq("id", id).single();
-  if (!machine || machine.member_id !== user.memberId || !EDITABLE_STATUSES.includes(machine.status)) notFound();
+  if (!machine || !memberCanEdit("machine", machine, user.memberId)) notFound();
 
   return (
     <div className="mx-auto max-w-2xl">

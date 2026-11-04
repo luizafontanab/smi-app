@@ -102,6 +102,24 @@ describe("saveVideo", () => {
     expect(from).not.toHaveBeenCalled();
   });
 
+  // Submission intake D11: an insert failure crashed on data!.id into the error
+  // page, and an update failure was silent.
+  it.each([
+    ["creating", { title: "T", url: "https://youtu.be/x" }, "/console/videos/new"],
+    ["updating", { id: "v1", title: "T", url: "https://youtu.be/x" }, "/console/videos/v1"],
+  ])("a database failure %s a video says so on the editor", async (_label, fields, page) => {
+    db({ videos: () => queryBuilder(dbError("boom")) });
+    await expect(saveVideo(form(fields)))
+      .rejects.toThrow(`NEXT_REDIRECT:${page}?error=${encodeURIComponent("The video couldn't be saved — try again.")}`);
+  });
+
+  // D6: one wording with the member form.
+  it("a missing link says YouTube, as the member form does", async () => {
+    db({});
+    await expect(saveVideo(form({ id: "v1", title: "T", url: "" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/videos/v1?error=${encodeURIComponent("A title and a YouTube link are both required.")}`);
+  });
+
   // A storage failure's own text (bucket names, paths) stays in the error log.
   it("a storage failure shows a plain line, not the provider's text", async () => {
     uploadImage.mockRejectedValue(new Error('new row violates row-level security policy for table "objects"'));

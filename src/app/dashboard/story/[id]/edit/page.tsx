@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, publicDb, serviceDb } from "@/lib/db/server";
 import { renderableHtml } from "@/lib/sanitize";
-import { memberCanEditStory } from "@/lib/member-story";
+import { memberCanEdit } from "@/lib/member-content";
 import { isMemberDraft } from "@/lib/story-board";
 import { deleteStoryDraft, editStory, memberUploadImage, previewStoryBody, withdrawStory } from "../../../actions";
 import { StoryForm } from "../../new/StoryForm";
@@ -21,7 +21,7 @@ export default async function EditMemberStory(props: PageProps<"/dashboard/story
     serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single(),
     db.from("story_categories").select("category_id").eq("story_id", id).maybeSingle(),
   ]);
-  if (!story || !memberCanEditStory(story, user.memberId)) notFound();
+  if (!story || !memberCanEdit("story", story, user.memberId)) notFound();
   const draft = isMemberDraft(story);
 
   return (

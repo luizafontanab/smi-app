@@ -90,6 +90,17 @@ describe("saveEvent", () => {
   });
 });
 
+describe("saveEvent — failures (submission intake D11)", () => {
+  it.each([
+    ["creating", { title: "t", starts_on: "2026-09-01" }, "/console/events/new"],
+    ["updating", { id: "e1", title: "t", starts_on: "2026-09-01" }, "/console/events/e1"],
+  ])("a database failure %s an event says so on the editor", async (_label, fields, page) => {
+    db({ events: () => queryBuilder(dbError("boom")) });
+    await expect(saveEvent(form(fields)))
+      .rejects.toThrow(`NEXT_REDIRECT:${page}?error=${encodeURIComponent("The event couldn't be saved — try again.")}`);
+  });
+});
+
 describe("decideEvent", () => {
   const errorAt = (path: string, message: string) => `NEXT_REDIRECT:${path}?error=${encodeURIComponent(message)}`;
 

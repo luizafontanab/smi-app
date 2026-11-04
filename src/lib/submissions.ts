@@ -95,7 +95,7 @@ export async function memberContent(
     // An admin's draft that merely names them is the desk's unfinished work —
     // it was listed here before, with an Edit link the server then refused.
     // Likewise a desk-written story waiting on, or sent back from, a decision:
-    // the desk's work stays the desk's until it's published (lib/member-story,
+    // the desk's work stays the desk's until it's published (lib/member-content,
     // and the member_read_own_stories policy in 20261016000020).
     capped(db.from("stories").select(`${cols}, member_draft, source`, { count: "exact" }).eq("member_id", memberId).in("status", statuses).or("status.neq.draft,member_draft.eq.true").or("source.eq.member,status.eq.published,member_draft.eq.true").order("created_at", { ascending: false })),
     capped(db.from("videos").select(cols, { count: "exact" }).eq("member_id", memberId).in("status", statuses).order("created_at", { ascending: false })),

@@ -4,11 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { audit } from "@/lib/audit";
 import { requireMember, requireMemberView } from "@/lib/auth";
-import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource } from "@/lib/adapters/leadgen";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { serviceDb, sessionDb } from "@/lib/db/server";
-import { isEventType } from "@/lib/event-types";
 import { editorImageUpload, uploadFailureMessage } from "@/lib/editor-upload";
 import type { UploadResult } from "@/lib/upload-limits";
 import { removeMedia, removeMediaIfUnused, uploadImage } from "@/lib/media";
@@ -25,28 +23,20 @@ import {
 import { renderableHtml, sanitizeRichText } from "@/lib/sanitize";
 import { companyLinksFor, withCompanyLines } from "@/lib/company-link";
 import { isMemberLinkable } from "@/lib/member-visibility";
-import {
-  memberCanDeleteStory,
-  memberCanEditStory,
-  memberCanWithdrawStory,
-  memberStoryImagePaths,
-  STORY_CHANGED_ERROR,
-} from "@/lib/member-story";
-import { isMemberDraft } from "@/lib/story-board";
-import { replaceStoryMembers } from "@/lib/story-members";
+import { memberCanDeleteStory, memberCanEdit, memberStoryImagePaths, STORY_CHANGED_ERROR } from "@/lib/member-content";
+import { resubmit, submit, type IntakeKind, type IntakeRefusal } from "@/lib/content-intake";
+import { memberIntakeDeps, memberLifecycleDeps } from "@/lib/content-intake-deps";
+import { withdraw } from "@/lib/content-lifecycle";
 import { HOUR, withinLimit } from "@/lib/rate-limit";
 import { advertLinkFromForm } from "@/lib/advert-link";
 import { logError } from "@/lib/log";
 import { siteUrl } from "@/lib/site-url";
 import { EMAIL_RE } from "@/lib/validate";
 import { loadFeaturedMonths } from "@/lib/featured-availability";
-import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
+import { optionalYoutubeUrl } from "@/lib/youtube";
 
 /** Shown when a save fails for a reason that isn't the member's to fix; the detail goes to the error log. */
 const SAVE_FAILED = "That didn't save — please try again in a moment. If it keeps happening, contact us.";
-
-const slugify = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 
 /**
  * Tell the console a member has put something in front of Jas (fix-list 71).
@@ -74,10 +64,6 @@ async function notifySubmitted(
   await notifyConsole({ kind, memberId, payload, message });
 }
 
-// Stories are not here: who may change one depends on who wrote it as well as
-// its status, so they go through lib/member-story instead.
-type EditableTable = "videos" | "events" | "featured_machines";
-const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
 
 /**
  * These member-area actions use the service role, which bypasses RLS, so
@@ -86,10 +72,14 @@ const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
  * forget the check the way a one-off inline comparison could.
  */
 
-/** True when `id` in `table` belongs to this member and is still in a state they're allowed to touch — never something already live. */
-async function assertOwnsRow(db: ReturnType<typeof serviceDb>, table: EditableTable, id: string, memberId: string): Promise<boolean> {
-  const { data } = await db.from(table).select("id, status, member_id").eq("id", id).single();
-  return Boolean(data && data.member_id === memberId && EDITABLE_STATUSES.includes(data.status));
+/**
+ * True when equipment listing `id` belongs to this member and is still in a
+ * state they're allowed to touch — never something already live. Stories,
+ * videos and events go through lib/content-intake and lib/content-lifecycle.
+ */
+async function assertOwnsMachine(db: ReturnType<typeof serviceDb>, id: string, memberId: string): Promise<boolean> {
+  const { data } = await db.from("featured_machines").select("id, status, member_id").eq("id", id).single();
+  return memberCanEdit("machine", data, memberId);
 }
 
 /** True when the `adverts` row `id` belongs to this member. */
@@ -119,6 +109,30 @@ function storyChanged(): never {
   redirect(`/dashboard/submissions?error=${encodeURIComponent(STORY_CHANGED_ERROR)}`);
 }
 
+/**
+ * Where a refused submit or resubmit goes. Someone else's item: nowhere,
+ * nothing to say. Theirs but changed under them: their list, which shows its
+ * state now. Anything else (a form problem, an upload, a failed write): back
+ * to the form with the reason. Not exported: "use server".
+ */
+function intakeRefused(kind: IntakeKind, id: string | null, res: IntakeRefusal): void {
+  if (res.code === "not_found") return;
+  if (res.code === "changed") redirect(`/dashboard/submissions?error=${encodeURIComponent(res.error)}`);
+  redirect(`/dashboard/${kind}/${id ? `${id}/edit` : "new"}?error=${encodeURIComponent(res.error)}`);
+}
+
+/** A member's withdraw of their own story, video or event (lib/content-lifecycle). Not exported: "use server". */
+async function withdrawOwn(kind: IntakeKind, formData: FormData) {
+  const user = await requireMember();
+  const res = await withdraw(memberLifecycleDeps(), kind, String(formData.get("id")), user);
+  if (!res.ok) {
+    if (res.code === "not_found") return;
+    redirect(`/dashboard/submissions?error=${encodeURIComponent(res.error)}`);
+  }
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
+}
+
 /** True when the `prospect_marks` row `id` is this member's own — never an admin mark. */
 async function assertOwnsMark(db: ReturnType<typeof serviceDb>, id: string, memberId: string): Promise<boolean> {
   const { data } = await db.from("prospect_marks").select("id, member_id").eq("id", id).single();
@@ -136,57 +150,17 @@ export async function memberUploadImage(formData: FormData): Promise<UploadResul
  * live directly. "Save draft" (intent=draft, Jas 13/10) keeps it as the
  * member's private draft — no cover needed yet, nobody notified — and opens it
  * in the editor, where it can be previewed as published and submitted later.
+ * The rules live in lib/content-intake.
  */
 export async function submitStory(formData: FormData) {
   const user = await requireMember();
-  const asDraft = formData.get("intent") === "draft";
-  const title = String(formData.get("title") ?? "").trim();
-  if (!title) {
-    // The draft button skips native validation (a draft needn't have a cover
-    // yet), so the title rule has to be said here rather than by the browser.
-    if (asDraft) redirect(`/dashboard/story/new?error=${encodeURIComponent("Give the story a title to save it as a draft.")}`);
-    return;
-  }
-  let cover: string | null = null;
-  try {
-    cover = await uploadImage(await submittedFile(formData, "cover", memberUploads(user.memberId)), "stories");
-  } catch (e) {
-    // Was an unhandled throw into the error boundary — an 8MB file lost the
-    // whole draft. redirect() stays outside the try: its NEXT_REDIRECT must
-    // not be caught as an upload failure.
-    redirect(`/dashboard/story/new?error=${encodeURIComponent(uploadFailureMessage(e, "upload:story-cover", "The cover didn't upload — please try again."))}`);
-  }
-  if (!cover && !asDraft) redirect(`/dashboard/story/new?error=${encodeURIComponent("A cover image is required.")}`);
-  const db = serviceDb();
-  const { data } = await db.from("stories").insert({
-    slug: `${slugify(title)}-${Date.now().toString(36)}`,
-    title,
-    excerpt: String(formData.get("excerpt") ?? ""),
-    body: sanitizeRichText(String(formData.get("body") ?? "")),
-    status: asDraft ? "draft" : "awaiting_approval",
-    member_draft: asDraft,
-    source: "member",
-    is_member_news: true,
-    member_id: user.memberId,
-    submitted_by: user.userId,
-    // Members never pick an industry; Jas tags it in the console.
-    industry_id: null,
-    cover_path: cover,
-    ...(formData.get("focus_x")
-      ? { cover_focus: { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) } }
-      : {}),
-  }).select("id").single();
-  const cat = Number(formData.get("category") || 0);
-  if (cat && data) await db.from("story_categories").insert({ story_id: data.id, category_id: cat });
-  // story_members holds every member a story features, the primary included
-  // (migration 20261015000003) — a member's own story features them.
-  if (data) await replaceStoryMembers(db, data.id, [user.memberId]);
+  const res = await submit(memberIntakeDeps(user.memberId), "story", formData, user);
+  if (!res.ok) return intakeRefused("story", null, res);
   revalidatePath("/dashboard");
-  if (asDraft) {
+  if (res.draft) {
     revalidatePath("/dashboard/submissions");
-    redirect(data ? `/dashboard/story/${data.id}/edit?saved=draft` : "/dashboard/submissions");
+    redirect(`/dashboard/story/${res.id}/edit?saved=draft`);
   }
-  await notifySubmitted("story_submitted", user.memberId, { story_id: data?.id }, `Submitted a story for approval: “${title}”.`);
   redirect("/dashboard?submitted=story");
 }
 
@@ -243,120 +217,30 @@ export async function deleteStoryDraft(formData: FormData) {
 
 /**
  * Pull back a story the member wrote that's still waiting on (or was sent back
- * from) a decision. Conditional on the status just read, so a story the desk
- * published or scheduled in between is left alone and the member told.
+ * from) a decision. lib/content-lifecycle's withdraw: conditional on the status
+ * just read, so a story the desk published or scheduled in between is left
+ * alone and the member told.
  */
 export async function withdrawStory(formData: FormData) {
-  const user = await requireMember();
-  const id = String(formData.get("id"));
-  const db = serviceDb();
-  const { data: story } = await db.from("stories").select("id, status, member_id, member_draft, source").eq("id", id).single();
-  if (!memberCanWithdrawStory(story, user.memberId)) {
-    if (story?.member_id === user.memberId && story.source === "member") storyChanged();
-    return;
-  }
-  const { data: withdrawn, error } = await db.from("stories").update({ status: "withdrawn" })
-    .eq("id", id).eq("member_id", user.memberId).eq("source", "member").eq("member_draft", false).eq("status", story!.status)
-    .select("id");
-  if (error) {
-    redirect(`/dashboard/submissions?error=${encodeURIComponent("The story couldn't be withdrawn just now — please try again.")}`);
-  }
-  if (!withdrawn?.length) storyChanged();
-  revalidatePath("/dashboard");
-  redirect("/dashboard");
+  return withdrawOwn("story", formData);
 }
 
 /**
- * Edit and resubmit a story that's awaiting approval or was rejected — mirrors
- * resubmitAdvert. Also where a member's draft is saved again (intent=draft,
- * stays a draft) or finally submitted (moves to awaiting approval).
- *
- * Optimistic concurrency, because the form can be open for hours: the edit
- * page posts the `updated_at` it was rendered from as `version`, and the write
- * lands only if the row is still at that version, in the status and draft
- * state read here, still the member's. Otherwise the desk acted in between —
- * approved it, edited the copy, sent it back — and a resubmit would have
- * pulled a live story back into the queue or written over Jas's changes. The
- * member is told instead and nothing is saved. (A form from before `version`
- * existed still gets the status check.)
+ * Edit and resubmit a story that's awaiting approval or was rejected. Also
+ * where a member's draft is saved again (intent=draft, stays a draft) or
+ * finally submitted. lib/content-intake's resubmit: refused, with nothing
+ * saved, if the desk changed it since the form was opened.
  */
 export async function editStory(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
-  const db = serviceDb();
-  const { data: row } = await db.from("stories")
-    .select("id, status, member_id, member_draft, source, cover_path, updated_at").eq("id", id).single();
-  if (!memberCanEditStory(row, user.memberId)) {
-    if (row?.member_id === user.memberId && row.source === "member") storyChanged();
-    return;
-  }
-  const story = row!;
-  const openedAt = String(formData.get("version") ?? "");
-  if (openedAt && openedAt !== story.updated_at) storyChanged();
-  const wasDraft = isMemberDraft(story);
-  // "Save draft" only means something for a draft: a submitted story can't be
-  // pulled back into the member's private workspace this way.
-  const asDraft = wasDraft && formData.get("intent") === "draft";
-  const title = String(formData.get("title") ?? "").trim();
-  if (!title) {
-    if (asDraft) redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("Give the story a title to save it as a draft.")}`);
-    return;
-  }
-  let cover: string | null = null;
-  try {
-    cover = await uploadImage(await submittedFile(formData, "cover", memberUploads(user.memberId)), "stories");
-  } catch (e) {
-    redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent(uploadFailureMessage(e, "upload:story-cover", "The cover didn't upload — please try again."))}`);
-  }
-  // A cover is mandatory — fine to keep the existing one on a resubmit, but a
-  // story that somehow has neither (pre-dates this rule, or a draft saved
-  // before one was chosen) can't be submitted without one.
-  if (!cover && !asDraft && !story.cover_path) {
-    redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("A cover image is required.")}`);
-  }
-  const { data: saved, error } = await db.from("stories").update({
-    title,
-    excerpt: String(formData.get("excerpt") ?? ""),
-    body: sanitizeRichText(String(formData.get("body") ?? "")),
-    status: asDraft ? "draft" : "awaiting_approval",
-    member_draft: asDraft,
-    // industry_id deliberately absent: it is Jas's to set, so a member edit keeps it
-    // cleared so the member is not still shown last time's reason once they act on it
-    rejected_reason: null,
-    updated_at: new Date().toISOString(),
-    ...(cover ? { cover_path: cover } : {}),
-    ...(formData.get("focus_x")
-      ? { cover_focus: { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) } }
-      : {}),
-  })
-    .eq("id", id).eq("member_id", user.memberId).eq("source", "member")
-    .eq("status", story.status).eq("member_draft", story.member_draft).eq("updated_at", story.updated_at)
-    .select("id");
-  if (error || !saved?.length) {
-    // Nothing points at the cover this request uploaded.
-    await removeMedia(cover);
-    if (error) redirect(`/dashboard/story/${id}/edit?error=${encodeURIComponent("Your changes couldn't be saved just now — please try again.")}`);
-    storyChanged();
-  }
-  // The cover it replaced, unless something else still shows it (the media
-  // library lets the desk reuse any upload).
-  if (cover && story.cover_path && story.cover_path !== cover) await removeMediaIfUnused([story.cover_path]);
-  const cat = Number(formData.get("category") || 0);
-  if (cat) {
-    await db.from("story_categories").delete().eq("story_id", id);
-    await db.from("story_categories").insert({ story_id: id, category_id: cat });
-  }
+  const res = await resubmit(memberIntakeDeps(user.memberId), "story", id, formData, user);
+  if (!res.ok) return intakeRefused("story", id, res);
   revalidatePath("/dashboard");
-  if (asDraft) {
+  if (res.draft) {
     revalidatePath("/dashboard/submissions");
     redirect(`/dashboard/story/${id}/edit?saved=draft`);
   }
-  await notifySubmitted(
-    "story_submitted",
-    user.memberId,
-    { story_id: id },
-    wasDraft ? `Submitted a story for approval: “${title}”.` : `Resubmitted their story “${title}” after changes.`,
-  );
   redirect("/dashboard?submitted=story");
 }
 
@@ -366,78 +250,26 @@ export async function memberUploadVideoImage(formData: FormData): Promise<Upload
   return editorImageUpload(formData, memberUploads(user.memberId), `videos/${user.memberId}`);
 }
 
-/** Member self-post: lands awaiting approval, never live directly. */
+/** Member self-post: lands awaiting approval, never live directly (lib/content-intake). */
 export async function submitVideo(formData: FormData) {
   const user = await requireMember();
-  const title = String(formData.get("title") ?? "").trim();
-  const url = String(formData.get("url") ?? "").trim();
-  // Say why rather than silently re-rendering the form (same as submitStory).
-  const problem = !title || !url ? "A title and a YouTube link are both required." : !youtubeId(url) ? YOUTUBE_ONLY_ERROR : null;
-  if (problem) redirect(`/dashboard/video/new?error=${encodeURIComponent(problem)}`);
-  let thumbnail: string | null = null;
-  try {
-    thumbnail = await uploadImage(await submittedFile(formData, "thumbnail", memberUploads(user.memberId)), "videos");
-  } catch (e) {
-    // Was an unhandled throw into the error boundary; now said on the form,
-    // like the story cover. redirect() stays outside the try.
-    redirect(`/dashboard/video/new?error=${encodeURIComponent(uploadFailureMessage(e, "upload:video-thumbnail", "The thumbnail didn't upload — please try again."))}`);
-  }
-  // The id is selected back purely so the console notification can link to it.
-  const { data } = await serviceDb().from("videos").insert({
-    slug: `${slugify(title)}-${Date.now().toString(36)}`,
-    title,
-    url,
-    description: sanitizeRichText(String(formData.get("description") ?? "")),
-    industry_id: null, // members never pick one; Jas tags it in the console
-    status: "awaiting_approval",
-    source: "member",
-    member_id: user.memberId,
-    submitted_by: user.userId,
-    thumbnail_path: thumbnail,
-  }).select("id").single();
-  await notifySubmitted("video_submitted", user.memberId, { video_id: data?.id }, `Submitted a video for approval: “${title}”.`);
+  const res = await submit(memberIntakeDeps(user.memberId), "video", formData, user);
+  if (!res.ok) return intakeRefused("video", null, res);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=video");
 }
 
 /** Pull back a video that's still waiting on (or was sent back from) a decision. */
 export async function withdrawVideo(formData: FormData) {
-  const user = await requireMember();
-  const id = String(formData.get("id"));
-  const db = serviceDb();
-  if (!(await assertOwnsRow(db, "videos", id, user.memberId))) return;
-  await db.from("videos").update({ status: "withdrawn" }).eq("id", id);
-  revalidatePath("/dashboard");
-  redirect("/dashboard");
+  return withdrawOwn("video", formData);
 }
 
-/** Edit and resubmit a video that's awaiting approval or was rejected. */
+/** Edit and resubmit a video that's awaiting approval or was rejected — refused if the desk changed it since. */
 export async function editVideo(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
-  const db = serviceDb();
-  if (!(await assertOwnsRow(db, "videos", id, user.memberId))) return;
-  const title = String(formData.get("title") ?? "").trim();
-  const url = String(formData.get("url") ?? "").trim();
-  const problem = !title || !url ? "A title and a YouTube link are both required." : !youtubeId(url) ? YOUTUBE_ONLY_ERROR : null;
-  if (problem) redirect(`/dashboard/video/${id}/edit?error=${encodeURIComponent(problem)}`);
-  let thumbnail: string | null = null;
-  try {
-    thumbnail = await uploadImage(await submittedFile(formData, "thumbnail", memberUploads(user.memberId)), "videos");
-  } catch (e) {
-    redirect(`/dashboard/video/${id}/edit?error=${encodeURIComponent(uploadFailureMessage(e, "upload:video-thumbnail", "The thumbnail didn't upload — please try again."))}`);
-  }
-  await db.from("videos").update({
-    title,
-    url,
-    description: sanitizeRichText(String(formData.get("description") ?? "")),
-    // industry_id deliberately absent: it is Jas's to set, so a member edit keeps it
-    status: "awaiting_approval",
-    rejected_reason: null,
-    updated_at: new Date().toISOString(),
-    ...(thumbnail ? { thumbnail_path: thumbnail } : {}),
-  }).eq("id", id);
-  await notifySubmitted("video_submitted", user.memberId, { video_id: id }, `Resubmitted their video “${title}” after changes.`);
+  const res = await resubmit(memberIntakeDeps(user.memberId), "video", id, formData, user);
+  if (!res.ok) return intakeRefused("video", id, res);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=video");
 }
@@ -448,106 +280,26 @@ export async function memberUploadEventImage(formData: FormData): Promise<Upload
   return editorImageUpload(formData, memberUploads(user.memberId), `events/${user.memberId}`);
 }
 
-/** M4 — member adds an event; Jas approves. */
+/** M4 — member adds an event; Jas approves (lib/content-intake). */
 export async function submitEvent(formData: FormData) {
   const user = await requireMember();
-  const title = String(formData.get("title") ?? "").trim();
-  if (!title) return;
-  let cover: string | null = null;
-  try {
-    cover = await uploadImage(await submittedFile(formData, "cover", memberUploads(user.memberId)), "events");
-  } catch (e) {
-    // Was an unhandled throw into the error boundary; now said on the form.
-    redirect(`/dashboard/event/new?error=${encodeURIComponent(uploadFailureMessage(e, "upload:event-cover", "The cover didn't upload — please try again."))}`);
-  }
-  const typeInput = String(formData.get("type") ?? "");
-  const eventType = isEventType(typeInput) ? typeInput : null;
-  const location = String(formData.get("location") ?? "");
-  // New row, so any non-empty location is "changed" — one lookup per save,
-  // failure just means no map pin (same guardrails as submitProfileEdit).
-  const coords = location.trim() ? await geocodeAddress(location) : null;
-  const { data } = await serviceDb().from("events").insert({
-    slug: `${slugify(title)}-${Date.now().toString(36)}`,
-    title,
-    description: sanitizeRichText(String(formData.get("description") ?? "")),
-    location,
-    lat: coords?.lat ?? null,
-    lng: coords?.lng ?? null,
-    starts_on: String(formData.get("starts_on")),
-    starts_time: String(formData.get("starts_time") ?? "") || null,
-    ends_on: String(formData.get("ends_on") ?? "") || null,
-    link: String(formData.get("link") ?? "") || null,
-    member_id: user.memberId,
-    type: eventType,
-    industry_id: null, // members never pick one; Jas tags it in the console
-    status: "awaiting_approval",
-    source: "member",
-    submitted_by: user.userId,
-    cover_path: cover,
-  }).select("id").single();
-  await notifySubmitted("event_submitted", user.memberId, { event_id: data?.id }, `Submitted an event for approval: “${title}”.`);
+  const res = await submit(memberIntakeDeps(user.memberId), "event", formData, user);
+  if (!res.ok) return intakeRefused("event", null, res);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=event");
 }
 
 /** Pull back an event that's still waiting on (or was sent back from) a decision. */
 export async function withdrawEvent(formData: FormData) {
-  const user = await requireMember();
-  const id = String(formData.get("id"));
-  const db = serviceDb();
-  if (!(await assertOwnsRow(db, "events", id, user.memberId))) return;
-  await db.from("events").update({ status: "withdrawn" }).eq("id", id);
-  revalidatePath("/dashboard");
-  redirect("/dashboard");
+  return withdrawOwn("event", formData);
 }
 
-/** Edit and resubmit an event that's awaiting approval or was rejected. */
+/** Edit and resubmit an event that's awaiting approval or was rejected — refused if the desk changed it since. */
 export async function editEvent(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
-  const db = serviceDb();
-  if (!(await assertOwnsRow(db, "events", id, user.memberId))) return;
-  const title = String(formData.get("title") ?? "").trim();
-  if (!title) return;
-  let cover: string | null = null;
-  try {
-    cover = await uploadImage(await submittedFile(formData, "cover", memberUploads(user.memberId)), "events");
-  } catch (e) {
-    redirect(`/dashboard/event/${id}/edit?error=${encodeURIComponent(uploadFailureMessage(e, "upload:event-cover", "The cover didn't upload — please try again."))}`);
-  }
-  const typeInput = String(formData.get("type") ?? "");
-  const eventType = isEventType(typeInput) ? typeInput : null;
-  const location = String(formData.get("location") ?? "");
-  // Re-geocode only when the location text changed; a failed lookup keeps the
-  // coords already on file (same guardrails as submitProfileEdit above).
-  const { data: existingEvent } = await db.from("events").select("location, lat, lng").eq("id", id).single();
-  let lat = existingEvent?.lat ?? null;
-  let lng = existingEvent?.lng ?? null;
-  if (location.trim() && location.trim() !== (existingEvent?.location ?? "").trim()) {
-    const geocoded = await geocodeAddress(location);
-    if (geocoded) {
-      lat = geocoded.lat;
-      lng = geocoded.lng;
-    }
-  }
-  await db.from("events").update({
-    title,
-    description: sanitizeRichText(String(formData.get("description") ?? "")),
-    location,
-    lat,
-    lng,
-    starts_on: String(formData.get("starts_on")),
-    starts_time: String(formData.get("starts_time") ?? "") || null,
-    ends_on: String(formData.get("ends_on") ?? "") || null,
-    link: String(formData.get("link") ?? "") || null,
-    type: eventType,
-    // industry_id deliberately absent: it is Jas's to set, so a member edit keeps it
-    status: "awaiting_approval",
-    rejected_reason: null,
-    updated_at: new Date().toISOString(),
-    ...(cover ? { cover_path: cover } : {}),
-  }).eq("id", id);
-  await notifySubmitted("event_submitted", user.memberId, { event_id: id }, `Resubmitted their event “${title}” after changes.`);
+  const res = await resubmit(memberIntakeDeps(user.memberId), "event", id, formData, user);
+  if (!res.ok) return intakeRefused("event", id, res);
   revalidatePath("/dashboard");
   redirect("/dashboard?submitted=event");
 }
@@ -696,7 +448,7 @@ export async function withdrawMachine(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
   const db = serviceDb();
-  if (!(await assertOwnsRow(db, "featured_machines", id, user.memberId))) return;
+  if (!(await assertOwnsMachine(db, id, user.memberId))) return;
   await db.from("featured_machines").update({ status: "withdrawn" }).eq("id", id);
   revalidatePath("/dashboard");
   redirect("/dashboard");
@@ -707,7 +459,7 @@ export async function editMachine(formData: FormData) {
   const user = await requireMember();
   const id = String(formData.get("id"));
   const db = serviceDb();
-  if (!(await assertOwnsRow(db, "featured_machines", id, user.memberId))) return;
+  if (!(await assertOwnsMachine(db, id, user.memberId))) return;
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const video = optionalYoutubeUrl(formData.get("video_url"));

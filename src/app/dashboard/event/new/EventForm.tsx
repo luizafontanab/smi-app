@@ -15,7 +15,7 @@ type Props = {
   member: { name: string; slug: string };
   /** Present only in edit mode — pre-fills the form and switches the copy/actions. */
   initial?: {
-    id: string; title: string; description: string; startsOn: string; startsTime: string | null;
+    id: string; version?: string; title: string; description: string; startsOn: string; startsTime: string | null;
     endsOn: string | null; location: string; link: string | null; type: string | null; coverUrl: string | null;
   };
   withdrawAction?: (formData: FormData) => Promise<void>;
@@ -36,6 +36,7 @@ export function EventForm({ action, uploadImage, member, initial, withdrawAction
     <form action={action} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm">
       <UnsavedChangesGuard />
       {initial && <input type="hidden" name="id" value={initial.id} />}
+      {initial?.version && <input type="hidden" name="version" value={initial.version} />}
       <div role="tablist" aria-label="Editor view" className="flex gap-1 border-b pb-3 text-sm">
         <button type="button" role="tab" id="write-tab" aria-selected={tab === "write"} aria-controls="write-panel" onClick={() => setTab("write")} className={`rounded px-3 py-1.5 ${tab === "write" ? "bg-ink font-semibold text-white" : "bg-shade"}`}>Write</button>
         <button type="button" role="tab" id="preview-tab" aria-selected={tab === "preview"} aria-controls="preview-panel" onClick={() => setTab("preview")} className={`rounded px-3 py-1.5 ${tab === "preview" ? "bg-ink font-semibold text-white" : "bg-shade"}`}>Preview</button>

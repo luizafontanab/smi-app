@@ -20,6 +20,7 @@ import { enqueueStoryLive } from "@/lib/story-members";
 import { canMoveStory, canScheduleStory, isMemberDraft, STORY_STATUS_LABELS } from "@/lib/story-board";
 import { canMoveVideo, canScheduleVideo } from "@/lib/video-board";
 import { canMoveEvent, EVENT_STATUS_LABELS } from "@/lib/event-board";
+import { MEMBER_CHANGED_ERROR, memberCanWithdraw } from "@/lib/member-content";
 
 /* ---------- contract (frozen: callers and tests are written against this) ---------- */
 
@@ -29,6 +30,8 @@ type Enqueue = (kind: JobKind, payload?: Record<string, unknown>, dueAt?: Date) 
 export type LifecycleDeps = { db: Db; enqueue: Enqueue };
 export type ContentKind = "story" | "video" | "event";
 export type Actor = { userId: string };
+/** A member acting on their own content (withdraw). */
+export type MemberActor = { userId: string; memberId: string };
 /**
  * Why a call was refused, for callers that route on it (the console sends a
  * not_found back to the list, everything else to the item's editor). The
@@ -71,6 +74,9 @@ export const LIFECYCLE_MESSAGES = {
   notScheduled: "Events aren't scheduled — publish them instead.",
   alreadyDecided: (kind: ContentKind) => `This ${kind} has already been decided.`,
   reasonRequired: "Say why it's being sent back — the member will see it.",
+  // Member-facing: withdraw is the member's own action, so its refusals speak to them.
+  memberChanged: (kind: ContentKind) => MEMBER_CHANGED_ERROR[kind],
+  withdrawFailed: (kind: ContentKind) => `The ${kind} couldn't be withdrawn just now — please try again.`,
 } as const;
 
 /* ---------- per-kind policy (private) ---------- */
@@ -324,6 +330,42 @@ export async function move(d: LifecycleDeps, kind: ContentKind, id: string, to: 
   if (leavingLive && kind !== "event") await cancelSocialPush(d.db, socialTarget(kind, id));
   return OK;
 }
+
+/**
+ * A member pulls back their own submission while it waits on (or was sent back
+ * from) a decision. Someone else's item, or one the desk wrote about them, is
+ * not found. Their own item in any other state is "changed": the desk acted
+ * since their page loaded, or (a story) it is a draft, which is deleted rather
+ * than withdrawn. Nothing is queued, emailed or recorded.
+ *
+ * Unlike the console operations this reads member drafts too, so a member's
+ * own draft gets "changed" rather than "not found". The write is conditional
+ * on the status read and on the row still being theirs, and counts the rows
+ * it changed (`.select("id")`), as the member's other writes do.
+ */
+export async function withdraw(d: LifecycleDeps, kind: ContentKind, id: string, member: MemberActor): Promise<LifecycleResult> {
+  const p = POLICY[kind];
+  const { data: row } = await table(d, kind).select(p.cols).eq("id", id).maybeSingle();
+  if (!row || row.member_id !== member.memberId || row.source !== "member") return notFound(kind);
+  const changed: LifecycleResult = { ok: false, code: "changed", error: LIFECYCLE_MESSAGES.memberChanged(kind) };
+  if (!memberCanWithdraw(kind, row, member.memberId)) return changed;
+
+  const values: Record<string, unknown> = { status: "withdrawn" };
+  if (p.updatedAt) values.updated_at = new Date().toISOString();
+  let q = (d.db.from(p.table) as unknown as MemberWriteTable).update(values)
+    .eq("id", id).eq("status", row.status).eq("member_id", member.memberId).eq("source", "member");
+  if (kind === "story") q = q.eq("member_draft", false);
+  const { data, error } = await q.select("id");
+  if (error) return { ok: false, code: "failed", error: LIFECYCLE_MESSAGES.withdrawFailed(kind) };
+  return data?.length ? OK : changed;
+}
+
+/** The chain withdraw's member write uses (see StatusTable for why it is narrowed). */
+type MemberFilter = {
+  eq(col: string, v: string | boolean): MemberFilter;
+  select(cols: "id"): PromiseLike<{ data: { id: string }[] | null; error: { message: string } | null }>;
+};
+type MemberWriteTable = { update(values: Record<string, unknown>): MemberFilter };
 
 /** The publish_scheduled job: every story and video whose time has come goes Live. One bad row never stops the rest. */
 export async function publishDue(d: LifecycleDeps, now: Date = new Date()): Promise<PublishDueResult> {

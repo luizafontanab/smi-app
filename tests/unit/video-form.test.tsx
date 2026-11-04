@@ -52,3 +52,41 @@ describe("member content forms have no industry field", () => {
     noIndustry();
   });
 });
+
+// Submission intake D6: a resubmit is refused if the item changed since the
+// form opened, so the edit forms post the version they were rendered from.
+describe("member edit forms post the version they opened at", () => {
+  const version = () => (document.querySelector('input[type="hidden"][name="version"]') as HTMLInputElement | null)?.value;
+
+  it("VideoForm", () => {
+    render(
+      <VideoForm
+        action={noop}
+        uploadImage={uploadImage}
+        member={member}
+        initial={{ id: "v1", version: "2026-11-03T09:00:00+00:00", title: "t", url: "https://youtu.be/abc", description: "", thumbnailUrl: null }}
+      />,
+    );
+    expect(version()).toBe("2026-11-03T09:00:00+00:00");
+  });
+
+  it("EventForm", () => {
+    render(
+      <EventForm
+        action={noop}
+        uploadImage={uploadImage}
+        member={{ name: "Acme Metal", slug: "acme" }}
+        initial={{
+          id: "e1", version: "2026-11-03T09:00:00+00:00", title: "t", description: "", startsOn: "2026-12-01", startsTime: null,
+          endsOn: null, location: "", link: null, type: null, coverUrl: null,
+        }}
+      />,
+    );
+    expect(version()).toBe("2026-11-03T09:00:00+00:00");
+  });
+
+  it("no version on a new submission", () => {
+    render(<VideoForm action={noop} uploadImage={uploadImage} member={member} />);
+    expect(version()).toBeUndefined();
+  });
+});

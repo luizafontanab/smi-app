@@ -5,12 +5,9 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { audit } from "@/lib/audit";
 import { requireConsole } from "@/lib/auth";
-import { geocodeAddress } from "@/lib/adapters/geocode";
 import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
 import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
-import { keepUntouchedPosts, parseStoryPosts } from "@/lib/social";
-import { rescheduleSocialPush, socialFieldsFromForm } from "@/lib/social-push";
 import { parseLondonInput } from "@/lib/london-time";
 import type { SocialChannels } from "@/lib/social-channels";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
@@ -19,13 +16,12 @@ import { NEWSLETTER_FOOTER_KEY, newsletterFooterFromForm } from "@/lib/newslette
 import { meetsWcagAA } from "@/lib/contrast";
 import { serviceDb } from "@/lib/db/server";
 import { DEV_ASSIGNEES, DEV_STATUSES, devTaskValuesFromForm, type DevStatus } from "@/lib/dev-tasks";
-import { isEventType } from "@/lib/event-types";
 import { enqueue } from "@/lib/jobs";
 import { EMAIL_RE, safeInternalPath, UUID_RE } from "@/lib/validate";
 import { eventLastDay, FEATURED_EVENT_BACKUP_KEY } from "@/lib/featured-event";
-import { isMemberDraft } from "@/lib/story-board";
-import { replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
 import { approve, decline, move, publish, schedule, type ContentKind, type LifecycleDeps, type LifecycleResult, type PublishOptions } from "@/lib/content-lifecycle";
+import { save, slugify, type IntakeRefusal } from "@/lib/content-intake";
+import { consoleIntakeDeps } from "@/lib/content-intake-deps";
 import { FEATURED_SLOTS, penniesFromPounds } from "@/lib/pricing";
 import { BANNER_SPOTS_KEY } from "@/lib/banner-spots";
 import { raiseInvoice } from "@/lib/invoicing";
@@ -55,11 +51,9 @@ import { ONE_PER_ISSUE_FORMATS } from "@/lib/newsletter-layout";
 import { isVariant, SITE_VARIANT_KEY, VARIANT_COOKIE } from "@/lib/variant";
 import { featureFlagKey, isFeatureFlag } from "@/lib/feature-flags";
 import { HOME_SECTION_IDS, HOME_SECTIONS_KEY, LOCKED_VISIBLE, moveHomeSection, resolveHomeSections, type HomeSectionId } from "@/lib/home-sections";
-import { optionalYoutubeUrl, YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
+import { optionalYoutubeUrl } from "@/lib/youtube";
 import { advertLinkFromForm } from "@/lib/advert-link";
 
-const slugify = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 
 /** Editor image upload — returns { url } for insertion as <img src>, or { error } to show. */
 export async function consoleUploadImage(formData: FormData): Promise<UploadResult> {
@@ -81,116 +75,31 @@ function dbProblem(area: string, error: { message: string; code?: string }, sent
 
 /* ---------- stories ---------- */
 
+/**
+ * The story editor's Save. Parsing, the upload, the write (and its cleanup),
+ * tagged members, categories and SMI's post links live in lib/content-intake.
+ */
 export async function saveStory(formData: FormData) {
   const user = await requireConsole();
-  const id = String(formData.get("id") ?? "");
-  const db = serviceDb();
-  const title = String(formData.get("title") ?? "").trim();
-  // A bare `return` here re-rendered the editor as if nothing had been clicked
-  // (fix list 73). The field is `required` in the form, so this is the
-  // direct-POST path — it still deserves a reason rather than silence.
-  if (!title) {
-    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent("Give the story a title before saving.")}`);
-  }
-
-  // Every member the story features (Jas 13/10 item 12): the subject member
-  // plus any tagged alongside, primary first. Validated before the upload too.
-  const primaryId = String(formData.get("member_id") ?? "") || null;
-  const tagged = resolveStoryMembers(primaryId, formData.getAll("tagged_member_ids").map(String));
-  if ("error" in tagged) {
-    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(tagged.error)}`);
-  }
-
-  // SMI's own posts of the story (Jas 13/10 item 8) — validated before the
-  // upload, so a bad link doesn't leave an orphaned cover behind.
-  const posts = parseStoryPosts((network) => String(formData.get(`post_${network}`) ?? ""));
-  if ("error" in posts) {
-    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(posts.error)}`);
-  }
-  // Its own social post time, lead-in and opt-out (Area 3) — same reason.
-  const social = socialFieldsFromForm(formData);
-  if ("error" in social) {
-    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(social.error)}`);
-  }
-
-  // The existence check runs before the upload, so a stale or member-owned id
-  // doesn't leave an orphaned cover in storage.
-  let prevCover: string | null = null;
-  let socialPosts = posts.value;
-  if (id) {
-    const { data: prev } = await db.from("stories").select("cover_path, member_draft, social_posts").eq("id", id).single();
-    if (!prev || isMemberDraft(prev)) redirect(`/console/stories?error=${encodeURIComponent("That story isn't available to edit.")}`);
-    prevCover = prev.cover_path;
-    // SMI's post links are filled from Buffer in the background (social_links).
-    // A field the editor didn't touch keeps whatever is stored now, so saving a
-    // form opened before the link arrived doesn't wipe it.
-    socialPosts = keepUntouchedPosts(posts.value, prev.social_posts, (n) => formData.get(`post_${n}_was`));
-  }
-
-  let cover_path: string | null = null;
-  try {
-    cover_path = await uploadImage(await submittedFile(formData, "cover", CONSOLE_UPLOADS), "stories");
-  } catch (e) {
-    redirect(`/console/stories/${id || "new"}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveStory"))}`);
-  }
-
-  const values = {
-    title,
-    excerpt: String(formData.get("excerpt") ?? ""),
-    body: sanitizeRichText(String(formData.get("body") ?? "")),
-    member_id: primaryId,
-    is_member_news: formData.get("is_member_news") === "on",
-    industry_id: Number(formData.get("industry_id")) || null,
-    social_posts: socialPosts,
-    ...social.value,
-    updated_at: new Date().toISOString(),
-    cover_focus: formData.get("focus_x")
-      ? { x: Number(formData.get("focus_x")), y: Number(formData.get("focus_y")), scale: Number(formData.get("focus_scale") || 1) }
-      : undefined,
-    // An empty file input leaves the existing cover alone.
-    ...(cover_path ? { cover_path } : {}),
-  };
-
-  let storyId = id;
-  if (id) {
-    const { error } = await db.from("stories").update(values).eq("id", id);
-    if (error) {
-      // Nothing points at the new cover yet — don't leave it in storage.
-      if (cover_path) await removeMedia(cover_path);
-      redirect(`/console/stories/${id}?error=${encodeURIComponent("The story couldn't be saved — try again.")}`);
-    }
-    if (cover_path && prevCover && prevCover !== cover_path) await removeMedia(prevCover);
-    // A push already waiting moves to the edited time; none is ever created here.
-    await rescheduleSocialPush(db, { story_id: id });
-  } else {
-    const { data, error } = await db.from("stories").insert({
-      ...values,
-      slug: `${slugify(title)}-${Date.now().toString(36)}`,
-      status: "draft",
-      source: "admin",
-      submitted_by: user.userId,
-    }).select("id").single();
-    if (error || !data) {
-      if (cover_path) await removeMedia(cover_path);
-      redirect(`/console/stories/new?error=${encodeURIComponent("The story couldn't be saved — try again.")}`);
-    }
-    storyId = data.id;
-  }
-  // One transaction (replace_story_members): if it fails the story keeps the
-  // members it had, so say so rather than throwing to the error page.
-  try {
-    await replaceStoryMembers(db, storyId, tagged.ids);
-  } catch {
-    revalidatePath("/console/stories");
-    redirect(`/console/stories/${storyId}?error=${encodeURIComponent("The story saved, but its tagged members couldn't be updated — they're as they were. Save again to retry.")}`);
-  }
-  const catIds = formData.getAll("categories").map(Number).filter(Boolean);
-  if (catIds.length) {
-    await db.from("story_categories").delete().eq("story_id", storyId);
-    await db.from("story_categories").insert(catIds.map((category_id) => ({ story_id: storyId, category_id })));
+  const id = String(formData.get("id") ?? "") || null;
+  const res = await save(consoleIntakeDeps(), "story", id, formData, { userId: user.userId });
+  if (!res.ok) {
+    if (res.code === "partial") revalidatePath("/console/stories");
+    redirect(saveErrorPath("story", id, res));
   }
   revalidatePath("/console/stories");
-  redirect(`/console/stories/${storyId}?saved=1`);
+  redirect(`/console/stories/${res.id}?saved=1`);
+}
+
+/**
+ * Where a console save refusal is shown: the editor it came from (or, for a
+ * story that saved but whose members didn't, the saved story's editor), or the
+ * list when the story isn't there to edit. Not exported: "use server".
+ */
+function saveErrorPath(kind: ContentKind, id: string | null, res: IntakeRefusal): string {
+  const list = `/console/${kind === "story" ? "stories" : `${kind}s`}`;
+  if (res.code === "not_found") return `${list}?error=${encodeURIComponent(res.error)}`;
+  return `${list}/${res.id ?? id ?? "new"}?error=${encodeURIComponent(res.error)}`;
 }
 
 /** The content lifecycle's dependencies: the service client and the real job queue. Not exported: "use server". */
@@ -314,58 +223,14 @@ export async function consoleUploadVideoImage(formData: FormData): Promise<Uploa
   return editorImageUpload(formData, CONSOLE_UPLOADS, "videos/console");
 }
 
+/** The video editor's Save (lib/content-intake). */
 export async function saveVideo(formData: FormData) {
   const user = await requireConsole();
-  const id = String(formData.get("id") ?? "");
-  const db = serviceDb();
-  const title = String(formData.get("title") ?? "").trim();
-  const url = String(formData.get("url") ?? "").trim();
-  // same reasoning as saveStory: say why rather than silently re-rendering.
-  if (!title || !url) {
-    redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent("A title and a video link are both required.")}`);
-  }
-  // YouTube-only (USE-CASES gap 23): anything youtubeId() can't read would
-  // save, publish and then render as a card with no player.
-  if (!youtubeId(url)) redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(YOUTUBE_ONLY_ERROR)}`);
-  // Its own social post time, lead-in and opt-out (Area 3), as saveStory.
-  const social = socialFieldsFromForm(formData);
-  if ("error" in social) redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(social.error)}`);
-
-  let thumbnail_path: string | null = null;
-  try {
-    thumbnail_path = await uploadImage(await submittedFile(formData, "thumbnail", CONSOLE_UPLOADS), "videos");
-  } catch (e) {
-    redirect(`/console/videos/${id || "new"}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveVideo"))}`);
-  }
-
-  const values = {
-    title,
-    url,
-    description: sanitizeRichText(String(formData.get("description") ?? "")),
-    member_id: String(formData.get("member_id") ?? "") || null,
-    industry_id: Number(formData.get("industry_id")) || null,
-    ...social.value,
-    updated_at: new Date().toISOString(),
-    ...(thumbnail_path ? { thumbnail_path } : {}),
-  };
-
-  let videoId = id;
-  if (id) {
-    await db.from("videos").update(values).eq("id", id);
-    // A push already waiting moves to the edited time; none is ever created here.
-    await rescheduleSocialPush(db, { video_id: id });
-  } else {
-    const { data } = await db.from("videos").insert({
-      ...values,
-      slug: `${slugify(title)}-${Date.now().toString(36)}`,
-      status: "draft",
-      source: "manual",
-      submitted_by: user.userId,
-    }).select("id").single();
-    videoId = data!.id;
-  }
+  const id = String(formData.get("id") ?? "") || null;
+  const res = await save(consoleIntakeDeps(), "video", id, formData, { userId: user.userId });
+  if (!res.ok) redirect(saveErrorPath("video", id, res));
   revalidatePath("/console/videos");
-  redirect(`/console/videos/${videoId}?saved=1`);
+  redirect(`/console/videos/${res.id}?saved=1`);
 }
 
 export async function scheduleVideo(formData: FormData) {
@@ -505,80 +370,14 @@ export async function consoleUploadEventImage(formData: FormData): Promise<Uploa
   return editorImageUpload(formData, CONSOLE_UPLOADS, "events/console");
 }
 
+/** The event editor's Save (lib/content-intake): geocodes a changed location, keeping the old pin on failure. */
 export async function saveEvent(formData: FormData) {
   const user = await requireConsole();
-  const id = String(formData.get("id") ?? "");
-  const db = serviceDb();
-  const title = String(formData.get("title") ?? "").trim();
-  const starts_on = String(formData.get("starts_on") ?? "");
-  // same reasoning as saveStory: say why rather than silently re-rendering.
-  if (!title || !starts_on) {
-    redirect(`/console/events/${id || "new"}?error=${encodeURIComponent("A title and a start date are both required.")}`);
-  }
-
-  let cover_path: string | null = null;
-  try {
-    cover_path = await uploadImage(await submittedFile(formData, "cover", CONSOLE_UPLOADS), "events");
-  } catch (e) {
-    redirect(`/console/events/${id || "new"}?error=${encodeURIComponent(uploadFailureMessage(e, "action:saveEvent"))}`);
-  }
-
-  const type = String(formData.get("type") ?? "");
-  const location = String(formData.get("location") ?? "") || null;
-
-  // Geocode only when the location text actually changed (same guardrails as
-  // submitProfileEdit in dashboard/actions.ts): one Nominatim lookup per save
-  // at most, and a failed/empty lookup keeps whatever coords were on file
-  // rather than blanking the map pin.
-  let lat: number | null = null;
-  let lng: number | null = null;
-  const existing = id
-    ? (await db.from("events").select("location, lat, lng").eq("id", id).maybeSingle()).data
-    : null;
-  if (existing) {
-    lat = existing.lat;
-    lng = existing.lng;
-  }
-  if (location && location.trim() !== (existing?.location ?? "").trim()) {
-    const geocoded = await geocodeAddress(location);
-    if (geocoded) {
-      lat = geocoded.lat;
-      lng = geocoded.lng;
-    }
-  }
-
-  const values = {
-    title,
-    starts_on,
-    ends_on: String(formData.get("ends_on") ?? "") || null,
-    starts_time: String(formData.get("starts_time") ?? "") || null,
-    location,
-    lat,
-    lng,
-    link: String(formData.get("link") ?? "") || null,
-    description: sanitizeRichText(String(formData.get("description") ?? "")),
-    member_id: String(formData.get("member_id") ?? "") || null,
-    industry_id: Number(formData.get("industry_id")) || null,
-    type: isEventType(type) ? type : null,
-    updated_at: new Date().toISOString(),
-    ...(cover_path ? { cover_path } : {}),
-  };
-
-  let eventId = id;
-  if (id) {
-    await db.from("events").update(values).eq("id", id);
-  } else {
-    const { data } = await db.from("events").insert({
-      ...values,
-      slug: `${slugify(title)}-${Date.now().toString(36)}`,
-      status: "draft",
-      source: "admin",
-      submitted_by: user.userId,
-    }).select("id").single();
-    eventId = data!.id;
-  }
+  const id = String(formData.get("id") ?? "") || null;
+  const res = await save(consoleIntakeDeps(), "event", id, formData, { userId: user.userId });
+  if (!res.ok) redirect(saveErrorPath("event", id, res));
   revalidatePath("/console/events");
-  redirect(`/console/events/${eventId}?saved=1`);
+  redirect(`/console/events/${res.id}?saved=1`);
 }
 
 /** As decideStory: approve publishes; a member's event is Sent back with the reason, the desk's own goes back to Draft. */
