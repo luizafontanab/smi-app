@@ -8,6 +8,7 @@ import { composeSocialText, fillStoryPostLinks, readSocialCaps, SOCIAL_LINK_BACK
 import type { SentPost, SocialPost } from "./adapters/social";
 import { taggedMembers } from "./story-members";
 import { isMemberLinkable } from "./member-visibility";
+import { graceUntilFrom } from "./grace-period";
 import { publishDue } from "./content-lifecycle";
 import { logError } from "./log";
 
@@ -619,15 +620,15 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         .is("paid_at", null)
         .lt("comped_until", today);
       for (const m of expired ?? []) {
-        const graceUntil = new Date(`${m.comped_until}T12:00:00Z`);
-        graceUntil.setUTCDate(graceUntil.getUTCDate() + 30);
-        await db.from("members").update({ status: "grace", grace_until: graceUntil.toISOString().slice(0, 10) }).eq("id", m.id);
+        if (!m.comped_until) continue; // lt() already excludes nulls; this narrows the type
+        const until = graceUntilFrom(m.comped_until);
+        await db.from("members").update({ status: "grace", grace_until: until }).eq("id", m.id);
         await notifyConsole({
           kind: "comp_expired",
           memberId: m.id,
           name: m.name,
           payload: { member_id: m.id },
-          message: `Promo comp expired on ${m.comped_until} — moved to grace until ${graceUntil.toISOString().slice(0, 10)}.`,
+          message: `Promo comp expired on ${m.comped_until} — moved to grace until ${until}.`,
         });
       }
       break;
