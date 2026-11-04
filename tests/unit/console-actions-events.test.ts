@@ -3,7 +3,7 @@ import {
   consoleUploadEventImage, decideEvent, decideRevision, moveEvent, resetLayout, saveEvent, saveLayout, setEventStatus,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, readThenUpdate, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
 import type { CurrentUser } from "@/lib/auth";
@@ -87,6 +87,17 @@ describe("saveEvent", () => {
     await expect(saveEvent(form({ title: "t", starts_on: "2026-09-01", industry_id: "" })))
       .rejects.toThrow("NEXT_REDIRECT:/console/events/e1");
     expect(eventsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ industry_id: null }));
+  });
+});
+
+describe("saveEvent — failures (submission intake D11)", () => {
+  it.each([
+    ["creating", { title: "t", starts_on: "2026-09-01" }, "/console/events/new", () => queryBuilder(dbError("boom"))],
+    ["updating", { id: "e1", title: "t", starts_on: "2026-09-01" }, "/console/events/e1", () => readThenUpdate({ id: "e1" }, dbError("boom"))],
+  ])("a database failure %s an event says so on the editor", async (_label, fields, page, events) => {
+    db({ events });
+    await expect(saveEvent(form(fields)))
+      .rejects.toThrow(`NEXT_REDIRECT:${page}?error=${encodeURIComponent("The event couldn't be saved — try again.")}`);
   });
 });
 

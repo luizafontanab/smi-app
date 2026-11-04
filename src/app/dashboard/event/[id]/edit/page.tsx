@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
+import { memberCanEdit } from "@/lib/member-content";
 import { renderableHtml } from "@/lib/sanitize";
 import { editEvent, memberUploadEventImage, withdrawEvent } from "../../../actions";
 import { EventForm } from "../../new/EventForm";
@@ -8,18 +9,16 @@ import { EventForm } from "../../new/EventForm";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edit your event" };
 
-const EDITABLE_STATUSES = ["awaiting_approval", "rejected"];
-
 export default async function EditMemberEvent(props: PageProps<"/dashboard/event/[id]/edit">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
   const user = await requireMemberView();
   const db = serviceDb();
   const [{ data: event }, { data: member }] = await Promise.all([
-    db.from("events").select("id, title, description, starts_on, starts_time, ends_on, location, link, type, cover_path, status, member_id").eq("id", id).single(),
+    db.from("events").select("id, title, description, starts_on, starts_time, ends_on, location, link, type, cover_path, status, member_id, source, updated_at").eq("id", id).single(),
     db.from("members").select("name, slug").eq("id", user.memberId).single(),
   ]);
-  if (!event || event.member_id !== user.memberId || !EDITABLE_STATUSES.includes(event.status)) notFound();
+  if (!event || !memberCanEdit("event", event, user.memberId)) notFound();
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -35,6 +34,8 @@ export default async function EditMemberEvent(props: PageProps<"/dashboard/event
         member={{ name: member?.name ?? "", slug: member?.slug ?? "" }}
         initial={{
           id: event.id,
+          // posted back so editEvent can tell whether the desk changed it since
+          version: event.updated_at,
           title: event.title,
           description: renderableHtml(event.description),
           startsOn: event.starts_on,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, type Mock } from "vitest";
 import {
-  LIFECYCLE_MESSAGES as M, approve, decline, move, publish, publishDue, schedule,
+  LIFECYCLE_MESSAGES as M, approve, decline, move, publish, publishDue, schedule, withdraw,
   type ContentKind, type LifecycleDeps,
 } from "@/lib/content-lifecycle";
 import { STORY_STATUS_LABELS } from "@/lib/story-board";
@@ -197,7 +197,7 @@ describe("publish", () => {
       const [w] = h.writes(table);
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "published", published_at: expect.any(String) }));
-      if (kind === "video") expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["id", `${kind[0]}1`]);
       expect(w.eq).toContainEqual(["status", "draft"]);
       expect(h.enqueue).toHaveBeenCalledWith("social_push", { [KEY[kind]]: `${kind[0]}1` }, expect.any(Date));
@@ -343,7 +343,7 @@ describe("schedule", () => {
       const [w] = h.writes(table);
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "scheduled", scheduled_at: at.toISOString() }));
-      if (kind === "video") expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["id", `${kind[0]}1`]);
       expect(w.eq).toContainEqual(["status", "draft"]);
       expectNoSideEffects(h);
@@ -412,7 +412,7 @@ describe("decline", () => {
       const [w] = h.writes(table);
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "rejected", rejected_reason: "Needs a photo" }));
-      if (kind === "video") expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["id", id]);
       expect(w.eq).toContainEqual(["status", "awaiting_approval"]);
       expect(h.notices()).toEqual([{ member_id: "m1", kind: REJECTED[kind], [KEY[kind]]: id, reason: "Needs a photo" }]);
@@ -620,7 +620,7 @@ describe("move", () => {
       const [w] = h.writes(table);
       expect(h.writes(table)).toHaveLength(1);
       expect(w.values).toEqual(expect.objectContaining({ status: "draft", published_at: null }));
-      if (kind === "video") expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["status", "published"]);
       expect(h.jobDeletes()).toContainEqual(expect.arrayContaining([[`payload->>${KEY[kind]}`, "eq", id]]));
       expect(h.enqueue).not.toHaveBeenCalled();
@@ -880,7 +880,7 @@ describe("publishDue", () => {
       expect(w.values).toEqual(expect.objectContaining({ status: "published", published_at: expect.any(String) }));
       expect(w.eq).toContainEqual(["status", "scheduled"]);
     }
-    for (const w of h.writes("videos")) expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+    for (const w of all) expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
   });
 
   it("queues the social post and live email only for rows it actually published, and never records an approval", async () => {
@@ -905,6 +905,73 @@ describe("publishDue", () => {
   it("does nothing when nothing is due", async () => {
     const h = setup({ stories: { list: [] }, videos: { list: [] } });
     expect(await publishDue(h.deps, now)).toEqual({ published: [], skipped: [], failed: [] });
+    expectUntouched(h);
+  });
+});
+
+/* ------------------------------------------------------------------ withdraw */
+
+// Submission intake D4: a member pulling back their own submission is a status
+// change, so it lives here with the others — conditional on the status read,
+// and on the row still being theirs (member_id + source 'member').
+describe("withdraw", () => {
+  const MEMBER = { userId: "u1", memberId: "m1" };
+  const own = (kind: ContentKind, o: Partial<Row> = {}) => row(kind, { status: "awaiting_approval", member_id: "m1", source: "member", ...o });
+  const landed = (id: string) => dbOk([{ id }]);
+
+  describe.each(["story", "video", "event"] as const)("%s", (kind) => {
+    const table = TABLE[kind];
+
+    it.each(["awaiting_approval", "rejected"])("withdraws the member's own %s item, conditional on what it read, and tells nobody", async (status) => {
+      const h = setup(forKind(kind, { row: own(kind, { status }), write: landed }));
+      expect(await withdraw(h.deps, kind, `${kind[0]}1`, MEMBER)).toEqual({ ok: true });
+      const [w] = h.writes(table);
+      expect(h.writes(table)).toHaveLength(1);
+      expect(w.values).toEqual(expect.objectContaining({ status: "withdrawn" }));
+      expect(w.eq).toEqual(expect.arrayContaining([
+        ["id", `${kind[0]}1`], ["status", status], ["member_id", "m1"], ["source", "member"],
+      ]));
+      if (kind === "story") expect(w.eq).toContainEqual(["member_draft", false]);
+      expect(w.values).toEqual(expect.objectContaining({ updated_at: expect.any(String) }));
+      expectNoSideEffects(h);
+    });
+
+    // The race this closes: Jas published between the member's page load and the click.
+    it.each(["published", "scheduled", "withdrawn", "draft"])("refuses the member's own %s item as changed, writing nothing", async (status) => {
+      const h = setup(forKind(kind, { row: own(kind, { status }), write: landed }));
+      expect(await withdraw(h.deps, kind, `${kind[0]}1`, MEMBER)).toEqual({ ok: false, code: "changed", error: M.memberChanged(kind) });
+      expectUntouched(h);
+    });
+
+    it.each([
+      ["someone else's", { member_id: "m2" }],
+      ["the desk's, naming the member", { source: "manual" }],
+    ])("treats %s item as not found, writing nothing", async (_label, o) => {
+      const h = setup(forKind(kind, { row: own(kind, o), write: landed }));
+      expect(await withdraw(h.deps, kind, `${kind[0]}1`, MEMBER)).toEqual({ ok: false, code: "not_found", error: M.notFound(kind) });
+      expectUntouched(h);
+    });
+
+    it("refuses a missing row as not found", async () => {
+      const h = setup(forKind(kind, { row: null }));
+      expect(await withdraw(h.deps, kind, "nope", MEMBER)).toEqual({ ok: false, code: "not_found", error: M.notFound(kind) });
+      expectUntouched(h);
+    });
+
+    it("zero rows on the write: changed", async () => {
+      const h = setup(forKind(kind, { row: own(kind), write: () => dbOk([]) }));
+      expect(await withdraw(h.deps, kind, `${kind[0]}1`, MEMBER)).toEqual({ ok: false, code: "changed", error: M.memberChanged(kind) });
+    });
+
+    it("a failed write is failed, with the member-facing wording", async () => {
+      const h = setup(forKind(kind, { row: own(kind), write: () => dbError("connection reset") }));
+      expect(await withdraw(h.deps, kind, `${kind[0]}1`, MEMBER)).toEqual({ ok: false, code: "failed", error: M.withdrawFailed(kind) });
+    });
+  });
+
+  it("a member's own story draft is deleted, not withdrawn: refused as changed", async () => {
+    const h = setup({ stories: { row: own("story", { status: "draft", member_draft: true }), write: landed } });
+    expect(await withdraw(h.deps, "story", "s1", MEMBER)).toEqual({ ok: false, code: "changed", error: M.memberChanged("story") });
     expectUntouched(h);
   });
 });

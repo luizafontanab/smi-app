@@ -10,6 +10,20 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-03 — Member edits can no longer undo your decisions
+- If a member had a story, video or event's edit page open from before you approved or sent it back, saving that page is now refused and they are told it changed. Before, it pulled a Live video or event back into Ready to review, and a story you sent back went straight back to Ready to review without the member seeing your reason.
+- A member withdrawing a story, video or event you have already published is now refused, and it stays Live.
+- Members can only edit or withdraw videos and events they sent in themselves. A video or event you made that names their company stays yours, as stories already did. It no longer shows in their list until it's Live.
+- A member's event with no title or no start date now shows a message saying what's missing. Before, nothing happened. Stories with no title get a message too.
+- If a member's story, video or event fails to save, they now see a message and nothing reaches your notifications. Before, they were told it was submitted when it wasn't.
+- In the console, saving a video or event that fails now shows "couldn't be saved — try again" on its editor, as stories already did. Before, a failed update said nothing, and a failed new one showed an error page.
+- The video forms now both say "A title and a YouTube link are both required."
+- Saving a video or event that was deleted in another tab now says it wasn't found. Before, it said it saved.
+- Unticking every category on a story and saving now clears them. Before, the story kept its old categories.
+- If a story's tagged members fail to save, its categories still save, so the message is accurate.
+- Removing an event's location now removes its pin from the events map too.
+- Replacing a story's cover no longer breaks another story using the same image from the media library. Replaced video thumbnails and event covers are now cleaned up as well.
+
 ## 2026-11-03 — Clearer messages when publishing, scheduling or sending back
 - "Publish now" and "Schedule" are refused, with a message, on a story or video that is already Live or Withdrawn. The editor doesn't offer them there, so you'd only see this from a page left open from earlier.
 - If a publish or a schedule fails, you now see a message saying which one failed. Before, nothing happened and nothing told you. No social post or member emails go out for a publish that failed.

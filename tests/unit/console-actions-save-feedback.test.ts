@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { saveEvent, saveMachine, saveStory, saveVideo } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
+import { asDb, dbOk, fromByTable, mockDb, queryBuilder, readThenUpdate } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
 
@@ -49,7 +49,7 @@ function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
 
 describe("save actions signal a successful save with ?saved=1", () => {
   it("saveStory marks the redirect back to the story it just wrote", async () => {
-    db({ stories: () => queryBuilder(dbOk({ id: "s1" })) });
+    db({ stories: () => readThenUpdate({ id: "s1", member_draft: false }) });
 
     await expect(saveStory(form({ id: "s1", title: "Updated" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/stories\/s1\?saved=1$/);
@@ -63,14 +63,14 @@ describe("save actions signal a successful save with ?saved=1", () => {
   });
 
   it("saveVideo marks the redirect back to the video", async () => {
-    db({ videos: () => queryBuilder(dbOk({ id: "v1" })) });
+    db({ videos: () => readThenUpdate({ id: "v1" }) });
 
     await expect(saveVideo(form({ id: "v1", title: "T", url: "https://youtu.be/x" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/videos\/v1\?saved=1$/);
   });
 
   it("saveEvent marks the redirect back to the event", async () => {
-    db({ events: () => queryBuilder(dbOk({ id: "e1" })) });
+    db({ events: () => readThenUpdate({ id: "e1" }) });
 
     await expect(saveEvent(form({ id: "e1", title: "T", starts_on: "2026-09-01" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/events\/e1\?saved=1$/);

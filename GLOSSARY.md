@@ -35,6 +35,14 @@ _Avoid_: request, upload
 **Member draft**:
 A story a member has saved but not yet submitted; it is private to them and admins never see or move it.
 
+**Submission intake**:
+How a content item is saved from a form: a member's submission or resubmission, or an admin's save in the console. It reads the form, stores the image, and writes the item; status moves after that belong to the content lifecycle.
+_Avoid_: upload, import (importing is pulling items from outside sources)
+
+**Resubmit**:
+A member editing their own content item while it is Ready to review or Sent back, which puts it back to Ready to review. Refused, with nothing saved, if an admin changed the item since the member opened it.
+_Avoid_: re-upload, update
+
 ## Lifecycle
 
 **Content lifecycle**:
@@ -64,7 +72,7 @@ Declined with a reason the member is told, so they can edit and submit again.
 _Avoid_: rejected, refused
 
 **Withdrawn**:
-Pulled back by the member who submitted it, while it was Ready to review or after it was Sent back.
+Pulled back by the member who submitted it, while it was Ready to review or after it was Sent back. A transition like any other: refused if an admin moved the item first.
 
 **Approve**:
 An admin's decision that a content item that is Ready to review can go Live, either now or at a scheduled time.

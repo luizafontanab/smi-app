@@ -1,6 +1,7 @@
 import { geocodeAddress } from "@/lib/adapters/geocode";
 
 type Coords = { lat: number | null; lng: number | null };
+export type Geocoder = (address: string) => Promise<{ lat: number; lng: number } | null>;
 
 /**
  * Where a member's map pin comes from, for both editors of the same page.
@@ -17,17 +18,21 @@ type Coords = { lat: number | null; lng: number | null };
  *
  * Lives in its own module because `member-form.ts` is deliberately free of
  * imports that reach the network, so it can be unit-tested with a bare FormData.
+ *
+ * Also the rule for an event's map pin (lib/content-intake), with the event's
+ * location as the address and the geocoder injected.
  */
 export async function resolveCoordinates(
   submitted: Coords,
   existing: { address: string | null; lat: number | null; lng: number | null },
   address: string,
+  geocode: Geocoder = geocodeAddress,
 ): Promise<Coords> {
   if (submitted.lat != null || submitted.lng != null) return submitted;
 
   const kept: Coords = { lat: existing.lat, lng: existing.lng };
   if (!address.trim() || address.trim() === (existing.address ?? "").trim()) return kept;
 
-  const geocoded = await geocodeAddress(address);
+  const geocoded = await geocode(address);
   return geocoded ? { lat: geocoded.lat, lng: geocoded.lng } : kept;
 }

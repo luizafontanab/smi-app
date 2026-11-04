@@ -3,7 +3,7 @@ import {
   consoleUploadVideoImage, decideVideo, moveVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
-import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
+import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, readThenUpdate, sequence } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
 import { LIFECYCLE_MESSAGES } from "@/lib/content-lifecycle";
@@ -81,7 +81,7 @@ describe("saveVideo", () => {
   // videos.industry_id existed since 20260909000002 but nothing wrote it until
   // this form gained the field (fix list).
   it("writes industry_id, and null when nothing is chosen", async () => {
-    const videosBuilder = queryBuilder(dbOk({ id: "v1" }));
+    const videosBuilder = readThenUpdate({ id: "v1", thumbnail_path: null });
     db({ videos: () => videosBuilder });
 
     await expect(saveVideo(form({ id: "v1", title: "T", url: "https://youtu.be/x", industry_id: "4" })))
@@ -93,19 +93,39 @@ describe("saveVideo", () => {
     expect(videosBuilder.update).toHaveBeenLastCalledWith(expect.objectContaining({ industry_id: null }));
   });
 
-  it("redirects with the thumbnail upload error and never touches the database", async () => {
+  // The video is looked up first (so a stale id leaves no orphaned upload), but nothing is written.
+  it("redirects with the thumbnail upload error and never writes to the database", async () => {
     uploadImage.mockRejectedValue(new Error("Images only — JPEG, PNG, WebP, GIF or AVIF."));
-    const from = db({});
+    const videos = readThenUpdate({ id: "v1", thumbnail_path: null });
+    db({ videos: () => videos });
 
     await expect(saveVideo(form({ id: "v1", title: "t", url: "https://youtu.be/x" })))
       .rejects.toThrow("NEXT_REDIRECT:/console/videos/v1?error=Images%20only");
-    expect(from).not.toHaveBeenCalled();
+    expect(videos.update).not.toHaveBeenCalled();
+  });
+
+  // Submission intake D11: an insert failure crashed on data!.id into the error
+  // page, and an update failure was silent.
+  it.each([
+    ["creating", { title: "T", url: "https://youtu.be/x" }, "/console/videos/new", () => queryBuilder(dbError("boom"))],
+    ["updating", { id: "v1", title: "T", url: "https://youtu.be/x" }, "/console/videos/v1", () => readThenUpdate({ id: "v1" }, dbError("boom"))],
+  ])("a database failure %s a video says so on the editor", async (_label, fields, page, videos) => {
+    db({ videos });
+    await expect(saveVideo(form(fields)))
+      .rejects.toThrow(`NEXT_REDIRECT:${page}?error=${encodeURIComponent("The video couldn't be saved — try again.")}`);
+  });
+
+  // D6: one wording with the member form.
+  it("a missing link says YouTube, as the member form does", async () => {
+    db({});
+    await expect(saveVideo(form({ id: "v1", title: "T", url: "" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/videos/v1?error=${encodeURIComponent("A title and a YouTube link are both required.")}`);
   });
 
   // A storage failure's own text (bucket names, paths) stays in the error log.
   it("a storage failure shows a plain line, not the provider's text", async () => {
     uploadImage.mockRejectedValue(new Error('new row violates row-level security policy for table "objects"'));
-    db({});
+    db({ videos: () => readThenUpdate({ id: "v1" }) });
     await expect(saveVideo(form({ id: "v1", title: "t", url: "https://youtu.be/x" })))
       .rejects.toThrow(/v1\?error=The%20upload%20didn't%20go%20through/);
   });
@@ -464,7 +484,7 @@ describe("per-video social posts", () => {
   });
 
   it("saving writes the lead-in, post time and opt-out", async () => {
-    const videos = queryBuilder(dbOk({ id: "v1" }));
+    const videos = readThenUpdate({ id: "v1" });
     db({ videos: () => videos, jobs: () => queryBuilder(dbOk([])) });
 
     await expect(saveVideo(form({

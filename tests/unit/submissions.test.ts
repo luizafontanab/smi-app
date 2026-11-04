@@ -75,6 +75,20 @@ describe("pendingSubmissions", () => {
     expect(stories.or).toHaveBeenCalledWith("source.eq.member,status.eq.published,member_draft.eq.true");
   });
 
+  // 3 Nov: the same line for videos and events. Their edit page, resubmit and
+  // withdraw refuse the desk's item, so listing it with those buttons left
+  // an Edit link that 404'd and a Withdraw that did nothing.
+  it("lists desk-made videos and events only once they're published", async () => {
+    const videos = queryBuilder(dbOk([], 0));
+    const events = queryBuilder(dbOk([], 0));
+    db({ videos: () => videos, events: () => events });
+
+    await memberContent("mem1");
+
+    expect(videos.or).toHaveBeenCalledWith("source.eq.member,status.eq.published");
+    expect(events.or).toHaveBeenCalledWith("source.eq.member,status.eq.published");
+  });
+
   // Jas 13/10 item 12: stories led by someone else that feature this member.
   it("lists published stories featuring the member alongside its own, marked featured", async () => {
     let call = 0;
