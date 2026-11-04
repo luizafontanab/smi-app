@@ -11,6 +11,8 @@ and housekeeping. Finished items are deleted and listed on their section's
 Renumbered on 20 Oct 2026. Older references (GAPS, code comments, migrations,
 commits) use the previous numbers, which are in `git show d89aee9:docs/HUMAN-TODO.md`.
 
+**Open items now live in GitHub Issues (since 3 Nov 2026).** An entry below that says *Moved to #N* is tracked and closed in that issue; it keeps its number here because GAPS, code comments and other docs cite it.
+
 Creating accounts, deploying, sending real email and calling paid APIs need
 approval (`../requirements/BUILD-PLAN.md`).
 
@@ -330,27 +332,14 @@ through Proof and approval first.
 
 ## 4 · Decisions for Jas
 
-- [ ] **4.1 — Newsletter deliverability.** Run a real send to trade addresses,
-      compared with MailChimp on getting through firewalls and on open rates.
-      Then record the winner in TECH-DECISIONS #7.
-- [ ] **4.2 — Terms pages.** Six `[SMI TO CONFIRM]` markers show on the live
-      pages: VAT, company details, refunds, artwork deadline, advertising
-      cancellation, governing law.
-- [ ] **4.3 — Social reach figure.** "347,000" is hard-coded in the grid
-      homepage stats band (`src/components/grid-home/cards.tsx`). Give the real
-      number, or drop the stat.
-- [ ] **4.5 — Unpaid advert holds** keep their dates until the term ends, with
-      no reminder. Should there be a reminder or an earlier expiry?
-- [ ] **4.6 — Lapsed members' stories** stay live, without the directory
-      backlink. Confirm, or take them down.
-- [ ] **4.7 — Newsletter adverts use the mobile artwork.** Confirm.
-- [ ] **4.8 — Approve the 9 imported legacy adverts** (Command Centre). Before
-      approving, know that:
-      - each member gets two emails;
-      - White Cross, Yorgrip and HPC Laser are lapsed members;
-      - the White Cross and Yorgrip "logos" are really banners.
-- [ ] **4.9 — The WordPress agency's liquidation and the hosting takeover.**
-      Depends on Jas's call with the agency.
+- **4.1 — Newsletter deliverability.** Moved to [#23](https://github.com/luizafontanab/smi-app/issues/23) on 3 Nov 2026.
+- **4.2 — Terms pages.** Moved to [#24](https://github.com/luizafontanab/smi-app/issues/24) on 3 Nov 2026.
+- **4.3 — Social reach figure.** Moved to [#4](https://github.com/luizafontanab/smi-app/issues/4) on 3 Nov 2026.
+- **4.5 — Unpaid advert holds.** Moved to [#17](https://github.com/luizafontanab/smi-app/issues/17) on 3 Nov 2026.
+- **4.6 — Lapsed members' stories.** Moved to [#18](https://github.com/luizafontanab/smi-app/issues/18) on 3 Nov 2026.
+- **4.7 — Newsletter adverts use the mobile artwork.** Moved to [#19](https://github.com/luizafontanab/smi-app/issues/19) on 3 Nov 2026.
+- **4.8 — Approve the 9 imported legacy adverts.** Moved to [#25](https://github.com/luizafontanab/smi-app/issues/25) on 3 Nov 2026.
+- **4.9 — The WordPress agency's liquidation and the hosting takeover.** Moved to [#26](https://github.com/luizafontanab/smi-app/issues/26) on 3 Nov 2026.
 - [ ] **4.10 — Send Jas the "no industry" report** after 2.4:
       `pnpm industries:backfill:prod -- --dry-run --report`.
 - [ ] **4.11 — Tell Jas, with the deploy:**
@@ -362,19 +351,7 @@ through Proof and approval first.
       - the homepage's Featured event card is now bookable under Adverts →
         Featured Event, with a backup event to pin. Until something is booked
         or pinned it shows the next upcoming event, as before.
-- [ ] **4.12 — Decide when industries go back on the public site.** They are
-      hidden from visitors by default (Console → Features → "Industries on the
-      public site", flag `industries_public`, off). Off hides the industry strip,
-      the `/industry/*` pages (old links go to News), the industry filters on
-      News, Videos, Events and the directory, and the industry under member
-      names. Members never see industries either way. New member stories,
-      videos and events now arrive **untagged**. Approving one from its editor
-      saves the industry the editor shows (the member's own unless changed);
-      approving from the board fills in the member's own industry. An item whose
-      member has no industry stays untagged, and is missing from industry pages
-      once the switch is on. No row is needed in production: a missing row
-      reads as off. *(Committed in `f7ede08`, PR #2; approve tagging in PR #2's
-      review fixes.)*
+- **4.12 — Decide when industries go back on the public site.** Moved to [#20](https://github.com/luizafontanab/smi-app/issues/20) on 3 Nov 2026.
 
 **Done:** 4.4 answered "sellable" (27 Oct): Featured Event is a dated, optionally
 priced placement, one at a time, billed to the event's member, with a pinned
@@ -384,10 +361,8 @@ backup event (`/console/adverts/featured-event`). *(`aefe096`.)*
 
 ## 5 · Content to upload
 
-- [ ] **5.1 — Brand-pack assets** at `/console/resources`. The library starts
-      empty.
-- [ ] **5.2 — Example images for the advert formats** at `/console/advertising`.
-      The `/advertising` cards show none until then.
+- **5.1 — Brand-pack assets.** Moved to [#27](https://github.com/luizafontanab/smi-app/issues/27) on 3 Nov 2026.
+- **5.2 — Example images for the advert formats.** Moved to [#28](https://github.com/luizafontanab/smi-app/issues/28) on 3 Nov 2026.
 
 Both can go up any time; neither waits for the deploy.
 
@@ -434,38 +409,13 @@ original numbers, because other items and docs refer to them.
       fails against the hosted project: `pnpm seed:prod` and the other
       `:prod` scripts, and any `supabase` command run after sourcing it. Make a
       new personal access token in the account that owns `bvyxeujhecxulzwvpxfr`.
-- [ ] **7.2 — Move to Node 26 once Vercel supports it.** Node 26 became LTS on
-      28 Oct 2026, but Vercel only listed 24.x and 22.x for builds and functions
-      at the time, so the project stays on the newest 24. When Vercel's
-      "Supported Node.js versions" page lists 26.x, update these together:
-      `.nvmrc`, `engines.node` in `package.json`, `@types/node` (to `^26`), and
-      your Mac (`brew unlink node@24 && brew link node`). Then run `pnpm check`
-      and `pnpm build`. CI reads `.nvmrc`, so it follows on its own.
-      *(`08e6c93`.)*
-- [ ] **6.2 — Correct production's `consent_stats`** for two requests made by a
-      local production build on 15 Oct:
-      `update consent_stats set total_requests = total_requests - 2 where day = '2026-10-15';`
-      Then decide how to stop a local `next start` from loading
-      `.env.production.local`.
-- [ ] **6.4 — Version-control `handover-extract/`.** The migration pipeline has
-      no history. Keep `json/` and `seed/` out of git: they hold personal data.
-      Still no git repository there on 28 Oct.
-- [ ] **6.6 — Review and accept the visual baselines.** Last re-captured 22 Oct
-      (`78a944a`), and routes have moved again since. Check that every route
-      was looked at, not just re-captured. New routes hard-fail until accepted.
-      Run `pnpm visual`, look, then `pnpm visual:accept <route-id>` per route,
-      never `--all`. Eight routes are skipped until the local data has content
-      for them (see `tests/visual/manifest.ts`).
-      Since 29 Oct, `event`, `member` and `member_slug` will also differ: their
-      maps are now Google Maps, and the visual run blocks outside requests, so
-      they show an empty map box (or "Map unavailable" with no key).
+- **7.2 — Move to Node 26 once Vercel supports it.** Moved to [#9](https://github.com/luizafontanab/smi-app/issues/9) on 3 Nov 2026.
+- **6.2 — Correct production's `consent_stats`.** Moved to [#10](https://github.com/luizafontanab/smi-app/issues/10) on 3 Nov 2026.
+- **6.4 — Version-control `handover-extract/`.** Moved to [#29](https://github.com/luizafontanab/smi-app/issues/29) on 3 Nov 2026.
+- **6.6 — Review and accept the visual baselines.** Moved to [#30](https://github.com/luizafontanab/smi-app/issues/30) on 3 Nov 2026.
 - [ ] **6.7 — Set `CRON_SECRET` in `.env.local`** if you want the local job
       runner (`scripts/job-runner.ts`).
-- [ ] **6.8 — Move `docs/stripe_backup_code.txt` out of the repository** and
-      into a password manager, then delete it here. Found untracked and
-      unignored in the tree on 21 Oct (code review); it is gitignored now so it
-      can't be committed by accident, but it shouldn't live on disk in a
-      project folder either. Still there on 28 Oct.
+- **6.8 — Move `docs/stripe_backup_code.txt` out of the repository.** Moved to [#31](https://github.com/luizafontanab/smi-app/issues/31) on 3 Nov 2026.
 
 ---
 

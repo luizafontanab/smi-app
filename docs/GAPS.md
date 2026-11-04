@@ -8,6 +8,8 @@ Every item is numbered so it can be referenced directly, for example "do A2.1 an
 
 **Closed items live in [`GAPS-closed.md`](GAPS-closed.md)** (moved there 28 Oct 2026), one line per section, under the same headings. The full write-ups (what was built, trade-offs, what was found en route) are in git: `git show 320e28e:docs/GAPS.md` for items closed up to 27 Sep, `git show 5b2a9ad:docs/GAPS.md` for the A8/A9 pass closed 28 Sep. Only `fix-list.md` keeps ticked `[x]` items; every other list collapses them. Numbers are permanent and never reused, because code comments, tests and migrations cite them. When an item closes, remove its entry here and add it to its section's **Closed** line in `GAPS-closed.md`.
 
+**Open items now live in GitHub Issues (since 3 Nov 2026).** An entry below that says *Moved to #N* is tracked and closed in that issue; it keeps its number here because code, tests, migrations and other docs cite it.
+
 When an item is *coded but inert* pending an account, key or approval, the human step is in **[`HUMAN-TODO.md`](HUMAN-TODO.md)**. Open client questions are in **[`ask-jas.md`](ask-jas.md)**. Feature-parity scoping for the member area is in **[`legacy-members-admin-inventory.md`](legacy-members-admin-inventory.md)**.
 
 ---
@@ -16,7 +18,7 @@ When an item is *coded but inert* pending an account, key or approval, the human
 
 ### A1 · Content & CMS CRUD
 
-- [ ] **A1.5 (residual) — Specs for advertising formats B/C/D/F are still blank.** The copy is editable at `/console/advertising`, but no real dimensions were available to enter, and nobody should invent them. Someone who owns the rate card has to fill them in. → `src/app/(public)/advertising/page.tsx`
+- **A1.5 (residual) — Specs for advertising formats B/C/D/F are still blank.** Moved to [#21](https://github.com/luizafontanab/smi-app/issues/21) on 3 Nov 2026.
 
 ### A2 · Advert & inventory management
 
@@ -30,7 +32,7 @@ When an item is *coded but inert* pending an account, key or approval, the human
   **20 Oct (A3.8):** each story and video now has its own social post time, shown in the editor in UK time. In production that time is only as precise as this cron: until it changes, a post set for 14:30 goes out at the next 03:00 UTC run.
 ### A4 · Member area
 
-- [ ] **A4.12 (residual) — The second email-change link fails silently.** Change-email works end to end locally (closed half on the Closed line). Run through the real UI and Mailpit on 29 Oct, both orders: **whichever link is clicked first applies the whole change**, though `double_confirm_changes = true`, and lands on Settings with "Confirmed". The other link then fails at Supabase ("Email link is invalid or has expired") and lands on `/dashboard#error=access_denied&error_code=otp_expired…` with no message. The "Confirmed" banner tells the member to click the second link, which is exactly the one that then fails. Hosted Supabase may require both links (HUMAN-TODO 3.6 checks), so the fix depends on that answer: either drop the "click the other one too" copy, or read the `#error` hash on the landing page and say "already confirmed". → `src/app/dashboard/settings/security/page.tsx`, `src/app/account/email/confirm/route.ts`
+- **A4.12 (residual) — The second email-change link fails silently.** Moved to [#7](https://github.com/luizafontanab/smi-app/issues/7) on 3 Nov 2026.
 
 ### A5 · Reporting & analytics surfaces
 
@@ -47,18 +49,15 @@ When an item is *coded but inert* pending an account, key or approval, the human
 
 ### A8 · New requirements from the 31 Aug refresh
 
-- [ ] **A8.3 — Admin lead-generation panel (A29): waiting only on the disclaimer sign-off (ask-jas §15).** Built: the mock `LeadGenSource` adapter, `/console/leads` with search criteria, and call/email/sequence marks (`prospect_marks`). The 18 Sep guardrails (USE-CASES gap 24, TECH-DECISIONS #16) asked for prominent job titles and a mandatory "not vetted sales leads" disclaimer. Both were built 28 Sep (`5b2a9ad`): `Prospect.jobTitle` is shown bold on both panels, and one shared `LeadsDisclaimer` sits under the "Sample data" banner on both. Its text is a **draft** quoted in ask-jas §15. Closes when Jas signs off or rewords it, and the wording changes in one file. → `src/components/leads/LeadsDisclaimer.tsx`, `src/lib/adapters/leadgen.ts:41`, `src/app/console/leads/page.tsx`
-- [ ] **A8.4 — Member lead-generation panel (M14): same state as A8.3.** `/dashboard/leads` runs on the same adapter and the same disclaimer component. → `src/app/dashboard/leads/page.tsx`
-  **Behind a feature flag (27 Oct, Luiza):** `member_leads` (`src/lib/feature-flags.ts`, row `settings.feature:member_leads`), **off by default**. Off hides the nav entry, redirects `/dashboard/leads` to `/dashboard` and makes the mark/unmark actions no-ops. When this item closes, switch it on in `/console/features`. The local seed has it on so the suites still cover the page. *(Committed in `aefe096`.)*
-  **Correction (28 Sep):** "`lead_alert` still has no link target, waiting on this panel" was wrong. `lead_alert` counts `engagement_audit` rows (real companies engaging with the member's page, M7/M9), not the mock prospects shown here. It now links to `/dashboard/stats` in the notification feed, which is where its email's button already went. *(`5b2a9ad`.)*
-  **Found and not fixed:** the lead-alert email says "See who's interested in your member area", but the "Who's engaging" list left `/dashboard/stats` in the 8 Sep rework (A5.5/A5.7). Today no member-facing page shows *which* companies engaged; the list exists only in the console. Either bring a company/region list back to the member area, or reword the email. That is a product call. → `src/lib/email/defaults.ts:505`
+- **A8.3 — Admin lead-generation panel (A29): waiting only on the disclaimer sign-off (ask-jas §15).** Moved to [#11](https://github.com/luizafontanab/smi-app/issues/11) on 3 Nov 2026.
+- **A8.4 — Member lead-generation panel (M14): same state as A8.3.** Moved to [#11](https://github.com/luizafontanab/smi-app/issues/11) (its lead-alert email follow-up: [#12](https://github.com/luizafontanab/smi-app/issues/12)) on 3 Nov 2026.
 
 ### A9 · New requirements from the 18 Sep call (USE-CASES gaps 19–26, REQUIREMENTS `[18 Sep]`)
 
 Already done from this call, so no item: Industries pre-filter (gap 19; `industries` table since 10 Sep, `?industry=` on news/video/event/member, industries bar below the nav on grid) · event location + type (fix-list/A1.8) · in-dashboard help to Jas (`/dashboard/help`) · dropped card dates, bigger featured-member logos, "Become a Member" on the stats band, three-column grid fold with separated Featured Machine/Event (fix-list 64–68) · ad-format freeze (gap 25; `banner_narrow` hidden, fix-list 74) · reset-only password recovery (gap 22).
 
-- [ ] **A9.11 — Nothing on the public site offers a member's email any more (V8).** V8 has readers contact a company "via website link, phone, or email", and `/go/[memberId]` still handles `kind=email` and counts `email_click` for member stats. But no page renders that link. The company page shows Website, Call and social links only. The directory card's Email link was removed in `97af6de`, the fix-list pass that simplified the cards. That was a requested change, so this is **not** being quietly reverted. The question is whether the company page should carry an Email button, which is one line beside Call. As things stand, the "Email" series in members' Clicks overview can only ever read zero. Asked in ask-jas §18. If yes, the row belongs in the company page's contact box, between Call and the socials (*29 Oct: pointer corrected; the old one named `member/[slug]/page.tsx:146-147`*). → `src/lib/member-links.ts` (`memberLinks`), `src/app/go/[memberId]/route.ts:64`
-- [ ] **A9.7 — The stats digest defaults on, but the 18 Sep call says opt-in. This is a spec conflict to confirm, not a build.** REQUIREMENTS §6 asks for an "opt-in periodic performance-summary email". USE-CASES M9 and gap 7 still say default quarterly, and the code does that: `?? "quarterly"` for members with no preference row. Flipping it is one line, but which document wins is Jas's call (ask-jas §16). → `src/lib/jobs.ts:520`
+- **A9.11 — Nothing on the public site offers a member's email any more (V8).** Moved to [#13](https://github.com/luizafontanab/smi-app/issues/13) on 3 Nov 2026.
+- **A9.7 — The stats digest defaults on, but the 18 Sep call says opt-in. This is a spec conflict to confirm, not a build.** Moved to [#14](https://github.com/luizafontanab/smi-app/issues/14) on 3 Nov 2026.
 
 **Closed (all 28 Sep, `5b2a9ad`):** A9.1 /member filters facet against each other (`src/lib/member-facets.ts`) · A9.2 "Content reach" by type, plus the `video_view` event and the `member_event_months` RPC that fixed silent under-counting past `max_rows`; social half waits on D5 · A9.3 member news woven into the grid's More News carousel (forge half moot, grid going live) · A9.4 Featured Machine video + seller logo · A9.5 `search_members()` matches services and industry · A9.6 FAQ grouped, policies collapsible, membership terms in the footer (prod push: HUMAN-TODO 19.1) · A9.8 member advertising Assets tab (baseline: HUMAN-TODO 19.3) · A9.10 videos YouTube-only, and `youtubeId()` reads every YouTube link shape. The production migrations for A9.2/A9.4/A9.5 shipped 1 Oct (HUMAN-TODO 19.4). · A9.9 nav order: kept as is (22 Oct, Luiza). `GridSiteHeader.tsx` had gone; grid uses the shared `src/components/SiteHeader.tsx`, whose Media (News, Videos, Newsletters, Magazine, Advertising) and Members (Find a member, Join) menus, Featured Machine, Events and Search already sit beside the logo, with Industries below. The 18 Sep request for the old site's flat Home / News / Videos / Newsletters / Find a Member order is not adopted; no code change, no baselines moved.
 
@@ -75,7 +74,7 @@ Several closed B items were written against documented APIs and **have never run
 
 ### B1 · Stripe (payments)
 
-- [ ] **B1.8 — Two open checkout sessions can mean two subscriptions.** Found building B1.7 (it was already true with the redirect). A member who opens checkout in two tabs more than a minute apart gets two payable Stripe sessions. Paying both creates two £40/month subscriptions and two SMI-JOIN invoices, and the second `checkout.session.completed` overwrites `members.stripe_subscription_id`, so the first subscription keeps billing with nothing in SMI tracking it. The idempotency key only folds sessions opened within the same minute. Options: remember the open session on the member and reuse it (as advert invoices do with `invoices.checkout_session_id`), or have the webhook alert Jas when a second subscription lands for an already-paid member. Needs a decision; not urgent before real traffic. → `src/lib/adapters/payments.ts` (`createEmbeddedCheckout`), `src/lib/membership.ts` (`recordMembershipCheckout`)
+- **B1.8 — Two open checkout sessions can mean two subscriptions.** Moved to [#5](https://github.com/luizafontanab/smi-app/issues/5) on 3 Nov 2026.
 
 ### B2 · GeoIP — MaxMind / GeoLite2
 
@@ -84,18 +83,12 @@ Several closed B items were written against documented APIs and **have never run
 ### B3 · Email — Resend
 
 - [ ] **B3.3 — ~~No key exists yet.~~ Key set in production; waiting on the sending domain.** All email is inert until an SMI-owned Resend account is created, the domain is verified (SPF/DKIM/DMARC) and `RESEND_API_KEY` is set. **5 Oct (Luiza):** `RESEND_API_KEY` is set in production and a test email went through. Domain verification is still to come (HUMAN-TODO 1.2). Until then, mail to anyone other than the Resend account owner is refused (403), so member, admin and auth mail is still effectively off. Creating accounts and sending real mail are approval-gated (`BUILD-PLAN.md`). See `.env.example`.
-- [ ] **B3.4 — Supabase auth mail stays outside the template system (fix-list 63).** The admin-reply half closed in fix-list 71b. Password-recovery mail leaves via Supabase's own mailer, so customising it is a hosted-dashboard job (HUMAN-TODO §2.1). `README.md` forbids doing it from `config.toml`. → `src/app/reset/page.tsx:35`
+- **B3.4 — Supabase auth mail stays outside the template system (fix-list 63).** Moved to [#22](https://github.com/luizafontanab/smi-app/issues/22) on 3 Nov 2026.
 - [ ] **B3.5 — Contrast and client-safety can't be machine-checked for edited email copy (fix-list 63).** The rule keeping brand orange off email body text is tested over the *shipped defaults* only. Console-edited HTML is not validated beyond "it renders and its placeholders exist". This is the accepted cost of full-HTML editing. The mitigations are the per-template preview and one-click reset. → `src/lib/email/defaults.ts`, `tests/unit/email-templates.test.ts`
 
 ### B4 · Social publishing — Buffer
 
-- [ ] **B4.3 — Real LinkedIn @-tagging (S3).** Buffer's GraphQL API supports it (`metadata.linkedin.annotations[]`), but four things are missing:
-  1. A nullable `members.linkedin_org_urn` column. `members.social` holds a vanity slug, not the numeric org id.
-  2. A backfill of those ids. It needs an approved LinkedIn app with `r_organization_admin`, or Jas pasting ids, and is approval-gated (HUMAN-TODO).
-  3. `start`/`length` offsets computed after `formatTags()` assembles the text. ⚠ It is unverified whether LinkedIn counts these offsets in UTF-16 units or code points.
-  4. `SocialChannels.channelIds` becoming `{ id, service }[]`, so the metadata goes only on the LinkedIn mutation.
-
-  LinkedIn only lets a Page tag companies that follow it, so a tag can legitimately fail to render. → `src/lib/adapters/social.ts` (`formatTags()`)
+- **B4.3 — Real LinkedIn @-tagging (S3).** Moved to [#6](https://github.com/luizafontanab/smi-app/issues/6) on 3 Nov 2026.
 
 ### B5 · Newsletter delivery
 
@@ -146,9 +139,6 @@ These are not engineering gaps either, so they are tracked elsewhere:
 
 ## Open decisions
 
-- **D2 — Region (C2 / B2).** Wire GeoLite2 now, or ship without region until the MaxMind key is approved?
-- **D4 — Unconfirmed spec gaps.** These items are built to the working assumptions in `USE-CASES.md` and are still unconfirmed:
-  - **5, grace days before a lapsed page is hidden.** The code hardcodes **30** in two places, `src/lib/membership.ts:180` and `src/lib/jobs.ts:461`, with no shared constant.
-  - **11, 13, 15** (skyscraper specs, the bundle label, featured-member rotation).
-  - **24, the lead-gen disclaimer wording**, which blocks A8.3/A8.4.
-- **D5 — How is "social media reach" calculated?** (REQUIREMENTS §26.) The grid homepage's membership-value band shows a hardcoded `SOCIAL_REACH = 347_000`, whose own comment says it has no source in the database. The same number blocks the social half of A9.2. → `src/components/grid-home/cards.tsx:513`
+- **D2 — Region (C2 / B2).** Moved to [#15](https://github.com/luizafontanab/smi-app/issues/15) on 3 Nov 2026.
+- **D4 — Unconfirmed spec gaps.** Moved to [#8](https://github.com/luizafontanab/smi-app/issues/8), [#16](https://github.com/luizafontanab/smi-app/issues/16), [#11](https://github.com/luizafontanab/smi-app/issues/11) (gap 5, gaps 11/13/15, gap 24) on 3 Nov 2026.
+- **D5 — How is "social media reach" calculated?** Moved to [#4](https://github.com/luizafontanab/smi-app/issues/4) on 3 Nov 2026.
