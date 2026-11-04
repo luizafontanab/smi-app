@@ -12,6 +12,16 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
+## Marking work in progress
+
+Several sessions work this repo at once on a shared tree, so a ticket is claimed before any code is touched.
+
+1. **Check first.** Before starting `#<n>`, skip it if it already has the `in-progress` label, or if a PR already references it: `gh pr list --state all --search "<n> in:title,body"`. A PR merged into `staging` does not auto-close its issue, so an open issue can already be done.
+2. **Claim.** Add the label and drop `ready-for-agent`/`ready-for-human`, then say where the work is happening:
+   `gh issue edit <n> --add-label in-progress --remove-label ready-for-agent`
+   `gh issue comment <n> --body "Started on branch <branch>."`
+3. **Release.** The label stays on until the issue closes. Once the PR merges into `staging`, close it yourself: `gh issue close <n> --comment "Done in #<pr>."`. If you abandon the work instead, remove `in-progress`, restore the ready label, and comment why.
+
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
 ## Pull requests as a triage surface
