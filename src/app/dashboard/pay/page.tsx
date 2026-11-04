@@ -58,7 +58,7 @@ export default async function MemberPayPage(props: PageProps<"/dashboard/pay">) 
   const publishableKey = stripePublishableKey();
   const embed = membershipCheckoutIsEmbedded() && publishableKey ? { publishableKey, stripeJsUrl: STRIPE_JS_URL } : null;
   return (
-    <div className="mx-auto max-w-md">
+    <div className="max-w-md lg:mx-auto">
       <div className="rounded-xl bg-white p-8 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand-text">Step 2 of 4</p>
         <h1 className="mt-1 text-xl font-bold text-ink">Pay — £40/month</h1>

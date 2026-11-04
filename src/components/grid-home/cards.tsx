@@ -77,8 +77,10 @@ export function GhStoryCard({ story, size = "md", eyebrow = "News" }: {
               needed: the cover above it is a flex-1 child, so a one-line title
               beside a two-line one would give its card a taller image and the
               two cards' photo bottoms would stop lining up. 2.3em = two lines
-              at CardTitle's 1.15 leading. */}
-          <CardTitle className={`group-hover:underline ${eyebrow ? "mt-1.5" : ""} ${size === "lg" ? "min-h-[2.3em] text-xl line-clamp-2" : "text-[0.9375rem] line-clamp-3"}`}>
+              at CardTitle's 1.15 leading. The floor starts at md, where the
+              pair first sits side by side — stacked on a phone it only left a
+              gap under a one-line title (#33 C13). */}
+          <CardTitle className={`group-hover:underline ${eyebrow ? "mt-1.5" : ""} ${size === "lg" ? "md:min-h-[2.3em] text-xl line-clamp-2" : "text-base sm:text-[0.9375rem] line-clamp-3"}`}>
             {story.title}
           </CardTitle>
           {story.excerpt && size !== "sm" && (
@@ -117,7 +119,7 @@ export function GhVideoCard({ video, eyebrow = "Videos" }: { video: VideoCardDat
         </div>
         <div className="shrink-0 p-4">
           <Eyebrow>{eyebrow}</Eyebrow>
-          <CardTitle className="mt-1.5 text-[0.9375rem] line-clamp-3 group-hover:underline">{video.title}</CardTitle>
+          <CardTitle className="mt-1.5 text-base sm:text-[0.9375rem] line-clamp-3 group-hover:underline">{video.title}</CardTitle>
           {video.member && <p className="mt-2 text-xs text-graphite">{video.member.name}</p>}
         </div>
       </Link>
@@ -144,7 +146,7 @@ export function GhMachineCard({ machine }: { machine: MachineCardData }) {
         </div>
         <div className="p-4">
           <Eyebrow>Featured machine</Eyebrow>
-          <CardTitle className="mt-1.5 text-sm line-clamp-2 group-hover:underline">{machine.name}</CardTitle>
+          <CardTitle className="mt-1.5 text-base sm:text-sm line-clamp-2 group-hover:underline">{machine.name}</CardTitle>
           {machine.member && <p className="mt-1.5 text-xs text-graphite">{machine.member.name}</p>}
         </div>
       </Link>
@@ -186,17 +188,20 @@ export function GhEventCard({ event, featured = false }: { event: GhEventData; f
     // the fold — see the note there.
     <Panel border={featured ? "border-brand/50" : "border-line"} className="group flex h-full flex-col overflow-hidden">
       <Link href={`/event/${event.slug}`} className="flex h-full flex-col">
-        <div className="relative min-h-32 flex-1 overflow-hidden bg-graphite/10">
+        {/* object-contain, not cover: event artwork is usually a logo or a
+            poster, and cover cut the bottom off the one and the wording off
+            the other (#33 C11). A photo letterboxes onto the light ground. */}
+        <div className="relative min-h-32 flex-1 overflow-hidden bg-shade">
           {img ? (
-            <Image src={img} alt="" fill sizes="25vw" className="object-cover transition duration-500 group-hover:scale-[1.03]" unoptimized />
+            <Image src={img} alt="" fill sizes="(max-width: 1024px) 100vw, 25vw" className="object-contain transition duration-500 group-hover:scale-[1.03]" unoptimized />
           ) : (
             PLACEHOLDER
           )}
         </div>
         <div className="p-4">
           <Eyebrow>{featured ? "Featured event" : "Event"}</Eyebrow>
-          <CardTitle className="mt-1.5 text-sm line-clamp-2 group-hover:underline">{event.title}</CardTitle>
-          <p className="mt-2 text-[11px] font-semibold text-brand-text">{date}</p>
+          <CardTitle className="mt-1.5 text-base sm:text-sm line-clamp-2 group-hover:underline">{event.title}</CardTitle>
+          <p className="mt-2 text-xs font-semibold text-brand-text sm:text-[11px]">{date}</p>
           {event.location && <p className="mt-1 text-xs text-graphite line-clamp-1">{event.location}</p>}
         </div>
       </Link>
@@ -231,10 +236,10 @@ export function GhNewsletterCard({ issue }: { issue: GhNewsletterData }) {
     <Panel className="group flex h-full flex-col p-4">
       <Link href={`/newsletters/${issue.web_slug}`} className="flex h-full flex-col">
         <Eyebrow>Issue {issue.number}</Eyebrow>
-        <CardTitle className="mt-1.5 text-sm line-clamp-2 group-hover:underline">{issue.subject}</CardTitle>
-        {issue.intro && <p className="mt-2 text-xs leading-relaxed text-graphite line-clamp-3">{issue.intro}</p>}
+        <CardTitle className="mt-1.5 text-base sm:text-sm line-clamp-2 group-hover:underline">{issue.subject}</CardTitle>
+        {issue.intro && <p className="mt-2 text-sm leading-relaxed text-graphite line-clamp-3 sm:text-xs">{issue.intro}</p>}
         {/* mt-auto: the dates line up across the row whatever the intros do. */}
-        {sent && <p className="mt-auto pt-3 text-[11px] font-semibold text-brand-text">{sent}</p>}
+        {sent && <p className="mt-auto pt-3 text-xs font-semibold text-brand-text sm:text-[11px]">{sent}</p>}
       </Link>
     </Panel>
   );
@@ -285,10 +290,21 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
           the grid row, so eight placements cannot stretch the page.
 
           Every slide is identical, down to the padding — this is paid
-          inventory and the eighth advertiser gets the same box as the first. */}
-      <FeaturedMembersCarousel count={members.length} className="gh-vcarousel mt-3 h-[27rem] shrink-0 divide-y divide-line overflow-y-auto">
+          inventory and the eighth advertiser gets the same box as the first.
+
+          BELOW lg it runs sideways instead (#33 C12, C8). Here the box spans
+          the page rather than sitting in a sidebar, and a vertical scroller
+          inside a phone page trapped the thumb: a swipe over the logos moved
+          the box, not the page. A horizontal row of slides — two to a phone
+          screen, three at tablet — never captures a vertical swipe, and fills
+          a tablet-wide box that was two-thirds empty. The snap and hidden
+          scrollbar are utilities so the axis can change per breakpoint. */}
+      <FeaturedMembersCarousel
+        count={members.length}
+        className="mt-3 flex shrink-0 snap-x snap-mandatory gap-4 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:snap-start lg:block lg:h-[27rem] lg:snap-y lg:snap-proximity lg:divide-y lg:divide-line lg:overflow-x-hidden lg:overflow-y-auto"
+      >
         {members.map((m) => (
-          <li key={m.slug} className="flex h-36 flex-col py-3">
+          <li key={m.slug} className="flex w-[calc(50%-0.5rem)] shrink-0 flex-col py-3 md:w-[calc(33.333%-0.667rem)] lg:h-36 lg:w-auto">
             {/* The logo is the point of this placement, so it takes most of
                 the row: a flex-1 box that absorbs the panel's spare height,
                 with the name and industry as a caption under it. object-left
@@ -298,13 +314,13 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
             <Link href={`/member/${m.slug}`} className="group flex h-full flex-col gap-2">
               {m.logo_path ? (
                 <span className="relative block min-h-20 flex-1">
-                  <Image src={mediaUrl(m.logo_path)!} alt="" fill sizes="(min-width: 1024px) 220px, 50vw" className="object-contain object-left" unoptimized />
+                  <Image src={mediaUrl(m.logo_path)!} alt="" fill sizes="(min-width: 1024px) 220px, (min-width: 768px) 33vw, 50vw" className="object-contain object-left" unoptimized />
                 </span>
               ) : (
                 <span aria-hidden="true" className="flex min-h-20 flex-1 items-center justify-center rounded-[var(--gh-radius)] bg-graphite/10 text-3xl text-graphite/30">⚙</span>
               )}
               <span className="min-w-0">
-                <CardTitle className="text-[0.8125rem] line-clamp-2 group-hover:underline">{m.name}</CardTitle>
+                <CardTitle className="text-base sm:text-[0.8125rem] line-clamp-2 group-hover:underline">{m.name}</CardTitle>
                 {m.industry && <span className="mt-1 block text-xs text-graphite line-clamp-1">{m.industry.name}</span>}
               </span>
             </Link>
@@ -334,9 +350,9 @@ export function GhMemberRow({ story }: { story: StoryCardType }) {
         )}
       </div>
       <div className="min-w-0">
-        <CardTitle className="text-sm line-clamp-2 group-hover:underline">{story.title}</CardTitle>
+        <CardTitle className="text-base sm:text-sm line-clamp-2 group-hover:underline">{story.title}</CardTitle>
         <Meta className="mt-2" date={story.published_at} by={story.member?.name} />
-        {story.excerpt && <p className="mt-2 text-xs leading-relaxed text-graphite line-clamp-2">{story.excerpt}</p>}
+        {story.excerpt && <p className="mt-2 text-sm leading-relaxed text-graphite line-clamp-2 sm:text-xs">{story.excerpt}</p>}
       </div>
     </Link>
   );
@@ -352,6 +368,10 @@ export function GhMemberRow({ story }: { story: StoryCardType }) {
  * instruction never to rotate on its own, and there is no reason for this one
  * to behave differently.
  */
+/** The revealed tile's white type, as the resting state on a no-hover device. */
+const TILE_TOUCH_TEXT =
+  "[@media(hover:none)]:text-white [@media(hover:none)]:[text-shadow:0_1px_2px_rgb(0_0_0/0.6),0_1px_3px_rgb(0_0_0/0.6),0_2px_14px_rgb(0_0_0/0.5)]";
+
 export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
   if (stories.length === 0) return null;
   return (
@@ -377,10 +397,17 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
            * is a mouse-only affordance and a keyboard reader never sees the
            * expanded state. motion-reduce drops the easing, not the widening:
            * the layout change is the feature, the sliding is the decoration.
+           *
+           * TOUCH (#33 C3): a phone has no hover, so the reveal never came and
+           * the tile was a headline in an empty white box — and a tap focused
+           * it and made it jump wider. On a no-hover device the tile rests in
+           * the revealed state (cover, scrim, white type) at one fixed width,
+           * and the widening is kept for pointers that can hover. Tailwind's
+           * hover: is already hover-gated; focus-within: is gated here.
            */
           <li
             key={s.id}
-            className="gh-tile group relative h-full min-h-28 w-52 flex-none overflow-hidden rounded-[var(--gh-radius)] border border-line transition-[width] duration-300 ease-out hover:w-80 focus-within:w-80 motion-reduce:transition-none"
+            className="gh-tile group relative h-full min-h-28 w-52 flex-none overflow-hidden rounded-[var(--gh-radius)] border border-line transition-[width] duration-300 ease-out hover:w-80 [@media(hover:hover)]:focus-within:w-80 motion-reduce:transition-none [@media(hover:none)]:min-h-40 [@media(hover:none)]:w-64"
           >
             <Link href={`/news/${s.slug}`} className="block h-full">
               {img && (
@@ -390,7 +417,7 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
                   fill
                   sizes="320px"
                   style={focusStyle(s.cover_focus)}
-                  className="object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none"
+                  className="object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
                   unoptimized
                 />
               )}
@@ -415,7 +442,7 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
                 /* Gradient scrim only — no backdrop blur. The headline's own
                    text-shadow carries the contrast, and blurring the cover
                    softened the picture the hover exists to reveal. */
-                <div className="absolute inset-0 bg-gradient-to-t from-[rgb(6_9_15/0.94)] via-[rgb(6_9_15/0.58)] to-[rgb(6_9_15/0.12)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[rgb(6_9_15/0.94)] via-[rgb(6_9_15/0.58)] to-[rgb(6_9_15/0.12)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100" />
               )}
               {/*
                * The headline takes the whole tile.
@@ -435,7 +462,9 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
                       so the wording can't drift. Its ink pill melts into the
                       scrim on hover, but the white label stays 21:1 either way. */}
                   {s.is_member_news && <div className="mb-1.5"><MemberBadge variant="inline" /></div>}
-                  <CardTitle className={`gh-tile-text text-[0.9375rem] line-clamp-6 ${img ? "group-hover:text-white group-focus-within:text-white" : "group-hover:underline"}`}>
+                  {/* The touch branch repeats globals.css's .gh-tile-text shadow,
+                      which only applies on :hover / :focus-within. */}
+                  <CardTitle className={`gh-tile-text text-base sm:text-[0.9375rem] line-clamp-6 ${img ? `group-hover:text-white group-focus-within:text-white ${TILE_TOUCH_TEXT}` : "group-hover:underline"}`}>
                     {s.title}
                   </CardTitle>
                 </div>
@@ -468,11 +497,13 @@ export function GhLogoBand({ adverts, showPlaceholders = false }: { adverts: Liv
        * The intrinsic width/height stay a 2:1 hint — `w-auto` means the real
        * aspect ratio comes from the file, so a tall logo is not stretched.
        */}
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-x-12 gap-y-8">
+      {/* Tighter on a phone, where twelve 64px logos with 48px gaps ran to a
+          screen and a half of their own (#33 C9). */}
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-6 sm:gap-x-12 sm:gap-y-8">
         {adverts.length > 0
           ? adverts.map((ad) => (
               <Link key={ad.advertId} href={advertHref(ad)}>
-                <Image src={mediaUrl(ad.mobilePath)!} alt={ad.name} width={200} height={100} className="h-16 w-auto" unoptimized />
+                <Image src={mediaUrl(ad.mobilePath)!} alt={ad.name} width={200} height={100} className="h-12 w-auto sm:h-16" unoptimized />
               </Link>
             ))
           : Array.from({ length: 5 }, (_, i) => (
@@ -512,7 +543,13 @@ export function GhNewsletterPanel() {
  */
 const SOCIAL_REACH = 347_000;
 
-/** Comp v1's near-black stats band, closing the page above the footer. */
+/**
+ * Comp v1's stats band, closing the page above the footer — on a light ground
+ * now, not the comp's near-black (#33 C10): on a phone the dark band ran
+ * straight into the dark footer, over 1000px of continuous dark. The figures
+ * move from orange to the deepened text orange, since #ff8200 on white fails
+ * contrast even at this size.
+ */
 export function GhStatsBand({ storyTotal, memberCount }: { storyTotal: number; memberCount: number }) {
   const stats = [
     { label: "Relevant, up-to-date news", value: storyTotal, caption: "Published articles" },
@@ -520,9 +557,9 @@ export function GhStatsBand({ storyTotal, memberCount }: { storyTotal: number; m
     { label: "Promote your business", value: SOCIAL_REACH, caption: "Social media reach" },
   ];
   return (
-    <Band tone="dark" inner="py-10 text-center">
+    <Band className="border-t border-line" inner="py-10 text-center">
       <h2 className="font-heading text-2xl font-extrabold">Brand awareness that reaches the right buyers</h2>
-      <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-white/70">
+      <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-graphite">
         SMI publishes the UK sheet metal trade&apos;s news, and helps the companies in it promote their
         strengths, products and services to the people specifying and buying equipment.
       </p>
@@ -534,9 +571,9 @@ export function GhStatsBand({ storyTotal, memberCount }: { storyTotal: number; m
           <div key={s.caption}>
             <dt className="text-sm font-bold">{s.label}</dt>
             <dd className="mt-2">
-              {/* Orange on near-black is 7.4:1 — the pairing that passes. */}
-              <span className="block font-heading text-4xl font-extrabold text-brand">{s.value.toLocaleString("en-GB")}</span>
-              <span className="mt-1 block text-xs text-white/60">{s.caption}</span>
+              {/* #ac5800 on white is 5.1:1; the brighter #ff8200 would be 2.5:1. */}
+              <span className="block font-heading text-4xl font-extrabold text-brand-text">{s.value.toLocaleString("en-GB")}</span>
+              <span className="mt-1 block text-xs text-graphite">{s.caption}</span>
             </dd>
           </div>
         ))}

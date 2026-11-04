@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sessionDb } from "@/lib/db/server";
 import { SubmitButton } from "@/components/SubmitButton";
+import { AuthLogo } from "@/components/AuthLogo";
 
 export const metadata = { title: "Set a new password" };
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export default async function NewPasswordPage(props: PageProps<"/reset/new">) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-4">
       <form action={setPassword} className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
-        <p className="text-center text-lg font-bold text-ink">Sheet Metal <span className="text-brand">Industries</span></p>
+        <AuthLogo />
         <p className="mt-1 text-center text-sm text-graphite">Set a new password for {user.email}</p>
         {message && <p className="mt-3 rounded bg-danger/10 p-2 text-center text-sm text-danger">{message}</p>}
 
@@ -67,7 +68,7 @@ export default async function NewPasswordPage(props: PageProps<"/reset/new">) {
           <SubmitButton pendingLabel="Saving…">Save password</SubmitButton>
         </div>
         <p className="mt-3 text-center text-sm">
-          <Link href="/reset" className="underline text-graphite">Request a new link</Link>
+          <Link href="/reset" className="tap underline text-graphite">Request a new link</Link>
         </p>
       </form>
     </div>

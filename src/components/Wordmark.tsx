@@ -24,8 +24,12 @@ export function Wordmark({ tone = "dark" }: {
   // tall, so the height classes step with the header's own breakpoints: full
   // size only from xl (lg is where the header shows every nav link, and a
   // 413px logo plus the full nav overflows a 1024px viewport), mid-size from
-  // sm, and compact below that so the mark, menu button and CTAs share a
-  // phone-width row without wrapping.
+  // sm, and compact (206px wide) below that. On a phone the header shows only
+  // this and the menu button, and its link is shrink-0, so the mark always
+  // renders at these sizes — never squeezed (#33). The tagline baked into the
+  // artwork is still small at phone size; a tagline-free phone lockup would
+  // need new artwork from the client (public/logo-stacked.png has the
+  // tagline too, smaller still).
   return (
     <Image
       src={tone === "light" ? "/logo-wide-ink.svg" : "/logo-wide.svg"}

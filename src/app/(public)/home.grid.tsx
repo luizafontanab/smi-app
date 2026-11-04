@@ -125,11 +125,14 @@ export function GridHome({
          * sees them.
          */}
         <Band inner="py-8">
-          <div className={`grid gap-5 ${featured.length > 0 ? "lg:grid-cols-[3fr_9fr]" : ""}`}>
+          {/* grid-cols-1 for the same reason as the fold's: the Featured
+              members box is a sideways scroller below lg, and an implicit
+              track would grow to its full width and push the page sideways. */}
+          <div className={`grid grid-cols-1 gap-5 ${featured.length > 0 ? "lg:grid-cols-[3fr_9fr]" : ""}`}>
             <div className="lg:col-start-2 lg:row-start-1">
               <SectionHead title="Latest videos" href="/video" seeAll="See all videos" />
               <div className="grid gap-5 sm:grid-cols-3">
-                {videos.slice(0, 3).map((v) => <GhVideoCard key={v.id} video={v} />)}
+                {videos.slice(0, 3).map((v, i) => <div key={v.id} className={phoneCap(i)}><GhVideoCard video={v} /></div>)}
               </div>
             </div>
             <GhFeaturedMembers members={featured} className="lg:col-start-1 lg:row-start-1 lg:row-span-2" />
@@ -154,7 +157,7 @@ export function GridHome({
           <Band inner="py-8">
             <SectionHead title="Featured member news" href="/news" seeAll="More member news" />
             <div className="grid gap-8 md:grid-cols-3">
-              {railNews.slice(0, 3).map((s) => <GhMemberRow key={s.id} story={s} />)}
+              {railNews.slice(0, 3).map((s, i) => <div key={s.id} className={phoneCap(i)}><GhMemberRow story={s} /></div>)}
             </div>
           </Band>
         )}
@@ -215,7 +218,7 @@ export function GridHome({
           <Band inner="py-8">
             <SectionHead title="Latest newsletters" href="/newsletters" seeAll="Newsletter archive" />
             <div className="grid gap-5 sm:grid-cols-3">
-              {issues.map((i) => <GhNewsletterCard key={i.number} issue={i} />)}
+              {issues.map((issue, i) => <div key={issue.number} className={phoneCap(i)}><GhNewsletterCard issue={issue} /></div>)}
             </div>
           </Band>
         )}
@@ -240,10 +243,24 @@ export function GridHome({
        * artwork sits flush against the colour change.
        */}
       <Band tone="grey" inner="py-8">
-        <AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" />
+        <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
       </Band>
     </>
   );
+
+  const pieces: Record<BelowFoldPiece, ReactNode> = {
+    ...sectionContent,
+    home_2: (
+      /* Grey, like home_1 — the page alternates white and grey bands. */
+      <Band tone="grey" inner="py-4">
+        <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
+      </Band>
+    ),
+    home_3: home3,
+    stats: <GhStatsBand storyTotal={storyTotal} memberCount={memberCount} />,
+  };
+  const desktopSeq = belowFoldSequence(rendered);
+  const phoneSeq = belowFoldSequence(phoneSectionOrder(rendered));
 
   return (
     <>
@@ -263,7 +280,10 @@ export function GridHome({
             grows to its widest child's min-content, and the More News row is
             ~1700px of fixed-width tiles, which pushed the whole page sideways
             on phones. minmax(0,1fr) caps it so the row scrolls in place. */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[4fr_4fr_3fr]">
+        {/* md: the two highlights side by side and the placement pair as a
+            row under them — at tablet width a single column made the first
+            screen two 736px-wide cards (#33 C8). */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[4fr_4fr_3fr]">
           {lead && <GhStoryCard story={lead} size="lg" eyebrow={null} />}
           {second && <GhStoryCard story={second} size="lg" eyebrow={null} />}
           {/* The third column is the two placement cards, stacked, running the
@@ -271,11 +291,11 @@ export function GridHome({
           {/* flex-1 on each card so the pair fills the two-row span exactly —
               the covers absorb the slack rather than leaving it under the
               second card. */}
-          <div className="flex flex-col gap-4 lg:row-span-2">
+          <div className="flex flex-col gap-4 md:col-span-2 md:flex-row lg:col-span-1 lg:row-span-2 lg:flex-col">
             {machine && <div className="flex-1"><GhMachineCard machine={machine} /></div>}
             {featuredEvent && <div className="flex-1"><GhEventCard event={featuredEvent} featured /></div>}
           </div>
-          <div className="lg:col-span-2">
+          <div className="md:col-span-2">
             <GhMoreNews stories={moreNews} />
           </div>
         </div>
@@ -284,7 +304,7 @@ export function GridHome({
       {/* The rotating banner is a real advert slot, not an editorial hero —
           see the top-of-file note on the above-the-fold exception. */}
       <Band tone="grey" className="mt-6" inner="py-4">
-        <AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} path="/" />
+        <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
       </Band>
 
       {/*
@@ -297,22 +317,66 @@ export function GridHome({
        * banner always sits between content. The default order reproduces the
        * page exactly as it was before this was configurable.
        */}
-      {rendered.map((id, i) => (
-        <Fragment key={id}>
-          {sectionContent[id]}
-          {i === 0 && (
-            /* Grey, like home_1 — the page alternates white and grey bands. */
-            <Band tone="grey" inner="py-4">
-              <AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" />
-            </Band>
-          )}
-          {i === rendered.length - 1 && rendered.length > 1 && home3}
-        </Fragment>
-      ))}
-      {/* With a single section, home_3 would land straight under home_2 — two
-          banners touching. It drops below the stats band instead. */}
-      <GhStatsBand storyTotal={storyTotal} memberCount={memberCount} />
-      {rendered.length <= 1 && home3}
+      {/*
+       * PHONES (#33 C9): the same pieces, with Upcoming events lifted to the
+       * top of the run — at 390px it sat ~4,400px down a 7,000px page. The
+       * phone order is derived by the same banner rule (belowFoldSequence),
+       * so two banners can't touch on a phone either. Rendered as two runs in
+       * their own DOM order rather than one run re-painted with CSS `order`,
+       * so reading and tab order match what's on screen. The hidden run is
+       * display:none: out of the accessibility tree, and AdCreative never
+       * counts an impression for an off-breakpoint copy.
+       */}
+      {(["phone", "desktop"] as const).map((run) => {
+        // Identical orders (events already first, or no events) need one run.
+        const split = phoneSeq.join() !== desktopSeq.join();
+        if (run === "phone" && !split) return null;
+        const seq = run === "phone" ? phoneSeq : desktopSeq;
+        const only = !split ? undefined : run === "phone" ? "sm:hidden" : "max-sm:hidden";
+        return (
+          <div key={run} className={only}>
+            {seq.map((piece) => <Fragment key={piece}>{pieces[piece]}</Fragment>)}
+          </div>
+        );
+      })}
     </>
   );
 }
+
+/** A piece of the below-fold run: a section, one of the two banners, or the stats band. */
+export type BelowFoldPiece = HomeSectionId | "home_2" | "home_3" | "stats";
+
+/**
+ * The below-fold run in paint order: home_2 after the first section, home_3
+ * after the last — or, with a single section, below the stats band, since
+ * straight under home_2 it would put two banners together.
+ */
+export function belowFoldSequence(sections: HomeSectionId[]): BelowFoldPiece[] {
+  const seq: BelowFoldPiece[] = [];
+  sections.forEach((id, i) => {
+    seq.push(id);
+    if (i === 0) seq.push("home_2");
+    if (i === sections.length - 1 && sections.length > 1) seq.push("home_3");
+  });
+  seq.push("stats");
+  if (sections.length <= 1) seq.push("home_3");
+  return seq;
+}
+
+/**
+ * The phone's section order: the configured one with Upcoming events moved to
+ * the front (#33 C9). Everything else keeps its configured place.
+ */
+export function phoneSectionOrder(sections: HomeSectionId[]): HomeSectionId[] {
+  return sections.includes("events") ? ["events", ...sections.filter((id) => id !== "events")] : sections;
+}
+
+/** Third and later cards of a row drop below sm — the phone page was ~7,000px (#33 C9). */
+const phoneCap = (i: number) => (i >= 2 ? "max-sm:hidden" : undefined);
+
+/**
+ * Banner width on a phone: a 370×280 mobile creative at full width was most
+ * of a screen, three times over. Capped and centred as on the story page
+ * (BlockRenderer's STORY_AD_WRAPPER); from md the desktop strip shows uncapped.
+ */
+const HOME_AD_WRAPPER = "mx-auto w-full max-w-[300px] md:max-w-none";

@@ -36,6 +36,12 @@ describe("ContactForm", () => {
     expect(screen.getByLabelText("Message")).toBeRequired();
   });
 
+  it("gives name and email autofill hints so phones can fill them (#33)", () => {
+    render(<ContactForm kind="advertising" />);
+    expect(screen.getByLabelText("Name")).toHaveAttribute("autocomplete", "name");
+    expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "email");
+  });
+
   it("keeps the status region silent but present before anything is sent", () => {
     // The live region has to exist in the initial DOM or a screen reader has
     // nothing to announce into when the result lands.

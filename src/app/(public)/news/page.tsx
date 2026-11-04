@@ -10,10 +10,12 @@ import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { ScrollToHash } from "@/components/ScrollToHash";
 import { SearchForm } from "@/components/SearchForm";
 import { Carousel, StoryCard } from "@/components/StoryCard";
+import { PILL, PILL_ROW } from "@/components/filter-pills";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 12;
 const RAIL_SIZE = 10;
+
 
 export const metadata = {
   title: "News",
@@ -124,14 +126,19 @@ export default async function NewsPage(props: PageProps<"/news">) {
 
       <SearchForm className="mt-3 flex gap-2" />
 
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {/* Pills and the category picker share a row only from lg: at tablet
+          width the pills were cut off against the picker and sat a few px
+          off its line (#33 C7). */}
+      <div className="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         {/* Industry pills — the member-kind list, same data as the industries
-            strip; ~69 entries, so it scrolls sideways rather than wrapping. */}
+            strip; ~69 entries, so it scrolls sideways rather than wrapping.
+            PILL_ROW / PILL: touch-height pills and an edge fade that says the
+            row scrolls (#33 C6). */}
         {showIndustries && (
-          <nav aria-label="Filter by industry" className="flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
-            <Link href={qs({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+          <nav aria-label="Filter by industry" className={PILL_ROW}>
+            <Link href={qs({ industry: undefined })} className={`${PILL} ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
             {industries.map((c) => (
-              <Link key={c.slug} href={qs({ industry: c.slug })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+              <Link key={c.slug} href={qs({ industry: c.slug })} className={`${PILL} ${industry === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
                 {c.name}
               </Link>
             ))}
@@ -145,7 +152,8 @@ export default async function NewsPage(props: PageProps<"/news">) {
       </div>
 
       {/* GET submit replaces the whole query string, hence the hidden fields */}
-      <form action="/news#all-news" className="mt-3 flex flex-wrap items-end gap-3 text-sm">
+      {/* text-base below sm: iOS zooms into any input under 16px (#33 C5) */}
+      <form action="/news#all-news" className="mt-3 flex flex-wrap items-end gap-3 text-base sm:text-sm">
         {category && <input type="hidden" name="category" value={category} />}
         {industry && <input type="hidden" name="industry" value={industry} />}
         {member && <input type="hidden" name="member" value={member.slug} />}
@@ -158,7 +166,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
           <span className="text-graphite">To</span>
           <input type="date" name="to" defaultValue={to} className="rounded border bg-white px-2 py-1.5" />
         </label>
-        <button className="rounded border bg-white px-3 py-1.5 hover:border-ink">Apply dates</button>
+        <button className="tap rounded border bg-white px-3 py-1.5 hover:border-ink">Apply dates</button>
         {hasFilters && (
           <Link href="/news#all-news" className="text-graphite hover:underline">Clear filters</Link>
         )}
@@ -179,9 +187,9 @@ export default async function NewsPage(props: PageProps<"/news">) {
       {stories.length === 0 && <p className="mt-10 text-center text-graphite">No stories found.</p>}
 
       <nav className="my-8 flex items-center justify-center gap-2 text-sm">
-        {page > 1 && <Link href={qs({ page: page - 1 })} className="rounded border bg-white px-3 py-1.5">← Prev</Link>}
+        {page > 1 && <Link href={qs({ page: page - 1 })} className="tap rounded border bg-white px-3 py-1.5">← Prev</Link>}
         <span className="px-2 text-graphite">Page {page} of {pages}</span>
-        {page < pages && <Link href={qs({ page: page + 1 })} className="rounded border bg-white px-3 py-1.5">Next →</Link>}
+        {page < pages && <Link href={qs({ page: page + 1 })} className="tap rounded border bg-white px-3 py-1.5">Next →</Link>}
       </nav>
 
       <div className="-mx-4"><SupplierLogos adverts={logos} showPlaceholders={showPlaceholders} /></div>

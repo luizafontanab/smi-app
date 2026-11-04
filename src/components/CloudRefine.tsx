@@ -31,12 +31,20 @@ const SHEET_ID = "member-cloud-refined";
  * — 1.02 still left a ~2px sliver on a 390px viewport.
  */
 const MEASURE_MARGIN = 1.04;
-const BUCKET_QUERY = "(max-width: 639px)";
+/** Must match the cloud's media queries in globals.css. */
+const NARROW_QUERY = "(max-width: 639px)";
+const TOUCH_QUERY = "(min-width: 640px) and (max-width: 1023px) and (pointer: coarse)";
 const COARSE_QUERY = "(hover: none), (pointer: coarse)";
 
+/**
+ * Per bucket: the custom properties it reads, and the data attribute holding
+ * each item's index into that packing. The touch packings draw a capped
+ * sample, so their index is not data-i and an item without it is not drawn.
+ */
 const VARS = {
-  wide: { x: "--x", y: "--y", s: "--s", cx: "--cx", cy: "--cy", h: "--cloud-h" },
-  narrow: { x: "--xn", y: "--yn", s: "--sn", cx: "--cxn", cy: "--cyn", h: "--cloud-hn" },
+  wide: { x: "--x", y: "--y", s: "--s", cx: "--cx", cy: "--cy", h: "--cloud-h", idx: "i" },
+  narrow: { x: "--xn", y: "--yn", s: "--sn", cx: "--cxn", cy: "--cyn", h: "--cloud-hn", idx: "n" },
+  touch: { x: "--xt", y: "--yt", s: "--st", cx: "--cxt", cy: "--cyt", h: "--cloud-ht", idx: "t" },
 } as const;
 
 export function CloudRefine({ containerId, seed }: { containerId: string; seed: string }) {
@@ -51,7 +59,8 @@ export function CloudRefine({ containerId, seed }: { containerId: string; seed: 
     let cancelled = false;
 
     const refine = (bucket: Bucket) => {
-      const nodes = [...container.querySelectorAll<HTMLLIElement>("li.cloud-item")];
+      const v = VARS[bucket];
+      const nodes = [...container.querySelectorAll<HTMLLIElement>(`li.cloud-item[data-${v.idx}]`)];
       const width = container.clientWidth;
       if (nodes.length === 0 || width === 0) return;
 
@@ -62,7 +71,7 @@ export function CloudRefine({ containerId, seed }: { containerId: string; seed: 
       const items: CloudItem[] = [];
       const widths: number[] = [];
       for (const li of nodes) {
-        const i = Number(li.dataset.i);
+        const i = Number(li.dataset[v.idx]);
         const name = li.querySelector<HTMLElement>(".cloud-name");
         if (!name || !Number.isFinite(i)) return;
         items[i] = { slug: "", name: name.textContent ?? "", featured: li.dataset.featured === "true" };
@@ -78,7 +87,6 @@ export function CloudRefine({ containerId, seed }: { containerId: string; seed: 
       if (cancelled) return;
 
       const { placements, height } = buildCloud(items, { seed, bucket, widths });
-      const v = VARS[bucket];
 
       // Publish the correction as a stylesheet rather than by writing inline
       // styles. The server already rendered its own values inline, and React
@@ -88,11 +96,11 @@ export function CloudRefine({ containerId, seed }: { containerId: string; seed: 
       // lets it outrank the inline values it is correcting.
       const rules = [`#${containerId}{${v.h}:${height} !important}`];
       for (const li of nodes) {
-        const i = Number(li.dataset.i);
+        const i = Number(li.dataset[v.idx]);
         const p = placements[i];
         const cy = p.cardBelow ? p.s * 1.2 + 0.8 : -(CARD_H + 0.8);
         rules.push(
-          `#${containerId} li[data-i="${i}"]{${v.x}:${p.x} !important;${v.y}:${p.y} !important;` +
+          `#${containerId} li[data-${v.idx}="${i}"]{${v.x}:${p.x} !important;${v.y}:${p.y} !important;` +
             `${v.cx}:${p.cardDx} !important;${v.cy}:${cy} !important}`,
         );
       }
@@ -111,7 +119,8 @@ export function CloudRefine({ containerId, seed }: { containerId: string; seed: 
       sheet.textContent = rules.join("");
     };
 
-    const bucketOf = (): Bucket => (window.matchMedia(BUCKET_QUERY).matches ? "narrow" : "wide");
+    const bucketOf = (): Bucket =>
+      window.matchMedia(NARROW_QUERY).matches ? "narrow" : window.matchMedia(TOUCH_QUERY).matches ? "touch" : "wide";
     const run = () => {
       if (!cancelled) refine(bucketOf());
     };
@@ -130,8 +139,8 @@ export function CloudRefine({ containerId, seed }: { containerId: string; seed: 
     ]);
     void settled.then(run);
 
-    const bucketMq = window.matchMedia(BUCKET_QUERY);
-    bucketMq.addEventListener("change", run);
+    const bucketMqs = [window.matchMedia(NARROW_QUERY), window.matchMedia(TOUCH_QUERY)];
+    bucketMqs.forEach((mq) => mq.addEventListener("change", run));
 
     /* ── two-tap ── */
     const clear = () => {
@@ -167,7 +176,7 @@ export function CloudRefine({ containerId, seed }: { containerId: string; seed: 
       // member set that produced them — leaving them behind would misplace a
       // differently-filtered cloud.
       document.getElementById(SHEET_ID)?.remove();
-      bucketMq.removeEventListener("change", run);
+      bucketMqs.forEach((mq) => mq.removeEventListener("change", run));
       container.removeEventListener("click", onClick);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);

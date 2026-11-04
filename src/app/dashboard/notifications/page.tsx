@@ -33,14 +33,14 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
   const qs = (p: number) => (p > 1 ? `/dashboard/notifications?page=${p}` : "/dashboard/notifications");
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-ink">
           Notifications{Boolean(unread) && <span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-ink">{unread} unread</span>}
         </h1>
         {Boolean(unread) && (
           <form action={markAllNotificationsRead}>
-            <button type="submit" className="text-sm text-graphite underline">Mark all as read</button>
+            <button type="submit" className="tap text-sm text-graphite underline">Mark all as read</button>
           </form>
         )}
       </div>
@@ -61,12 +61,12 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
                   ? <Link href={href} className={`${cls} underline decoration-graphite/40 underline-offset-2 hover:decoration-ink`}>{label}</Link>
                   : <span className={cls}>{label}</span>;
               })()}
-              <span className="ml-2 text-xs text-graphite">{n.created_at.slice(0, 10)}</span>
+              <span className="ml-2 whitespace-nowrap text-xs text-graphite">{n.created_at.slice(0, 10)}</span>
             </div>
             {!n.read_at && (
               <form action={markNotificationRead}>
                 <input type="hidden" name="id" value={n.id} />
-                <button type="submit" className="text-xs text-graphite underline hover:text-ink">Mark read</button>
+                <button type="submit" className="tap shrink-0 px-1 text-sm text-graphite underline hover:text-ink sm:text-xs">Mark read</button>
               </form>
             )}
           </div>

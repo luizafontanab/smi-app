@@ -101,7 +101,10 @@ export type MemberTileData = {
   industry?: { name: string } | null;
 };
 
-const TILE_LOGO = { sm: { box: "h-20 w-20", px: 72 }, md: { box: "h-32 w-32", px: 112 } };
+// md shrinks to a 64px box on phones: at 128px every directory tile was ~176px
+// tall, about five per screen (#33). The image keeps its 112px intrinsic size
+// and is held inside the box by max-w/max-h, so sm-and-up is unchanged.
+const TILE_LOGO = { sm: { box: "h-20 w-20", px: 72 }, md: { box: "h-16 w-16 sm:h-32 sm:w-32", px: 112 } };
 
 /**
  * Deliberately spare (fix list item 24): logo, name, industry — nothing else.
@@ -126,13 +129,13 @@ export function MemberTile({ member: m, size = "md", showIndustry = true }: {
           // Rounded box bigger than the image inside it, so the corner radius
           // only ever clips white background, never a non-square logo's artwork.
           <div className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-white`}>
-            <Image src={mediaUrl(m.logo_path)!} alt="" width={logo.px} height={logo.px} className="object-contain" unoptimized />
+            <Image src={mediaUrl(m.logo_path)!} alt="" width={logo.px} height={logo.px} className="max-h-full max-w-full object-contain" unoptimized />
           </div>
         ) : (
           <div className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30`}>⚙</div>
         )}
         <div className="min-w-0">
-          <p className="font-bold text-ink">{m.name}</p>
+          <p className="break-words font-bold text-ink">{m.name}</p>
           {showIndustry && m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
         </div>
       </div>
@@ -192,8 +195,11 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
     );
   }
   const excerpt = excerptFromHtml(event.description);
+  // The whole card opens the event (#33): the title link is stretched over the
+  // card with an ::after, so a tap on the date or excerpt lands too. The
+  // external link sits above that layer (relative z-10) and keeps its own target.
   return (
-    <div className="overflow-hidden rounded-lg bg-white p-5 shadow-sm">
+    <div className="relative overflow-hidden rounded-lg bg-white p-5 shadow-sm transition hover:shadow-md">
       <div className="flex items-center gap-2">
         <p className="text-xs font-semibold uppercase text-graphite">
           {eventDate(event.starts_on)}{event.ends_on && event.ends_on > event.starts_on && ` – ${eventDate(event.ends_on)}`}
@@ -202,13 +208,15 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
         <EventTypeBadge type={event.type} />
       </div>
       <h2 className="mt-1 text-lg font-bold">
-        <Link href={`/event/${event.slug}`} className="hover:text-graphite">{event.title}</Link>
+        <Link href={`/event/${event.slug}`} className="after:absolute after:inset-0 after:content-[''] hover:text-graphite">{event.title}</Link>
       </h2>
       {event.location && <p className="text-sm text-graphite break-words">{event.location}</p>}
       {excerpt && <p className="mt-2 text-sm text-graphite">{excerpt}</p>}
-      <div className="mt-2 flex gap-3 text-sm text-graphite">
-        <Link href={`/event/${event.slug}`} className="hover:underline">Details →</Link>
-        {event.link && <a href={event.link} target="_blank" rel="noopener" className="hover:underline">Event website →</a>}
+      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-graphite">
+        {/* Same target as the stretched title; kept as the visible cue. Out of
+            the tab order and the accessibility tree so it isn't read twice. */}
+        <span aria-hidden="true" className="tap font-semibold text-ink">Details →</span>
+        {event.link && <a href={event.link} target="_blank" rel="noopener" className="tap relative z-10 hover:underline">Event website →</a>}
         {event.member && <span className="text-graphite">Hosted by {event.member.name}</span>}
       </div>
     </div>

@@ -161,6 +161,19 @@ function propsOf<P>(node: ReactNode, type: unknown, found: P[] = []): P[] {
   return found;
 }
 
+/**
+ * The tree as one breakpoint paints it. The homepage renders its below-fold
+ * run twice when the phone order differs (#33 C9): a `sm:hidden` phone copy
+ * and a `max-sm:hidden` desktop copy. Drop the other breakpoint's copy.
+ */
+function paintedAt(node: ReactNode, at: "phone" | "desktop"): ReactNode {
+  if (Array.isArray(node)) return node.map((n) => paintedAt(n, at));
+  if (!isValidElement(node)) return node;
+  const props = node.props as { className?: string; children?: ReactNode };
+  if (props.className === (at === "desktop" ? "sm:hidden" : "max-sm:hidden")) return null;
+  return { ...node, props: { ...props, children: paintedAt(props.children, at) } } as ReactNode;
+}
+
 const eventCards = (n: ReactNode) => propsOf<{ event: { slug: string }; featured?: boolean }>(n, GhEventCard);
 const newsletterCards = (n: ReactNode) => propsOf<{ issue: { number: number } }>(n, GhNewsletterCard).map((p) => p.issue);
 const sectionTitles = (n: ReactNode) => propsOf<{ title: string }>(n, SectionHead).map((p) => p.title);
@@ -247,14 +260,14 @@ describe("GridHome", () => {
 
   it("places the featured event once, and leaves it out of the events row", () => {
     const tree = GridHome(homeData({ events: [ev("a"), ev("b"), ev("c"), ev("d")] as never, featuredEvent: ev("b") as never }));
-    const cards = eventCards(tree);
+    const cards = eventCards(paintedAt(tree, "desktop"));
     expect(cards.map((c) => c.event.slug)).toEqual(["b", "a", "c", "d"]);
     expect(cards.filter((c) => c.featured).map((c) => c.event.slug)).toEqual(["b"]);
   });
 
   it("keeps the row at three when the featured event is further out than the upcoming list", () => {
     const tree = GridHome(homeData({ events: [ev("a"), ev("b"), ev("c"), ev("d")] as never, featuredEvent: ev("z") as never }));
-    const cards = eventCards(tree);
+    const cards = eventCards(paintedAt(tree, "desktop"));
     expect(cards.map((c) => c.event.slug)).toEqual(["z", "a", "b", "c"]);
     expect(cards.filter((c) => c.featured).map((c) => c.event.slug)).toEqual(["z"]);
   });
@@ -388,8 +401,14 @@ describe("GridHome", () => {
       else if (typeof props.title === "string" && ["Latest newsletters", "Upcoming events", "Latest videos", "Featured member news"].includes(props.title)) seq.push(props.title);
       walk(props.children);
     };
-    walk(tree);
+    walk(paintedAt(tree, "desktop"));
     expect(seq).toEqual(["home_1", "Latest newsletters", "home_2", "Upcoming events", "Latest videos", "home_3"]);
+
+    // A phone paints its own copy, in its own DOM order (so reading and tab
+    // order match the screen): Upcoming events first, banners still apart.
+    seq.length = 0;
+    walk(paintedAt(tree, "phone"));
+    expect(seq).toEqual(["home_1", "Upcoming events", "home_2", "Latest newsletters", "Latest videos", "home_3"]);
   });
 
   it("never places the same story twice across the page's sections", () => {

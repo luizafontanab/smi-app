@@ -18,7 +18,11 @@ export function StoryCard({
   showExcerpt?: boolean;
 }) {
   const img = mediaUrl(story.cover_path);
-  const heights = { sm: "h-32", md: "h-44", lg: "h-80" };
+  // 16:9 boxes rather than fixed heights for the card sizes (#33 E10): about
+  // two-thirds of covers are ~16:9 (measured on /news), often with lettering in
+  // the artwork, and a 256×176 crop cut the words off at both sides. Near the
+  // old heights at desktop widths (a 360px grid card is ~200px tall, was 176).
+  const heights = { sm: "aspect-video", md: "aspect-video", lg: "h-80" };
   return (
     <Link href={`/news/${story.slug}`} className="group block overflow-hidden rounded-lg bg-white shadow-sm transition hover:shadow-md">
       {/* overflow-hidden clips the crop zoom (and the hover grow) to the media
@@ -31,10 +35,13 @@ export function StoryCard({
         )}
         {story.is_member_news && <MemberBadge />}
       </div>
+      {/* Phone sizes step up (#33 C4): a full-width card on a phone set its
+          title at 14px and its date at 11px. From sm the denser desktop
+          sizes return. */}
       <div className="p-3">
-        <h3 className={`font-semibold leading-snug ${size === "lg" ? "text-2xl" : "text-sm"} line-clamp-3`}>{story.title}</h3>
-        {showExcerpt && size !== "sm" && story.excerpt && <p className="mt-1 text-xs text-graphite line-clamp-2">{story.excerpt}</p>}
-        <p className="mt-2 text-[11px] uppercase tracking-wide text-graphite">
+        <h3 className={`font-semibold leading-snug ${size === "lg" ? "text-2xl" : "text-base sm:text-sm"} line-clamp-3`}>{story.title}</h3>
+        {showExcerpt && size !== "sm" && story.excerpt && <p className="mt-1 text-sm text-graphite line-clamp-2 sm:text-xs">{story.excerpt}</p>}
+        <p className="mt-2 text-xs uppercase tracking-wide text-graphite sm:text-[11px]">
           {story.published_at ? new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }) : ""}
           {story.member && <> · {story.member.name}</>}
         </p>

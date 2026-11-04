@@ -41,7 +41,10 @@ test("impressions count only adverts that loaded and were actually on screen", a
   // Every advert on the page must render real artwork. A blocked or broken image
   // leaves a blank box the same size, which is exactly the bug this guards.
   // Only the showing frame of each carousel — the rest are hidden and inert.
-  const links = page.locator('a[aria-label^="Advert:"][data-active="true"]');
+  // :visible — when the phone order differs, the homepage also renders a
+  // display:none phone copy of its below-fold run (#33); those copies are
+  // inert by design (AdCreative never counts an off-breakpoint copy).
+  const links = page.locator('a[aria-label^="Advert:"][data-active="true"]:visible');
   const onPage = await links.count();
   expect(onPage, "adverts present on the homepage").toBeGreaterThan(0);
   const ids = await links.evaluateAll((els) => els.map((el) => (el as HTMLAnchorElement).pathname.split("/").pop()!));

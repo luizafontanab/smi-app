@@ -1,5 +1,5 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useId } from "react";
 import { subscribeNewsletter } from "@/app/(public)/actions";
 import type { SignupSurface } from "@/lib/newsletter-consent";
 
@@ -20,29 +20,37 @@ const BUTTON_TONES = {
  */
 export function NewsletterSignup({ surface, tone = "brand" }: { surface: SignupSurface; tone?: keyof typeof BUTTON_TONES }) {
   const [state, formAction, pending] = useActionState(subscribeNewsletter, { message: "" });
+  // Per instance: a page block and the footer can both render this form, and
+  // fixed ids pointed the second one's label and status at the first (#33).
+  const id = useId();
+  const emailId = `${id}-email`;
+  const statusId = `${id}-status`;
   return (
-    <form action={formAction} className="flex gap-2">
+    <form action={formAction} className="flex flex-wrap gap-2">
       <input type="hidden" name="surface" value={surface} />
-      <label htmlFor="newsletter-email" className="sr-only">Email address</label>
+      <label htmlFor={emailId} className="sr-only">Email address</label>
+      {/* 16px below sm so iOS doesn't zoom in on focus; 44px tall on phones. */}
       <input
-        id="newsletter-email"
+        id={emailId}
         type="email"
         name="email"
+        autoComplete="email"
         required
         aria-required="true"
-        aria-describedby="newsletter-status"
+        aria-describedby={statusId}
         placeholder="you@company.co.uk"
-        className="w-full rounded px-3 py-2 text-sm text-ink placeholder:text-graphite bg-white"
+        className="min-w-0 flex-1 rounded bg-white px-3 py-2.5 text-base text-ink placeholder:text-graphite sm:py-2 sm:text-sm"
       />
       <button disabled={pending} className={`rounded px-4 py-2 text-sm font-semibold disabled:opacity-50 ${BUTTON_TONES[tone]}`}>
         {pending ? "…" : "Subscribe"}
       </button>
       {/* Always rendered: a live region announces only if it existed before
-          the message arrived. */}
+          the message arrived. basis-full puts it on its own line under the
+          field rather than squeezed in beside the button. */}
       {/* Inherits the surface's foreground: this form renders on the dark
           footer and on light bands, and no single orange passes AA on both.
           Weight, not hue, carries the emphasis. */}
-      <p id="newsletter-status" aria-live="polite" className={state?.message ? "text-xs font-semibold" : "sr-only"}>{state?.message}</p>
+      <p id={statusId} aria-live="polite" className={state?.message ? "basis-full text-xs font-semibold" : "sr-only"}>{state?.message}</p>
     </form>
   );
 }

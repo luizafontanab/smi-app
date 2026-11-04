@@ -8,8 +8,14 @@ import { MAX_MEMBERSHIP_TYPES } from "@/lib/member-services";
 import type { UploadResult } from "@/lib/upload-limits";
 import { UploadField } from "@/components/UploadField";
 
-const field = "mt-1 w-full rounded border px-3 py-2";
+// text-base: under 16px, iOS zooms the page when a field is tapped (#33 M2).
+const field = "mt-1 w-full rounded border px-3 py-2 text-base";
 const label = "text-sm font-medium";
+// #33 M17: the form is ~3,000px on a phone, so it is broken into headed groups,
+// and the native 13px checkboxes grow to a tappable size on touch screens.
+const groupHeading = "border-t pt-5 text-base font-bold text-ink";
+const check = "h-4 w-4 shrink-0 accent-ink [@media(pointer:coarse)]:h-5 [@media(pointer:coarse)]:w-5";
+const checkLabel = "flex items-center gap-2 py-1 text-sm";
 
 export type CompanyPageMember = {
   name: string;
@@ -89,6 +95,7 @@ export function CompanyPageForm({
 
   return (
     <fieldset className="space-y-4">
+      <h2 className="text-base font-bold text-ink">Company and listing</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="name" className={label}>Company name</label>
@@ -114,10 +121,10 @@ export function CompanyPageForm({
           <p className="text-xs text-graphite">
             They appear under every industry ticked here; the primary industry above is the one shown on their listing.
           </p>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5">
             {consoleIndustries.map((i) => (
-              <label key={i.id} className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" name="industries" value={i.id} defaultChecked={selectedIndustryIds?.has(i.id) ?? false} />
+              <label key={i.id} className={checkLabel}>
+                <input type="checkbox" className={check} name="industries" value={i.id} defaultChecked={selectedIndustryIds?.has(i.id) ?? false} />
                 {i.name}
               </label>
             ))}
@@ -131,10 +138,10 @@ export function CompanyPageForm({
           Shown on the public directory as a filter — distinct from {consoleIndustries ? "Industries above, and from " : ""}the Services list.
           Tick every one that applies, up to {MAX_MEMBERSHIP_TYPES}.
         </p>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5">
           {membershipTypes.map((t) => (
-            <label key={t.id} className="flex items-center gap-1.5 text-sm">
-              <input type="checkbox" name="membership_types" value={t.id} defaultChecked={selectedMembershipTypeIds.has(t.id)} />
+            <label key={t.id} className={checkLabel}>
+              <input type="checkbox" className={check} name="membership_types" value={t.id} defaultChecked={selectedMembershipTypeIds.has(t.id)} />
               {t.name}
             </label>
           ))}
@@ -156,12 +163,12 @@ export function CompanyPageForm({
         <label htmlFor="slug" className={label}>Web address</label>
         <div className="mt-1 flex items-center gap-1">
           <span className="text-sm text-graphite">/member/</span>
-          <input id="slug" name="slug" defaultValue={member.slug} className="w-full rounded border px-3 py-2" />
+          <input id="slug" name="slug" defaultValue={member.slug} autoCapitalize="none" autoCorrect="off" spellCheck={false} className="w-full rounded border px-3 py-2 text-base" />
         </div>
         {!isDraft && (
           isConsole ? (
-            <label className="mt-1.5 flex items-center gap-2 text-xs text-graphite">
-              <input type="checkbox" name="confirm_slug" />
+            <label className="mt-1.5 flex items-center gap-2 py-1 text-sm text-graphite sm:text-xs">
+              <input type="checkbox" className={check} name="confirm_slug" />
               Changing this changes their public URL — old links will be redirected automatically.
             </label>
           ) : (
@@ -172,6 +179,7 @@ export function CompanyPageForm({
         )}
       </div>
 
+      <h2 className={groupHeading}>Page content</h2>
       <div>
         <span className={label}>{isConsole ? "About the company" : "About your company"}</span>
         <RichTextEditor
@@ -190,8 +198,8 @@ export function CompanyPageForm({
           <UploadField id="logo" name="logo" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
           <p className="mt-1 text-xs text-graphite">Square works best, min 200×200px. Leave empty to keep the current one.</p>
           {logoUrl && (
-            <label className="mt-1 flex items-center gap-2 text-xs text-graphite">
-              <input type="checkbox" name="remove_logo" /> Remove the current logo
+            <label className="mt-1 flex items-center gap-2 py-1 text-sm text-graphite sm:text-xs">
+              <input type="checkbox" className={check} name="remove_logo" /> Remove the current logo
             </label>
           )}
         </div>
@@ -201,34 +209,35 @@ export function CompanyPageForm({
           <UploadField id="hero" name="hero" accept="image/jpeg,image/png,image/webp" className="mt-1 w-full text-sm" />
           <p className="mt-1 text-xs text-graphite">Landscape, around 800×400px. Leave empty to keep the current one.</p>
           {heroUrl && (
-            <label className="mt-1 flex items-center gap-2 text-xs text-graphite">
-              <input type="checkbox" name="remove_hero" /> Remove the current cover
+            <label className="mt-1 flex items-center gap-2 py-1 text-sm text-graphite sm:text-xs">
+              <input type="checkbox" className={check} name="remove_hero" /> Remove the current cover
             </label>
           )}
         </div>
       </div>
 
+      <h2 className={groupHeading}>Contact and location</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="address" className={label}>Address</label>
-          <input id="address" name="address" defaultValue={member.address ?? ""} className={field} />
+          <input id="address" name="address" defaultValue={member.address ?? ""} autoComplete="street-address" className={field} />
         </div>
         <div>
           <label htmlFor="phone" className={label}>Phone</label>
-          <input id="phone" name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ""} className={field} />
+          <input id="phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" defaultValue={member.phone ?? ""} className={field} />
           <p className="mt-1 text-xs text-graphite">Digits, spaces, +, ( ) and - only.</p>
         </div>
         <div>
           <label htmlFor="website" className={label}>Website</label>
-          <input id="website" name="website" defaultValue={member.website ?? ""} className={field} />
+          <input id="website" name="website" inputMode="url" autoComplete="url" autoCapitalize="none" defaultValue={member.website ?? ""} className={field} />
         </div>
         <div>
           <label htmlFor="video_url" className={label}>YouTube video URL</label>
-          <input id="video_url" name="video_url" defaultValue={member.video_url ?? ""} className={field} />
+          <input id="video_url" name="video_url" inputMode="url" autoCapitalize="none" defaultValue={member.video_url ?? ""} className={field} />
         </div>
         <div>
           <label htmlFor="contact_email" className={label}>Contact email</label>
-          <input id="contact_email" name="contact_email" type="email" defaultValue={member.contact_email ?? ""} className={field} />
+          <input id="contact_email" name="contact_email" type="email" autoComplete="email" defaultValue={member.contact_email ?? ""} className={field} />
           <p className="mt-1 text-xs text-graphite">
             {isConsole
               ? "Where their notifications go. This is not their login — changing it here does not change how they sign in."
@@ -251,7 +260,7 @@ export function CompanyPageForm({
       </p>
 
       <fieldset>
-        <legend className={label}>Social profiles</legend>
+        <legend className={`${groupHeading} w-full`}>Social profiles</legend>
         <p className="text-xs text-graphite">
           Paste the full link to each page — they appear on the profile and let us tag {isConsole ? "them" : "you"} when
           stories are shared.
@@ -260,7 +269,7 @@ export function CompanyPageForm({
           {SOCIAL_CHANNELS.map((c) => (
             <label key={c.key} className="text-sm">
               <span className="text-graphite">{c.label}</span>
-              <input name={socialFieldName(c.key)} defaultValue={social[c.key] ?? ""} placeholder={c.placeholder} className={field} />
+              <input name={socialFieldName(c.key)} defaultValue={social[c.key] ?? ""} placeholder={c.placeholder} inputMode="url" autoCapitalize="none" className={field} />
             </label>
           ))}
         </div>

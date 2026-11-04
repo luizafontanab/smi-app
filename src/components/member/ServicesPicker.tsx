@@ -52,7 +52,7 @@ export function ServicesPicker({ services, selected, legendClass }: {
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="rounded border px-2.5 py-1 text-xs font-medium text-graphite hover:border-ink hover:text-ink"
+          className="tap rounded border px-2.5 py-1 text-sm font-medium text-graphite hover:border-ink hover:text-ink sm:text-xs"
         >
           {open ? "Hide" : "Choose services"}
         </button>
@@ -67,7 +67,7 @@ export function ServicesPicker({ services, selected, legendClass }: {
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           placeholder="Search services…"
-          className="w-full rounded border px-3 py-1.5 text-sm"
+          className="w-full rounded border px-3 py-1.5 text-base sm:text-sm"
         />
         <p className="mt-1 text-xs text-graphite">
           Choose everything that applies — these are how buyers filter the member directory.
@@ -80,10 +80,11 @@ export function ServicesPicker({ services, selected, legendClass }: {
                 // Hidden rather than unmounted: an unmounted checkbox leaves the
                 // form, so filtering would quietly discard selections.
                 hidden={!matches.has(s.id)}
-                className="flex items-center gap-1.5 text-sm"
+                className="flex items-center gap-2 py-1 text-sm sm:py-0"
               >
                 <input
                   type="checkbox"
+                  className="h-4 w-4 shrink-0 accent-ink [@media(pointer:coarse)]:h-5 [@media(pointer:coarse)]:w-5"
                   name="services"
                   value={s.id}
                   checked={chosenIds.has(s.id)}

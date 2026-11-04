@@ -47,7 +47,9 @@ export function StoryHeader({ story, categories }: { story: StoryArticleStory; c
 export function StoryHero({ cover, focus }: { cover: string | null; focus: unknown }) {
   if (!cover) return null;
   return (
-    <div className="relative mt-4 h-96 overflow-hidden rounded-lg">
+    // Shorter below md: a 384px cover on a 390px-wide phone was taller than it
+    // was wide and pushed the article off the first screen (#33 C1).
+    <div className="relative mt-4 h-60 overflow-hidden rounded-lg sm:h-80 md:h-96">
       {cover.startsWith("blob:") ? (
         // A cover the member has picked but not yet uploaded (the Preview tab):
         // a local object URL, which next/image has no business handling.

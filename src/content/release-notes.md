@@ -10,6 +10,27 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-04 — The site on phones and tablets
+- On phones the top bar shows the full-size logo and a larger menu button; "Become a Member" and "Login" are in the menu. On tablets the bar no longer squeezes onto two lines, and News, Videos and Newsletters are in the bar.
+- The menu that slides out on phones is now light to match the header, reaches the bottom of the screen and has larger links. The industry list under the header is a single row you swipe, with a fade to show there's more.
+- Text on cards and lists is larger on phones, and no search box, date picker or form field makes an iPhone zoom in when you tap it. Small links and buttons across the site, the footer and the member area are bigger to tap.
+- The dark bands at the end of pages are now light: the "Join the UK's sheet metal community" panel, the "Brand awareness" figures and the "How joining works" steps.
+- The homepage on phones is shorter, with upcoming events near the top. The small "More news" tiles show their pictures without a tap, Featured Members is a row you swipe and no longer moves by itself on touch screens, and event logos and posters show in full. On tablets the two lead stories sit side by side.
+- Story pages on phones show the photo straight after the headline, with the advert underneath. Video pages end with "More videos". Story card pictures keep a widescreen shape, so cover lettering is cut off far less.
+- Site search shows member results as clean text with a properly sized logo, instead of stray code.
+- Maps on the Events and Members pages are shorter on phones, and one finger now scrolls the page past them; use two fingers to move the map.
+- On phones the events calendar lists each day's events with full titles. You can tap anywhere on an event card, and an event's page has its "Event website" button by the date as well as at the bottom. Past events line up in two columns.
+- Member pages on phones show the logo above the name, so the details use the full width. The directory is more compact on phones and its search box is full width on tablets. On phones and tablets the member cloud shows a sample of members in larger type, with a link to the full list.
+- When no machine is featured, the Featured Machine page says so and links to the directory and Contact.
+- The sign-up form brings up the right keyboards and lets phones fill in company details and suggest a strong password; its tick boxes are bigger. The Advertising and Become a Member pages have a button near the top on phones that goes straight to the form.
+- The login, password-reset and unsubscribe pages now show the SMI logo, which takes you back to the website.
+- The cookie notice links to the cookie policy and no longer covers the bottom of the page.
+- The member area has a light, one-row header on phones. Its menu always shows the section you're in, and every page highlights its tab.
+- In the member area on phones: invoices show as cards with the amount and Pay now visible, the dashboard shows your submissions first, and each item's status sits on its own line.
+- Stats charts show month labels and the peak value, and say "Not enough data yet" when there's nothing to show. The same applies to the console's views-per-day chart.
+- The My page form is split into sections and keeps its Submit button on screen. The editor's buttons are larger on touch screens and stay at the top while you write. Upload fields have a proper "Choose File" button.
+- On Buy advertising, the notes box has a label, and for Featured Member you pick the month before pressing Buy. An advert's page shows the mobile artwork as well as the desktop banner.
+
 ## 2026-11-04 — Console calendars fit a phone
 - On a phone, the console overview and the Story, Video, Events and Newsletter calendars no longer make the whole page slide sideways. The calendar scrolls inside its own box, and the Live/Scheduled key moves under the month name when there isn't room beside it.
 

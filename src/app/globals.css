@@ -65,10 +65,11 @@
  * Two designs now, not three themes. Both share every token above: "forge" is
  * this block, "grid" is html[data-theme="grid"] and differs structurally rather
  * than by colour, so it overrides only what it must. The root layout stamps the
- * attribute for both from siteVariant(): the smi-theme cookie, else the
- * site-wide default (grid unless the console says otherwise). Unknown cookie
- * values fall through to that default, which is how browsers still holding the
- * retired "live"/"demo" values migrate.
+ * attribute for both from siteVariant(): grid while the design switcher is off
+ * (#33); with it on, the smi-theme cookie, else the site-wide default (grid
+ * unless the console says otherwise). Unknown cookie values fall through to
+ * that default, which is how browsers still holding the retired "live"/"demo"
+ * values migrate.
  */
 
 @theme inline {
@@ -125,6 +126,15 @@
     min-height: 44px;
     display: inline-flex;
     align-items: center;
+  }
+  /* iOS Safari — on iPad as well as iPhone — zooms the page when a text field
+     under 16px gets focus. Per-field `text-base sm:text-sm` only covers phones,
+     so every touch screen gets the floor here, whatever the width (#33).
+     Unlayered, so it beats a field's text-sm; desktop is untouched. */
+  input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="color"], [type="submit"], [type="button"], [type="reset"], [type="image"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
   }
 }
 
@@ -294,23 +304,6 @@ h1, h2, h3 {
   scrollbar-width: thin;
 }
 .carousel > * { scroll-snap-align: start; }
-
-/*
- * The Featured members box's vertical carousel. Same idea as .carousel turned
- * 90°, but PROXIMITY rather than mandatory snapping: the last slide is a half
- * viewport tall like the rest, so mandatory would fight the wrap back to the
- * top and leave the box resting between two logos.
- *
- * scrollbar-width: none because this one advances itself — a gutter down the
- * side of a 220px sidebar costs more than it tells anyone. The scroller is
- * still a real one: wheel, drag and keyboard all work.
- */
-.gh-vcarousel {
-  scroll-snap-type: y proximity;
-  scrollbar-width: none;
-}
-.gh-vcarousel::-webkit-scrollbar { display: none; }
-.gh-vcarousel > * { scroll-snap-align: start; }
 
 /*
  * The white type on a revealed tile, given its own shadow rather than more
@@ -840,18 +833,50 @@ h1, h2, h3 {
   to { transform: translate3d(var(--dx, 0), var(--dy, 0), 0); }
 }
 
+/* The "Showing 50 of 488" note under a capped cloud. Hidden unless its own
+   packing is in force — the queries below must match CloudRefine's. */
+.cloud-note { display: none; }
+
 /* Below the wide/narrow breakpoint, swap in the separately-packed layout. Not
    a scaled copy of the desktop one: the font-size floor above stops the
    smallest names shrinking further, which would close the gaps a uniform scale
-   depends on. */
+   depends on. Only a capped sample is packed here (data-n marks it); the rest
+   of the directory is one tap away in the list (#33). */
 @media (max-width: 639px) {
   .member-cloud {
     aspect-ratio: calc(100 / var(--cloud-hn, 200));
     padding-block: 3.5rem;
   }
+  .cloud-item:not([data-n]) { display: none; }
   .cloud-item { transform: translate3d(calc(var(--xn) * 1cqw), calc(var(--yn) * 1cqw), 0); }
-  .cloud-name { font-size: max(0.8125rem, calc(var(--sn) * 1cqw)); }
+  .cloud-name { font-size: max(0.875rem, calc(var(--sn) * 1cqw)); }
   .cloud-card { left: calc(var(--cxn) * 1cqw); top: calc(var(--cyn) * 1cqw); }
+  .cloud-note[data-cloud-note="narrow"] { display: block; }
+}
+
+/* Tablets: width alone put an iPad on the desktop packing, whose rows end up
+   ~20px apart at this width — too tight for a finger (#33). A coarse pointer
+   between the phone and desktop widths gets its own looser, capped packing. */
+@media (min-width: 640px) and (max-width: 1023px) and (pointer: coarse) {
+  .member-cloud {
+    aspect-ratio: calc(100 / var(--cloud-ht, 100));
+    padding-block: 4rem;
+  }
+  .cloud-item:not([data-t]) { display: none; }
+  .cloud-item { transform: translate3d(calc(var(--xt) * 1cqw), calc(var(--yt) * 1cqw), 0); }
+  .cloud-name { font-size: max(0.875rem, calc(var(--st) * 1cqw)); }
+  .cloud-card { left: calc(var(--cxt) * 1cqw); top: calc(var(--cyt) * 1cqw); }
+  .cloud-note[data-cloud-note="touch"] { display: block; }
+}
+
+/* No drift on touch screens: there is no hover to pause it before a tap, and a
+   text layer moving by sub-pixels rasterises soft — names read blurred (#33). */
+@media (max-width: 639px), (max-width: 1023px) and (pointer: coarse) {
+  .cloud-item[data-drift="true"] .cloud-name {
+    animation: cloud-in 520ms var(--hero-ease) backwards;
+    animation-delay: calc(var(--i, 0) * 14ms);
+    will-change: auto;
+  }
 }
 
 /* Crossfades are kept (shortened); motion is removed. Opacity is tolerated

@@ -4,6 +4,7 @@ import { sessionDb } from "@/lib/db/server";
 import { currentUser } from "@/lib/auth";
 import { safeInternalPath } from "@/lib/validate";
 import { SubmitButton } from "@/components/SubmitButton";
+import { AuthLogo } from "@/components/AuthLogo";
 
 export const metadata = { title: "Login" };
 
@@ -44,10 +45,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-4">
       <form action={signIn} className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
-        {/* text-xl, not lg: at 18px bold the orange half sits just under
-            WCAG's large-text threshold (18.66px bold) and its 3.3:1 contrast
-            fails AA; at 20px bold it qualifies as large text and passes. */}
-        <p className="text-center text-xl font-bold text-ink">Sheet Metal <span className="text-brand-text">Industries</span></p>
+        <AuthLogo />
         <p className="mt-1 text-center text-sm text-graphite">Member &amp; editor login</p>
         {failed && <p className="mt-3 rounded bg-danger/10 p-2 text-center text-sm text-danger">Wrong email or password.</p>}
         {resetFailed && <p className="mt-3 rounded bg-danger/10 p-2 text-center text-sm text-danger">That reset link has expired or was already used. <Link href="/reset" className="underline">Request a new one</Link>.</p>}
@@ -68,7 +66,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
           <SubmitButton pendingLabel="Signing in…">Sign in</SubmitButton>
         </div>
         <p className="mt-3 text-center text-sm text-graphite">
-          <Link href="/reset" className="underline">Forgotten your password?</Link>
+          <Link href="/reset" className="tap underline">Forgotten your password?</Link>
         </p>
       </form>
     </div>

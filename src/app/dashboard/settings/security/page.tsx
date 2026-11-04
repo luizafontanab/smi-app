@@ -29,7 +29,7 @@ export default async function SecuritySettingsPage(props: PageProps<"/dashboard/
     : "";
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="max-w-xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Account security</h1>
       {sp.psaved && <p className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Password updated.</p>}
       {passwordMessage && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{passwordMessage}</p>}
@@ -38,11 +38,11 @@ export default async function SecuritySettingsPage(props: PageProps<"/dashboard/
       <form action={changePassword} className="mt-5 space-y-4 rounded-xl bg-white p-6 shadow-sm text-sm">
         <div>
           <label htmlFor="password" className="font-medium">New password<RequiredMark /></label>
-          <input id="password" name="password" type="password" required minLength={PASSWORD_MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2" />
+          <input id="password" name="password" type="password" required minLength={PASSWORD_MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2 text-base sm:text-sm" />
         </div>
         <div>
           <label htmlFor="confirm" className="font-medium">Confirm new password<RequiredMark /></label>
-          <input id="confirm" name="confirm" type="password" required minLength={PASSWORD_MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2" />
+          <input id="confirm" name="confirm" type="password" required minLength={PASSWORD_MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2 text-base sm:text-sm" />
         </div>
         <button className="rounded bg-ink px-5 py-2.5 text-white">Update password</button>
       </form>
@@ -66,12 +66,14 @@ export default async function SecuritySettingsPage(props: PageProps<"/dashboard/
           </p>
         )}
         {emailMessage && <p role="alert" className="mt-3 rounded bg-danger/10 p-2 text-danger">{emailMessage}</p>}
-        <form action={changeLoginEmail} className="mt-4 flex flex-wrap items-end gap-3">
+        {/* Stacked on phones: beside its button the field was ~150px wide and an
+            address scrolled inside it (#33 M16). */}
+        <form action={changeLoginEmail} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1">
             <label htmlFor="email" className="font-medium">New login email<RequiredMark /></label>
-            <input id="email" name="email" type="email" required autoComplete="email" className="mt-1 w-full rounded border px-3 py-2" />
+            <input id="email" name="email" type="email" required autoComplete="email" className="mt-1 w-full rounded border px-3 py-2 text-base sm:text-sm" />
           </div>
-          <button className="rounded bg-ink px-5 py-2.5 text-white">Change email</button>
+          <button className="self-start rounded bg-ink px-5 py-2.5 text-white sm:self-auto">Change email</button>
         </form>
       </section>
     </div>

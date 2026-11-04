@@ -40,7 +40,7 @@ export default async function SubmissionsPage(props: PageProps<"/dashboard/submi
   const { items } = await memberContent(user.memberId, { statuses: CONTENT_FILTERS[filter] });
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-ink">
           Your content

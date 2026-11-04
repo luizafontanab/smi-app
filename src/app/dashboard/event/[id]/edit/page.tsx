@@ -21,7 +21,7 @@ export default async function EditMemberEvent(props: PageProps<"/dashboard/event
   if (!event || !memberCanEdit("event", event, user.memberId)) notFound();
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Edit your event</h1>
       <p className="mt-1 text-sm text-graphite">
         Saving sends it back for approval{event.status === "rejected" ? "." : " — this replaces your earlier submission."}

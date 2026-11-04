@@ -169,7 +169,7 @@ export default async function MemberStatsPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="max-w-4xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Your statistics</h1>
       <p className="mt-1 text-sm text-graphite">Real, unpadded numbers, measured on SMI&apos;s own platform.</p>
 
@@ -185,7 +185,7 @@ export default async function MemberStatsPage() {
       <div className="mt-3 grid gap-4 md:grid-cols-2">
         <section className="rounded-xl bg-white p-5 shadow-sm">
           <h3 className="font-bold text-ink">Page performance</h3>
-          <div className="mt-3"><TrendChart values={trendValues} labels={monthKeys} /></div>
+          <div className="mt-3"><TrendChart values={trendValues} labels={monthKeys} zeroIsEmpty /></div>
         </section>
         {/* Was "Story reach" — the 18 Sep direction (Gap 6) combines every kind
             of content into one figure, broken out by type (GAPS A9.2). */}

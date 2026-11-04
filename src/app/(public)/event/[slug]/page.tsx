@@ -62,9 +62,12 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
       />
       <Link href="/event" className="mt-6 inline-block text-sm text-graphite hover:text-ink">← All events</Link>
 
+      {/* Contained, not cropped (#33): covers are often posters and square
+          emblems, and object-cover in a fixed-height box cut their edges off
+          as the column widened. A neutral ground fills the letterbox. */}
       {cover && (
-        <div className="relative mt-3 h-64 overflow-hidden rounded-lg bg-graphite/10">
-          <Image src={cover} alt="" fill sizes="100vw" className="object-cover" unoptimized />
+        <div className="relative mt-3 h-56 overflow-hidden rounded-lg bg-shade sm:h-72">
+          <Image src={cover} alt="" fill sizes="(max-width: 768px) 100vw, 768px" className="object-contain" unoptimized />
         </div>
       )}
 
@@ -83,6 +86,16 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
       <h1 className="mt-1 text-2xl font-bold text-ink">{event.title}</h1>
       {event.location && <p className="mt-1 text-sm text-graphite break-words">{event.location}</p>}
 
+      {/* The booking link sits with the date and place (#33) — after the full
+          description it was ~1150px down on a phone. The bottom block keeps
+          one too, for whoever reads to the end. Not for a past event: leading
+          with a booking button above "already taken place" misleads. */}
+      {event.link && !isPast && (
+        <a href={event.link} target="_blank" rel="noopener" className="tap mt-4 inline-flex items-center rounded bg-brand px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand/90">
+          Event website →
+        </a>
+      )}
+
       {/* The page stays live after the date — these URLs were indexed for years
           on the old site. Say plainly that it has been and gone. */}
       {isPast && (
@@ -95,7 +108,7 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {event.link && (
-          <a href={event.link} target="_blank" rel="noopener" className="rounded bg-ink px-5 py-2.5 text-sm text-white">
+          <a href={event.link} target="_blank" rel="noopener" className="tap rounded bg-brand px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand/90">
             Event website →
           </a>
         )}
@@ -103,7 +116,7 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
             read that selects neither `status` nor `archived_at`, so RLS has
             already nulled the embed for a member who should not be credited. */}
         {isMemberLinkable(event.member) && (
-          <Link href={`/member/${event.member.slug}`} className="rounded border px-5 py-2.5 text-sm">
+          <Link href={`/member/${event.member.slug}`} className="tap rounded border border-line bg-white px-5 py-2.5 text-sm">
             Hosted by {event.member.name}
           </Link>
         )}

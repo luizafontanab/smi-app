@@ -13,7 +13,7 @@ export default async function NewMemberEvent(props: PageProps<"/dashboard/event/
   const db = serviceDb();
   const { data: member } = await db.from("members").select("name, slug").eq("id", user.memberId).single();
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <AddContentTabs active="event" />
       <h1 className="mt-4 text-xl font-bold text-ink">Add an event</h1>
       <p className="mt-1 text-sm text-graphite">Open days, exhibitions, launches — approved events appear on the SMI events page.</p>

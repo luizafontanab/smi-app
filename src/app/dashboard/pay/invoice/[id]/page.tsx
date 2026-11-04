@@ -62,7 +62,7 @@ export default async function PayInvoicePage(props: PageProps<"/dashboard/pay/in
   const back = invoice.advert_booking_id ? `/dashboard/advert/${invoice.advert_booking_id}` : "/dashboard/settings/billing";
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <Link href={back} className="text-sm text-graphite hover:text-ink">← Back</Link>
       <h1 className="mt-1 text-2xl font-bold text-ink">
         {invoice.status === "paid" ? "Paid — thank you" : "Pay your invoice"}

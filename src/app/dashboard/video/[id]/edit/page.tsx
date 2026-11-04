@@ -21,7 +21,7 @@ export default async function EditMemberVideo(props: PageProps<"/dashboard/video
   if (!video || !memberCanEdit("video", video, user.memberId)) notFound();
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Edit your video</h1>
       <p className="mt-1 text-sm text-graphite">
         Saving sends it back for approval{video.status === "rejected" ? "." : " — this replaces your earlier submission."}

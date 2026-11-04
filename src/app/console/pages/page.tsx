@@ -44,8 +44,14 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
     if (story && isMemberDraft(story)) entity = undefined;
   }
 
-  const [siteDefault, cookieStore, sections] = await Promise.all([defaultVariant(), cookies(), homeSectionsSetting()]);
-  const myChoice = cookieStore.get(VARIANT_COOKIE)?.value;
+  // The design card's inputs are only read while it can show (#33): with the
+  // switcher off, the settings read and the cookie would go unused.
+  const [siteDefault, cookieStore, sections] = await Promise.all([
+    THEME_SWITCHER_ENABLED ? defaultVariant() : Promise.resolve("grid" as const),
+    THEME_SWITCHER_ENABLED ? cookies() : Promise.resolve(null),
+    homeSectionsSetting(),
+  ]);
+  const myChoice = cookieStore?.get(VARIANT_COOKIE)?.value;
   const myOverride = isVariant(myChoice) && myChoice !== siteDefault ? myChoice : null;
   const VARIANT_LABEL = { forge: "Forge", grid: "Grid" } as const;
   // With the switcher off the site serves grid whatever the stored setting or

@@ -27,7 +27,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *   · It never advances when everything already fits, and the dots hide too.
  *   · Order is the caller's, used as given — never re-sorted or weighted, the
  *     same rotation rule the advert slots follow (lib/adverts.ts).
+ *
+ * Either axis (#33 C12): the caller lays the list out vertically at lg and as
+ * a sideways row below it, and this follows whichever the CSS chose — read
+ * from the scroller's computed overflow, so the breakpoint lives in one place.
+ * It never advances on a device without hover: there is nothing to pause it
+ * with, and a row sliding under a thumb mid-swipe is the bug-feeling the dots
+ * exist to prevent. Swiping and the dots still move it.
  */
+
+/** True when the CSS has laid the list out as a sideways row (below lg). */
+function sideways(el: HTMLElement): boolean {
+  return getComputedStyle(el).overflowX !== "hidden";
+}
 
 /** Dwell per slide. Long, because this is peripheral to the page's content. */
 const INTERVAL_MS = 4500;
@@ -46,25 +58,30 @@ export function FeaturedMembersCarousel({ className, count, children }: {
   // optimistically would flash a control that then vanishes.
   const [overflows, setOverflows] = useState(false);
 
-  /** Scroll offset of slide i, in the scroller's own coordinates. */
-  const topOf = (el: HTMLElement, i: number) => {
+  /** Scroll offset of slide i, in the scroller's own coordinates, on its axis. */
+  const offsetOf = (el: HTMLElement, i: number) => {
     const li = el.children[i] as HTMLElement | undefined;
-    return li ? li.offsetTop - el.offsetTop : 0;
+    if (!li) return 0;
+    return sideways(el) ? li.offsetLeft - el.offsetLeft : li.offsetTop - el.offsetTop;
   };
+  const scrollTo = (el: HTMLElement, offset: number) =>
+    el.scrollTo(sideways(el) ? { left: offset, behavior: "smooth" } : { top: offset, behavior: "smooth" });
 
   const goTo = useCallback((i: number) => {
     const el = ref.current;
     if (!el) return;
-    el.scrollTo({ top: topOf(el, i), behavior: "smooth" });
+    scrollTo(el, offsetOf(el, i));
   }, []);
 
   const advance = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    // Within a pixel of the bottom — scrollTop is fractional after a smooth
+    // Within a pixel of the end — scroll offsets are fractional after a smooth
     // scroll, so an exact comparison would miss the wrap.
-    const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-    el.scrollTo({ top: atEnd ? 0 : topOf(el, active + 1), behavior: "smooth" });
+    const atEnd = sideways(el)
+      ? el.scrollLeft + el.clientWidth >= el.scrollWidth - 1
+      : el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+    scrollTo(el, atEnd ? 0 : offsetOf(el, active + 1));
   }, [active]);
 
   // Which slide is showing, read back from the scroll position rather than
@@ -72,21 +89,24 @@ export function FeaturedMembersCarousel({ className, count, children }: {
   const onScroll = useCallback(() => {
     const el = ref.current;
     if (!el) return;
+    const at = sideways(el) ? el.scrollLeft : el.scrollTop;
     let best = 0;
     let bestDistance = Infinity;
     for (let i = 0; i < el.children.length; i++) {
-      const d = Math.abs(topOf(el, i) - el.scrollTop);
+      const d = Math.abs(offsetOf(el, i) - at);
       if (d < bestDistance) [bestDistance, best] = [d, i];
     }
     setActive(best);
   }, []);
 
   // Re-measured on resize: the panel's height comes from the grid row beside
-  // it, so three-of-eight at desktop can be all-of-three on a narrow screen.
+  // it, so three-of-eight at desktop can be all-of-three on a narrow screen —
+  // and crossing lg flips the axis.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    const measure = () =>
+      setOverflows(sideways(el) ? el.scrollWidth > el.clientWidth + 1 : el.scrollHeight > el.clientHeight + 1);
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -96,6 +116,7 @@ export function FeaturedMembersCarousel({ className, count, children }: {
   useEffect(() => {
     if (paused || !overflows) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!window.matchMedia("(hover: hover)").matches) return;
     const id = setInterval(advance, INTERVAL_MS);
     return () => clearInterval(id);
   }, [advance, paused, overflows]);
@@ -127,7 +148,8 @@ export function FeaturedMembersCarousel({ className, count, children }: {
               onClick={() => goTo(i)}
               aria-label={`Show featured member ${i + 1} of ${count}`}
               aria-current={i === active || undefined}
-              className="flex h-6 w-5 items-center justify-center"
+              // 44px tall on touch, where the dots are the only control besides a swipe
+              className="flex h-6 w-5 items-center justify-center [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-8"
             >
               <span
                 aria-hidden="true"

@@ -16,6 +16,11 @@ afterEach(() => {
   subscribeNewsletter.mockReset();
 });
 
+/** The status line the field is described by — ids are per instance now. */
+function statusOf(input: HTMLElement) {
+  return document.getElementById(input.getAttribute("aria-describedby") ?? "");
+}
+
 describe("NewsletterSignup", () => {
   it("renders an email field and a subscribe button", () => {
     subscribeNewsletter.mockResolvedValue({ message: "" });
@@ -31,7 +36,7 @@ describe("NewsletterSignup", () => {
     // nothing to announce into when the result lands.
     subscribeNewsletter.mockResolvedValue({ message: "" });
     render(<NewsletterSignup surface="footer" />);
-    const status = document.getElementById("newsletter-status");
+    const status = statusOf(screen.getByPlaceholderText("you@company.co.uk"));
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(status).toHaveClass("sr-only");
   });
@@ -58,7 +63,23 @@ describe("NewsletterSignup", () => {
 
     await waitFor(() => expect(screen.getByText("Thanks — check your inbox.")).toBeInTheDocument());
     // Visible now, so it drops sr-only and takes the emphasis class.
-    expect(document.getElementById("newsletter-status")).toHaveClass("text-xs", "font-semibold");
+    expect(statusOf(screen.getByPlaceholderText("you@company.co.uk"))).toHaveClass("text-xs", "font-semibold");
     expect(screen.getByRole("button", { name: "Subscribe" })).not.toBeDisabled();
+  });
+
+  // A page block and the footer both render this form on /pages/about; with
+  // fixed ids the second form's label and status pointed at the first (#33).
+  it("gives each form on a page its own field label and status line", () => {
+    subscribeNewsletter.mockResolvedValue({ message: "" });
+    render(<><NewsletterSignup surface="page_block" /><NewsletterSignup surface="grid_footer" /></>);
+    const fields = screen.getAllByLabelText("Email address");
+    expect(fields).toHaveLength(2);
+    expect(fields[0]).not.toBe(fields[1]);
+    const [a, b] = fields.map(statusOf);
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(a).not.toBe(b);
+    expect(a!.closest("form")).toBe(fields[0].closest("form"));
+    expect(b!.closest("form")).toBe(fields[1].closest("form"));
   });
 });

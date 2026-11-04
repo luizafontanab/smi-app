@@ -2,6 +2,7 @@ import Link from "next/link";
 import { verifyUnsubscribeToken } from "@/lib/unsubscribe";
 import { SubmitButton } from "@/components/SubmitButton";
 import { confirmUnsubscribe, requestUnsubscribe } from "./actions";
+import { AuthLogo } from "@/components/AuthLogo";
 
 export const metadata = { title: "Unsubscribe", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -43,7 +44,8 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <div className="rounded-xl bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-bold text-ink">Unsubscribe</h1>
+        <AuthLogo />
+        <h1 className="mt-4 text-xl font-bold text-ink">Unsubscribe</h1>
 
         {sp.done === "1" ? (
           <>
@@ -53,7 +55,7 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
             <p className="mt-2 text-sm text-graphite">
               Emails about your own membership — approvals, advert runs and account notices — are separate and will still be sent.
             </p>
-            <p className="mt-5 text-sm"><Link href="/" className="underline">Back to Sheet Metal Industries</Link></p>
+            <p className="mt-5 text-sm"><Link href="/" className="tap underline">Back to Sheet Metal Industries</Link></p>
           </>
         ) : sp.sent === "1" ? (
           <>

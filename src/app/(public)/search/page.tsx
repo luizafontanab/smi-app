@@ -3,6 +3,7 @@ import Link from "next/link";
 import { record, recordSearch, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
 import { searchSite } from "@/lib/queries";
+import { excerptFromHtml } from "@/lib/sanitize";
 import { Pagination } from "@/components/Pagination";
 import { StoryCard } from "@/components/StoryCard";
 
@@ -68,10 +69,19 @@ export default async function SearchPage(props: PageProps<"/search">) {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {members.map((m) => (
               <Link key={m.slug} href={`/member/${m.slug}`} className="flex items-center gap-3 rounded-lg border-2 border-brand/40 bg-white p-3 shadow-sm hover:border-brand">
-                {m.logo_path && <Image src={mediaUrl(m.logo_path)!} alt="" width={40} height={40} className="rounded" unoptimized />}
-                <div>
+                {/* A wide box with object-contain, not a 40px square: most
+                    members' logos are wordmarks, which a square squeezed to
+                    an unreadable sliver (#33 C15). */}
+                {m.logo_path && (
+                  <span className="relative h-12 w-20 shrink-0">
+                    <Image src={mediaUrl(m.logo_path)!} alt="" fill sizes="80px" className="object-contain" unoptimized />
+                  </span>
+                )}
+                <div className="min-w-0">
                   <p className="font-semibold text-ink">{m.name}</p>
-                  <p className="text-xs text-graphite line-clamp-1">{m.description}</p>
+                  {/* The description is stored as rich text — shown raw it
+                      read "<p>Welcome to…" (#33 C2). */}
+                  <p className="text-sm text-graphite line-clamp-2 sm:text-xs">{excerptFromHtml(m.description, 160)}</p>
                 </div>
               </Link>
             ))}
@@ -83,7 +93,7 @@ export default async function SearchPage(props: PageProps<"/search">) {
         <section className="mt-8">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-bold uppercase tracking-wide text-ink">Stories</h2>
-            <Link href={qs({ filter: memberOnly ? undefined : "members" })} className={`rounded border px-3 py-1.5 text-sm ${memberOnly ? "bg-brand text-ink" : "bg-white"}`}>
+            <Link href={qs({ filter: memberOnly ? undefined : "members" })} className={`tap rounded border px-3 py-1.5 text-sm ${memberOnly ? "bg-brand text-ink" : "bg-white"}`}>
               Member stories only
             </Link>
           </div>

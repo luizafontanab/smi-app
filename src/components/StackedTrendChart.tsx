@@ -2,8 +2,8 @@
  * Multi-series monthly stacked-bar chart — the categorical counterpart to
  * Sparkline.tsx's single-series shapes, for the two Month-by-month boxes that
  * need a breakdown (advert impressions by location, clicks by channel) rather
- * than a single trend line. Same hand-rolled-SVG house style as TrendChart:
- * fixed viewBox, no hover/tooltip layer (TrendChart's own "deliberately kept
+ * than a single trend line. Hand-rolled like TrendChart (HTML boxes rather
+ * than SVG since #33), no hover/tooltip layer (TrendChart's own "deliberately kept
  * simple" precedent — this app has never shipped a hover layer on a chart,
  * and a legend-plus-table-view reader can already get every value without one).
  *
@@ -13,28 +13,18 @@
  * for the three slots that sit under 3:1 contrast on white.
  */
 
+import { ChartAxis } from "@/components/ChartAxis";
+
 const SERIES_COLORS = ["var(--smi-series-1)", "var(--smi-series-2)", "var(--smi-series-3)", "var(--smi-series-4)", "var(--smi-series-5)"];
 
 export type ChartSeries = { label: string; values: number[] }; // month-aligned to `labels`, missing months already 0
-
-const MAX_BAR_WIDTH = 24; // dataviz skill mark spec: bars <=24px thick, never fill the slot
-const SEGMENT_GAP = 2; // dataviz skill spacer spec: 2px surface gap between touching marks
-const CAP_RADIUS = 4; // dataviz skill mark spec: 4px rounded data-end, square at the baseline
 
 export function StackedTrendChart({ labels, series, height = 140 }: { labels: string[]; series: ChartSeries[]; height?: number }) {
   const totals = series.map((s) => s.values.reduce((a, b) => a + b, 0));
   if (labels.length < 2 || totals.every((t) => t === 0)) return <p className="text-sm text-graphite">Not enough data yet.</p>;
 
-  const width = 600;
-  const pad = 8;
-  const innerWidth = width - pad * 2;
-  const plotHeight = height - pad * 2;
-  const barSlot = innerWidth / labels.length;
-  const barWidth = Math.min(MAX_BAR_WIDTH, barSlot);
-
   const stackedTotals = labels.map((_, i) => series.reduce((sum, s) => sum + (s.values[i] ?? 0), 0));
   const max = Math.max(...stackedTotals, 1);
-  const baselineY = height - pad;
 
   const legendEntries = series
     .map((s, i) => ({ ...s, color: SERIES_COLORS[i % SERIES_COLORS.length] }))
@@ -42,38 +32,38 @@ export function StackedTrendChart({ labels, series, height = 140 }: { labels: st
 
   const ariaLabel = `${labels[0]} to ${labels.at(-1)} — ${series.map((s, i) => `${s.label} ${totals[i].toLocaleString()}`).join(", ")}`;
 
+  // Bars are HTML boxes sized in percent, not an SVG stretched with
+  // preserveAspectRatio="none": the 600-unit drawing was squeezed to ~310px on
+  // a phone and the rounded bar tops distorted (#33 M11). One slot per month,
+  // shared with ChartAxis below so each label sits under its bar. Mark specs
+  // from the dataviz skill: bars <=24px and never filling the slot, a 2px gap
+  // between stacked segments, a 4px rounded data-end only on the top segment.
   return (
     <div>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label={ariaLabel} preserveAspectRatio="none">
-        <line x1={pad} y1={baselineY} x2={width - pad} y2={baselineY} stroke="var(--smi-line)" strokeWidth={1} />
-        {labels.map((_, i) => {
-          const x = pad + i * barSlot + (barSlot - barWidth) / 2;
-          const segments = series
-            .map((s, si) => ({ value: s.values[i] ?? 0, color: SERIES_COLORS[si % SERIES_COLORS.length] }))
-            .filter((seg) => seg.value > 0);
-          const topIndex = segments.length - 1;
-          let y = baselineY;
-          return (
-            <g key={i}>
-              {segments.map((seg, si) => {
-                const h = (seg.value / max) * plotHeight;
-                y -= h;
-                const segY = y;
-                y -= SEGMENT_GAP;
-                if (si !== topIndex) return <rect key={si} x={x} y={segY} width={barWidth} height={h} fill={seg.color} />;
-                // Topmost segment only: rounded data-end, square everywhere it touches a neighbor or the baseline.
-                const r = Math.min(CAP_RADIUS, barWidth / 2, h);
-                return (
-                  <g key={si}>
-                    <rect x={x} y={segY} width={barWidth} height={h} rx={r} fill={seg.color} />
-                    <rect x={x} y={segY + r} width={barWidth} height={Math.max(h - r, 0)} fill={seg.color} />
-                  </g>
-                );
-              })}
-            </g>
-          );
-        })}
-      </svg>
+      <div role="img" aria-label={ariaLabel} className="relative border-b border-line pt-5" style={{ height }}>
+        {/* the peak, so a bar's height means something */}
+        <span aria-hidden className="absolute left-0 top-0 text-xs text-graphite">{max.toLocaleString("en-GB")}</span>
+        <span aria-hidden className="absolute inset-x-0 top-5 border-t border-dashed border-line" />
+        <div className="relative flex h-full">
+          {labels.map((label, i) => {
+            const segments = series
+              .map((s, si) => ({ value: s.values[i] ?? 0, color: SERIES_COLORS[si % SERIES_COLORS.length] }))
+              .filter((seg) => seg.value > 0);
+            return (
+              <div key={label} className="flex h-full min-w-0 flex-1 flex-col-reverse items-center gap-[2px]">
+                {segments.map((seg, si) => (
+                  <div
+                    key={si}
+                    className={`w-3/5 max-w-6 shrink-0 ${si === segments.length - 1 ? "rounded-t" : ""}`}
+                    style={{ height: `calc(${(seg.value / max) * 100}% - ${si === 0 ? 0 : 2}px)`, background: seg.color }}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <ChartAxis labels={labels} />
       {legendEntries.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-graphite">
           {legendEntries.map((s) => (

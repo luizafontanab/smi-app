@@ -15,7 +15,7 @@ export default async function NewMemberStory(props: PageProps<"/dashboard/story/
     serviceDb().from("members").select("name, slug, logo_path").eq("id", user.memberId).single(),
   ]);
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <AddContentTabs active="story" />
       <h1 className="mt-4 text-xl font-bold text-ink">Add a story</h1>
       <p className="mt-1 text-sm text-graphite">

@@ -25,19 +25,21 @@ export default defineConfig({
     // The existing suite is written for desktop interactions (hover, drag) —
     // keep it there, and give the mobile project its own smoke spec rather
     // than running everything twice under emulation.
-    { name: "desktop", testIgnore: /mobile\.spec\.ts/ },
+    { name: "desktop", testIgnore: /mobile(\.[a-z-]+)?\.spec\.ts/ },
     // Chromium device emulation — no extra browser install. Catches the
     // console-table overflow and mobile-nav class of regression.
     {
       name: "mobile",
-      testMatch: /mobile\.spec\.ts/,
+      testMatch: /mobile(\.[a-z-]+)?\.spec\.ts/,
       use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
     },
-    // #33: 768 is a real target, not a spot check — the header is still the
+    // #33: mobile.spec.ts plus one mobile.<area>.spec.ts per surface, so
+    // phone/tablet checks can grow by area without one file owning them all.
+    // 768 is a real target, not a spot check — the header is still the
     // drawer here (below lg) while card grids have stepped up from one column.
     {
       name: "tablet",
-      testMatch: /mobile\.spec\.ts/,
+      testMatch: /mobile(\.[a-z-]+)?\.spec\.ts/,
       use: { viewport: { width: 768, height: 1024 }, isMobile: true, hasTouch: true },
     },
   ],

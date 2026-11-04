@@ -49,4 +49,10 @@ describe("CookieConsent", () => {
     fireEvent.click(screen.getByRole("button", { name: "Essential only" }));
     expect(document.cookie).toContain(`${CONSENT_COOKIE}=essential`);
   });
+
+  it("links to the cookie policy", async () => {
+    render(<CookieConsent />);
+    await flushMountTimer();
+    expect(screen.getByRole("link", { name: "Cookie policy" })).toHaveAttribute("href", "/pages/policies");
+  });
 });

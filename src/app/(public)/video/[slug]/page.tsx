@@ -5,7 +5,8 @@ import { newsletterClick, record, requestContext } from "@/lib/analytics";
 import { youtubeId } from "@/lib/hero";
 import { breadcrumbLd, stripTags, videoLd } from "@/lib/jsonld";
 import { isMemberLinkable } from "@/lib/member-visibility";
-import { videoBySlug } from "@/lib/queries";
+import { latestVideos, videoBySlug } from "@/lib/queries";
+import { VideoCard } from "@/components/cards";
 import { JsonLd } from "@/components/JsonLd";
 import { RichText } from "@/components/RichText";
 import { ShareButtons } from "@/components/ShareButtons";
@@ -35,8 +36,16 @@ const fmt = (iso: string | null) =>
 export default async function VideoPage(props: PageProps<"/video/[slug]">) {
   const { slug } = await props.params;
   const sp = await props.searchParams;
-  const [video, ctx, issue] = await Promise.all([videoBySlug(slug), requestContext(), issueFromLink(newsletterLinkParams(sp))]);
+  // Five latest, so four remain once this one is left out — the "More videos"
+  // row below (#33 C14).
+  const [video, ctx, issue, latest] = await Promise.all([
+    videoBySlug(slug),
+    requestContext(),
+    issueFromLink(newsletterLinkParams(sp)),
+    latestVideos(5),
+  ]);
   if (!video) notFound();
+  const more = latest.filter((v) => v.id !== video.id).slice(0, 4);
   // The newsletter issue rides on the page_view only, so a video counts once in the issue's report.
   // From a newsletter link it counts without consent too, anonymously (lib/analytics newsletterClick).
   record([{ kind: "page_view", path: `/video/${slug}`, newsletter_issue_id: issue?.id ?? null, ...newsletterClick(ctx, newsletterLinkParams(sp).src) }]);
@@ -66,7 +75,10 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
           ]),
         ]}
       />
-      <Link href="/video" className="mt-6 inline-block text-sm text-graphite hover:text-ink">← All videos</Link>
+      {/* tap: a 20px-tall text link was the only way back on a phone (#33 C16) */}
+      <div className="mt-6">
+        <Link href="/video" className="tap text-sm text-graphite hover:text-ink">← All videos</Link>
+      </div>
 
       {/* youtube-nocookie so an embed does not set advertising cookies before the
           visitor has answered the consent banner. frame-src in next.config.ts
@@ -101,6 +113,25 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
       {video.description && <RichText html={video.description} className="mt-4 text-ink" />}
 
       <ShareButtons />
+
+      {/* The page used to end at the share buttons and run straight into the
+          footer — a dead end on a phone (#33 C14). Two cards below sm, so the
+          row doesn't become a second page of its own. */}
+      {more.length > 0 && (
+        <section className="mt-10">
+          <div className="mb-3 flex items-baseline justify-between gap-4">
+            <h2 className="text-lg font-bold uppercase tracking-wide text-ink">More videos</h2>
+            <Link href="/video" className="tap text-sm text-graphite hover:underline">See all →</Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {more.map((v, i) => (
+              <div key={v.id} className={i >= 2 ? "hidden sm:block" : undefined}>
+                <VideoCard video={v} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="my-10" />
     </div>
   );

@@ -25,13 +25,19 @@ export default async function AdvertisingPage() {
       <p className="mt-2 max-w-2xl text-sm text-graphite">
         Reach the UK sheet metal, fabrication and welding trade. Rotation is deliberate: no one can buy position, so every advertiser gets equal visibility.
       </p>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      {/* Phones only: the formats stack into a long column, which put the
+          page's one conversion — the media-pack form — about 1.5 screens down.
+          This gets there from the first screen (#33). */}
+      <a href="#media-pack" className="mt-4 flex min-h-11 w-full items-center justify-center rounded bg-brand px-4 font-semibold text-ink sm:hidden">
+        {packUrl ? "Get the media pack" : "Request the media pack"}
+      </a>
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 sm:gap-4">
         {FORMATS.map((f) => {
           const example = mediaUrl(f.example_path ?? null);
           return (
-            <div key={f.key} className="rounded-lg bg-white p-5 shadow-sm">
+            <div key={f.key} className="rounded-lg bg-white p-4 shadow-sm sm:p-5">
               <p className="text-xs font-bold uppercase text-brand-text">Format {f.key}</p>
-              <h2 className="mt-1 font-bold">{f.name}</h2>
+              <h2 className="mt-1 text-base font-bold">{f.name}</h2>
               <p className="mt-1 text-sm text-graphite">{f.detail}</p>
               {example && (
                 <Image
@@ -47,7 +53,7 @@ export default async function AdvertisingPage() {
           );
         })}
       </div>
-      <div className="mt-8 rounded-lg bg-white p-6 shadow-sm">
+      <div className="mt-6 rounded-lg bg-white p-4 shadow-sm sm:mt-8 sm:p-6">
         <h2 className="font-bold text-ink">Bundles</h2>
         <p className="mt-1 text-sm text-graphite">
           Most advertisers combine formats — a sitewide banner alongside a newsletter slot, or a Featured Member spot with
@@ -56,7 +62,7 @@ export default async function AdvertisingPage() {
           below.
         </p>
       </div>
-      <div className="mt-8 rounded-lg bg-white p-6 shadow-sm">
+      <div id="media-pack" className="mt-8 scroll-mt-20 rounded-lg bg-white p-6 shadow-sm">
         <h2 className="font-bold text-ink">{packUrl ? "Media pack" : "Request the media pack"}</h2>
         {packUrl ? (
           <>

@@ -109,7 +109,10 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           <Image src={hero} alt="" fill sizes="100vw" className="object-cover" unoptimized />
         </div>
       )}
-      <header className={`relative z-10 ${hero ? "rounded-b-xl" : "mt-6 rounded-xl"} flex flex-wrap items-center gap-5 bg-white p-6 shadow-sm`}>
+      {/* Stacked on phones (#33): beside a 112px logo the name, address and
+          services had ~178px, so the address ran to five lines. Stacked, the
+          -mt-16 pull also lands the logo in the hero as intended. */}
+      <header className={`relative z-10 ${hero ? "rounded-b-xl" : "mt-6 rounded-xl"} flex flex-col items-start gap-4 bg-white p-5 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-5 sm:p-6`}>
         {/* Logo overlaps up into the hero (a -mt-16 pull, plus relative z-10 on
             the header so it explicitly wins the stacking order rather than
             relying on DOM-order paint order — that was fragile enough to
@@ -128,9 +131,9 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
             <div className="flex h-28 w-28 items-center justify-center rounded-xl border-4 border-white bg-graphite/10 text-4xl text-graphite/30 shadow-md">⚙</div>
           ) : null}
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="w-full min-w-0 sm:w-auto sm:flex-1">
           <p className="text-xs uppercase tracking-widest text-brand-text">SMI Member{industryName ? ` · ${industryName}` : ""}</p>
-          <h1 className="text-2xl font-bold text-ink">{member.name}</h1>
+          <h1 className="break-words text-2xl font-bold text-ink">{member.name}</h1>
           <p className="text-sm text-graphite">{member.address}</p>
           {member.services.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">

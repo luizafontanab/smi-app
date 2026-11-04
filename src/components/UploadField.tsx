@@ -166,6 +166,13 @@ export function UploadStatus({ name, upload }: { name: string; upload: ReturnTyp
   );
 }
 
+/**
+ * The browser's own "Choose File" button, styled as a real button: bare it was
+ * a ~20px-tall unstyled target (#33 M8). 44px tall on touch screens.
+ */
+export const FILE_BUTTON =
+  "file:mr-3 file:cursor-pointer file:rounded file:border file:border-solid file:border-line file:bg-shade file:px-3 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-line [@media(pointer:coarse)]:file:min-h-11";
+
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "name" | "children"> & {
   name: string;
   /** What the field takes — the same rules the action applies (lib/upload-limits). Default "image". */
@@ -177,13 +184,14 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "name" | "chil
  * look (it renders that input), uploading directly once JavaScript is up. The
  * action reads it with submittedFile(formData, name, owner).
  */
-export function UploadField({ name, kind = "image", onChange, ...input }: Props) {
+export function UploadField({ name, kind = "image", onChange, className, ...input }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const upload = useStagedUpload({ inputRef, name, kind });
   return (
     <>
       <input
         {...input}
+        className={`${FILE_BUTTON} ${className ?? ""}`}
         ref={inputRef}
         type="file"
         name={upload.enhanced ? undefined : name}

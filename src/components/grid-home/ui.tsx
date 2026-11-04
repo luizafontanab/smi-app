@@ -25,15 +25,19 @@ import type { SVGProps } from "react";
 export function Chip({ children, as = "h2" }: { children: React.ReactNode; as?: "h2" | "p" }) {
   const Tag = as;
   return (
-    <Tag className="inline-block bg-brand px-2.5 py-1 font-sans text-[11px] font-extrabold uppercase tracking-[0.12em] text-ink">
+    <Tag className="inline-block bg-brand px-2.5 py-1 font-sans text-xs font-extrabold sm:text-[11px] uppercase tracking-[0.12em] text-ink">
       {children}
     </Tag>
   );
 }
 
-/** The small orange category label above a card's headline. */
+/**
+ * The small orange category label above a card's headline. Labels and meta
+ * step up to 12px below sm (#33 C4) — 11px on a full-width phone card was the
+ * "text seems small" complaint.
+ */
 export function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-brand-text">{children}</p>;
+  return <p className="text-xs sm:text-[11px] font-bold uppercase tracking-[0.1em] text-brand-text">{children}</p>;
 }
 
 /**
@@ -94,7 +98,7 @@ export function BtnBrand({ href, children }: { href: string; children: React.Rea
 /** "More →" link in a section head, beside a Chip. */
 export function MoreLink({ href, children = "See all" }: { href: string; children?: React.ReactNode }) {
   return (
-    <Link href={href} className="shrink-0 text-xs font-semibold text-brand-text hover:underline">
+    <Link href={href} className="tap shrink-0 text-xs font-semibold text-brand-text hover:underline">
       {children} <span aria-hidden="true">→</span>
     </Link>
   );
@@ -137,7 +141,7 @@ function IconPerson(props: SVGProps<SVGSVGElement>) {
 export function Meta({ date, by, className = "" }: { date?: string | null; by?: string | null; className?: string }) {
   if (!date && !by) return null;
   return (
-    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-semibold text-brand-text ${className}`}>
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-brand-text sm:text-[11px] ${className}`}>
       {by && (
         <span className="inline-flex items-center gap-1.5">
           <IconPerson width={13} height={13} />

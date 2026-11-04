@@ -63,6 +63,9 @@ const TONES = {
   },
 } as const;
 
+/** The 44px touch floor for links that are responsive-hidden (see globals.css .tap). */
+const COARSE_TAP = "items-center [@media(pointer:coarse)]:min-h-11";
+
 export type HeaderTone = keyof typeof TONES;
 
 /** Session comes from the public layout — this stays presentational. */
@@ -74,32 +77,40 @@ export function SiteHeader({ user, unread = 0, tone = "dark" }: { user: CurrentU
     <header className={t.header}>
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
         {/* The supplied wide mark is orange + white; "light" is the same
-            artwork with its wordmark path in ink, for a pale bar. */}
-        <Link href="/"><Wordmark tone={tone} /></Link>
-        <nav className="flex items-center gap-1 text-sm">
-          {/* Below lg, MobileNav's drawer already carries every one of these
-              links (including Search) — showing both would crowd a phone-
-              width header for no reason. */}
-          <MediaMenu label="Media" items={MEDIA_ITEMS} tone={tone} />
+            artwork with its wordmark path in ink, for a pale bar.
+            shrink-0: the mark keeps its natural size at every width — the
+            nav gives way instead (#33: it was squeezed to 136px at 360). */}
+        <Link href="/" className="shrink-0"><Wordmark tone={tone} /></Link>
+        <nav className="flex min-w-0 items-center gap-1 whitespace-nowrap text-sm">
+          {/* MobileNav's drawer carries every one of these links (including
+              Search) below lg, so the bar only shows what fits beside the
+              mark at each width (#33): just the menu button on a phone, the
+              member CTAs from sm, Media from md — the site's content leads —
+              and the full set from lg. Responsive-hidden items can't take
+              `tap` (its :not(.hidden) guard), hence COARSE_TAP. */}
+          {/* At md, Media is near the bar's right end, so its popup opens leftward. */}
+          <MediaMenu label="Media" items={MEDIA_ITEMS} className="hidden md:block" align="right-0 lg:left-0 lg:right-auto" tone={tone} />
           {/* The dropdown's Join entry is navigation; the logged-out
               "Become a Member" CTA below stays as the call to action. */}
-          <MediaMenu label="Members" items={MEMBERS_ITEMS} className="hidden sm:block" tone={tone} />
-          <Link href="/featured-machine" className={`tap hidden rounded px-3 py-2 md:block ${t.hover}`}>Featured Machine</Link>
-          <Link href="/event" className={`tap hidden rounded px-3 py-2 md:block ${t.hover}`}>Events</Link>
-          <Link href="/search" className={`tap hidden rounded px-3 py-2 lg:block ${t.hover}`} aria-label="Search">
+          <MediaMenu label="Members" items={MEMBERS_ITEMS} className="hidden lg:block" tone={tone} />
+          <Link href="/featured-machine" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`}>Featured Machine</Link>
+          <Link href="/event" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`}>Events</Link>
+          <Link href="/search" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`} aria-label="Search">
             <IconSearch width={18} height={18} />
           </Link>
-          <MobileNav user={user} accountLinks={links} signOutAction={signOut} triggerClassName={t.hover} />
           {user ? (
             <AccountMenu name={name} links={links} signOutAction={signOut} unread={unread} />
           ) : (
             <>
-              <Link href="/join" className="tap rounded bg-brand px-3 py-2 font-semibold text-ink hover:brightness-110">
+              {/* Below sm both live at the foot of the drawer instead. */}
+              <Link href="/join" className={`hidden rounded bg-brand px-3 py-2 font-semibold text-ink hover:brightness-110 sm:inline-flex ${COARSE_TAP}`}>
                 Become a Member
               </Link>
-              <Link href="/dashboard" className={`tap rounded border px-3 py-2 ${t.login}`}>Login</Link>
+              <Link href="/dashboard" className={`hidden rounded border px-3 py-2 sm:inline-flex ${COARSE_TAP} ${t.login}`}>Login</Link>
             </>
           )}
+          {/* Last, so the menu button sits at the bar's right edge (#33). */}
+          <MobileNav user={user} accountLinks={links} signOutAction={signOut} triggerClassName={t.hover} />
         </nav>
       </div>
     </header>

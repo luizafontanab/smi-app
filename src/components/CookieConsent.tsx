@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { CONSENT_COOKIE } from "@/lib/consent";
 
 export function CookieConsent() {
@@ -17,9 +18,18 @@ export function CookieConsent() {
     // A non-modal banner on purpose: no focus trap or focus steal — reading
     // must stay uninterrupted. The region role + label give screen readers a
     // way to find and name it from the landmark list.
-    <div role="region" aria-label="Cookie consent" className="fixed inset-x-0 bottom-0 z-50 border-t bg-white p-4 shadow-lg">
+    //
+    // Sticky, not fixed (#33): it is the public layout's last child, so it
+    // pins to the bottom of the screen while there is page below, but also
+    // takes up its own room at the very end — the footer and a form's last
+    // button can always be scrolled clear of it instead of hiding under it.
+    <div role="region" aria-label="Cookie consent" className="sticky inset-x-0 bottom-0 z-50 border-t bg-white p-4 shadow-lg">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 text-sm">
-        <p>We use cookies for anonymous readership stats that help our members see who&apos;s engaging.</p>
+        <p>
+          We use cookies for anonymous readership stats that help our members see who&apos;s engaging.{" "}
+          {/* The cookie policy is a section of the Policies page. */}
+          <Link href="/pages/policies" className="font-semibold underline underline-offset-2">Cookie policy</Link>
+        </p>
         <div className="flex gap-2">
           <button onClick={() => choose("essential")} className="tap rounded border px-3 py-1.5">Essential only</button>
           <button onClick={() => choose("all")} className="tap rounded bg-ink px-3 py-1.5 text-white">Accept</button>

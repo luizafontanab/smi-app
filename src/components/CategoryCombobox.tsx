@@ -145,7 +145,8 @@ export function CategoryCombobox({
             }}
             onKeyDown={onInputKeyDown}
             placeholder="Type to filter…"
-            className="w-full rounded border px-2.5 py-1.5 text-sm"
+            // 16px on phones so iOS doesn't zoom the page on focus (#33)
+            className="w-full rounded border px-2.5 py-1.5 text-base sm:text-sm"
           />
           {matches.length > 0 ? (
             <ul ref={listRef} id={listId} role="listbox" aria-label="Member categories" className="mt-1.5 max-h-72 overflow-y-auto">

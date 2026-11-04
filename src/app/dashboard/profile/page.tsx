@@ -39,7 +39,7 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
   const error = typeof sp.error === "string" ? sp.error : null;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="max-w-4xl lg:mx-auto">
       {isDraft && <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-brand-text">Step 3 of 4</p>}
       <h1 className="mt-1 text-xl font-bold text-ink">{isDraft ? "Build your company page" : "Update your page"}</h1>
       {isDraft ? (
@@ -51,7 +51,7 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
       )}
       {error && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
 
-      <form action={submitProfileEdit} className="mt-5 rounded-xl bg-white p-6 shadow-sm">
+      <form action={submitProfileEdit} className="mt-5 rounded-xl bg-white p-4 shadow-sm sm:p-6">
         <UnsavedChangesGuard />
         <CompanyPageForm
           mode="member"
@@ -64,9 +64,17 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
           logoUrl={mediaUrl(m.logo_path)}
           heroUrl={mediaUrl(m.hero_path)}
         />
-        <button className="mt-4 rounded bg-ink px-5 py-2.5 text-white">
-          {isDraft ? "Submit page for approval" : "Submit changes"}
-        </button>
+        {/* Sticky to the bottom of the screen while the form is in view: on a
+            phone the form is ~3,000px and the only submit sat at the very end
+            (#33 M17). One form, one action — the bar just keeps it in reach. */}
+        <div className="sticky bottom-0 z-10 -mx-4 -mb-4 mt-6 sm:-mx-6 sm:-mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-b-xl border-t bg-white/95 px-4 py-3 sm:px-6 backdrop-blur">
+          <p className="text-xs text-graphite">
+            {isDraft ? "Sent to Jas for review." : "Changes go live after a quick editorial check."}
+          </p>
+          <button className="rounded bg-ink px-5 py-2.5 text-white">
+            {isDraft ? "Submit page for approval" : "Submit changes"}
+          </button>
+        </div>
       </form>
     </div>
   );

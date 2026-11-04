@@ -120,7 +120,8 @@ function ToolbarButton({ label, title, active, pressed, onRun, disabled }: {
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault() /* keep editor selection/focus */}
       onClick={onRun}
-      className={`rounded px-2 py-1 text-sm ${active ? "bg-ink text-white" : "bg-shade text-ink hover:bg-line"} disabled:opacity-40`}
+      // 40px square on touch screens — the bare buttons were ~28×20px (#33 M9).
+      className={`rounded px-2 py-1 text-sm [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10 ${active ? "bg-ink text-white" : "bg-shade text-ink hover:bg-line"} disabled:opacity-40`}
     >
       {label}
     </button>
@@ -287,7 +288,10 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
 
   return (
     <div ref={rootRef} className="mt-1">
-      <div className="flex flex-wrap gap-1 rounded-t border bg-shade p-1.5">
+      {/* Sticky within the editor, so the formatting buttons stay in reach
+          while typing a long body instead of scrolling away (#33 M9). Neither
+          the member nor the console header is sticky, so top-0 is clear. */}
+      <div className="sticky top-0 z-10 flex flex-wrap gap-1 rounded-t border bg-shade p-1.5">
         <ToolbarButton label="B" title="Bold" active={editor.isActive("bold")} onRun={() => editor.chain().focus().toggleBold().run()} />
         <ToolbarButton label="I" title="Italic" active={editor.isActive("italic")} onRun={() => editor.chain().focus().toggleItalic().run()} />
         <ToolbarButton label="H2" title="Heading" active={editor.isActive("heading", { level: 2 })} onRun={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />

@@ -56,7 +56,7 @@ export default async function AdvertisingAssetsPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Your advertising assets</h1>
       <p className="mt-1 text-sm text-graphite">Every piece of artwork and every equipment listing you&apos;ve given us, and where each one stands.</p>
       <AdvertisingTabs active="assets" />
@@ -73,8 +73,8 @@ export default async function AdvertisingAssetsPage() {
             const thumb = mediaUrl(a.desktop_path) ?? mediaUrl(a.mobile_path);
             const runs = [...(a.bookings ?? [])].sort((x, y) => y.starts_on.localeCompare(x.starts_on));
             return (
-              <li key={a.id} className="mt-3 flex gap-4 border-t pt-3">
-                <div className="h-14 w-24 shrink-0 overflow-hidden rounded bg-graphite/10">
+              <li key={a.id} className="mt-3 flex gap-3 border-t pt-3 sm:gap-4">
+                <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-graphite/10 sm:h-14 sm:w-24">
                   {thumb && <Image src={thumb} alt="" width={96} height={56} className="h-full w-full object-contain" unoptimized />}
                 </div>
                 <div className="min-w-0 text-sm">
@@ -91,11 +91,13 @@ export default async function AdvertisingAssetsPage() {
                         const phase = bookingPhase(b, today);
                         const p = MEMBER_ADVERT_PHASE[phase];
                         return (
+                          // Dates never break mid-date; on phones the status takes its own line (#33 M14).
                           <li key={b.id}>
-                            <Link href={`/dashboard/advert/${b.id}`} className="hover:underline">
+                            <Link href={`/dashboard/advert/${b.id}`} className="whitespace-nowrap hover:underline">
                               {b.starts_on} → {b.ends_on}
-                            </Link>{" "}
-                            — <span className={p.className}>{p.label}{phase === "changes_needed" && b.review_reason && `: ${b.review_reason}`}</span>
+                            </Link>
+                            <span className="hidden sm:inline"> — </span>
+                            <span className={`block sm:inline ${p.className}`}>{p.label}{phase === "changes_needed" && b.review_reason && `: ${b.review_reason}`}</span>
                           </li>
                         );
                       })}
@@ -120,8 +122,8 @@ export default async function AdvertisingAssetsPage() {
             const s = MACHINE_STATUS[m.status] ?? { label: m.status, className: "text-graphite" };
             const photo = mediaUrl(m.image_path);
             return (
-              <li key={m.id} className="mt-3 flex gap-4 border-t pt-3">
-                <div className="h-14 w-24 shrink-0 overflow-hidden rounded bg-graphite/10">
+              <li key={m.id} className="mt-3 flex gap-3 border-t pt-3 sm:gap-4">
+                <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-graphite/10 sm:h-14 sm:w-24">
                   {photo && <Image src={photo} alt="" width={96} height={56} className="h-full w-full object-cover" unoptimized />}
                 </div>
                 <div className="min-w-0 text-sm">
@@ -131,7 +133,7 @@ export default async function AdvertisingAssetsPage() {
                     <span className="text-graphite"> · {m.video_url ? "with video" : "no video"}</span>
                   </p>
                   {MACHINE_EDITABLE.has(m.status) && (
-                    <Link href={`/dashboard/equipment/${m.id}/edit`} className="text-xs underline">Edit</Link>
+                    <Link href={`/dashboard/equipment/${m.id}/edit`} className="tap text-sm underline sm:text-xs">Edit</Link>
                   )}
                 </div>
               </li>

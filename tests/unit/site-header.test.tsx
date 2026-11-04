@@ -38,7 +38,7 @@ describe("light tone (grid design)", () => {
     expect(screen.getByRole("link", { name: "Login" })).toBeInTheDocument();
   });
 
-  // The bar's own controls only — the mobile drawer stays near-black on both.
+  // The bar's own controls only — the mobile drawer has its own (light) palette.
   it("keeps near-black hovers off the light bar", () => {
     render(<SiteHeader user={null} tone="light" />);
     for (const el of [

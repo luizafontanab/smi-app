@@ -29,6 +29,8 @@ const MAX_PER_DAY = 3;
 
 const navLink = "tap rounded border px-2.5 py-1 text-sm text-graphite hover:border-ink hover:text-ink";
 
+const styleFor = (type: string | null | undefined) => (type && type in TYPE_STYLE ? TYPE_STYLE[type as EventType] : UNTYPED_STYLE);
+
 const longDate = (d: Date) => d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
 export function EventsCalendar({ month, events, hrefForMonth }: {
@@ -40,6 +42,14 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
   const { days } = monthGrid(month);
   const today = dayKey(new Date());
   const byDay = bucketEventsByDay(events);
+  // The phone agenda: only this month's days that have something on, in order.
+  const agenda = days
+    .filter((day) => day.getMonth() === month.getMonth())
+    .flatMap((day) => {
+      const key = dayKey(day);
+      const dayEvents = byDay.get(key) ?? [];
+      return dayEvents.length ? [[key, day, dayEvents] as const] : [];
+    });
 
   return (
     <div>
@@ -63,9 +73,42 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
         </span>
       </p>
 
+      {/* Phones get the month as an agenda instead of the grid (#33): seven
+          ~48px columns truncated every title to two letters, and a title
+          attribute is no help without hover. */}
+      <div className="mt-3 rounded-xl bg-white shadow-sm sm:hidden">
+        {agenda.length === 0 ? (
+          <p className="p-4 text-sm text-graphite">No events this month.</p>
+        ) : (
+          <ol className="divide-y divide-line">
+            {agenda.map(([key, day, dayEvents]) => (
+              <li key={key} className={`flex gap-3 px-4 py-3 ${key === today ? "bg-brand/10" : ""}`}>
+                <div className="w-12 shrink-0 text-center leading-tight">
+                  <p className="text-xs font-semibold uppercase text-graphite">{day.toLocaleDateString("en-GB", { weekday: "short" })}</p>
+                  <p className="text-xl font-bold text-ink">{day.getDate()}</p>
+                  <span className="sr-only">{longDate(day)}{key === today ? " (today)" : ""}</span>
+                </div>
+                <ul className="min-w-0 flex-1 space-y-1.5">
+                  {dayEvents.map((event) => (
+                    <li key={event.slug}>
+                      {/* min-h-11, not .tap: the unlayered .tap rule would
+                          make this full-width row an inline-flex chip. */}
+                      <Link href={`/event/${event.slug}`} className={`flex min-h-11 items-baseline gap-2 rounded px-2.5 py-2.5 text-sm ${styleFor(event.type).chip}`}>
+                        {event.starts_time && <span className="shrink-0 tabular-nums opacity-80">{event.starts_time.slice(0, 5)}</span>}
+                        <span className="min-w-0 break-words font-medium">{event.title}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
       {/* No min-width: the calendar can render at any column width — chips
           truncate, colour + the title attr carry the rest. */}
-      <div className="mt-3 rounded-xl bg-white p-3 shadow-sm">
+      <div className="mt-3 hidden rounded-xl bg-white p-3 shadow-sm sm:block">
         <div>
           <div className="grid grid-cols-7 gap-px">
             {WEEKDAYS.map((d, i) => (
@@ -94,7 +137,7 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
                       an opacity wrapper here dims 12px chip text below WCAG AA. */}
                   <div className="mt-1 space-y-1">
                     {dayEvents.slice(0, MAX_PER_DAY).map((event) => {
-                      const style = event.type && event.type in TYPE_STYLE ? TYPE_STYLE[event.type as EventType] : UNTYPED_STYLE;
+                      const style = styleFor(event.type);
                       return (
                         <Link
                           key={event.slug}

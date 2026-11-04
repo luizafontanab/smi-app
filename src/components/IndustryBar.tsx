@@ -12,13 +12,15 @@ import { Fragment } from "react";
  * without the weight of a dark strip.
  *
  * Jas's ten names (12 Oct 2026) are too long for one row at desktop width, so
- * from `lg` up the strip is two centred rows of roughly equal width, rather
- * than hiding the last few off-screen behind a scroll with no affordance. Two
- * don't fit on a tablet, so `md` gets three balanced rows instead of two plus
- * a straggler. The "Industries" label goes at those sizes: in front of the
- * first row it would push that row off centre, and the nav keeps its
- * aria-label. Phones keep the single scrolling row: ten wrapped names would
- * stack four or five lines deep.
+ * from `lg` up the strip is two centred rows of roughly equal width. The
+ * "Industries" label goes there: in front of the first row it would push that
+ * row off centre, and the nav keeps its aria-label.
+ *
+ * Below lg it is one scrolling row. Tablets used to get three wrapped rows,
+ * but at 44px touch height each that was 137px of strip before any content
+ * (#33), so they scroll like phones now. The right edge fades out while
+ * there is more to scroll to — the only hint otherwise was a name cut off at
+ * the edge — and trailing padding lets the last name scroll clear of the fade.
  */
 const TONES = {
   dark: {
@@ -65,16 +67,14 @@ export function IndustryBar({ industries, tone = "dark" }: {
   const t = TONES[tone];
   const names = industries.map((c) => c.name);
   const twoRows = new Set(balancedBreaks(names, 2));
-  const threeRows = new Set(balancedBreaks(names, 3));
   return (
     <nav aria-label="Industries" className={t.bar}>
-      <div className="mx-auto flex max-w-6xl items-center gap-x-1 overflow-x-auto px-4 md:flex-wrap md:justify-center md:overflow-visible md:py-0.5">
-        <span className={`hidden shrink-0 pr-2 text-[11px] uppercase tracking-wide sm:block md:hidden ${t.label}`}>Industries</span>
+      <div className="mx-auto flex max-w-6xl items-center gap-x-1 overflow-x-auto px-4 pr-10 [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] lg:flex-wrap lg:justify-center lg:overflow-visible lg:py-0.5 lg:pr-4 lg:[mask-image:none]">
+        <span className={`hidden shrink-0 pr-2 text-[11px] uppercase tracking-wide sm:block lg:hidden ${t.label}`}>Industries</span>
         {industries.map((c, i) => (
           <Fragment key={c.slug}>
-            {/* Zero-height full-width items: the row breaks — three rows on a
-                tablet, two from lg up, none on a phone. */}
-            {threeRows.has(i) && <span aria-hidden className="hidden basis-full md:block lg:hidden" />}
+            {/* Zero-height full-width items: the row breaks — two from lg
+                up, none below. */}
             {twoRows.has(i) && <span aria-hidden className="hidden basis-full lg:block" />}
             <Link
               href={`/industry/${c.slug}`}

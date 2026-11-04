@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { buildCloud, CARD_H, type CloudItem } from "@/lib/cloud-layout";
+import { buildCloud, CARD_H, cloudSample, TOUCH_CAP, type CloudItem, type CloudPlacement } from "@/lib/cloud-layout";
 import { seededRand } from "@/lib/seeded-rand";
 import { CloudRefine } from "./CloudRefine";
 
@@ -26,14 +26,34 @@ const CLOUD_ID = "member-cloud";
 /** Entrance stagger caps here, so 300 members still finish in half a second. */
 const STAGGER_CAP = 40;
 
-export function MemberCloud({ members, seed }: { members: CloudMember[]; seed: string }) {
+/**
+ * A capped packing: lays out only `cloudSample`'s subset, and maps each
+ * member's index to its placement, or nothing when it is not drawn there.
+ */
+function sampled(members: CloudMember[], seed: string, bucket: "narrow" | "touch") {
+  const picked = cloudSample(members, TOUCH_CAP[bucket]);
+  const cloud = buildCloud(picked.map((i) => members[i]), { seed, bucket });
+  const byMember = new Map<number, { k: number; p: CloudPlacement }>(picked.map((i, k) => [i, { k, p: cloud.placements[k] }]));
+  return { height: cloud.height, byMember, capped: picked.length < members.length };
+}
+
+const cardY = (p: CloudPlacement) => (p.cardBelow ? p.s * 1.2 + 0.8 : -(CARD_H + 0.8));
+
+export function MemberCloud({ members, seed, listHref = "/member" }: {
+  members: CloudMember[];
+  seed: string;
+  /** Where the "see everyone" note on touch screens points — the list view with the same filters. */
+  listHref?: string;
+}) {
   if (members.length === 0) return null;
 
-  // Two independent packings. Narrow is not the wide one scaled down: the CSS
-  // font-size floor stops the smallest names shrinking past 13px, which would
-  // close the gaps a scaled layout depends on.
+  // Three independent packings. Narrow (phones) and touch (tablets) are not the
+  // wide one scaled down: the CSS font-size floor stops the smallest names
+  // shrinking past 13px, which would close the gaps a scaled layout depends on.
+  // Both touch packings draw a capped sample, not the whole directory (#33).
   const wide = buildCloud(members, { seed, bucket: "wide" });
-  const narrow = buildCloud(members, { seed, bucket: "narrow" });
+  const narrow = sampled(members, seed, "narrow");
+  const touch = sampled(members, seed, "touch");
   const drift = seededRand(`${seed}|drift`);
 
   // Alphabetical tab order over a seeded visual order — the two are fully
@@ -41,20 +61,18 @@ export function MemberCloud({ members, seed }: { members: CloudMember[]; seed: s
   // though the picture is deliberately scattered.
   const order = members.map((_, i) => i).sort((a, b) => members[a].name.localeCompare(members[b].name));
 
-  return (
+  const cloud = (
     <div
       id={CLOUD_ID}
       className="member-cloud mt-6"
-      style={{ "--cloud-h": wide.height, "--cloud-hn": narrow.height } as React.CSSProperties}
+      style={{ "--cloud-h": wide.height, "--cloud-hn": narrow.height, "--cloud-ht": touch.height } as React.CSSProperties}
     >
       <ul>
         {order.map((i, tabIndex) => {
           const m = members[i];
           const w = wide.placements[i];
-          const n = narrow.placements[i];
-          // Card sits above the name unless it would leave the container.
-          const cy = w.cardBelow ? w.s * 1.2 + 0.8 : -(CARD_H + 0.8);
-          const cyn = n.cardBelow ? n.s * 1.2 + 0.8 : -(CARD_H + 0.8);
+          const n = narrow.byMember.get(i);
+          const t = touch.byMember.get(i);
           return (
             <li
               key={m.slug}
@@ -64,10 +82,16 @@ export function MemberCloud({ members, seed }: { members: CloudMember[]; seed: s
               data-i={i}
               data-featured={m.featured ? "true" : undefined}
               data-drift={w.drift ? "true" : undefined}
+              // Index into each capped packing; absent = not drawn at that
+              // size, which the CSS turns into display:none (#33).
+              data-n={n?.k}
+              data-t={t?.k}
               style={
                 {
-                  "--x": w.x, "--y": w.y, "--s": w.s, "--cx": w.cardDx, "--cy": cy,
-                  "--xn": n.x, "--yn": n.y, "--sn": n.s, "--cxn": n.cardDx, "--cyn": cyn,
+                  // Card sits above the name unless it would leave the container.
+                  "--x": w.x, "--y": w.y, "--s": w.s, "--cx": w.cardDx, "--cy": cardY(w),
+                  ...(n && { "--xn": n.p.x, "--yn": n.p.y, "--sn": n.p.s, "--cxn": n.p.cardDx, "--cyn": cardY(n.p) }),
+                  ...(t && { "--xt": t.p.x, "--yt": t.p.y, "--st": t.p.s, "--cxt": t.p.cardDx, "--cyt": cardY(t.p) }),
                   "--i": Math.min(tabIndex, STAGGER_CAP),
                   // Seeded so the drift is out of phase from the first frame
                   // rather than pulsing in unison.
@@ -105,5 +129,20 @@ export function MemberCloud({ members, seed }: { members: CloudMember[]; seed: s
       </ul>
       <CloudRefine containerId={CLOUD_ID} seed={seed} />
     </div>
+  );
+  // The note only shows where a capped packing is in force (CSS, same media
+  // queries as the packings), so desktop never sees it.
+  const sample = (bucket: "narrow" | "touch", shown: number) => (
+    <p data-cloud-note={bucket} className="cloud-note mt-4 text-center text-sm text-graphite">
+      Showing {shown} of {members.length} members.{" "}
+      <Link href={listHref} className="tap font-semibold text-ink underline">See them all in the list</Link>
+    </p>
+  );
+  return (
+    <>
+      {cloud}
+      {narrow.capped && sample("narrow", narrow.byMember.size)}
+      {touch.capped && sample("touch", touch.byMember.size)}
+    </>
   );
 }

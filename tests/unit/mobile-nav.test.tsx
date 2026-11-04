@@ -71,4 +71,13 @@ describe("MobileNav", () => {
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Become a Member" })).not.toBeInTheDocument();
   });
+
+  // Below sm the header shows only the mark and this button (#33), so the
+  // drawer is where a signed-out phone visitor joins or logs in.
+  it("carries Become a Member and Login for a signed-out visitor", () => {
+    render(<MobileNav user={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    expect(screen.getByRole("link", { name: "Become a Member" })).toHaveAttribute("href", "/join");
+    expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/dashboard");
+  });
 });

@@ -19,7 +19,7 @@ export default async function AdvertisingInfoPage() {
   const formats = (formatSetting?.value as AdFormat[] | null) ?? DEFAULT_AD_FORMATS;
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Advertising</h1>
       <p className="mt-1 text-sm text-graphite">
         Banners, featured slots and the newsletter — all in one place. Rotation is deliberate: no one can buy position,

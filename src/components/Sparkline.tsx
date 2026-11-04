@@ -9,6 +9,8 @@
  * dataviz-skill-validated --smi-series-* palette instead.
  */
 
+import { ChartAxis } from "@/components/ChartAxis";
+
 function points(values: number[], width: number, height: number, pad: number): string {
   if (values.length === 0) return "";
   const max = Math.max(...values, 1);
@@ -50,17 +52,43 @@ export function Sparkline({ values, width = 120, height = 32 }: { values: number
   );
 }
 
-/** Larger single-series line for the admin analytics page. No hover/tooltip layer — deliberately kept simple. */
-export function TrendChart({ values, labels, height = 140 }: { values: number[]; labels: string[]; height?: number }) {
-  if (values.length < 2) return <p className="text-sm text-graphite">Not enough data yet.</p>;
+/**
+ * Larger single-series line — the member Stats page's "Page performance" and
+ * the admin analytics page. No hover/tooltip layer — deliberately kept simple.
+ *
+ * #33 M11: points sit at the centre of equal slots, the same slots ChartAxis
+ * labels below, so each month or day label sits under its point. The SVG still
+ * stretches to the box (preserveAspectRatio="none") — fine for a line, and
+ * non-scaling-stroke keeps the stroke from thinning or fattening as it does.
+ * With `zeroIsEmpty`, all-zero data reads "Not enough data yet" rather than a
+ * flat line — right for a member page that has only just started collecting,
+ * wrong for the console's analytics, where a measured range of zero views is a
+ * real answer and keeps its flat line.
+ */
+export function TrendChart({ values, labels, height = 140, zeroIsEmpty = false }: { values: number[]; labels: string[]; height?: number; zeroIsEmpty?: boolean }) {
+  if (values.length < 2 || (zeroIsEmpty && values.every((v) => v === 0))) return <p className="text-sm text-graphite">Not enough data yet.</p>;
   const width = 600;
-  const pad = 8;
-  const line = points(values, width, height, pad);
+  const top = 20; // room for the peak label
+  const bottom = 4;
   const max = Math.max(...values, 1);
+  const line = values
+    .map((v, i) => {
+      const x = ((i + 0.5) / values.length) * width;
+      const y = top + (1 - v / max) * (height - top - bottom);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label={`Trend from ${labels[0]} to ${labels.at(-1)}, peak ${max}`} preserveAspectRatio="none">
-      <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} stroke="var(--smi-line)" strokeWidth={1} />
-      <polyline points={line} fill="none" stroke="var(--smi-brand)" strokeWidth={2} />
-    </svg>
+    <div>
+      <div className="relative">
+        <span aria-hidden className="absolute left-0 top-0 text-xs text-graphite">{max.toLocaleString("en-GB")}</span>
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label={`Trend from ${labels[0]} to ${labels.at(-1)}, peak ${max}`} preserveAspectRatio="none" className="block">
+          <line x1={0} y1={top} x2={width} y2={top} stroke="var(--smi-line)" strokeWidth={1} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+          <line x1={0} y1={height - 0.5} x2={width} y2={height - 0.5} stroke="var(--smi-line)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          <polyline points={line} fill="none" stroke="var(--smi-brand)" strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        </svg>
+      </div>
+      <ChartAxis labels={labels} />
+    </div>
   );
 }

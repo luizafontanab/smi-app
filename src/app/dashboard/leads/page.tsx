@@ -24,7 +24,7 @@ export default async function DashboardLeadsPage() {
   const markedId = new Map((marks ?? []).map((m) => [m.prospect_ref, m.id]));
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="max-w-4xl lg:mx-auto">
       <h1 className="text-2xl font-bold text-ink">Leads</h1>
       <p className="mt-1 text-sm text-graphite">Prospects that look relevant to your business.</p>
 
@@ -49,11 +49,11 @@ export default async function DashboardLeadsPage() {
                   <p className="text-graphite">
                     {p.name} · {p.location} · {p.distanceMiles} mi
                   </p>
-                  <p className="mt-1 flex flex-wrap gap-3 text-xs">
-                    {p.email && <a href={`mailto:${p.email}`} className="underline">{p.email}</a>}
-                    {p.phone && <a href={`tel:${p.phone.replace(/\s/g, "")}`} className="underline">{p.phone}</a>}
+                  <p className="mt-1 flex flex-wrap gap-x-4 text-sm sm:gap-3 sm:text-xs">
+                    {p.email && <a href={`mailto:${p.email}`} className="tap break-all underline">{p.email}</a>}
+                    {p.phone && <a href={`tel:${p.phone.replace(/\s/g, "")}`} className="tap underline">{p.phone}</a>}
                     {p.linkedinUrl && (
-                      <a href={p.linkedinUrl} target="_blank" rel="noreferrer noopener" className="underline">LinkedIn</a>
+                      <a href={p.linkedinUrl} target="_blank" rel="noreferrer noopener" className="tap underline">LinkedIn</a>
                     )}
                   </p>
                 </div>
@@ -62,12 +62,12 @@ export default async function DashboardLeadsPage() {
                   <form action={unmarkProspect} className="flex items-center gap-2">
                     <span className="rounded bg-success/10 px-2 py-0.5 text-xs text-success">Following up</span>
                     <input type="hidden" name="id" value={markId} />
-                    <button className="rounded border px-3 py-1.5 text-xs hover:bg-graphite/10">Undo</button>
+                    <button className="tap rounded border px-3 py-1.5 text-xs hover:bg-graphite/10">Undo</button>
                   </form>
                 ) : (
                   <form action={markProspectFollowUp}>
                     <input type="hidden" name="ref" value={p.ref} />
-                    <button className="rounded bg-ink px-3 py-1.5 text-xs text-white">Mark to follow up</button>
+                    <button className="tap rounded bg-ink px-3 py-1.5 text-xs text-white">Mark to follow up</button>
                   </form>
                 )}
               </li>

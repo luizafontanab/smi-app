@@ -109,25 +109,34 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
         </p>
       )}
 
-      <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3">
-        {CARDS.map((c) => (
-          <Link key={c.href} href={c.href} className="rounded-xl bg-white p-5 text-center shadow-sm transition hover:shadow-md">
-            <c.Icon className="mx-auto text-graphite" />
-            <p className="mt-2 font-bold text-ink">{c.title}</p>
-            <p className="mt-1 text-xs text-graphite">{c.sub}</p>
-          </Link>
-        ))}
-      </div>
 
       {/* Both boxes render unconditionally. They used to be gated on a non-empty
           array, so a member with nothing in flight saw the dashboard simply end
           after the card grid — no indication the feature existed at all, and no
           way through to /dashboard/content or /dashboard/notifications. An empty
           state is the more honest shape. */}
+      {/* On phones the member's own status comes first and the shortcut cards
+          (which repeat the nav) shrink to a compact grid at the end — they used
+          to push "Your submissions" ~1,000px down (#33 M10). The cards are first
+          in the source so desktop and keyboard order stay as they were; only
+          the phone layout reorders them. */}
+      <div className="flex flex-col">
+      <div className="order-last mt-6 grid grid-cols-2 gap-2 sm:order-none sm:gap-4 md:grid-cols-3">
+        {CARDS.map((c) => (
+          <Link key={c.href} href={c.href} className="flex items-center gap-2 rounded-xl bg-white p-3 shadow-sm transition hover:shadow-md sm:block sm:p-5 sm:text-center">
+            <c.Icon className="h-5 w-5 shrink-0 text-graphite sm:mx-auto sm:h-7 sm:w-7" />
+            <span className="block min-w-0">
+              <span className="block text-sm font-bold text-ink sm:mt-2 sm:text-base">{c.title}</span>
+              <span className="mt-1 hidden text-xs text-graphite sm:block">{c.sub}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-ink">Your submissions</h2>
-          <Link href="/dashboard/submissions" className="text-sm text-graphite underline">See all →</Link>
+          <Link href="/dashboard/submissions" className="tap text-sm text-graphite underline">See all →</Link>
         </div>
         {pending.items.length > 0
           ? <SubmissionList items={pending.items} />
@@ -137,7 +146,7 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-ink">Recent updates</h2>
-          <Link href="/dashboard/notifications" className="text-sm text-graphite underline">See all →</Link>
+          <Link href="/dashboard/notifications" className="tap text-sm text-graphite underline">See all →</Link>
         </div>
         {(notifications ?? []).length > 0
           ? (notifications ?? []).map((n, i) => {
@@ -152,9 +161,10 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
             })
           : <p className="mt-2 text-sm text-graphite">No updates yet. We&apos;ll let you know when something changes.</p>}
       </section>
+      </div>
 
-      <p className="mt-6 text-center text-xs text-graphite">
-        <Link href="/dashboard/resources" className="underline">Download your &quot;proud member&quot; graphic</Link> · <Link href="/dashboard/settings" className="underline">Notification settings</Link>
+      <p className="mt-6 text-center text-sm text-graphite sm:text-xs">
+        <Link href="/dashboard/resources" className="tap underline">Download your &quot;proud member&quot; graphic</Link> · <Link href="/dashboard/settings" className="tap underline">Notification settings</Link>
       </p>
     </div>
   );

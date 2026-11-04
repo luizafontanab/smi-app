@@ -42,7 +42,10 @@ const SITE_LINKS = [
 export function GridSiteFooter() {
   return (
     <footer className="bg-[var(--gh-footer)] text-white">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 md:grid-cols-[1.2fr_1fr_1fr]">
+      {/* Three columns only from lg: at tablet width the third left the
+          newsletter field ~105px wide (#33), so there it spans a full row
+          under the other two. */}
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 md:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr]">
         <div>
           <Image
             src="/logo-stacked.png"
@@ -62,7 +65,8 @@ export function GridSiteFooter() {
                 target="_blank"
                 rel="noopener"
                 aria-label={c.label}
-                className="tap text-white/70 hover:text-brand"
+                // A 44px-wide floor on touch too: "X" alone was 7px wide (#33).
+                className="tap text-white/70 hover:text-brand [@media(pointer:coarse)]:min-w-11"
               >
                 {c.label}
               </a>
@@ -82,12 +86,12 @@ export function GridSiteFooter() {
           </ul>
         </nav>
 
-        <div>
+        <div className="md:col-span-2 lg:col-span-1">
           <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">{SIGNUP_SURFACES.grid_footer.heading}</p>
-          <p className="mt-3 text-sm leading-relaxed text-white/70">
+          <p className="mt-3 max-w-md text-sm leading-relaxed text-white/70">
             {SIGNUP_SURFACES.grid_footer.blurb}
           </p>
-          <div className="mt-4">
+          <div className="mt-4 max-w-md">
             <NewsletterSignup surface="grid_footer" />
           </div>
         </div>

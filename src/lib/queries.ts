@@ -452,6 +452,21 @@ export async function publishedVideos(opts: { limit?: number; offset?: number; i
 }
 
 /**
+ * The newest published videos, for a "More videos" row (#33 C14). No count
+ * and no industry lookup, unlike publishedVideos(): a row needs neither, and
+ * it runs on every video page, crawler 404s included.
+ */
+export async function latestVideos(limit: number) {
+  const { data } = await publicDb()
+    .from("videos")
+    .select(VIDEO_CARD)
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(limit);
+  return data ?? [];
+}
+
+/**
  * Pinned video wins its own featured slot on /video — unlike headlineStory()
  * this has no "latest" fallback: the grid below it already leads with latest,
  * so a fallback here would just duplicate that row.

@@ -16,7 +16,7 @@ export default async function AdvertisingBuyPage(props: PageProps<"/dashboard/ad
   // Counts only — which members hold the slots is never fetched.
   const months = await loadFeaturedMonths(serviceDb());
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Buy advertising</h1>
       <p className="mt-1 text-sm text-graphite">
         Pick what you&apos;re interested in — Jas confirms availability and schedules it, and you can pay the invoice by card from your account.
@@ -30,18 +30,21 @@ export default async function AdvertisingBuyPage(props: PageProps<"/dashboard/ad
           {VISIBILITY_PRODUCTS.map((p) => (
             <form key={p.key} action={requestVisibility} className="rounded-xl bg-white p-5 shadow-sm">
               <input type="hidden" name="product" value={p.key} />
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-bold text-ink">{p.name}</p>
-                  <p className="text-sm text-graphite">{p.detail}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label htmlFor={`buy-message-${p.key}`} className="sr-only">Timing / notes (optional)</label>
-                  <input id={`buy-message-${p.key}`} name="message" placeholder="Timing / notes (optional)" className="rounded border px-3 py-1.5 text-sm" />
-                  <button className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Buy</button>
-                </div>
-              </div>
+              <p className="font-bold text-ink">{p.name}</p>
+              <p className="text-sm text-graphite">{p.detail}</p>
+              {/* Month choice before Buy, and a visible label on the notes box:
+                  Buy used to sit above the months it submits, and the label was
+                  only a placeholder clipped on phones (#33 M12, M13). */}
               {p.key === "featured_member" && <MonthPicker months={months} />}
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1">
+                  <label htmlFor={`buy-message-${p.key}`} className="text-xs font-medium text-graphite">
+                    Timing / notes <span className="font-normal">(optional)</span>
+                  </label>
+                  <input id={`buy-message-${p.key}`} name="message" className="mt-1 w-full rounded border px-3 py-2 text-base sm:py-1.5 sm:text-sm" />
+                </div>
+                <button className="tap justify-center rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Buy</button>
+              </div>
             </form>
           ))}
         </div>
@@ -61,7 +64,7 @@ export default async function AdvertisingBuyPage(props: PageProps<"/dashboard/ad
 /** Featured Member's month choice: slots left per month, full months disabled. Optional. */
 function MonthPicker({ months }: { months: FeaturedMonth[] }) {
   const tile =
-    "flex cursor-pointer flex-col rounded border px-2.5 py-1.5 text-xs has-[:checked]:border-ink has-[:checked]:bg-brand/20 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink";
+    "flex cursor-pointer flex-col rounded border px-2.5 py-2 text-sm sm:py-1.5 sm:text-xs has-[:checked]:border-ink has-[:checked]:bg-brand/20 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink";
   return (
     // The rule sits on a wrapper: on the fieldset itself it strikes through the legend.
     <div className="mt-4 border-t pt-3">

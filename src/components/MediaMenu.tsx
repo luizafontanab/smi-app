@@ -25,10 +25,12 @@ const TONES = {
   light: { trigger: "hover:bg-shade", popup: "border border-line bg-white text-ink", link: "hover:bg-shade" },
 } as const;
 
-export function MediaMenu({ label, items, className = "hidden lg:block", tone = "dark" }: {
+export function MediaMenu({ label, items, className = "hidden lg:block", align = "left-0", tone = "dark" }: {
   label: string;
   items: { href: string; label: string }[];
   className?: string;
+  /** Which edge the popup hangs from — a menu near the bar's right end opens leftward so it stays on screen. */
+  align?: string;
   tone?: keyof typeof TONES;
 }) {
   const t = TONES[tone];
@@ -40,8 +42,11 @@ export function MediaMenu({ label, items, className = "hidden lg:block", tone = 
     <div
       ref={wrapper}
       className={`relative ${className}`}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      // Mouse only: a tap fires compatibility mouseenter *then* click, so a
+      // touch-driven enter opened the menu and the click's toggle shut it
+      // again straight away (#33, now that tablets get this menu at md).
+      onPointerEnter={(e) => { if (e.pointerType === "mouse") setOpen(true); }}
+      onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}
       onKeyDown={(e) => {
         if (e.key === "Escape" && open) {
           setOpen(false);
@@ -58,17 +63,17 @@ export function MediaMenu({ label, items, className = "hidden lg:block", tone = 
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`rounded px-3 py-2 ${t.trigger}`}
+        className={`tap whitespace-nowrap rounded px-3 py-2 ${t.trigger}`}
       >
         {label} <span aria-hidden="true">▾</span>
       </button>
       <div
-        className={`absolute left-0 z-20 w-44 rounded-b py-1 shadow-lg transition ${t.popup} ${
+        className={`absolute ${align} z-20 w-44 rounded-b py-1 shadow-lg transition ${t.popup} ${
           open ? "visible opacity-100" : "invisible opacity-0"
         }`}
       >
         {items.map((i) => (
-          <Link key={i.href} href={i.href} className={`block px-4 py-2 ${t.link}`} onClick={() => setOpen(false)}>
+          <Link key={i.href} href={i.href} className={`block px-4 py-2 [@media(pointer:coarse)]:py-3 ${t.link}`} onClick={() => setOpen(false)}>
             {i.label}
           </Link>
         ))}

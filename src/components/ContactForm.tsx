@@ -9,17 +9,18 @@ export function ContactForm({ kind }: { kind: "contact" | "advertising" }) {
       <input type="hidden" name="kind" value={kind} />
       <div>
         <label htmlFor="name" className="text-sm font-medium">Name</label>
-        <input id="name" name="name" required aria-required="true" aria-describedby="contact-status" className="mt-1 w-full rounded border px-3 py-2" />
+        <input id="name" name="name" autoComplete="name" required aria-required="true" aria-describedby="contact-status" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>
         <label htmlFor="email" className="text-sm font-medium">Email</label>
-        <input id="email" type="email" name="email" required aria-required="true" aria-describedby="contact-status" className="mt-1 w-full rounded border px-3 py-2" />
+        <input id="email" type="email" name="email" autoComplete="email" required aria-required="true" aria-describedby="contact-status" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
       <div>
         <label htmlFor="message" className="text-sm font-medium">{kind === "advertising" ? "What are you interested in?" : "Message"}</label>
         <textarea id="message" name="message" required rows={5} aria-required="true" aria-describedby="contact-status" className="mt-1 w-full rounded border px-3 py-2" />
       </div>
-      <button disabled={pending} className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">
+      {/* Full width, like the join and sign-in submits (#33). */}
+      <button disabled={pending} className="w-full rounded bg-ink px-5 py-2.5 font-semibold text-white disabled:opacity-50">
         {pending ? "Sending…" : "Send"}
       </button>
       {/* Always rendered: a live region announces only if it existed before

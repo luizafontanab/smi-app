@@ -50,8 +50,10 @@ export const defaultVariant = cache(async (): Promise<Variant> => {
  * any view within one render — it does NOT cache across requests. Same pattern
  * as currentUser() in lib/auth.ts.
  *
- * A browser's own `smi-theme` cookie wins — that is the admin switcher, which
- * previews the other design without changing what anyone else sees. With no
+ * While the design switcher is off (THEME_SWITCHER_ENABLED), every request
+ * gets grid and nothing below applies (#33). With it on: a browser's own
+ * `smi-theme` cookie wins — that is the admin switcher, which previews the
+ * other design without changing what anyone else sees. With no
  * cookie, or an unrecognised one (browsers still holding the retired
  * "live"/"demo" values), the request gets the site-wide default.
  *

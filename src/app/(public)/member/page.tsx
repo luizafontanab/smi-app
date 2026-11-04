@@ -130,13 +130,15 @@ export default async function MembersPage(props: PageProps<"/member">) {
       {featured.length > 0 && (
         <section aria-labelledby="featured-members-heading" className="mt-4">
           <h2 id="featured-members-heading" className="text-sm font-semibold uppercase tracking-wide text-graphite">Featured members</h2>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Tighter on phones (#33): five 72px cards pushed the search below
+              the fold. 40px logos and less padding; sm-and-up unchanged. */}
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
             {featured.map((m) => (
-              <Link key={m.slug} href={`/member/${m.slug}`} className="tap flex items-center gap-3 rounded-lg bg-white p-3 shadow-sm">
+              <Link key={m.slug} href={`/member/${m.slug}`} className="tap flex items-center gap-3 rounded-lg bg-white p-2 shadow-sm sm:p-3">
                 {m.logo_path ? (
-                  <Image src={mediaUrl(m.logo_path)!} alt="" width={48} height={48} className="shrink-0 rounded object-contain" unoptimized />
+                  <Image src={mediaUrl(m.logo_path)!} alt="" width={48} height={48} className="h-10 w-10 shrink-0 rounded object-contain sm:h-12 sm:w-12" unoptimized />
                 ) : (
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-graphite/10 text-xl text-graphite/30">⚙</div>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-graphite/10 text-xl text-graphite/30 sm:h-12 sm:w-12">⚙</div>
                 )}
                 <div className="min-w-0">
                   <p className="truncate font-bold text-ink">{m.name}</p>
@@ -148,8 +150,10 @@ export default async function MembersPage(props: PageProps<"/member">) {
         </section>
       )}
 
-      <h2 className="mt-16 text-lg font-bold text-ink">All members</h2>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <h2 className="mt-8 text-lg font-bold text-ink sm:mt-16">All members</h2>
+      {/* Search gets a row of its own until lg: beside two 256px filters it was
+          squeezed to ~128px on a tablet (#33). */}
+      <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center">
         {/* GET submit replaces the whole query string, hence the hidden industry/service */}
         <form action="/member" role="search" className="flex min-w-0 flex-1 gap-2">
           {industrySlugs.map((s) => <input key={s} type="hidden" name="industry" value={s} />)}
@@ -164,23 +168,27 @@ export default async function MembersPage(props: PageProps<"/member">) {
             defaultValue={rawQ}
             placeholder="Search members by name or description…"
             aria-label="Search members"
-            className="w-full rounded border bg-white px-4 py-2 text-sm"
+            enterKeyHint="search"
+            // 16px on phones so iOS doesn't zoom the page on focus (#33)
+            className="tap w-full min-w-0 rounded border border-line bg-white px-4 py-2 text-base sm:text-sm"
           />
-          <button className="shrink-0 rounded bg-ink px-4 py-2 text-sm text-white">Search</button>
+          <button className="tap shrink-0 rounded bg-ink px-4 py-2 text-sm text-white">Search</button>
         </form>
 
-        <MultiSelectCombobox
-          label="Services"
-          options={serviceOptions.map((s) => ({ slug: s.slug, name: s.name, href: qs({ service: toggled(services, s.slug) }) }))}
-          clearHref={qs({ service: undefined })}
-          selectedSlugs={services}
-        />
-        <MultiSelectCombobox
-          label="Membership type"
-          options={typeOptions.map((t) => ({ slug: t.slug, name: t.name, href: qs({ type: toggled(membershipTypeSlugs, t.slug) }) }))}
-          clearHref={qs({ type: undefined })}
-          selectedSlugs={membershipTypeSlugs}
-        />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <MultiSelectCombobox
+            label="Services"
+            options={serviceOptions.map((s) => ({ slug: s.slug, name: s.name, href: qs({ service: toggled(services, s.slug) }) }))}
+            clearHref={qs({ service: undefined })}
+            selectedSlugs={services}
+          />
+          <MultiSelectCombobox
+            label="Membership type"
+            options={typeOptions.map((t) => ({ slug: t.slug, name: t.name, href: qs({ type: toggled(membershipTypeSlugs, t.slug) }) }))}
+            clearHref={qs({ type: undefined })}
+            selectedSlugs={membershipTypeSlugs}
+          />
+        </div>
       </div>
 
       {/* Industry pills, single-select — same pattern and same underlying data
@@ -243,6 +251,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
       ) : view === "cloud" ? (
         <MemberCloud
           seed={cloudSeed}
+          listHref={qs({ view: undefined })}
           members={members.map((m) => ({
             slug: m.slug,
             name: m.name,

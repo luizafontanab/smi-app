@@ -21,7 +21,7 @@ export function WelcomePanel({ dismissAction }: { dismissAction: (formData: Form
           <p className="mt-1 text-sm text-graphite">A few places worth a look while you&apos;re here:</p>
         </div>
         <form action={dismissAction}>
-          <button type="submit" className="shrink-0 text-xs text-graphite underline hover:text-ink">Dismiss</button>
+          <button type="submit" className="tap shrink-0 px-1 text-sm text-graphite underline hover:text-ink sm:text-xs">Dismiss</button>
         </form>
       </div>
       <ul className="mt-3 grid gap-3 sm:grid-cols-3">

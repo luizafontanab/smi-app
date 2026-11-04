@@ -20,7 +20,7 @@ export default async function ResourcesPage() {
     </svg>`
   );
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Resources</h1>
       <p className="mt-1 text-sm text-graphite">Brand assets and downloadables for your own channels.</p>
 
@@ -45,7 +45,7 @@ export default async function ResourcesPage() {
             {(resources ?? []).map((r) => (
               <li key={r.id} className="flex items-center justify-between gap-3 py-3 text-sm">
                 <span>{r.kind === "document" ? "📄" : "🖼️"} {r.title}</span>
-                <a href={mediaUrl(r.path) ?? undefined} className="text-graphite underline">Download</a>
+                <a href={mediaUrl(r.path) ?? undefined} className="tap shrink-0 text-graphite underline">Download</a>
               </li>
             ))}
           </ul>

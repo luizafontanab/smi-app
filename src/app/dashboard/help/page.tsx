@@ -9,7 +9,7 @@ export default async function MemberHelpPage(props: PageProps<"/dashboard/help">
   await requireMemberView();
   const sp = await props.searchParams;
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Help</h1>
       <p className="mt-1 text-sm text-graphite">
         Stuck, or need something changed? Send a message and it lands straight with SMI — we reply to your login email.

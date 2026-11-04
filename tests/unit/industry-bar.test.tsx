@@ -44,12 +44,12 @@ describe("balancedBreaks", () => {
 });
 
 describe("IndustryBar rows", () => {
-  it("renders the two-row break before Software & IT Services and the tablet breaks before Processing Technology and Bending & Forming, keeping every link in order", () => {
+  // Tablets scroll one row like phones since #33, so the only breaks are lg's.
+  it("renders the two-row break before Software & IT Services and no other, keeping every link in order", () => {
     const list = JAS_TEN.map((name) => ({ slug: name.toLowerCase(), name }));
     const { container } = render(<IndustryBar industries={list} />);
     const next = (sel: string) => [...container.querySelectorAll(sel)].map((b) => b.nextElementSibling?.textContent);
-    expect(next("span.basis-full.lg\\:block")).toEqual(["Software & IT Services"]);
-    expect(next("span.basis-full.lg\\:hidden")).toEqual(["Processing Technology", "Bending & Forming"]);
+    expect(next("span.basis-full")).toEqual(["Software & IT Services"]);
     expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual([...JAS_TEN]);
   });
 });

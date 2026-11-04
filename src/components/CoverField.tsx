@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_FOCUS, type Focus } from "@/lib/focus";
 import { FocusPicker } from "./FocusPicker";
 import { RequiredMark } from "./RequiredMark";
-import { UploadStatus, useStagedUpload } from "./UploadField";
+import { FILE_BUTTON, UploadStatus, useStagedUpload } from "./UploadField";
 
 /**
  * Cover image field: file input + crop picker, sharing one preview.
@@ -157,7 +157,7 @@ export function CoverField({
         required={required && !cover}
         accept="image/jpeg,image/png,image/webp"
         onChange={onChange}
-        className="mt-1 w-full text-sm"
+        className={`${FILE_BUTTON} mt-1 w-full text-sm`}
       />
       <UploadStatus name="cover" upload={upload} />
       <p className="mt-1 text-xs text-graphite">{hint}</p>

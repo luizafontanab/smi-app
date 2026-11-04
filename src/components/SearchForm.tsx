@@ -18,7 +18,8 @@ export function SearchForm({
         type="search"
         aria-label="Search the site"
         placeholder={placeholder}
-        className="min-w-0 flex-1 rounded border border-line px-4 py-2.5 text-sm"
+        // 16px below sm: iOS Safari zooms the page into any smaller input on focus (#33 C5)
+        className="min-w-0 flex-1 rounded border border-line px-4 py-2.5 text-base sm:text-sm"
       />
       <button className="rounded bg-brand px-5 py-2.5 text-sm font-bold text-ink hover:brightness-110">Search</button>
     </form>

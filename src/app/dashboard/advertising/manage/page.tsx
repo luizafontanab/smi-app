@@ -36,7 +36,7 @@ export default async function AdvertisingManagePage() {
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Manage advertising</h1>
       <p className="mt-1 text-sm text-graphite">Your banner runs and visibility requests, newest first.</p>
       <AdvertisingTabs active="manage" />
@@ -54,7 +54,8 @@ export default async function AdvertisingManagePage() {
               <span className={p.className}>
                 {p.label}{phase === "changes_needed" && b.review_reason && `: ${b.review_reason}`}
               </span>
-              <span className="text-graphite"> · {b.starts_on} → {b.ends_on}</span>
+              {/* nowrap per date so a run never breaks mid-date on a phone (#33 M14) */}
+              <span className="text-graphite"> · <span className="whitespace-nowrap">{b.starts_on} →</span> <span className="whitespace-nowrap">{b.ends_on}</span></span>
             </p>
           );
         })}

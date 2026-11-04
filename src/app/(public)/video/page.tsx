@@ -7,9 +7,11 @@ import { AdSlot } from "@/components/AdSlot";
 import { Pagination } from "@/components/Pagination";
 import { SearchForm } from "@/components/SearchForm";
 import { VideoCard } from "@/components/cards";
+import { PILL, PILL_ROW } from "@/components/filter-pills";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 12;
+
 
 export const metadata = {
   title: "Videos",
@@ -61,10 +63,10 @@ export default async function VideosPage(props: PageProps<"/video">) {
       {/* Industry pills, same shape and data as the newsroom's — this is where
           /industry/[slug]'s Videos section sends its "See all". */}
       {showIndustries && (
-        <nav aria-label="Filter by industry" className="mt-4 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
-          <Link href={href({ industry: undefined })} className={`shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+        <nav aria-label="Filter by industry" className={`mt-4 ${PILL_ROW}`}>
+          <Link href={href({ industry: undefined })} className={`${PILL} ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
           {inds.map((i) => (
-            <Link key={i.slug} href={href({ industry: i.slug })} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+            <Link key={i.slug} href={href({ industry: i.slug })} className={`${PILL} ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
               {i.name}
             </Link>
           ))}

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import type { MemberVideo } from "@/lib/member-videos";
@@ -32,22 +33,28 @@ export function MemberVideos({ videos }: { videos: MemberVideo[] }) {
         {many ? "Videos" : current.title}
       </h2>
       <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-        <iframe
-          key={current.id}
-          className="aspect-video w-full"
-          src={`https://www.youtube-nocookie.com/embed/${current.id}`}
-          title={current.title}
-          allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        />
+        {/* The video's own still sits under the player (#33): until YouTube
+            paints — or if it never does, on a slow or blocked connection —
+            the box shows the video rather than a blank white rectangle. */}
+        <div className="relative aspect-video w-full bg-ink">
+          <Image src={`https://i.ytimg.com/vi/${current.id}/hqdefault.jpg`} alt="" fill sizes="(max-width: 1152px) 100vw, 1152px" className="object-cover" unoptimized />
+          <iframe
+            key={current.id}
+            className="absolute inset-0 h-full w-full"
+            src={`https://www.youtube-nocookie.com/embed/${current.id}`}
+            title={current.title}
+            allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
         {many && (
           <div className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
-            <button type="button" onClick={() => go(index - 1)} className="rounded border px-3 py-1 hover:bg-graphite/10" aria-label="Previous video">←</button>
+            <button type="button" onClick={() => go(index - 1)} className="tap rounded border border-line px-3 py-1 hover:bg-graphite/10" aria-label="Previous video">←</button>
             <p className="min-w-0 truncate text-ink" aria-live="polite">
               {current.href ? <Link href={current.href} className="underline">{current.title}</Link> : current.title}
               <span className="text-graphite"> · {index + 1} of {videos.length}</span>
             </p>
-            <button type="button" onClick={() => go(index + 1)} className="rounded border px-3 py-1 hover:bg-graphite/10" aria-label="Next video">→</button>
+            <button type="button" onClick={() => go(index + 1)} className="tap rounded border border-line px-3 py-1 hover:bg-graphite/10" aria-label="Next video">→</button>
           </div>
         )}
       </div>

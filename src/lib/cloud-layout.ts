@@ -294,7 +294,9 @@ export function estimateWidth(name: string, size: number): number {
  * Type scale, in cqw. `wide` is the desktop packing; `narrow` is a separate,
  * looser packing for < 640px — not a scaled-down copy of the wide one, because
  * the CSS font-size floor stops the smallest names shrinking any further and a
- * uniform scale would then close the gaps it relies on.
+ * uniform scale would then close the gaps it relies on. `touch` is a third
+ * packing for tablets (640–1023px with a coarse pointer): the wide one at that
+ * width hits the font floor and leaves rows ~20px apart, too tight to tap (#33).
  */
 const TIERS = {
   /**
@@ -308,14 +310,38 @@ const TIERS = {
    * `line` is doing touch-target work here, not typography. The site's `.tap`
    * utility reserves 44px, which a cloud of a hundred-plus names cannot spend
    * on each one — so the names are not `.tap`, and the narrow packing instead
-   * reserves ~24px per name at phone widths: WCAG 2.5.8's AA target size,
-   * rather than 2.5.5's AAA. Names are text, so the horizontal dimension is
-   * comfortably clear either way.
+   * reserves ~34px per name at phone widths, above WCAG 2.5.8's 24px AA size.
+   * Names are text, so the horizontal dimension is comfortably clear either way.
+   * 4.3cqw is ~15px on a 390px phone: only the capped subset is packed here
+   * (see TOUCH_CAP), so the names can afford to be readable (#33).
    */
-  narrow: { featured: 4.8, sizes: [3.2], mix: [1], pad: 0.9, line: 2.3 },
+  narrow: { featured: 6, sizes: [4.3], mix: [1], pad: 0.9, line: 2.0 },
+  /** ~14px names on ~30px rows at a 736px tablet column; ~18px at 1000px. */
+  touch: { featured: 3.2, sizes: [1.9], mix: [1], pad: 0.7, line: 2.0 },
 } as const;
 
 export type Bucket = keyof typeof TIERS;
+
+/**
+ * How many names the touch packings (phone and tablet) draw. The whole
+ * directory as a phone cloud was ~21,000px — 25 screens — so touch screens get
+ * a sample and a link to the full list (#33). The sample rotates with the
+ * daily seed like everything else, so no member is permanently left out.
+ */
+export const TOUCH_CAP: Record<Exclude<Bucket, "wide">, number> = { narrow: 50, touch: 120 };
+
+/**
+ * Which items a capped packing draws, as indices into `items`: every featured
+ * member (paid placement is never sampled away), then the rest in the order
+ * given — memberDirectory()'s daily shuffle — until the cap. Input order is
+ * kept, so the result can be fed straight to buildCloud.
+ */
+export function cloudSample(items: CloudItem[], cap: number): number[] {
+  const featured = items.flatMap((it, i) => (it.featured ? [i] : []));
+  const room = Math.max(0, cap - featured.length);
+  const rest = items.flatMap((it, i) => (it.featured ? [] : [i])).slice(0, room);
+  return [...featured, ...rest].sort((a, b) => a - b);
+}
 
 /**
  * Lay out one bucket of the cloud. Featured members are packed first so they

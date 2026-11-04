@@ -51,9 +51,12 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
     ? await db.from("advert_artwork_proposals").select("id, submitted_at").eq("advert_id", booking.advert!.id).eq("status", "pending").maybeSingle()
     : { data: null };
 
+  const desktopSrc = mediaUrl(booking.advert?.desktop_path);
+  const mobileSrc = mediaUrl(booking.advert?.mobile_path);
+
   return (
-    <div className="mx-auto max-w-2xl">
-      <Link href="/dashboard/advertising/manage" className="text-sm text-graphite hover:text-ink">← Manage adverts</Link>
+    <div className="max-w-2xl lg:mx-auto">
+      <Link href="/dashboard/advertising/manage" className="tap text-sm text-graphite hover:text-ink">← Manage adverts</Link>
       <h1 className="mt-1 text-xl font-bold text-ink">{booking.advert?.name}</h1>
       <p className="mt-1 text-sm text-graphite">{STATUS_COPY[phase]}</p>
       {typeof sp.error === "string" && <p className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
@@ -64,7 +67,7 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
             <span className="font-semibold">Payment due: {formatPounds(dueInvoice.amount_pennies)}</span>
             <span className="text-graphite"> · {dueInvoice.number}</span>
           </p>
-          <Link href={`/dashboard/pay/invoice/${dueInvoice.id}`} className="rounded bg-ink px-4 py-2 text-sm font-semibold text-white">Pay now</Link>
+          <Link href={`/dashboard/pay/invoice/${dueInvoice.id}`} className="tap rounded bg-ink px-4 py-2 text-sm font-semibold text-white">Pay now</Link>
         </div>
       )}
 
@@ -94,10 +97,27 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
         <section className="mt-5 rounded-xl bg-white p-6 shadow-sm">
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <dt className="text-graphite">Format</dt><dd>{booking.advert?.format.replace(/_/g, " ")}</dd>
-            <dt className="text-graphite">Runs</dt><dd>{booking.starts_on} → {booking.ends_on}</dd>
+            <dt className="text-graphite">Runs</dt><dd><span className="whitespace-nowrap">{booking.starts_on} →</span> <span className="whitespace-nowrap">{booking.ends_on}</span></dd>
           </dl>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={mediaUrl(booking.advert?.desktop_path)!} alt="" className="mt-4 w-full rounded border" />
+          {/* Both pieces of artwork, labelled: the desktop banner alone shrank to an
+              unreadable strip on a phone, and the mobile version phone readers
+              actually see was never shown (#33 M15). Mobile leads on phones. */}
+          <div className="mt-4 flex flex-col gap-4">
+            {desktopSrc && (
+              <figure>
+                <figcaption className="text-xs font-medium text-graphite">Desktop artwork</figcaption>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={desktopSrc} alt="" className="mt-1 w-full rounded border" />
+              </figure>
+            )}
+            {mobileSrc && (
+              <figure className="order-first sm:order-none">
+                <figcaption className="text-xs font-medium text-graphite">Mobile artwork</figcaption>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={mobileSrc} alt="" className="mt-1 w-full max-w-sm rounded border" />
+              </figure>
+            )}
+          </div>
         </section>
       )}
 
@@ -125,8 +145,8 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
           <p className="mt-1 text-xs text-graphite">Same artwork, new dates. It goes back to us for approval.</p>
           <form action={renewAdvertBooking} className="mt-3 flex flex-wrap items-end gap-3 text-sm">
             <input type="hidden" name="id" value={id} />
-            <label className="block">Start<RequiredMark /><input type="date" name="starts_on" required min={today} className="mt-1 block rounded border px-3 py-2" /></label>
-            <label className="block">End<RequiredMark /><input type="date" name="ends_on" required min={today} className="mt-1 block rounded border px-3 py-2" /></label>
+            <label className="block">Start<RequiredMark /><input type="date" name="starts_on" required min={today} className="mt-1 block rounded border px-3 py-2 text-base sm:text-sm" /></label>
+            <label className="block">End<RequiredMark /><input type="date" name="ends_on" required min={today} className="mt-1 block rounded border px-3 py-2 text-base sm:text-sm" /></label>
             <button className="rounded bg-ink px-4 py-2 text-white">Request</button>
           </form>
         </section>

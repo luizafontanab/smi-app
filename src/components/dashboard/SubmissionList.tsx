@@ -78,21 +78,25 @@ export function SubmissionList({ items, flush = false, filter }: {
           <div
             // editHref is not unique — every profile revision shares /dashboard/profile
             key={`${s.kind}:${s.id}`}
-            className={`mt-2 border-t pt-2 text-sm ${flush ? "first:mt-0 first:border-t-0 first:pt-0" : ""}`}
+            className={`mt-2 border-t border-line pt-2 text-sm ${flush ? "first:mt-0 first:border-t-0 first:pt-0" : ""}`}
           >
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            {/* Phones: badge + title, then the status on a line of its own, then
+                the actions — the same place on every row. From sm up it is the
+                original one-line row (#33 M5). */}
+            <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3">
               <p className="min-w-0">
-                <span className="mr-2 rounded bg-shade px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-wide text-graphite">
+                <span className="mr-2 rounded bg-shade px-1.5 py-0.5 align-middle text-xs font-bold uppercase tracking-wide text-graphite sm:text-[11px]">
                   {KIND_LABELS[s.kind]}
                 </span>
                 {s.featured && (
-                  <span title="A story that features you alongside another member" className="mr-2 rounded bg-brand/10 px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-wide text-brand-text">
+                  <span title="A story that features you alongside another member" className="mr-2 rounded bg-brand/10 px-1.5 py-0.5 align-middle text-xs font-bold uppercase tracking-wide text-brand-text sm:text-[11px]">
                     Featured
                   </span>
                 )}
-                {s.title} — <StatusText item={s} />
+                {s.title}<span className="hidden sm:inline"> — </span>
+                <span className="mt-1 block font-semibold sm:mt-0 sm:inline sm:font-normal"><StatusText item={s} /></span>
               </p>
-              <div className="flex items-center gap-3 text-xs">
+              <div className="-ml-1 flex flex-wrap items-center gap-x-3 text-sm sm:ml-0 sm:text-xs">
                 {s.publicHref && (
                   <Link href={s.publicHref} className="tap px-1 text-graphite underline">View</Link>
                 )}
@@ -119,7 +123,9 @@ export function SubmissionList({ items, flush = false, filter }: {
               // <details> keeps the row compact until someone actually wants to
               // ask for something — no client JS needed for the toggle.
               <details className="mt-1.5">
-                <summary className="cursor-pointer text-xs text-graphite underline">Request a change</summary>
+                {/* Touch padding rather than .tap, whose inline-flex would
+                    drop the summary's disclosure marker. */}
+                <summary className="cursor-pointer py-1 text-sm text-graphite underline sm:text-xs [@media(pointer:coarse)]:py-3">Request a change</summary>
                 <form action={requestContentChange} className="mt-2 flex flex-wrap gap-2">
                   <input type="hidden" name="title" value={s.title} />
                   <input type="hidden" name="kind" value={KIND_LABELS[s.kind].toLowerCase()} />
@@ -129,9 +135,9 @@ export function SubmissionList({ items, flush = false, filter }: {
                     required
                     placeholder="What needs changing?"
                     aria-label={`What needs changing on ${s.title}?`}
-                    className="min-w-0 flex-1 rounded border px-3 py-1.5 text-sm"
+                    className="min-w-0 flex-1 rounded border px-3 py-1.5 text-base sm:text-sm"
                   />
-                  <button className="rounded bg-ink px-3 py-1.5 text-xs text-white">Send</button>
+                  <button className="tap rounded bg-ink px-3 py-1.5 text-xs text-white">Send</button>
                 </form>
                 <p className="mt-1 text-xs text-graphite">Goes to the SMI editor. Your page stays live in the meantime.</p>
               </details>

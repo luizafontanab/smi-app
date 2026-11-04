@@ -6,7 +6,7 @@ import { SIGNUP_SURFACES } from "@/lib/newsletter-consent";
 import { Carousel, StoryCard } from "@/components/StoryCard";
 import type { LiveAdvert } from "@/lib/adverts";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
-import { adSlotKeys, isAnchor, type PageLayout, type PageType } from "@/lib/blocks/schema";
+import { adSlotKeys, isAnchor, type Block, type PageLayout, type PageType } from "@/lib/blocks/schema";
 
 type Props = {
   pageType: PageType;
@@ -51,75 +51,103 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
   const keys = adSlotKeys(pageType, layout);
   let adIndex = 0;
 
-  return (
-    <>
-      {layout.blocks.map((block) => {
-        if (isAnchor(pageType, block.type)) {
-          return <div key={block.id}>{anchors[block.type] ?? null}</div>;
-        }
-        switch (block.type) {
-          case "ad_banner": {
-            const key = keys[adIndex++];
-            const ads = slots?.get(key) ?? [];
-            // the wrapper carries margin, so it must not render around a null slot
-            return ads.length || showPlaceholders
-              ? <div key={block.id} className={adWrapperClassName}><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} path={path} /></div>
-              : null;
-          }
-          case "back_link": {
-            const { label, href } = block.props as { label: string; href: string };
-            return (
-              <div key={block.id} className="mt-6">
-                <Link href={href} className="text-sm text-graphite hover:text-ink">← {label}</Link>
-              </div>
-            );
-          }
-          case "latest_news": {
-            const limit = typeof block.props?.limit === "number" ? block.props.limit : 4;
-            if (!latestStories?.length) return null;
-            return (
-              <section key={block.id} className="mt-10">
-                <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">Latest News</h2>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {latestStories.slice(0, limit).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
-                </div>
-              </section>
-            );
-          }
-          case "member_news": {
-            // A carousel of whatever the page fetched (memberBySlug caps it at
-            // MEMBER_STORY_CAROUSEL), not a grid cut to the block's limit — any
-            // stored `limit` on an older layout row is ignored. Past the cap,
-            // "See more" opens the Newsroom filtered to this member.
-            if (!memberStories?.length) return null;
-            const more = memberStoriesHref && (memberStoriesTotal ?? 0) > memberStories.length ? memberStoriesHref : undefined;
-            return (
-              <Carousel key={block.id} title={`Stories featuring ${memberName ?? "this member"}`} href={more} linkLabel="See more →">
-                {memberStories.map((s) => (
-                  // fixed width, as on the newsroom/industry rails: the carousel
-                  // is a flex row, so an auto-width card would collapse
-                  <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} showExcerpt={false} /></div>
-                ))}
-              </Carousel>
-            );
-          }
-          case "join_cta":
-            return <JoinCta key={block.id} />;
-          case "newsletter_signup":
-            return (
-              <section key={block.id} className="my-10 rounded-xl bg-graphite/10 p-6">
-                <h2 className="font-bold text-ink">{SIGNUP_SURFACES.page_block.heading}</h2>
-                <div className="mt-3 max-w-md"><NewsletterSignup surface="page_block" /></div>
-              </section>
-            );
-          case "supplier_logos":
-            return supplierLogos?.length || showPlaceholders ? (
-              <div key={block.id} className="-mx-4 mt-8"><SupplierLogos adverts={supplierLogos ?? []} showPlaceholders={showPlaceholders} /></div>
-            ) : null;
-          default:
-            return null;
-        }
-      })}
-    </>
-  );
+  const renderBlock = (block: Block): React.ReactNode => {
+    if (isAnchor(pageType, block.type)) {
+      return <div key={block.id}>{anchors[block.type] ?? null}</div>;
+    }
+    switch (block.type) {
+      case "ad_banner": {
+        const key = keys[adIndex++];
+        const ads = slots?.get(key) ?? [];
+        // the wrapper carries margin, so it must not render around a null slot
+        return ads.length || showPlaceholders
+          ? <div key={block.id} className={adWrapperClassName}><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} path={path} /></div>
+          : null;
+      }
+      case "back_link": {
+        const { label, href } = block.props as { label: string; href: string };
+        return (
+          <div key={block.id} className="mt-6">
+            {/* tap: a 20px-tall text link was the only way back on a phone (#33 C16) */}
+            <Link href={href} className="tap text-sm text-graphite hover:text-ink">← {label}</Link>
+          </div>
+        );
+      }
+      case "latest_news": {
+        const limit = typeof block.props?.limit === "number" ? block.props.limit : 4;
+        if (!latestStories?.length) return null;
+        return (
+          <section key={block.id} className="mt-10">
+            <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">Latest News</h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {latestStories.slice(0, limit).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
+            </div>
+          </section>
+        );
+      }
+      case "member_news": {
+        // A carousel of whatever the page fetched (memberBySlug caps it at
+        // MEMBER_STORY_CAROUSEL), not a grid cut to the block's limit — any
+        // stored `limit` on an older layout row is ignored. Past the cap,
+        // "See more" opens the Newsroom filtered to this member.
+        if (!memberStories?.length) return null;
+        const more = memberStoriesHref && (memberStoriesTotal ?? 0) > memberStories.length ? memberStoriesHref : undefined;
+        return (
+          <Carousel key={block.id} title={`Stories featuring ${memberName ?? "this member"}`} href={more} linkLabel="See more →">
+            {memberStories.map((s) => (
+              // fixed width from sm, as on the newsroom/industry rails: the
+              // carousel is a flex row, so an auto-width card would collapse.
+              // On a phone a lone card fills the column and several peek at
+              // 85%, rather than 256px leaving a dead strip beside it (#33).
+              <div key={s.id} className={`${memberStories.length === 1 ? "w-full" : "w-[85%]"} shrink-0 sm:w-64`}><StoryCard story={s} showExcerpt={false} /></div>
+            ))}
+          </Carousel>
+        );
+      }
+      case "join_cta":
+        return <JoinCta key={block.id} />;
+      case "newsletter_signup":
+        return (
+          <section key={block.id} className="my-10 rounded-xl bg-graphite/10 p-6">
+            <h2 className="font-bold text-ink">{SIGNUP_SURFACES.page_block.heading}</h2>
+            <div className="mt-3 max-w-md"><NewsletterSignup surface="page_block" /></div>
+          </section>
+        );
+      case "supplier_logos":
+        return supplierLogos?.length || showPlaceholders ? (
+          <div key={block.id} className="-mx-4 mt-8"><SupplierLogos adverts={supplierLogos ?? []} showPlaceholders={showPlaceholders} /></div>
+        ) : null;
+      default:
+        return null;
+    }
+  };
+
+  // An advert directly above the story's cover (the default story layout, and
+  // any stored layout that keeps that order) put headline → 300px advert →
+  // cover on a phone, so the first screen after tapping a story held no
+  // article at all (#33 C1). Below md the pair swaps, cover first; from md up
+  // it is a plain block and margins collapse exactly as before. Detected
+  // here rather than changed in the default, so layouts admins have already
+  // saved get the same treatment. Visual order only — the ad keeps its slot
+  // key, because keys are dealt by position in the layout.
+  const out: React.ReactNode[] = [];
+  const blocks = layout.blocks;
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const next = blocks[i + 1];
+    if (pageType === "story" && block.type === "ad_banner" && next?.type === "story_hero") {
+      const ad = renderBlock(block);
+      const hero = renderBlock(next);
+      out.push(
+        <div key={`${block.id}+${next.id}`} className="flex flex-col md:block">
+          {ad && <div className="order-2 md:order-none">{ad}</div>}
+          <div className="order-1 md:order-none">{hero}</div>
+        </div>,
+      );
+      i++;
+      continue;
+    }
+    out.push(renderBlock(block));
+  }
+  return <>{out}</>;
 }

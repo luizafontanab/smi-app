@@ -12,7 +12,7 @@ export default async function NewMemberMachine(props: PageProps<"/dashboard/equi
   await requireMemberView();
   const sp = await props.searchParams;
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">Add equipment</h1>
       <p className="mt-1 text-sm text-graphite">
         List a machine for sale. The editor reviews every listing before it appears; buyers are sent to

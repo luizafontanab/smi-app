@@ -12,13 +12,16 @@ export function SectionTabs({ items, active, ariaLabel }: {
   ariaLabel: string;
 }) {
   return (
-    <nav aria-label={ariaLabel} className="mt-4 flex gap-1 border-b text-sm">
+    // Wraps by whole tab, never inside one: a label broken over two lines left
+    // the row ragged and the underline adrift on phones (#33 M4). Wrapping
+    // rather than scrolling keeps every tab in view.
+    <nav aria-label={ariaLabel} className="mt-4 flex flex-wrap gap-x-1 border-b text-sm">
       {items.map((t) => (
         <Link
           key={t.key}
           href={t.href}
           aria-current={t.key === active ? "page" : undefined}
-          className={`border-b-2 px-3 py-2 ${
+          className={`tap whitespace-nowrap border-b-2 px-3 py-2 ${
             t.key === active ? "border-brand font-semibold text-ink" : "border-transparent text-graphite hover:text-ink"
           }`}
         >

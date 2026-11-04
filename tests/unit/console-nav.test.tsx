@@ -88,6 +88,29 @@ describe("ConsoleNav", () => {
     expect(screen.getByRole("link", { name: "Supplier Logos" })).not.toHaveAttribute("aria-current");
   });
 
+  it("lights a childless section for its extra `match` paths, the most specific match winning (#33 M20)", () => {
+    // The member nav's real shape: "Add content" links the Story form but owns
+    // the other add forms; "Your content" owns every edit page.
+    const items: NavSection[] = [
+      { key: "overview", href: "/dashboard", label: "Dashboard" },
+      { key: "content", href: "/dashboard/story/new", label: "Add content", match: ["/dashboard/equipment/new"] },
+      { key: "submissions", href: "/dashboard/submissions", label: "Your content", match: ["/dashboard/story", "/dashboard/equipment"] },
+    ];
+    const current = () => screen.getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page").map((a) => a.textContent);
+
+    vi.mocked(usePathname).mockReturnValue("/dashboard/equipment/new");
+    const { rerender } = render(<ConsoleNav items={items} root="/dashboard" />);
+    expect(current()).toEqual(["Add content"]);
+
+    vi.mocked(usePathname).mockReturnValue("/dashboard/story/new");
+    rerender(<ConsoleNav items={items} root="/dashboard" />);
+    expect(current()).toEqual(["Add content"]);
+
+    vi.mocked(usePathname).mockReturnValue("/dashboard/story/abc/edit");
+    rerender(<ConsoleNav items={items} root="/dashboard" />);
+    expect(current()).toEqual(["Your content"]);
+  });
+
   it("shows no sub-menu items when the path matches no section", () => {
     vi.mocked(usePathname).mockReturnValue("/console/other");
     render(<ConsoleNav items={ITEMS} />);

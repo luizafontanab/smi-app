@@ -56,7 +56,9 @@ export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
           dangerouslySetInnerHTML={{ __html: collapseSections(renderableHtml(page.body)) }}
         />
       ) : (
-        <RichText html={page.body} className="story-read mt-4 rounded-lg bg-white p-6 shadow-sm" />
+        // Card chrome from sm up only: on a phone the box edge and 24px inset
+        // just narrowed the text column inside the gutter (#33).
+        <RichText html={page.body} className="story-read mt-4 sm:rounded-lg sm:bg-white sm:p-6 sm:shadow-sm" />
       )}
     </>
   );

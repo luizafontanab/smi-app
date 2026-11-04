@@ -13,7 +13,7 @@ export default async function NewMemberVideo(props: PageProps<"/dashboard/video/
   const db = serviceDb();
   const { data: member } = await db.from("members").select("name, slug, logo_path").eq("id", user.memberId).single();
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <AddContentTabs active="video" />
       <h1 className="mt-4 text-xl font-bold text-ink">Add a video</h1>
       <p className="mt-1 text-sm text-graphite">

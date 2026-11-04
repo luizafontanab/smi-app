@@ -32,6 +32,13 @@ export default function JoinPage() {
         <p className="mx-auto mt-2 max-w-xl text-sm text-graphite">
           Join 85+ UK sheet metal companies reaching thousands of trade readers every month.
         </p>
+        {/* Phones only: the band's Join button sits about two screens down
+            once the benefit cards stack, so the price gets its own (#33). Worded
+            apart from "Join now" so join.spec's text selector still finds the
+            band's button first. */}
+        <Link href="/join/account" className="mt-5 flex min-h-11 w-full items-center justify-center rounded bg-brand px-6 font-semibold text-ink sm:hidden">
+          Join for £40/month
+        </Link>
       </div>
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {BENEFITS.map(([title, detail]) => (
@@ -41,20 +48,22 @@ export default function JoinPage() {
           </div>
         ))}
       </div>
-      <div className="mt-8 rounded-xl bg-ink p-8 text-center text-white">
+      {/* Light band, matching the JoinCta band: the grid design reads light,
+          and this was the page's one near-black panel (#33). */}
+      <div className="mt-8 rounded-xl border border-brand/30 bg-brand/10 p-6 text-center text-ink sm:p-8">
         <h2 className="text-xl font-bold">How joining works</h2>
-        <ol className="mx-auto mt-4 max-w-md space-y-3 text-left text-sm">
+        <ol className="mx-auto mt-4 max-w-md space-y-3 text-left text-base sm:text-sm">
           {STEPS.map(([title, detail], i) => (
             <li key={title} className="flex gap-3">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-ink">{i + 1}</span>
-              <span><b>{title}</b> <span className="text-white/70">— {detail}</span></span>
+              <span><b>{title}</b> <span className="text-graphite">— {detail}</span></span>
             </li>
           ))}
         </ol>
         <Link href="/join/account" className="mt-6 inline-block rounded bg-brand px-6 py-3 font-semibold text-ink">
           Join now — £40/month
         </Link>
-        <p className="mt-3 text-xs text-white/50">Payments handled securely by Stripe.</p>
+        <p className="mt-3 text-xs text-graphite">Payments handled securely by Stripe.</p>
       </div>
       <div className="my-10" />
     </div>

@@ -25,7 +25,7 @@ export default async function EditMemberStory(props: PageProps<"/dashboard/story
   const draft = isMemberDraft(story);
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl lg:mx-auto">
       <h1 className="mt-1 text-xl font-bold text-ink">{draft ? "Your draft story" : "Edit your story"}</h1>
       <p className="mt-1 text-sm text-graphite">
         {draft

@@ -11,7 +11,8 @@ export function CookieSettingsLink() {
         document.cookie = `${CONSENT_COOKIE}=; path=/; max-age=0`;
         window.location.reload();
       }}
-      className="hover:text-brand"
+      // `tap`, like the footer links beside it — it was a 20px-tall target (#33).
+      className="tap hover:text-brand"
     >
       Cookie settings
     </button>

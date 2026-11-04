@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/auth";
 import { siteUrl } from "@/lib/site-url";
 import { allowRequest, HOUR, withinLimit } from "@/lib/rate-limit";
 import { SubmitButton } from "@/components/SubmitButton";
+import { AuthLogo } from "@/components/AuthLogo";
 
 export const metadata = { title: "Reset your password" };
 
@@ -42,7 +43,7 @@ export default async function ResetPage(props: PageProps<"/reset">) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-4">
       <div className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
-        <p className="text-center text-lg font-bold text-ink">Sheet Metal <span className="text-brand">Industries</span></p>
+        <AuthLogo />
 
         {sent ? (
           <>
@@ -50,7 +51,7 @@ export default async function ResetPage(props: PageProps<"/reset">) {
               If that address has an account, a reset link is on its way. The link is valid for one hour.
             </p>
             <p className="mt-4 text-center text-sm">
-              <Link href="/login" className="underline">Back to sign in</Link>
+              <Link href="/login" className="tap underline">Back to sign in</Link>
             </p>
           </>
         ) : (
@@ -64,7 +65,7 @@ export default async function ResetPage(props: PageProps<"/reset">) {
               <SubmitButton pendingLabel="Sending…">Send reset link</SubmitButton>
             </div>
             <p className="mt-3 text-center text-sm">
-              <Link href="/login" className="underline text-graphite">Back to sign in</Link>
+              <Link href="/login" className="tap underline text-graphite">Back to sign in</Link>
             </p>
           </form>
         )}

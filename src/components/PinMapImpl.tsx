@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   APIProvider,
@@ -26,9 +26,22 @@ export type MapPin = { href: string; label: string; lat: number; lng: number };
  * Display options, defaulting to the directory/events map. A member profile's
  * sidebar map (one pin, the page you're already on) passes a street-level
  * zoom, a shorter box, no wheel zoom — so scrolling the page past it doesn't
- * get captured — and no popup linking back to the same page.
+ * get captured — and no popup linking back to the same page. `scrollWheelZoom`
+ * only ever applies to a mouse: touch screens are always cooperative.
  */
 export type PinMapOptions = { zoom?: number; heightClass?: string; scrollWheelZoom?: boolean; popups?: boolean; roundedClass?: string };
+
+/** Same default as PinMap's placeholder (which passes it down explicitly). */
+const DEFAULT_HEIGHT = "h-80 sm:h-[32rem]";
+
+const COARSE = "(pointer: coarse)";
+const subscribeCoarse = (onChange: () => void) => {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const mq = window.matchMedia(COARSE);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+};
+const isCoarse = () => typeof window.matchMedia === "function" && window.matchMedia(COARSE).matches;
 
 /** The site's orange pin. Its tip sits at the bottom centre, which is where AdvancedMarker anchors by default. */
 function PinIcon() {
@@ -61,7 +74,7 @@ export function PinMap({
   pins,
   ariaLabel,
   zoom = 6,
-  heightClass = "h-[32rem]",
+  heightClass = DEFAULT_HEIGHT,
   scrollWheelZoom = true,
   popups = true,
   roundedClass = "rounded-lg shadow-sm",
@@ -71,6 +84,9 @@ export function PinMap({
   // AdvancedMarker needs a map id; Google's demo id works until SMI makes its own.
   const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || "DEMO_MAP_ID";
   const [openHref, setOpenHref] = useState<string | null>(null);
+  // A touch screen never gets "greedy": one finger on the map must scroll the
+  // page, not pan the map (#33). Two fingers still pan and pinch-zoom.
+  const coarse = useSyncExternalStore(subscribeCoarse, isCoarse, () => false);
 
   // Centres on the average of whatever is on screen, or the UK with nothing to show.
   const center = useMemo(() => {
@@ -97,7 +113,7 @@ export function PinMap({
           defaultCenter={center}
           defaultZoom={zoom}
           // "cooperative" = ctrl/two-finger to zoom, so page scroll passes over the map
-          gestureHandling={scrollWheelZoom ? "greedy" : "cooperative"}
+          gestureHandling={scrollWheelZoom && !coarse ? "greedy" : "cooperative"}
           streetViewControl={false}
           mapTypeControl={false}
         >

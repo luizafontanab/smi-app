@@ -60,7 +60,9 @@ test("the member cloud reveals a logo on first tap and follows the link on the s
   await page.goto("/member?view=cloud"); // bare /member is the tile list since 28 Oct
   // A phone has no hover, so the logo needs a tap of its own — but the name must
   // still be a link, not a button, for everyone else.
-  const item = page.locator("li.cloud-item").first();
+  // :visible — phones and touch tablets draw a sample of the cloud (#36), so
+  // the alphabetically first member may be hidden.
+  const item = page.locator("li.cloud-item:visible").first();
   const name = item.locator(".cloud-name");
   const href = await name.getAttribute("href");
   expect(href).toMatch(/^\/member\/[^/]+$/);
