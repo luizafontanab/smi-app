@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { serviceDb } from "./db/server";
+import { THEME_SWITCHER_ENABLED } from "./theme-switcher-flag";
 
 /**
  * Which of the two site designs this request is being rendered in.
@@ -59,6 +60,10 @@ export const defaultVariant = cache(async (): Promise<Variant> => {
  * request-rendered anyway.
  */
 export const siteVariant = cache(async (): Promise<Variant> => {
+  // With the switcher hidden, grid is the only design in play (#33). Neither a
+  // leftover cookie (they last 30 days) nor a stored site-wide forge setting
+  // may keep anyone on forge. Turning the flag back on restores both.
+  if (!THEME_SWITCHER_ENABLED) return "grid";
   const chosen = (await cookies()).get(VARIANT_COOKIE)?.value;
   return isVariant(chosen) ? chosen : defaultVariant();
 });

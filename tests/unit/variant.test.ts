@@ -7,7 +7,16 @@ import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
+// The design switcher flag is a build-time constant; a getter lets each test
+// choose it. On by default so the cookie/setting tests describe the switcher's
+// own behaviour, which turning it back on must restore unchanged.
+const switcher = vi.hoisted(() => ({ on: true }));
+vi.mock("@/lib/theme-switcher-flag", () => ({
+  get THEME_SWITCHER_ENABLED() { return switcher.on; },
+}));
+
 afterEach(() => {
+  switcher.on = true;
   resetNextHeadersMocks();
   resetDbServerMocks();
 });
@@ -51,6 +60,30 @@ describe("siteVariant", () => {
     siteDefault("forge");
     cookieStore.set(VARIANT_COOKIE, "live");
     expect(await siteVariant()).toBe("forge");
+  });
+});
+
+// #33: with the switcher hidden, grid is the only design in play — a cookie
+// left over from the switcher must not keep anyone on forge.
+describe("siteVariant with the design switcher off", () => {
+  it("serves grid even to a browser holding a forge cookie", async () => {
+    siteDefault("grid");
+    switcher.on = false;
+    cookieStore.set(VARIANT_COOKIE, "forge");
+    expect(await siteVariant()).toBe("grid");
+  });
+
+  it("serves grid even when the site-wide setting says forge", async () => {
+    siteDefault("forge");
+    switcher.on = false;
+    expect(await siteVariant()).toBe("grid");
+  });
+
+  it("picks the grid view module for the homepage", async () => {
+    siteDefault("forge");
+    switcher.on = false;
+    cookieStore.set(VARIANT_COOKIE, "forge");
+    expect(await pickView({ forge: "ForgeHome", grid: "GridHome" })).toBe("GridHome");
   });
 });
 

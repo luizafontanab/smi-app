@@ -48,10 +48,10 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
   const myChoice = cookieStore.get(VARIANT_COOKIE)?.value;
   const myOverride = isVariant(myChoice) && myChoice !== siteDefault ? myChoice : null;
   const VARIANT_LABEL = { forge: "Forge", grid: "Grid" } as const;
-  // With the switcher off, the card only surfaces as a way back to grid: a
-  // database whose row still says forge, or a browser holding an old preview
-  // cookie, would otherwise be stuck there with no control in sight.
-  const showDesignCard = THEME_SWITCHER_ENABLED || siteDefault !== "grid" || myOverride !== null;
+  // With the switcher off the site serves grid whatever the stored setting or
+  // a browser's cookie says (lib/variant.ts, #33), so nobody can be stuck on
+  // forge and the card would only offer choices with no effect.
+  const showDesignCard = THEME_SWITCHER_ENABLED;
 
   const [layout, overrideRow, entityLabel] = await Promise.all([
     getLayout(type, entity),

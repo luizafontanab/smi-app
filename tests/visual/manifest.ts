@@ -68,10 +68,8 @@ const PUBLIC: Route[] = [
   // Anonymously it redirects to /login and there is nothing to photograph.
   member("/reset/new"),
 
-  // The homepage has two structurally different designs (src/lib/variant.ts).
-  // Grid is the one going live and every route is captured in it (lib/auth
-  // DEFAULT_COOKIES, since 22 Oct); forge keeps this one route.
-  { id: "home@forge", path: "/", role: "anon", cookies: [{ name: "smi-theme", value: "forge" }] },
+  // No forge homepage route: while the design switcher is off the site serves
+  // grid whatever the smi-theme cookie says (#33), so it would capture grid.
 ];
 
 const PUBLIC_PINNED: Route[] = [

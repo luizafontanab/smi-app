@@ -93,3 +93,9 @@ _Avoid_: unpublish, return to draft
 **Approval record**:
 The lasting note of who approved or declined a content item, when, and why.
 _Avoid_: audit log (that is a separate record of member account changes)
+
+## Site design
+
+**Design variant**:
+One of the two layouts the public site can be shown in, grid (the default) or forge. Both use the same colours, type and components and differ only in how pages are arranged. "Theme" is an accepted synonym, used when talking with the client.
+_Avoid_: skin, template, version

@@ -42,8 +42,9 @@ export const STATE_DIR = path.resolve(__dirname, "../.state");
  *              slot draws its deterministic dashed placeholder instead — no carousel.
  *              showAdPlaceholders() honours the cookie even in a production build.
  * smi-theme    The homepage has two structurally different designs. Pin grid, the
- *              design going live (ask-jas 17, site default since A8.2); the forge
- *              homepage is captured as its own route, home@forge.
+ *              design going live (ask-jas 17, site default since A8.2). Inert
+ *              while the design switcher is off — grid is then served regardless
+ *              (#33) — and kept so the suite stays right if the switcher returns.
  */
 export const DEFAULT_COOKIES = [
   { name: "smi-consent", value: "essential" },

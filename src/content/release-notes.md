@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-04 — Everyone sees the same design
+- Every visitor now gets the current design. Before, a browser that had used the old design switcher could keep showing the older dark design for up to 30 days, so a phone and a desktop could look different and show the featured machine and events in different places.
+- The "Homepage design" card no longer appears on Console → Pages, since there is only one design to choose.
+
 ## 2026-11-03 — Member edits can no longer undo your decisions
 - If a member had a story, video or event's edit page open from before you approved or sent it back, saving that page is now refused and they are told it changed. Before, it pulled a Live video or event back into Ready to review, and a story you sent back went straight back to Ready to review without the member seeing your reason.
 - A member withdrawing a story, video or event you have already published is now refused, and it stays Live.

@@ -129,8 +129,9 @@ has:
   `/dashboard/stats` and `/console/analytics` would render. The suite would fail
   against itself.
 - `smi-theme=grid` — pins the site design to grid, the one going live, on every
-  route (the header, footer and industries bar differ too); the forge homepage is
-  its own route (`home@forge`).
+  route (the header, footer and industries bar differ too). While the design
+  switcher is off the site ignores this cookie and serves grid anyway (#33), so
+  there is no forge route; the pin keeps the suite right if the switcher returns.
 - `reducedMotion: "reduce"` — triggers the existing
   `@media (prefers-reduced-motion: reduce)` block in `globals.css`, which stops
   the infinite 26s hero ken-burns pan and every entrance animation.
