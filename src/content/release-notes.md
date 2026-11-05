@@ -10,6 +10,11 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-05 — Story sources use a company's website when Bigin has no news page
+- On Story sources, a Bigin company with no News Page URL now uses its Website instead, so far more Bigin companies are checked for new articles each day.
+- These sources say "from website" next to the Bigin label. Fill in the company's News Page URL in Bigin and the next sync swaps the homepage for that page.
+- The "From Bigin" box says how many companies are using their Website. If no company at all comes back with a News Page URL, it shows a warning and adds nothing, because that usually means the app can't see the field.
+
 ## 2026-11-04 — The lead alert reports page views
 - The members' "sales-lead" alert email now says how many times their page was viewed this week (or since yesterday, for daily alerts), with a "See your statistics" button. It used to say a number of companies had engaged and offer to show who they were, but that number was really a count of days with views, and no member page lists companies.
 - The setting for this email, under Settings, is now called "Page-view alerts". The Statistics shortcuts in the member area say "Page views, story reach & adverts" instead of "Who's engaging", and the Become a Member page no longer promises a list of the companies looking at your page.
