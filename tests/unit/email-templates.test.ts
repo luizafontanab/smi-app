@@ -127,6 +127,43 @@ describe("html safety", () => {
 });
 
 /**
+ * #12: the alert counted engagement rows and called them companies, then sent
+ * members to a "who's engaging" list that no member page shows. It is now a
+ * page-view count, and nothing in it may promise companies or a list.
+ */
+describe("lead_alert copy", () => {
+  const all = (mail: { subject: string; text: string; html: string }) => [mail.subject, mail.text, mail.html].join("\n");
+
+  it.each([1, 8])("promises no companies and no list for a count of %i", (count) => {
+    const body = all(renderNotification({ kind: "lead_alert", count, days: 7 }));
+    expect(body).not.toMatch(/compan/i);
+    expect(body).not.toMatch(/who['’]s engaging/i);
+    expect(notificationLabel("lead_alert")).not.toMatch(/compan/i);
+  });
+
+  it("reads as plural views for 8 over a week", () => {
+    const mail = renderNotification({ kind: "lead_alert", count: 8, days: 7 });
+    expect(mail.subject).toBe("Your page had 8 views");
+    expect(mail.text).toContain("Your page had 8 views this week.");
+    expect(mail.html).toContain("Your page had 8 views this week.");
+    expect(mail.text).toContain("See your statistics: ");
+    expect(mail.text).toContain("/dashboard/stats");
+  });
+
+  it("reads as a single view for 1 since yesterday", () => {
+    const mail = renderNotification({ kind: "lead_alert", count: 1, days: 1 });
+    expect(mail.subject).toBe("Your page had 1 view");
+    expect(mail.text).toContain("Your page had 1 view since yesterday.");
+    expect(mail.html).toContain("Your page had 1 view since yesterday.");
+  });
+
+  it("still reads correctly for an alert queued before the window was recorded", () => {
+    const mail = renderNotification({ kind: "lead_alert", count: 3 });
+    expect(mail.text).toContain("Your page had 3 views recently.");
+  });
+});
+
+/**
  * The console stores only the fields an admin actually changed. The property
  * that matters is the one a full-row override would quietly destroy: a subject
  * edit must not freeze the body, or a copy fix shipped in code stops reaching
@@ -185,6 +222,28 @@ describe("admin overrides", () => {
     expect(mail.html).toContain("<main>");
     expect(mail.html).toContain("member directory");
     expect(mail.html).not.toContain("Sheet Metal <span");
+  });
+
+  // #12 retired lead_alert's `count` and `companies_phrase` tokens. A row
+  // saved before that still names them; it must not leak raw braces, and the
+  // company wording it carried must not reach a member.
+  it("falls back to the default for a field that uses a retired token", () => {
+    const stale = overrides({
+      lead_alert: {
+        subject: "{{count}} {{companies_phrase}} found you",
+        body_html: "<p>{{count}} {{companies_phrase}} engaged with your page recently.</p>",
+        body_text: "{{count}} {{companies_phrase}} engaged with your page recently.",
+        cta_label: "Open your statistics",
+      },
+    });
+    const mail = renderNotification({ kind: "lead_alert", count: 8, days: 7 }, stale);
+    const all = [mail.subject, mail.text, mail.html].join("\n");
+    expect(all).not.toContain("{{");
+    expect(all).not.toMatch(/compan/i);
+    expect(mail.subject).toBe("Your page had 8 views");
+    expect(mail.text).toContain("Your page had 8 views this week.");
+    // a field with no retired token is still the admin's
+    expect(mail.text).toContain("Open your statistics: ");
   });
 
   it("leaves the button's destination alone when only its label is edited", () => {

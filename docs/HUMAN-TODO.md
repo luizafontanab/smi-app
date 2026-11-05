@@ -357,6 +357,12 @@ through Proof and approval first.
       log, check that Node is 24.x and that Vercel warns the dashboard setting
       was overridden. If the dashboard still says 20.x or 22.x, change it to
       24.x so it no longer contradicts the repo. *(`08e6c93`.)*
+- [ ] **3.11 — Check the lead-alert email wasn't customised.** The alert now
+      reports page views, not companies (#12). In the console, open Email
+      templates and look at the lead alert. If it shows as customised, any
+      field using `{{count}}` or `{{companies_phrase}}` is already ignored, but
+      wording with no placeholder (for example a subject about "companies")
+      still sends. Reset the email or reword it.
 
 ---
 
