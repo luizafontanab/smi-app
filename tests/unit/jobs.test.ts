@@ -900,27 +900,41 @@ describe("runJob kinds", () => {
     expect(callsOf(jobsTail.insert)).toHaveLength(0);
   });
 
-  it("lead_alert — sends when there's new engagement for a daily-cadence member", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-04T00:00:00.000Z")); // a Wednesday — irrelevant for a daily cadence
-    const j = job("lead_alert");
-    const membersBuilder = queryBuilder(dbOk([{ id: "m1", notification_prefs: { leads_frequency: "daily" } }]));
-    // lead_alert counts head-only (no rows) so PostgREST's max-rows cap can
-    // never truncate the number a member is sent.
-    const engagementBuilder = queryBuilder(dbOk(null, 2));
-    const jobsTail = queryBuilder(dbOk(null));
-    dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
-      members: () => membersBuilder, engagement_audit: () => engagementBuilder,
+  // #12: the alert used to count engagement_audit *rows* — one per member per
+  // day while the IP resolver returns no region or company — and call them
+  // companies. It reports the member's page views instead.
+  describe("lead_alert — counts page views", () => {
+    async function runFor(rows: { views: number }[], frequency = "daily") {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-03-04T00:00:00.000Z")); // a Wednesday — irrelevant for a daily cadence
+      const j = job("lead_alert");
+      const membersBuilder = queryBuilder(dbOk([{ id: "m1", notification_prefs: { leads_frequency: frequency } }]));
+      const engagementBuilder = queryBuilder(dbOk(rows));
+      const jobsTail = queryBuilder(dbOk(null));
+      dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), jobsTail], {
+        members: () => membersBuilder, engagement_audit: () => engagementBuilder,
+      });
+      await runJobById(j.id);
+      vi.useRealTimers();
+      return callsOf(jobsTail.insert)
+        .map(([row]) => row as { kind: string; payload: Record<string, unknown> })
+        .filter((row) => row.kind === "notify_member");
+    }
+
+    it("enqueues the total views across days, not the number of rows", async () => {
+      const sent = await runFor([{ views: 3 }, { views: 5 }]);
+      expect(sent).toEqual([expect.objectContaining({
+        payload: expect.objectContaining({ member_id: "m1", kind: "lead_alert", count: 8, days: 1 }),
+      })]);
     });
 
-    await runJobById(j.id);
-    vi.useRealTimers();
+    it("sends nothing when the member had no engagement rows", async () => {
+      expect(await runFor([])).toEqual([]);
+    });
 
-    const inserted = callsOf(jobsTail.insert).map(([row]) => row as { kind: string; payload: Record<string, unknown> });
-    expect(inserted).toContainEqual(expect.objectContaining({
-      kind: "notify_member",
-      payload: expect.objectContaining({ member_id: "m1", kind: "lead_alert", count: 2 }),
-    }));
+    it("sends nothing when the rows add up to zero views", async () => {
+      expect(await runFor([{ views: 0 }, { views: 0 }])).toEqual([]);
+    });
   });
 
   // Logging plan Phase 1: 90-day retention for the error log.

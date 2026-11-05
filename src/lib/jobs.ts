@@ -11,6 +11,7 @@ import { isMemberLinkable } from "./member-visibility";
 import { graceUntilFrom } from "./grace-period";
 import { publishDue } from "./content-lifecycle";
 import { logError } from "./log";
+import { allRows } from "./db/all-rows";
 
 /**
  * Postgres-backed job queue (TECH-DECISIONS #13).
@@ -712,13 +713,24 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         const frequency = m.notification_prefs?.leads_frequency ?? "weekly";
         const sinceDays = frequency === "weekly" ? 7 : 1;
         const since = new Date(Date.now() - sinceDays * 864e5).toISOString().slice(0, 10);
-        const { count } = await db
+        // The member's page views over the window: the sum of `views`. A row
+        // count is not a number of companies: the rollup writes one row per
+        // member, day and (region, company), and both are null until a
+        // resolver is wired, so it was the number of days with views (#12).
+        // Summed here rather than in SQL because PostgREST aggregates aren't
+        // enabled and the window holds about one row a day; paged so max_rows
+        // can't truncate it if region/company rows ever multiply.
+        const rows = await allRows((from, to) => db
           .from("engagement_audit")
-          .select("*", { count: "exact", head: true })
+          .select("id, views")
           .eq("member_id", m.id)
-          .gte("occurred_on", since);
+          .gte("occurred_on", since)
+          .order("id")
+          .range(from, to));
+        const count = rows.reduce((sum, row) => sum + (row.views ?? 0), 0);
         if (!count) return;
-        await enqueue("notify_member", { member_id: m.id, kind: "lead_alert", count });
+        // `days` lets the email say "this week" or "since yesterday".
+        await enqueue("notify_member", { member_id: m.id, kind: "lead_alert", count, days: sinceDays });
       }));
       break;
     }

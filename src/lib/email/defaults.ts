@@ -567,20 +567,26 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
       { token: "views_s", description: "The plural \"s\" — empty when the count is exactly 1.", sample: "s" },
     ],
   }),
+  // A page-view count, not a company list (#12). The `count` and
+  // `companies_phrase` tokens were retired with the company wording, so an old
+  // override that still uses them falls back to this copy field by field
+  // rather than leaking raw braces (see `sendableTemplate`). The in-app label
+  // has no number because labels are never interpolated.
   lead_alert: make({
-    subject: "New companies engaging with your page",
-    label: "New companies engaging with your page",
+    subject: "Your page had {{views}} view{{views_s}}",
+    label: "Your page had new views",
     paragraphs: [
-      "{{count}} {{companies_phrase}} engaged with your page recently.",
-      "See who's interested in your member area.",
+      "Your page had {{views}} view{{views_s}} {{period}}.",
+      "See the full breakdown, including advert performance and story reach, in your member area.",
     ],
-    ctaLabel: "View who's engaging",
+    ctaLabel: "See your statistics",
     tokens: [
-      { token: "count", description: "How many companies engaged.", sample: "4" },
+      { token: "views", description: "How many times the member's page was viewed in the last week, or since yesterday for daily alerts.", sample: "8" },
+      { token: "views_s", description: "The plural \"s\" — empty when the count is exactly 1.", sample: "s" },
       {
-        token: "companies_phrase",
-        description: "Reads \"companies have\", or \"company has\" when the count is exactly 1.",
-        sample: "companies have",
+        token: "period",
+        description: "\"this week\" or \"since yesterday\", following the member's alert frequency.",
+        sample: "this week",
       },
     ],
   }),

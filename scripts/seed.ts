@@ -563,11 +563,14 @@ async function main() {
     const { error } = await db.from("analytics_events").insert(events.slice(i, i + 1000));
     if (error) throw error;
   }
+  // Null region and company, as production writes them until GeoLite2 (#15) or
+  // a company vendor (GAPS B2.2) is wired: fake names here hid #12, where the
+  // lead alert counted these rows as companies. With both null the unique key
+  // allows one row per member per day, so the six days are distinct.
   const audit = memberLogins.flatMap((mid) =>
-    Array.from({ length: 6 }, () => ({
-      member_id: mid, occurred_on: iso(faker.date.recent({ days: 14 })),
-      region: faker.helpers.arrayElement(UK_REGIONS),
-      company: faker.helpers.arrayElement(fakeCompanies.filter(Boolean) as string[]),
+    faker.helpers.arrayElements(Array.from({ length: 14 }, (_, d) => d), 6).map((d) => ({
+      member_id: mid, occurred_on: iso(new Date(today.getTime() - d * 864e5)),
+      region: null, company: null,
       page: "member page", views: faker.number.int({ min: 1, max: 9 }),
     }))
   );
