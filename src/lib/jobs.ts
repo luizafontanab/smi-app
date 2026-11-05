@@ -599,11 +599,18 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       // being down is an outcome, not a job failure.
       // The "Story crawler" flag (/console/features) stops it outright; the job
       // still completes, so the queue doesn't back up while it's off.
-      // An admin's "Check sources now" already running is a skip, not a
-      // failure: those sources get checked either way (lib/sources/run).
+      // Another check holding the lock (an admin's "Check sources now", or
+      // one cut off in the last few minutes) isn't a failure, but this turn's
+      // batch must still be read: it comes back once the lock is sure to be
+      // free. The retry is an ordinary pending source_watch, so the hourly
+      // one isn't queued on top of it (ensurePeriodic).
       if (!(await storyCrawlerOn())) break;
       const { runSourceCheck } = await import("./sources/run");
-      await runSourceCheck({ startedBy: null });
+      const outcome = await runSourceCheck({ startedBy: null });
+      if (outcome.status === "busy") {
+        console.info(`[job:source_watch] another source check is running; trying again at ${outcome.retryAt.toISOString()}`);
+        await enqueue("source_watch", { after_busy: jobId }, outcome.retryAt);
+      }
       break;
     }
     case "source_bigin_sync": {

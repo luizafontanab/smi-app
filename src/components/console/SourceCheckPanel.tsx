@@ -8,7 +8,9 @@ const FLASH: Record<string, { text: string; tone: "ok" | "warn" | "bad" }> = {
   done: { text: "Check finished.", tone: "ok" },
   busy: { text: "A check is already running, so this one didn't start. Try again in a minute.", tone: "warn" },
   off: { text: "The story crawler is off, so nothing was checked.", tone: "warn" },
-  failed: { text: "The check stopped part-way. What it reached is saved — please try again.", tone: "bad" },
+  held: { text: "The check stopped at its time limit while a site was still answering. What it reached is saved; the next check can start in a few minutes.", tone: "warn" },
+  failed: { text: "The check stopped with an error. Anything it checked before that is saved — please try again.", tone: "bad" },
+  notstarted: { text: "The check couldn't start, so nothing was checked. Please try again.", tone: "bad" },
 };
 const TONE = { ok: "bg-success/10 text-success", warn: "bg-gold/25 text-ink", bad: "bg-danger/10 text-danger" };
 
@@ -18,18 +20,21 @@ const TONE = { ok: "bg-success/10 text-success", warn: "bg-gold/25 text-ink", ba
  * click comes back to, and must be one the action allows.
  */
 export function SourceCheckPanel({
-  run, crawlerOn, returnTo, flash, nowMs, className = "",
+  run, crawlerOn, returnTo, flash, flashRun, nowMs, className = "",
 }: {
   run: SourceCheckRun | null;
   crawlerOn: boolean;
   returnTo: "/console" | "/console/sources" | "/console/sources?view=sources";
   flash?: string;
+  /** `?checkrun=`: the run the click started. Its count is shown only while it's still the record's run. */
+  flashRun?: string;
   nowMs: number;
   className?: string;
 }) {
   const result = flash ? FLASH[flash] : undefined;
   const running = isRunning(run, nowMs);
-  const fresh = flash === "done" && run?.finished_at && !run.error ? run.new_items ?? 0 : 0;
+  const ours = !!flashRun && run?.id === flashRun;
+  const fresh = (flash === "done" || flash === "held") && ours && run && !run.error ? run.new_items ?? 0 : 0;
   return (
     <section id="source-check" aria-labelledby="source-check-title" className={`rounded-xl bg-white p-4 text-sm shadow-sm ${className}`}>
       <div className="flex items-baseline justify-between gap-2">
@@ -39,6 +44,7 @@ export function SourceCheckPanel({
       {result && (
         <p role="status" className={`mt-2 rounded p-2 ${TONE[result.tone]}`}>
           {result.text}
+          {flash === "done" && flashRun && !ours && <> A newer check has run since; its summary is below.</>}
           {fresh > 0 && <> <Link href="/console/sources" className="underline">See the {fresh === 1 ? "new suggestion" : `${fresh} new suggestions`} →</Link></>}
         </p>
       )}

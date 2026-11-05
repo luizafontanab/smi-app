@@ -1,6 +1,8 @@
+import { must } from "../db/must";
 import { serviceDb } from "../db/server";
 import type { Json } from "../db/types";
-import { CHECK_EVERY_MS, dueFilter, runSourceWatch } from "./check";
+import { logError } from "../log";
+import { CHECK_EVERY_MS, runSourceWatch } from "./check";
 
 /**
  * A source check, from the schedule (the `source_watch` job) or from an
@@ -31,6 +33,8 @@ export type SourceCheckRun = {
   unreadable?: number;
   /** Hit an error on our side (logged); still due. */
   failed?: number;
+  /** Still being read at the hard stop, so cancelled; nothing written, still due. */
+  cut_off?: number;
   /** Sources still due once the check finished. */
   still_due?: number;
   /** When nothing was due: when the next source comes due. */
@@ -40,8 +44,23 @@ export type SourceCheckRun = {
 };
 
 export type SourceCheckOutcome =
+  /** `run.finished_at` is null if a source was still winding down at the hard stop: the lock stays held until ABANDON_AFTER_MS. */
   | { status: "done"; run: SourceCheckRun }
-  | { status: "busy"; run: SourceCheckRun | null };
+  /** Another check holds the lock. `retryAt` is when it is sure to be free. */
+  | { status: "busy"; run: SourceCheckRun | null; retryAt: Date };
+
+/**
+ * The name of an error runSourceCheck throws when it failed before taking the
+ * lock: nothing was fetched and nothing was recorded. Checked by name, as
+ * jobs.ts does for EmailSendError, so a mocked module needn't export a class.
+ */
+export const NOT_STARTED = "SourceCheckNotStarted";
+
+function notStarted(e: unknown): Error {
+  const err = new Error(e instanceof Error ? e.message : String(e), { cause: e });
+  err.name = NOT_STARTED;
+  return err;
+}
 
 type Db = ReturnType<typeof serviceDb>;
 type WatchOptions = Omit<NonNullable<Parameters<typeof runSourceWatch>[0]>, "now">;
@@ -83,15 +102,6 @@ async function finish(db: Db, run: SourceCheckRun) {
   if (error) throw new Error(`source check: saving the result: ${error.message}`);
 }
 
-async function countDue(db: Db, now: Date): Promise<number> {
-  const { count, error } = await db.from("content_sources")
-    .select("*", { count: "exact", head: true })
-    .eq("active", true)
-    .or(dueFilter(now));
-  if (error) throw new Error(`source check: counting due sources: ${error.message}`);
-  return count ?? 0;
-}
-
 /** When the least recently checked active source comes due again. */
 async function nextDueAt(db: Db): Promise<string | null> {
   const { data, error } = await db.from("content_sources")
@@ -108,38 +118,73 @@ async function nextDueAt(db: Db): Promise<string | null> {
 /**
  * Run one source check under the lock. "busy" means another check holds it,
  * and nothing was fetched. The caller checks the Story crawler flag first.
+ *
+ * Throws an error named NOT_STARTED if it failed before taking the lock. Any
+ * other error came after: the record keeps whatever the check reached.
  */
 export async function runSourceCheck({ startedBy, now = () => new Date(), ...watch }: { startedBy: string | null; now?: () => Date } & WatchOptions): Promise<SourceCheckOutcome> {
   const db = serviceDb();
   const run: SourceCheckRun = { id: crypto.randomUUID(), started_at: now().toISOString(), finished_at: null, started_by: startedBy };
-  if (!(await claim(db, run, now()))) return { status: "busy", run: await readSourceCheckRun() };
-
+  let claimed: boolean;
   try {
-    const due = await countDue(db, now());
-    const result = due > 0 ? await runSourceWatch({ ...watch, now }) : { checked: 0, newItems: 0, unreadable: 0, failed: 0 };
-    const done: SourceCheckRun = {
-      ...run,
-      finished_at: now().toISOString(),
-      due,
+    claimed = await claim(db, run, now());
+  } catch (e) {
+    throw notStarted(e);
+  }
+  if (!claimed) {
+    // Only for the message; "busy" is already certain, so a failed read doesn't change it.
+    const holder = await readSourceCheckRun().catch(() => null);
+    const freeFrom = (holder && !holder.finished_at ? Date.parse(holder.started_at) : now().getTime()) + ABANDON_AFTER_MS;
+    return { status: "busy", run: holder, retryAt: new Date(Math.max(freeFrom, now().getTime() + 60_000)) };
+  }
+
+  let reached: Partial<SourceCheckRun> = {};
+  try {
+    const result = await runSourceWatch({ ...watch, now });
+    reached = {
+      due: result.due,
       checked: result.checked,
       new_items: result.newItems,
       unreadable: result.unreadable,
       failed: result.failed,
-      still_due: due > 0 ? await countDue(db, now()) : 0,
-      next_due_at: due > 0 ? null : await nextDueAt(db),
+      cut_off: result.cutOff,
+      // Every source checked is marked so, and every worker has stopped (or
+      // the lock stays held, below), so this is what the table now holds.
+      still_due: Math.max(0, result.due - result.checked),
+    };
+    // A worker that didn't wind down may still be reading or writing. Leave
+    // the record unfinished so the lock holds until ABANDON_AFTER_MS, and no
+    // other check reads the same sites meanwhile.
+    const finishedAt = result.settled ? now().toISOString() : null;
+    const done: SourceCheckRun = {
+      ...run,
+      ...reached,
+      finished_at: finishedAt,
+      next_due_at: result.due === 0 ? await nextDueAtOrNull(db) : null,
     };
     await finish(db, done);
     return { status: "done", run: done };
   } catch (e) {
-    // Release the lock rather than leaving it to time out. If even this write
-    // fails, ABANDON_AFTER_MS frees it.
-    await finish(db, { ...run, finished_at: now().toISOString(), error: e instanceof Error ? e.message : String(e) }).catch(() => {});
+    // Release the lock rather than leaving it to time out, keeping what the
+    // check reached. If even this write fails, ABANDON_AFTER_MS frees it.
+    await finish(db, { ...run, ...reached, finished_at: now().toISOString(), error: e instanceof Error ? e.message : String(e) }).catch(() => {});
     throw e;
   }
 }
 
+/** nextDueAt, but only a nicety: failing to work it out mustn't fail a finished check. */
+async function nextDueAtOrNull(db: Db): Promise<string | null> {
+  try {
+    return await nextDueAt(db);
+  } catch (e) {
+    logError({ source: "job", area: "job:source_watch", error: e });
+    return null;
+  }
+}
+
+/** The last check's record, or null before the first. Throws if the read fails, like the page's other reads. */
 export async function readSourceCheckRun(): Promise<SourceCheckRun | null> {
-  const { data } = await serviceDb().from("settings").select("value").eq("key", SOURCE_CHECK_KEY).maybeSingle();
+  const data = await must(serviceDb().from("settings").select("value").eq("key", SOURCE_CHECK_KEY).maybeSingle(), "source check record");
   const run = data?.value as SourceCheckRun | undefined;
   return run && run.id !== "idle" ? run : null;
 }
@@ -163,13 +208,15 @@ export function sourceCheckSummary(run: SourceCheckRun | null, nowMs: number): s
       : `The last check, started ${when(run.started_at)} ${who}, didn't finish. What it reached is saved.`;
   }
   const head = `Last check ${when(run.started_at)} ${who}`;
-  if (run.error) return `${head} stopped with an error. What it reached is saved.`;
+  // No counts means it stopped before reading a single source.
+  if (run.error && run.due === undefined) return `${head} stopped with an error before checking any sources.`;
+  const tail = run.error ? " Then it stopped with an error." : "";
   if (!run.due) {
     const next = run.next_due_at ? ` The next are due from ${when(run.next_due_at)}.` : "";
-    return `${head}: nothing was due — every source was checked in the last 20 hours.${next}`;
+    return `${head}: nothing was due — every source was checked in the last ${CHECK_EVERY_MS / 3_600_000} hours.${next}${tail}`;
   }
   const parts = [plural(run.new_items ?? 0, "new suggestion")];
   if (run.unreadable) parts.push(`${run.unreadable} couldn't be read`);
   if (run.failed) parts.push(`${run.failed} hit an error`);
-  return `${head}: checked ${run.checked ?? 0} of ${plural(run.due, "due source")} — ${parts.join(", ")}. ${run.still_due ?? 0} still due.`;
+  return `${head}: checked ${run.checked ?? 0} of ${plural(run.due, "due source")} — ${parts.join(", ")}. ${run.still_due ?? 0} still due.${tail}`;
 }

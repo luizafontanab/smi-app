@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkSource, classifyUnreadable, dueFilter, itemRows, runSourceWatch } from "@/lib/sources/check";
+import { SourceCutOff, checkSource, classifyUnreadable, dueFilter, itemRows, runSourceWatch } from "@/lib/sources/check";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -150,6 +150,23 @@ describe("checkSource", () => {
   });
 });
 
+describe("checkSource, cancelled", () => {
+  it("writes nothing for a source cancelled mid-read, so it stays due with its failure count untouched", async () => {
+    const stop = new AbortController();
+    fetchText.mockImplementation(async (url: string) => {
+      stop.abort();
+      return { ok: false, status: 0, body: "", finalUrl: url, error: "stopped" };
+    });
+    const from = vi.fn(() => { throw new Error("nothing should be written"); });
+
+    await expect(checkSource(asDb(mockDb({ from })), source({ method: "feed", method_url: FEED }), NOW, stop.signal))
+      .rejects.toBeInstanceOf(SourceCutOff);
+    await expect(checkSource(asDb(mockDb({ from })), source(), NOW, stop.signal))
+      .rejects.toBeInstanceOf(SourceCutOff);
+    expect(from).not.toHaveBeenCalled();
+  });
+});
+
 describe("runSourceWatch", () => {
   it("keeps going past a source whose write fails, logging it, and reports the totals", async () => {
     serve({ [FEED]: page(FEED, rss(["A", "https://example-fab.co.uk/news/a/"])) });
@@ -169,7 +186,7 @@ describe("runSourceWatch", () => {
 
     const result = await runSourceWatch({ concurrency: 1, now: () => NOW });
 
-    expect(result).toEqual({ due: 2, checked: 1, newItems: 0, unreadable: 0, failed: 1 });
+    expect(result).toEqual({ due: 2, checked: 1, newItems: 0, unreadable: 0, failed: 1, cutOff: 0, settled: true });
     expect(logError).toHaveBeenCalledTimes(1);
     expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "job:source_watch", context: { url: SOURCE_URL } }));
   });
@@ -191,21 +208,41 @@ describe("runSourceWatch", () => {
 
     const result = await runSourceWatch({ concurrency: 1, now: () => NOW });
 
-    expect(result).toEqual({ due: 2, checked: 2, newItems: 1, unreadable: 1, failed: 0 });
+    expect(result).toEqual({ due: 2, checked: 2, newItems: 1, unreadable: 1, failed: 0, cutOff: 0, settled: true });
     expect(logError).not.toHaveBeenCalled();
   });
-  it("stops waiting once the budget is spent, even with a site still answering", async () => {
-    // never answers: without the hard stop this test would hang until vitest's timeout
-    fetchText.mockImplementation(() => new Promise(() => {}));
+  it("cancels a site still answering at the hard stop: nothing is written, it stays due, and nothing is left running", async () => {
+    // answers only when cancelled, as the real fetchText does
+    fetchText.mockImplementation((url: string, _accept: string, stop: AbortSignal) => new Promise((resolve) =>
+      stop.addEventListener("abort", () => resolve({ ok: false, status: 0, body: "", finalUrl: url, error: "stopped" }))));
     const due = [{ id: "slow", url: SOURCE_URL, method: "feed", method_url: FEED, last_ok_at: null, last_item_at: null, failure_count: 0 }];
-    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ content_sources: () => queryBuilder(dbOk(due)) }) })));
+    const lists: ReturnType<typeof queryBuilder>[] = [];
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ content_sources: () => { const b = queryBuilder(dbOk(due)); lists.push(b); return b; } }) })));
 
     const started = Date.now();
     const result = await runSourceWatch({ budgetMs: 20, overrunMs: 20, now: () => NOW });
 
     expect(Date.now() - started).toBeLessThan(1000);
-    // still being read, so neither checked nor failed — and it stays due
-    expect(result).toEqual({ due: 1, checked: 0, newItems: 0, unreadable: 0, failed: 0 });
+    // neither checked nor failed, and no failure_count bump for a read we cancelled
+    expect(result).toEqual({ due: 1, checked: 0, newItems: 0, unreadable: 0, failed: 0, cutOff: 1, settled: true });
+    expect(lists).toHaveLength(1); // only the due-list read: no write for the cancelled source
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it("reports unsettled when a source won't stop even once cancelled, so the caller keeps the lock", async () => {
+    fetchText.mockImplementation(() => new Promise(() => {}));
+    const due = [{ id: "stuck", url: SOURCE_URL, method: "feed", method_url: FEED, last_ok_at: null, last_item_at: null, failure_count: 0 }];
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ content_sources: () => queryBuilder(dbOk(due)) }) })));
+
+    const result = await runSourceWatch({ budgetMs: 10, overrunMs: 10, settleMs: 10, now: () => NOW });
+
+    expect(result).toEqual(expect.objectContaining({ checked: 0, cutOff: 0, settled: false }));
+  });
+
+  it("counts every due source, not just the batch it reads", async () => {
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ content_sources: () => queryBuilder(dbOk([], 448)) }) })));
+    const result = await runSourceWatch({ maxSources: 0, now: () => NOW });
+    expect(result.due).toBe(448);
   });
 });
 

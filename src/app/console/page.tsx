@@ -14,7 +14,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { readSourceCheckRun } from "@/lib/sources/run";
 
 export const dynamic = "force-dynamic";
-// "Check sources now" runs a source check inside the click: up to 50s of
+// "Check sources now" runs a source check inside the click: up to 55s of
 // checking (lib/sources/check runSourceWatch) plus the page render after it,
 // which came to 58s in dev. A page's maxDuration is also its server actions'
 // limit, so this matches Story sources' 120s rather than cutting it close.
@@ -402,6 +402,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
           crawlerOn={crawlerOn}
           returnTo="/console"
           flash={typeof sp.sourcecheck === "string" ? sp.sourcecheck : undefined}
+          flashRun={typeof sp.checkrun === "string" ? sp.checkrun : undefined}
           nowMs={now}
         />
 

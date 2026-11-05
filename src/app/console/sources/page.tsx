@@ -120,6 +120,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
         crawlerOn={crawlerOn}
         returnTo={view === "sources" ? "/console/sources?view=sources" : "/console/sources"}
         flash={typeof sp.sourcecheck === "string" ? sp.sourcecheck : undefined}
+        flashRun={typeof sp.checkrun === "string" ? sp.checkrun : undefined}
         nowMs={nowMs}
       />
 

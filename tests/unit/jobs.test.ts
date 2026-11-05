@@ -315,6 +315,29 @@ describe("runJob kinds", () => {
       expect(fn).not.toHaveBeenCalled();
       expect(callsOf(tail.update)).toContainEqual([expect.objectContaining({ status: "done" })]);
     });
+
+    it("source_watch comes back once the lock is free when another check holds it, instead of losing its turn", async () => {
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      const retryAt = new Date("2026-11-05T10:44:30Z");
+      runSourceCheck.mockResolvedValueOnce({ status: "busy", run: null, retryAt } as never);
+      const j = job("source_watch");
+      const [select, claim, tail] = happyPath(j);
+      dbFor([select, claim, tail]);
+
+      await runJobById(j.id);
+
+      expect(callsOf(tail.insert)).toContainEqual([{ kind: "source_watch", payload: { after_busy: j.id }, due_at: retryAt.toISOString() }]);
+      // a skip isn't a failure: the job itself completes
+      expect(callsOf(tail.update)).toContainEqual([expect.objectContaining({ status: "done" })]);
+    });
+
+    it("source_watch queues nothing extra when its check ran", async () => {
+      const j = job("source_watch");
+      const [select, claim, tail] = happyPath(j);
+      dbFor([select, claim, tail]);
+      await runJobById(j.id);
+      expect(callsOf(tail.insert)).toEqual([]);
+    });
   });
 
   it("publish_scheduled — publishes ready stories/videos and enqueues their follow-up jobs", async () => {

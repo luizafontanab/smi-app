@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/db/types";
-import { ABANDON_AFTER_MS, SOURCE_CHECK_KEY, claimableFilter, isRunning, runSourceCheck, sourceCheckSummary, type SourceCheckRun } from "@/lib/sources/run";
+import { ABANDON_AFTER_MS, NOT_STARTED, SOURCE_CHECK_KEY, claimableFilter, isRunning, readSourceCheckRun, runSourceCheck, sourceCheckSummary, type SourceCheckRun } from "@/lib/sources/run";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -9,6 +9,8 @@ import { resetDbServerMocks } from "../stubs/db-server";
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 const { runSourceWatch } = vi.hoisted(() => ({ runSourceWatch: vi.fn() }));
 vi.mock("@/lib/sources/check", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/sources/check")>()), runSourceWatch }));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
 
 const NOW = new Date("2026-11-05T10:42:00Z");
 const now = () => NOW;
@@ -16,7 +18,10 @@ const now = () => NOW;
 afterEach(() => {
   resetDbServerMocks();
   runSourceWatch.mockReset();
+  logError.mockReset();
 });
+
+const watched = (over: Record<string, unknown> = {}) => ({ due: 1, checked: 1, newItems: 0, unreadable: 0, failed: 0, cutOff: 0, settled: true, ...over });
 
 /** Each `.from(table)` call gets the next result in order, and every builder is kept so a test can read what was written. */
 function tables(results: Record<string, DbResult[]>) {
@@ -36,20 +41,20 @@ const calls = (b: ReturnType<typeof queryBuilder>, method: string) =>
   vi.mocked(b[method] as (...a: unknown[]) => unknown).mock.calls;
 
 describe("runSourceCheck", () => {
-  it("does nothing when another check holds the lock, and says who has it", async () => {
+  it("does nothing when another check holds the lock, says who has it, and when it's sure to be free", async () => {
     const holder: SourceCheckRun = { id: "r1", started_at: "2026-11-05T10:41:30Z", finished_at: null, started_by: "Jas" };
     // seed upsert, claim update (no row back = not ours), read the record
     tables({ settings: [dbOk(null), dbOk([]), dbOk({ value: holder })] });
 
     const outcome = await runSourceCheck({ startedBy: "Luiza", now });
 
-    expect(outcome).toEqual({ status: "busy", run: holder });
+    expect(outcome).toEqual({ status: "busy", run: holder, retryAt: new Date(Date.parse(holder.started_at) + ABANDON_AFTER_MS) });
     expect(runSourceWatch).not.toHaveBeenCalled();
   });
 
   it("claims only a finished or abandoned record, so two checks never run at once", async () => {
-    runSourceWatch.mockResolvedValue({ due: 1, checked: 1, newItems: 0, unreadable: 0, failed: 0 });
-    const t = tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)], content_sources: [dbOk(null, 1), dbOk(null, 0)] });
+    runSourceWatch.mockResolvedValue(watched());
+    const t = tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)] });
 
     await runSourceCheck({ startedBy: "Jas", now });
 
@@ -61,17 +66,17 @@ describe("runSourceCheck", () => {
     expect(calls(claim, "update")[0][0]).toEqual({ value: expect.objectContaining({ started_by: "Jas", finished_at: null, started_at: NOW.toISOString() }) });
   });
 
-  it("records what the check did, against the record it claimed", async () => {
-    runSourceWatch.mockResolvedValue({ due: 300, checked: 182, newItems: 7, unreadable: 3, failed: 1 });
-    // due before the check, due after
-    const t = tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)], content_sources: [dbOk(null, 410), dbOk(null, 228)] });
+  it("records what the check did, against the record it claimed, with no extra counting queries", async () => {
+    runSourceWatch.mockResolvedValue(watched({ due: 410, checked: 182, newItems: 7, unreadable: 3, failed: 1, cutOff: 4 }));
+    // content_sources isn't listed: any query on it would throw
+    const t = tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)] });
 
     const outcome = await runSourceCheck({ startedBy: "Jas", now });
 
     expect(outcome.status).toBe("done");
     expect(outcome.run).toEqual(expect.objectContaining({
       started_by: "Jas", finished_at: NOW.toISOString(),
-      due: 410, checked: 182, new_items: 7, unreadable: 3, failed: 1, still_due: 228, next_due_at: null,
+      due: 410, checked: 182, new_items: 7, unreadable: 3, failed: 1, cut_off: 4, still_due: 228, next_due_at: null,
     }));
     const save = t.settings[2];
     expect(calls(save, "update")[0][0]).toEqual({ value: outcome.run });
@@ -80,21 +85,45 @@ describe("runSourceCheck", () => {
     expect(runSourceWatch).toHaveBeenCalledWith({ now });
   });
 
-  it("fetches nothing when nothing is due, and works out when the next source comes due", async () => {
+  it("keeps the lock when a source didn't wind down at the hard stop, so no other check reads it meanwhile", async () => {
+    runSourceWatch.mockResolvedValue(watched({ due: 50, checked: 40, settled: false }));
+    const t = tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)] });
+
+    const outcome = await runSourceCheck({ startedBy: "Jas", now });
+
+    expect(outcome.status).toBe("done");
+    expect(outcome.run).toEqual(expect.objectContaining({ finished_at: null, checked: 40, still_due: 10 }));
+    expect(calls(t.settings[2], "update")[0][0]).toEqual({ value: expect.objectContaining({ finished_at: null }) });
+    // still "running" to the claim filter and the page until ABANDON_AFTER_MS
+    expect(isRunning(outcome.run!, NOW.getTime())).toBe(true);
+  });
+
+  it("works out when the next source comes due when nothing was", async () => {
+    runSourceWatch.mockResolvedValue(watched({ due: 0, checked: 0 }));
     tables({
       settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)],
-      content_sources: [dbOk(null, 0), dbOk([{ last_checked_at: "2026-11-05T03:05:00Z" }])],
+      content_sources: [dbOk([{ last_checked_at: "2026-11-05T03:05:00Z" }])],
     });
 
     const outcome = await runSourceCheck({ startedBy: null, now });
 
-    expect(runSourceWatch).not.toHaveBeenCalled();
     expect(outcome.run).toEqual(expect.objectContaining({ due: 0, checked: 0, still_due: 0, next_due_at: "2026-11-05T23:05:00.000Z" }));
+  });
+
+  it("still records a finished check if the next-due lookup fails", async () => {
+    runSourceWatch.mockResolvedValue(watched({ due: 0, checked: 0 }));
+    tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)], content_sources: [dbError("timeout")] });
+
+    const outcome = await runSourceCheck({ startedBy: null, now });
+
+    expect(outcome.run).toEqual(expect.objectContaining({ finished_at: NOW.toISOString(), due: 0, next_due_at: null }));
+    expect(outcome.run!.error).toBeUndefined();
+    expect(logError).toHaveBeenCalledTimes(1);
   });
 
   it("releases the lock when the check throws, keeping the error, and still throws", async () => {
     runSourceWatch.mockRejectedValue(new Error("source_watch: reading sources: timeout"));
-    const t = tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)], content_sources: [dbOk(null, 5)] });
+    const t = tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)] });
 
     await expect(runSourceCheck({ startedBy: "Jas", now })).rejects.toThrow("timeout");
 
@@ -103,10 +132,37 @@ describe("runSourceCheck", () => {
     });
   });
 
-  it("fails loudly when the lock can't be taken, rather than running unguarded", async () => {
+  it("keeps what the check reached when it fails after the sources were read", async () => {
+    runSourceWatch.mockResolvedValue(watched({ due: 80, checked: 80, newItems: 30 }));
+    // the result write fails; the error write after it goes through
+    const t = tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbError("connection reset"), dbOk(null)] });
+
+    await expect(runSourceCheck({ startedBy: "Jas", now })).rejects.toThrow("saving the result: connection reset");
+
+    expect(calls(t.settings[3], "update")[0][0]).toEqual({
+      value: expect.objectContaining({ checked: 80, new_items: 30, still_due: 0, error: "source check: saving the result: connection reset" }),
+    });
+  });
+
+  it("fails loudly when the lock can't be taken, rather than running unguarded, and says nothing started", async () => {
     tables({ settings: [dbOk(null), dbError("permission denied")] });
-    await expect(runSourceCheck({ startedBy: "Jas", now })).rejects.toThrow("taking the lock: permission denied");
+    const error = await runSourceCheck({ startedBy: "Jas", now }).catch((e: Error) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("taking the lock: permission denied");
+    expect((error as Error).name).toBe(NOT_STARTED);
     expect(runSourceWatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("readSourceCheckRun", () => {
+  it("throws when the record can't be read, rather than passing it off as no check ever run", async () => {
+    tables({ settings: [dbError("permission denied")] });
+    await expect(readSourceCheckRun()).rejects.toThrow("permission denied");
+  });
+
+  it("is null before the first check", async () => {
+    tables({ settings: [dbOk({ value: { id: "idle", started_at: "x", finished_at: "x", started_by: null } })] });
+    expect(await readSourceCheckRun()).toBeNull();
   });
 });
 
@@ -139,8 +195,11 @@ describe("sourceCheckSummary", () => {
     expect(sourceCheckSummary(cutOff, nowMs)).toBe("The last check, started 5 Nov, 10:30 by Jas, didn't finish. What it reached is saved.");
   });
 
-  it("names a check that stopped with an error", () => {
-    expect(sourceCheckSummary({ ...base, finished_at: "x", error: "boom" }, nowMs)).toBe("Last check 5 Nov, 10:30 by Jas stopped with an error. What it reached is saved.");
+  it("names a check that stopped with an error, with what it reached if anything", () => {
+    expect(sourceCheckSummary({ ...base, finished_at: "x", error: "boom" }, nowMs))
+      .toBe("Last check 5 Nov, 10:30 by Jas stopped with an error before checking any sources.");
+    expect(sourceCheckSummary({ ...base, finished_at: "x", error: "boom", due: 80, checked: 80, new_items: 30, unreadable: 0, failed: 0, still_due: 0 }, nowMs))
+      .toBe("Last check 5 Nov, 10:30 by Jas: checked 80 of 80 due sources — 30 new suggestions. 0 still due. Then it stopped with an error.");
   });
 });
 

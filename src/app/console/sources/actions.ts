@@ -10,7 +10,7 @@ import { removeMedia, uploadImage } from "@/lib/media";
 import { isMemberLinkable } from "@/lib/member-visibility";
 import { syncBiginSources } from "@/lib/sources/bigin";
 import { prepareDraft } from "@/lib/sources/draft";
-import { runSourceCheck, type SourceCheckOutcome } from "@/lib/sources/run";
+import { NOT_STARTED, runSourceCheck, type SourceCheckOutcome } from "@/lib/sources/run";
 import { normalizeSourceUrl } from "@/lib/sources/extract";
 import { UploadRejectedError } from "@/lib/upload-limits";
 import { replaceStoryMembers } from "@/lib/story-members";
@@ -261,23 +261,30 @@ const CHECK_RETURNS = ["/console", "/console/sources", "/console/sources?view=so
 /**
  * "Check sources now" (issue #42): one source check, the same batch a
  * scheduled run does, started by an admin from Command Centre or Story
- * sources. It runs inside the click (up to 50s, so both pages allow 120s) and
+ * sources. It runs inside the click (up to 55s, so both pages allow 120s) and
  * never alongside another check: a second click while one runs gets "busy",
  * and nothing is fetched (lib/sources/run).
+ *
+ * The redirect names the run it started (`checkrun`), so the page reports
+ * that run's suggestions and not those of a scheduled run that finished since.
  */
 export async function checkSourcesNow(formData: FormData) {
   const user = await requireConsole();
   const ret = CHECK_RETURNS.find((r) => r === formData.get("return")) ?? "/console/sources";
-  const to = (result: string) => `${ret}${ret.includes("?") ? "&" : "?"}sourcecheck=${result}#source-check`;
+  const to = (result: string, runId?: string) =>
+    `${ret}${ret.includes("?") ? "&" : "?"}sourcecheck=${result}${runId ? `&checkrun=${runId}` : ""}#source-check`;
   if (!(await isFeatureEnabled("story_crawler"))) redirect(to("off"));
   let outcome: SourceCheckOutcome;
   try {
     outcome = await runSourceCheck({ startedBy: user.displayName || user.email });
   } catch (e) {
     logError({ source: "job", area: "action:checkSourcesNow", error: e });
-    redirect(to("failed"));
+    // Before the lock nothing ran; after it, the record keeps what was reached.
+    redirect(to(e instanceof Error && e.name === NOT_STARTED ? "notstarted" : "failed"));
   }
   revalidatePath("/console");
   revalidatePath(PAGE);
-  redirect(to(outcome.status));
+  if (outcome.status === "busy") redirect(to("busy"));
+  // Unfinished: a site was still winding down at the hard stop, so the lock is held a few minutes more.
+  redirect(to(outcome.run.finished_at ? "done" : "held", outcome.run.id));
 }

@@ -38,9 +38,9 @@ const STALE_MS = 30 * 24 * 60 * 60 * 1000;
 const FEED_ACCEPT = "application/rss+xml,application/atom+xml,application/xml;q=0.9,text/xml;q=0.9,*/*;q=0.5";
 
 /** Read a source with a known method. Null when the read failed; [] when it worked and found nothing. */
-export async function readWith(method: ReadMethod, methodUrl: string, sourceUrl: string): Promise<FoundItem[] | null> {
-  if (method === "sitemap") return readSitemap(methodUrl, sourceUrl);
-  const res = await fetchText(methodUrl, method === "html" ? undefined : FEED_ACCEPT);
+export async function readWith(method: ReadMethod, methodUrl: string, sourceUrl: string, stop?: AbortSignal): Promise<FoundItem[] | null> {
+  if (method === "sitemap") return readSitemap(methodUrl, sourceUrl, stop);
+  const res = await fetchText(methodUrl, method === "html" ? undefined : FEED_ACCEPT, stop);
   if (!res.ok) return null;
   const found =
     method === "feed" ? parseFeed(res.body, res.finalUrl)
@@ -50,8 +50,8 @@ export async function readWith(method: ReadMethod, methodUrl: string, sourceUrl:
   return found ? keepArticles(found, sourceUrl) : null;
 }
 
-async function readSitemap(sitemapUrl: string, sourceUrl: string): Promise<FoundItem[] | null> {
-  const res = await fetchText(sitemapUrl, FEED_ACCEPT);
+async function readSitemap(sitemapUrl: string, sourceUrl: string, stop?: AbortSignal): Promise<FoundItem[] | null> {
+  const res = await fetchText(sitemapUrl, FEED_ACCEPT, stop);
   const parsed = res.ok ? parseSitemap(res.body) : null;
   if (!parsed) return null;
   let urls = parsed.urls;
@@ -59,7 +59,7 @@ async function readSitemap(sitemapUrl: string, sourceUrl: string): Promise<Found
     // An index: read the children that look like posts first, at most three.
     const ranked = [...parsed.children.filter((c) => /(post|news|blog|article|insight|press)/i.test(c)), ...parsed.children];
     for (const child of [...new Set(ranked)].slice(0, 3)) {
-      const childRes = await fetchText(child, FEED_ACCEPT);
+      const childRes = await fetchText(child, FEED_ACCEPT, stop);
       const childParsed = childRes.ok ? parseSitemap(childRes.body) : null;
       if (childParsed) urls = urls.concat(childParsed.urls);
     }
@@ -72,10 +72,10 @@ async function readSitemap(sitemapUrl: string, sourceUrl: string): Promise<Found
  * method only counts if it yields at least one article link — a feed that
  * carries nothing but product pages isn't a way to read the news.
  */
-export async function discover(sourceUrl: string): Promise<Reading | Unreadable> {
+export async function discover(sourceUrl: string, stop?: AbortSignal): Promise<Reading | Unreadable> {
   const origin = new URL(sourceUrl).origin;
-  const listing = await fetchText(sourceUrl);
-  const home = listing.ok && new URL(listing.finalUrl).pathname === "/" ? listing : await fetchText(`${origin}/`);
+  const listing = await fetchText(sourceUrl, undefined, stop);
+  const home = listing.ok && new URL(listing.finalUrl).pathname === "/" ? listing : await fetchText(`${origin}/`, undefined, stop);
   // Neither the page nor the homepage answered at all (timeout, DNS, TLS):
   // every other address on the site would only wait out the same timeout —
   // ~15 of them took a live check 2½ minutes. Give up now; it's retried tomorrow.
@@ -87,12 +87,12 @@ export async function discover(sourceUrl: string): Promise<Reading | Unreadable>
     ...guessedFeeds(sourceUrl),
   ])];
   for (const feed of feeds) {
-    const items = await readWith("feed", feed, sourceUrl);
+    const items = await readWith("feed", feed, sourceUrl, stop);
     if (items?.length) return { method: "feed", methodUrl: feed, items };
   }
 
   const wpUrl = `${origin}/wp-json/wp/v2/posts?per_page=20&_fields=date_gmt,link,title`;
-  const wpItems = await readWith("wp_api", wpUrl, sourceUrl);
+  const wpItems = await readWith("wp_api", wpUrl, sourceUrl, stop);
   if (wpItems?.length) return { method: "wp_api", methodUrl: wpUrl, items: wpItems };
 
   if (listing.ok && !looksLikeChallenge(listing.body)) {
@@ -100,10 +100,10 @@ export async function discover(sourceUrl: string): Promise<Reading | Unreadable>
     if (htmlItems.length) return { method: "html", methodUrl: sourceUrl, items: htmlItems };
   }
 
-  const robots = await fetchText(`${origin}/robots.txt`, "text/plain");
+  const robots = await fetchText(`${origin}/robots.txt`, "text/plain", stop);
   const fromRobots = robots.ok ? [...robots.body.matchAll(/^\s*sitemap:\s*(\S+)/gim)].map((m) => m[1]) : [];
   for (const sitemap of [...new Set([...fromRobots, `${origin}/sitemap_index.xml`, `${origin}/sitemap.xml`, `${origin}/wp-sitemap.xml`])].slice(0, 4)) {
-    const items = await readWith("sitemap", sitemap, sourceUrl);
+    const items = await readWith("sitemap", sitemap, sourceUrl, stop);
     if (items?.length) return { method: "sitemap", methodUrl: sitemap, items };
   }
 
@@ -145,12 +145,32 @@ function newestDate(items: FoundItem[], previous: string | null): string | null 
   return dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null;
 }
 
-/** Check one source and record what it found. Returns how many new suggestions it made, and whether the source could be read at all. */
-export async function checkSource(db: Db, source: Source, now = new Date()): Promise<{ newItems: number; access: Access; read: boolean }> {
+/**
+ * Thrown by checkSource when `stop` fired while the source was being read.
+ * Nothing about the source was written, so it stays due exactly as it was.
+ */
+export class SourceCutOff extends Error {
+  constructor() {
+    super("stopped before the source was read");
+    this.name = "SourceCutOff";
+  }
+}
+
+/**
+ * Check one source and record what it found. Returns how many new suggestions
+ * it made, and whether the source could be read at all.
+ *
+ * `stop` cancels the reading. Once the reading is over the writes always run
+ * to the end, so a source is never left half-recorded (suggestions saved but
+ * the source not marked checked).
+ */
+export async function checkSource(db: Db, source: Source, now = new Date(), stop?: AbortSignal): Promise<{ newItems: number; access: Access; read: boolean }> {
   const stamp = now.toISOString();
   let reading: Reading | Unreadable;
   if (source.method && source.method_url && source.failure_count < REDETECT_AFTER) {
-    const items = await readWith(source.method as ReadMethod, source.method_url, source.url);
+    const items = await readWith(source.method as ReadMethod, source.method_url, source.url, stop);
+    // A cancelled request looks like a failed read; it mustn't count as one.
+    if (stop?.aborted) throw new SourceCutOff();
     if (items === null) {
       const { error } = await db.from("content_sources").update({
         last_checked_at: stamp, failure_count: source.failure_count + 1,
@@ -161,7 +181,8 @@ export async function checkSource(db: Db, source: Source, now = new Date()): Pro
     }
     reading = { method: source.method as ReadMethod, methodUrl: source.method_url, items };
   } else {
-    reading = await discover(source.url);
+    reading = await discover(source.url, stop);
+    if (stop?.aborted) throw new SourceCutOff();
   }
 
   if ("access" in reading) {
@@ -201,18 +222,29 @@ export async function checkSource(db: Db, source: Source, now = new Date()): Pro
  *
  * The budget is a hard stop: a slow site can keep one source busy for a
  * minute or more (every address discovery tries can wait out fetch.ts's 15s
- * timeout), so once the budget and `overrunMs` have passed it stops waiting.
- * A source still being read then is left out of the counts; whatever it
- * hasn't written yet keeps it due. Without this, a click ran 70s against a
- * 45s budget and would have hit the 60s server limit (issue #42).
+ * timeout). Once the budget and `overrunMs` have passed, the sources still
+ * being read are cancelled: they write nothing, count as `cutOff`, and stay
+ * due. It then waits up to `settleMs` for every worker to wind down, so
+ * nothing is still reading or writing once it returns. Without the stop, a
+ * click ran 70s against a 45s budget and would have hit the 60s server limit
+ * (issue #42).
+ *
+ * `settled` is false only if a worker still hadn't finished after that (say a
+ * database write that hung). The caller must then treat the check as still
+ * running: runSourceCheck keeps the lock until it counts as abandoned.
+ *
+ * `due` is every source that was due when the check started, even past
+ * `maxSources`.
  *
  * Call it through runSourceCheck (./run.ts), which makes sure only one check
  * runs at a time and keeps the record the console shows.
  */
-export async function runSourceWatch({ budgetMs = 45_000, overrunMs = 5_000, concurrency = 6, maxSources = 300, now = () => new Date() } = {}) {
+export async function runSourceWatch({
+  budgetMs = 45_000, overrunMs = 5_000, settleMs = 5_000, concurrency = 6, maxSources = 300, now = () => new Date(),
+} = {}) {
   const db = serviceDb();
-  const { data: due, error } = await db.from("content_sources")
-    .select("id, url, method, method_url, last_ok_at, last_item_at, failure_count")
+  const { data: due, count, error } = await db.from("content_sources")
+    .select("id, url, method, method_url, last_ok_at, last_item_at, failure_count", { count: "exact" })
     .eq("active", true)
     .or(dueFilter(now()))
     .order("last_checked_at", { ascending: true, nullsFirst: true })
@@ -220,28 +252,46 @@ export async function runSourceWatch({ budgetMs = 45_000, overrunMs = 5_000, con
   if (error) throw new Error(`source_watch: reading sources: ${error.message}`);
 
   const deadline = Date.now() + budgetMs;
+  const stop = new AbortController();
   const queue = [...(due ?? [])];
-  let checked = 0, newItems = 0, unreadable = 0, failed = 0;
+  let checked = 0, newItems = 0, unreadable = 0, failed = 0, cutOff = 0;
   const workers = Promise.all(Array.from({ length: concurrency }, async () => {
-    while (queue.length && Date.now() < deadline) {
+    while (queue.length && Date.now() < deadline && !stop.signal.aborted) {
       const source = queue.shift()!;
       try {
-        const result = await checkSource(db, source, now());
+        const result = await checkSource(db, source, now(), stop.signal);
         checked++;
         newItems += result.newItems;
         if (!result.read) unreadable++;
       } catch (e) {
+        if (e instanceof SourceCutOff) {
+          cutOff++;
+          continue;
+        }
         // One bad source must not stop the rest; it stays due and is retried next run.
         failed++;
         logError({ source: "job", area: "job:source_watch", error: e, context: { url: source.url } });
       }
     }
   }));
+
+  let settled = await within(workers, Math.max(0, deadline - Date.now()) + overrunMs);
+  if (!settled) {
+    stop.abort();
+    settled = await within(workers, settleMs);
+  }
+  return { due: count ?? due?.length ?? 0, checked, newItems, unreadable, failed, cutOff, settled };
+}
+
+/** Whether `work` finished within `ms`. */
+async function within(work: Promise<unknown>, ms: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const hardStop = new Promise<void>((resolve) => { timer = setTimeout(resolve, Math.max(0, deadline - Date.now()) + overrunMs); });
-  await Promise.race([workers, hardStop]);
-  clearTimeout(timer);
-  return { due: due?.length ?? 0, checked, newItems, unreadable, failed };
+  const timeUp = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), ms); });
+  try {
+    return await Promise.race([work.then(() => true as const), timeUp]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** PostgREST `or` filter for an active source's being due: never checked, or last checked a day ago or more. */

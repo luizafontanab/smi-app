@@ -25,7 +25,7 @@ const { isFeatureEnabled, syncBiginSources } = vi.hoisted(() => ({
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
 vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
 const { runSourceCheck } = vi.hoisted(() => ({ runSourceCheck: vi.fn() }));
-vi.mock("@/lib/sources/run", () => ({ runSourceCheck }));
+vi.mock("@/lib/sources/run", () => ({ runSourceCheck, NOT_STARTED: "SourceCheckNotStarted" }));
 const DRAFT = {
   title: "Acme installs a laser", excerpt: "Acme has a laser.", body: "<p>Acme has a laser.</p>",
   cover: new File([new Uint8Array([1])], "cover.jpg", { type: "image/jpeg" }),
@@ -332,25 +332,32 @@ describe("syncSourcesFromBigin", () => {
 });
 
 describe("checkSourcesNow", () => {
-  it("runs a check as the admin who clicked, and comes back to the page it was clicked on", async () => {
-    runSourceCheck.mockResolvedValue({ status: "done", run: {} });
-    await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=done#source-check");
+  const finished = { status: "done", run: { id: "run-1", finished_at: "2026-11-05T10:43:00Z" } };
+
+  it("runs a check as the admin who clicked, and comes back to the page it was clicked on, naming the run", async () => {
+    runSourceCheck.mockResolvedValue(finished);
+    await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=done&checkrun=run-1#source-check");
     expect(runSourceCheck).toHaveBeenCalledWith({ startedBy: "Jas" });
   });
 
   it("keeps the Sources tab's own query when it comes back there", async () => {
-    runSourceCheck.mockResolvedValue({ status: "done", run: {} });
+    runSourceCheck.mockResolvedValue(finished);
     await expect(checkSourcesNow(form({ return: "/console/sources?view=sources" })))
-      .rejects.toThrow("NEXT_REDIRECT:/console/sources?view=sources&sourcecheck=done#source-check");
+      .rejects.toThrow("NEXT_REDIRECT:/console/sources?view=sources&sourcecheck=done&checkrun=run-1#source-check");
   });
 
   it("never sends the admin anywhere but the two pages with the button", async () => {
-    runSourceCheck.mockResolvedValue({ status: "done", run: {} });
-    await expect(checkSourcesNow(form({ return: "https://evil.example/" }))).rejects.toThrow("NEXT_REDIRECT:/console/sources?sourcecheck=done#source-check");
+    runSourceCheck.mockResolvedValue(finished);
+    await expect(checkSourcesNow(form({ return: "https://evil.example/" }))).rejects.toThrow("NEXT_REDIRECT:/console/sources?sourcecheck=done&checkrun=run-1#source-check");
+  });
+
+  it("says when the check is still holding the lock because a site didn't wind down in time", async () => {
+    runSourceCheck.mockResolvedValue({ status: "done", run: { id: "run-1", finished_at: null } });
+    await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=held&checkrun=run-1#source-check");
   });
 
   it("says so when another check is already running", async () => {
-    runSourceCheck.mockResolvedValue({ status: "busy", run: null });
+    runSourceCheck.mockResolvedValue({ status: "busy", run: null, retryAt: new Date() });
     await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=busy#source-check");
   });
 
@@ -360,9 +367,15 @@ describe("checkSourcesNow", () => {
     expect(runSourceCheck).not.toHaveBeenCalled();
   });
 
-  it("logs a check that throws and reports it as stopped part-way", async () => {
-    runSourceCheck.mockRejectedValue(new Error("source check: taking the lock: boom"));
+  it("logs a check that throws after it started and reports it as stopped with an error", async () => {
+    runSourceCheck.mockRejectedValue(new Error("source_watch: reading sources: timeout"));
     await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=failed#source-check");
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:checkSourcesNow" }));
+  });
+
+  it("tells a check that never started apart, since nothing was checked or saved", async () => {
+    runSourceCheck.mockRejectedValue(Object.assign(new Error("source check: taking the lock: boom"), { name: "SourceCheckNotStarted" }));
+    await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=notstarted#source-check");
     expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:checkSourcesNow" }));
   });
 });
