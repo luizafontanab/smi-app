@@ -12,6 +12,7 @@
 
 ## 2026-11-04 — The lead alert reports page views
 - The members' "sales-lead" alert email now says how many times their page was viewed this week (or since yesterday, for daily alerts), with a "See your statistics" button. It used to say a number of companies had engaged and offer to show who they were, but that number was really a count of days with views, and no member page lists companies.
+- The setting for this email, under Settings, is now called "Page-view alerts". The Statistics shortcuts in the member area say "Page views, story reach & adverts" instead of "Who's engaging", and the Become a Member page no longer promises a list of the companies looking at your page.
 - If this email's wording was edited in the console using the old {{count}} or {{companies_phrase}} placeholders, those edited parts are now ignored and the standard wording is sent, so nobody receives an email with stray brackets in it. Re-edit the email under Email templates if you want your own wording back.
 
 ## 2026-11-04 — The site on phones and tablets

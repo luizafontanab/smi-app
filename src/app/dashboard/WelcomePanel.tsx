@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const STOPS = [
-  { href: "/dashboard/stats", icon: "📈", title: "Your statistics", sub: "Who's engaging with your page" },
+  { href: "/dashboard/stats", icon: "📈", title: "Your statistics", sub: "Page views, story reach & adverts" },
   { href: "/dashboard/advertising", icon: "⭐", title: "Advertising", sub: "Adverts, featured slots & newsletter" },
   { href: "/dashboard/resources", icon: "🧾", title: "Resources", sub: "Brand assets to share" },
 ] as const;
