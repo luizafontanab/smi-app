@@ -10,6 +10,11 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-05 — Story sources use a company's website when Bigin has no news page
+- On Story sources, a Bigin company with no News Page URL now uses its Website instead, so far more Bigin companies are checked for new articles each day.
+- These sources say "from website" next to the Bigin label. Fill in the company's News Page URL in Bigin and the next sync swaps the homepage for that page.
+- The "From Bigin" box says how many companies are using their Website. If no company at all comes back with a News Page URL, it shows a warning and adds nothing, because that usually means the app can't see the field.
+
 ## 2026-11-04 — You set the homepage's social reach figure
 - The homepage's stats band no longer shows the placeholder reach number copied from the design mock-up. Until you save a figure, it shows just Published articles and Member companies.
 - A new page, Console → Site Config → Social Reach, is where you type the number and the caption under it. Saving it changes the homepage from the next page load, and "Remove from homepage" takes it off again.

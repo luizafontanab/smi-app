@@ -77,22 +77,31 @@ export type LastRun = { at: string; preview: boolean } & SyncResult;
 
 export type BiginCompany = { id: string; name: string };
 
-/** A Bigin company with its News Page URL filled in — a story source (src/lib/sources/bigin.ts). */
-export type CompanyNewsPage = { id: string; name: string; url: string };
+/**
+ * A Bigin company's story-source address (src/lib/sources/bigin.ts): its News
+ * Page URL, else its Website (`fromWebsite`).
+ */
+export type CompanyNewsPage = { id: string; name: string; url: string; fromWebsite: boolean };
 
 /**
- * Every company's News Page URL. `complete` is false when the read stopped
- * part-way (a refused call, or the page cap): the caller may add what it got,
- * but must not treat a company missing from the list as cleared.
+ * Every company's story-source address. `complete` is false when the read
+ * stopped part-way (a refused call, or the page cap): the caller may add what
+ * it got, but must not treat a company missing from the list as cleared.
+ *
+ * `websiteFallbackWithheld`: no company in the read had a News Page URL, so
+ * no Website was used either (see listCompanyNewsPages).
  */
-export type CompanyNewsPages = { complete: boolean; companies: CompanyNewsPage[] };
+export type CompanyNewsPages = { complete: boolean; companies: CompanyNewsPage[]; websiteFallbackWithheld?: boolean };
 
 /**
  * The API name of the Companies field "News Page URL". Assumed from Bigin's
- * naming rule (spaces → underscores) until checked against the live account —
- * Settings → Developer Space → APIs → API Names → Companies (HUMAN-TODO 1.15a).
+ * naming rule (spaces → underscores): Bigin shows no API names in its
+ * settings, so it can't be checked by hand (HUMAN-TODO 1.15a). A wrong name
+ * shows as the console's "no company has a News Page URL" warning.
  */
 export const NEWS_PAGE_FIELD = "News_Page_URL";
+/** Bigin's standard Companies field, the fallback when News Page URL is empty (Luiza, 5 Nov 2026). */
+export const WEBSITE_FIELD = "Website";
 
 export interface CrmSync {
   /** False for the local stub — the console uses it to say Bigin isn't connected. */
@@ -511,9 +520,21 @@ class BiginCrmSync implements CrmSync {
    * A few thousand companies is a handful of calls a day. A refused call
    * part-way returns what was read with `complete: false` rather than
    * throwing, so a Bigin hiccup never reads as "every URL was cleared".
+   *
+   * A blank News Page URL falls back to the company's Website — but only in
+   * a read where at least one company has a News Page URL. If none does, the
+   * field is most likely misnamed (NEWS_PAGE_FIELD is unconfirmed), and
+   * falling back would quietly swap every news page already linked for a
+   * homepage. So that read returns no companies at all, flagged
+   * `websiteFallbackWithheld`, which the sync treats as "nothing to change".
    */
   async listCompanyNewsPages(): Promise<CompanyNewsPages> {
     const companies: CompanyNewsPage[] = [];
+    const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+    const done = (complete: boolean): CompanyNewsPages => {
+      if (companies.length === 0 || companies.some((c) => !c.fromWebsite)) return { complete, companies };
+      return { complete, companies: [], websiteFallbackWithheld: true };
+    };
     let page = 1;
     let pageToken: string | null = null;
     for (let i = 0; i < MAX_PAGES; i++) {
@@ -521,23 +542,24 @@ class BiginCrmSync implements CrmSync {
       let body: ListResponse<Record<string, unknown>> | null;
       try {
         body = await this.request<ListResponse<Record<string, unknown>>>(
-          `/Accounts?fields=Account_Name,${NEWS_PAGE_FIELD}&per_page=200&${paging}`,
+          `/Accounts?fields=Account_Name,${NEWS_PAGE_FIELD},${WEBSITE_FIELD}&per_page=200&${paging}`,
         );
       } catch (e) {
         console.error("[crm] reading company news pages stopped part-way:", e);
-        return { complete: false, companies };
+        return done(false);
       }
       for (const r of body?.data ?? []) {
         const id = typeof r.id === "string" ? r.id : null;
-        const url = typeof r[NEWS_PAGE_FIELD] === "string" ? (r[NEWS_PAGE_FIELD] as string).trim() : "";
+        const newsPage = text(r[NEWS_PAGE_FIELD]);
+        const url = newsPage || text(r[WEBSITE_FIELD]);
         if (!id || !url) continue;
-        companies.push({ id, name: typeof r.Account_Name === "string" ? r.Account_Name : "", url });
+        companies.push({ id, name: typeof r.Account_Name === "string" ? r.Account_Name : "", url, fromWebsite: !newsPage });
       }
-      if (!body?.info?.more_records) return { complete: true, companies };
+      if (!body?.info?.more_records) return done(true);
       if (body.info.next_page_token) pageToken = body.info.next_page_token;
       else page++;
     }
-    return { complete: false, companies };
+    return done(false);
   }
 
   /**
