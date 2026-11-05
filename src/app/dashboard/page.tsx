@@ -29,6 +29,23 @@ const CARDS = [
   { href: "/dashboard/settings", Icon: IconSettings, title: "Settings", sub: "Notifications, security & billing" },
 ];
 
+/** The shortcut card grid; `only` hides it at the breakpoint where the other copy shows. */
+function shortcuts(only: "sm:hidden" | "max-sm:hidden") {
+  return (
+    <div data-testid="dashboard-shortcuts" className={`${only} mt-6 grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-3`}>
+      {CARDS.map((c) => (
+        <Link key={c.href} href={c.href} className="flex items-center gap-2 rounded-xl bg-white p-3 shadow-sm transition hover:shadow-md sm:block sm:p-5 sm:text-center">
+          <c.Icon className="h-5 w-5 shrink-0 text-graphite sm:mx-auto sm:h-7 sm:w-7" />
+          <span className="block min-w-0">
+            <span className="block text-sm font-bold text-ink sm:mt-2 sm:text-base">{c.title}</span>
+            <span className="mt-1 hidden text-xs text-graphite sm:block">{c.sub}</span>
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export default async function MemberDashboard(props: PageProps<"/dashboard">) {
   const user = await requireMemberView();
   const sp = await props.searchParams;
@@ -117,21 +134,12 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
           state is the more honest shape. */}
       {/* On phones the member's own status comes first and the shortcut cards
           (which repeat the nav) shrink to a compact grid at the end — they used
-          to push "Your submissions" ~1,000px down (#33 M10). The cards are first
-          in the source so desktop and keyboard order stay as they were; only
-          the phone layout reorders them. */}
-      <div className="flex flex-col">
-      <div className="order-last mt-6 grid grid-cols-2 gap-2 sm:order-none sm:gap-4 md:grid-cols-3">
-        {CARDS.map((c) => (
-          <Link key={c.href} href={c.href} className="flex items-center gap-2 rounded-xl bg-white p-3 shadow-sm transition hover:shadow-md sm:block sm:p-5 sm:text-center">
-            <c.Icon className="h-5 w-5 shrink-0 text-graphite sm:mx-auto sm:h-7 sm:w-7" />
-            <span className="block min-w-0">
-              <span className="block text-sm font-bold text-ink sm:mt-2 sm:text-base">{c.title}</span>
-              <span className="mt-1 hidden text-xs text-graphite sm:block">{c.sub}</span>
-            </span>
-          </Link>
-        ))}
-      </div>
+          to push "Your submissions" ~1,000px down (#33 M10). Two copies, one
+          per breakpoint, each in its place in the source — not one copy moved
+          with CSS `order`, which left keyboard and screen-reader order out of
+          step with the screen. The off-breakpoint copy is display:none, so it
+          is out of the tab order and the accessibility tree. */}
+      {shortcuts("max-sm:hidden")}
 
       <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
@@ -161,7 +169,8 @@ export default async function MemberDashboard(props: PageProps<"/dashboard">) {
             })
           : <p className="mt-2 text-sm text-graphite">No updates yet. We&apos;ll let you know when something changes.</p>}
       </section>
-      </div>
+
+      {shortcuts("sm:hidden")}
 
       <p className="mt-6 text-center text-sm text-graphite sm:text-xs">
         <Link href="/dashboard/resources" className="tap underline">Download your &quot;proud member&quot; graphic</Link> · <Link href="/dashboard/settings" className="tap underline">Notification settings</Link>

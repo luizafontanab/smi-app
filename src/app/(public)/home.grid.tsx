@@ -259,8 +259,9 @@ export function GridHome({
     home_3: home3,
     stats: <GhStatsBand storyTotal={storyTotal} memberCount={memberCount} />,
   };
-  const desktopSeq = belowFoldSequence(rendered);
-  const phoneSeq = belowFoldSequence(phoneSectionOrder(rendered));
+  const seq = belowFoldSequence(rendered);
+  // Whether a phone lifts Upcoming events to the top of the run (#33 C9).
+  const liftEvents = phoneSequence(seq) !== seq;
 
   return (
     <>
@@ -318,27 +319,21 @@ export function GridHome({
        * page exactly as it was before this was configurable.
        */}
       {/*
-       * PHONES (#33 C9): the same pieces, with Upcoming events lifted to the
-       * top of the run — at 390px it sat ~4,400px down a 7,000px page. The
-       * phone order is derived by the same banner rule (belowFoldSequence),
-       * so two banners can't touch on a phone either. Rendered as two runs in
-       * their own DOM order rather than one run re-painted with CSS `order`,
-       * so reading and tab order match what's on screen. The hidden run is
-       * display:none: out of the accessibility tree, and AdCreative never
-       * counts an impression for an off-breakpoint copy.
+       * PHONES (#33 C9): Upcoming events lifted to the top of the run — at
+       * 390px it sat ~4,400px down a 7,000px page. Only that one band is
+       * rendered twice: a phone-only copy here, and the original hidden below
+       * sm in its desktop place. Everything else, banners included, renders
+       * once, so the page doesn't ship and hydrate a second copy of the run.
+       * Done in the DOM rather than with CSS `order`, so reading and tab order
+       * match what's on screen; the hidden copy is display:none, out of the
+       * accessibility tree. phoneSequence() keeps the banners apart.
        */}
-      {(["phone", "desktop"] as const).map((run) => {
-        // Identical orders (events already first, or no events) need one run.
-        const split = phoneSeq.join() !== desktopSeq.join();
-        if (run === "phone" && !split) return null;
-        const seq = run === "phone" ? phoneSeq : desktopSeq;
-        const only = !split ? undefined : run === "phone" ? "sm:hidden" : "max-sm:hidden";
-        return (
-          <div key={run} className={only}>
-            {seq.map((piece) => <Fragment key={piece}>{pieces[piece]}</Fragment>)}
-          </div>
-        );
-      })}
+      {liftEvents && <div className="sm:hidden">{pieces.events}</div>}
+      {seq.map((piece) => (
+        <Fragment key={piece}>
+          {piece === "events" && liftEvents ? <div className="max-sm:hidden">{pieces.events}</div> : pieces[piece]}
+        </Fragment>
+      ))}
     </>
   );
 }
@@ -364,12 +359,23 @@ export function belowFoldSequence(sections: HomeSectionId[]): BelowFoldPiece[] {
 }
 
 /**
- * The phone's section order: the configured one with Upcoming events moved to
- * the front (#33 C9). Everything else keeps its configured place.
+ * The below-fold run as a phone paints it: the desktop run with Upcoming
+ * events moved to the front (#33 C9), every other piece — banners included —
+ * where it was. Returns `desktop` itself (same reference) when nothing moves:
+ * events already first or absent, or lifting it would leave home_2 and home_3
+ * touching (events the only section between them). In that last case events
+ * is the second of two sections, already near the top.
  */
-export function phoneSectionOrder(sections: HomeSectionId[]): HomeSectionId[] {
-  return sections.includes("events") ? ["events", ...sections.filter((id) => id !== "events")] : sections;
+export function phoneSequence(desktop: BelowFoldPiece[]): BelowFoldPiece[] {
+  if (desktop.indexOf("events") <= 0) return desktop;
+  const lifted: BelowFoldPiece[] = ["events", ...desktop.filter((p) => p !== "events")];
+  return bannersTouch(lifted) ? desktop : lifted;
 }
+
+/** Two banners next to each other — the thing the banner rhythm exists to prevent. */
+export const bannersTouch = (seq: BelowFoldPiece[]) =>
+  seq.some((p, i) => isBanner(p) && i + 1 < seq.length && isBanner(seq[i + 1]));
+const isBanner = (p: BelowFoldPiece) => p === "home_2" || p === "home_3";
 
 /** Third and later cards of a row drop below sm — the phone page was ~7,000px (#33 C9). */
 const phoneCap = (i: number) => (i >= 2 ? "max-sm:hidden" : undefined);

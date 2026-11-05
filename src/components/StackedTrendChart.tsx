@@ -17,6 +17,15 @@ import { ChartAxis } from "@/components/ChartAxis";
 
 const SERIES_COLORS = ["var(--smi-series-1)", "var(--smi-series-2)", "var(--smi-series-3)", "var(--smi-series-4)", "var(--smi-series-5)"];
 
+/** Smallest height a non-zero segment is drawn at, and the gap between segments. */
+const SEGMENT_MIN_PX = 2;
+const SEGMENT_GAP_PX = 2;
+
+/** The least height a bar of n segments needs to draw each one at its minimum. */
+export function barFloorPx(n: number): number {
+  return n * SEGMENT_MIN_PX + Math.max(0, n - 1) * SEGMENT_GAP_PX;
+}
+
 export type ChartSeries = { label: string; values: number[] }; // month-aligned to `labels`, missing months already 0
 
 export function StackedTrendChart({ labels, series, height = 140 }: { labels: string[]; series: ChartSeries[]; height?: number }) {
@@ -38,6 +47,12 @@ export function StackedTrendChart({ labels, series, height = 140 }: { labels: st
   // shared with ChartAxis below so each label sits under its bar. Mark specs
   // from the dataviz skill: bars <=24px and never filling the slot, a 2px gap
   // between stacked segments, a 4px rounded data-end only on the top segment.
+  //
+  // The BAR is sized by the month's total, and its segments share that height
+  // by value (flex-grow), so the 2px gaps come out of the bar rather than
+  // being added on top of it — the bar's height stays proportional. Every
+  // non-zero segment keeps at least SEGMENT_MIN_PX, so a series that is tiny
+  // next to the others still shows; the bar's own floor makes room for that.
   return (
     <div>
       <div role="img" aria-label={ariaLabel} className="relative border-b border-line pt-5" style={{ height }}>
@@ -50,14 +65,23 @@ export function StackedTrendChart({ labels, series, height = 140 }: { labels: st
               .map((s, si) => ({ value: s.values[i] ?? 0, color: SERIES_COLORS[si % SERIES_COLORS.length] }))
               .filter((seg) => seg.value > 0);
             return (
-              <div key={label} className="flex h-full min-w-0 flex-1 flex-col-reverse items-center gap-[2px]">
-                {segments.map((seg, si) => (
+              // Index keys: labels are the caller's and need not be unique.
+              <div key={i} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+                {segments.length > 0 && (
                   <div
-                    key={si}
-                    className={`w-3/5 max-w-6 shrink-0 ${si === segments.length - 1 ? "rounded-t" : ""}`}
-                    style={{ height: `calc(${(seg.value / max) * 100}% - ${si === 0 ? 0 : 2}px)`, background: seg.color }}
-                  />
-                ))}
+                    data-testid="stacked-bar"
+                    className="flex w-3/5 max-w-6 flex-col-reverse gap-[2px]"
+                    style={{ height: `max(${(stackedTotals[i] / max) * 100}%, ${barFloorPx(segments.length)}px)` }}
+                  >
+                    {segments.map((seg, si) => (
+                      <div
+                        key={si}
+                        className={si === segments.length - 1 ? "rounded-t" : ""}
+                        style={{ flex: `${seg.value} 1 0px`, minHeight: SEGMENT_MIN_PX, background: seg.color }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

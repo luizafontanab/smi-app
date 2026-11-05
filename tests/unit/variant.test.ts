@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultVariant, pickView, SITE_VARIANT_KEY, siteVariant, VARIANT_COOKIE } from "@/lib/variant";
+import { cookies } from "next/headers";
 import { serviceDb } from "@/lib/db/server";
 import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -77,6 +78,16 @@ describe("siteVariant with the design switcher off", () => {
     siteDefault("forge");
     switcher.on = false;
     expect(await siteVariant()).toBe("grid");
+  });
+
+  // cookies() is what keeps every route under the root layout request-rendered;
+  // skipping it while the flag is off would let some of them be prerendered.
+  it("still reads the cookie store, so the render mode doesn't depend on the flag", async () => {
+    siteDefault("forge");
+    switcher.on = false;
+    vi.mocked(cookies).mockClear();
+    expect(await siteVariant()).toBe("grid");
+    expect(cookies).toHaveBeenCalled();
   });
 
   it("picks the grid view module for the homepage", async () => {

@@ -8,6 +8,7 @@ import {
   GhEventCard, GhFeaturedMembers, GhMoreNews, GhNewsletterCard, GhNewsletterPanel,
   GhPublicationPanel, GhStatsBand, GhStoryCard, type GhFeaturedMemberData,
 } from "@/components/grid-home/cards";
+import { AdSlot } from "@/components/AdSlot";
 import { SectionHead } from "@/components/grid-home/ui";
 import type { HomeData } from "@/app/(public)/home.data";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
@@ -162,9 +163,9 @@ function propsOf<P>(node: ReactNode, type: unknown, found: P[] = []): P[] {
 }
 
 /**
- * The tree as one breakpoint paints it. The homepage renders its below-fold
- * run twice when the phone order differs (#33 C9): a `sm:hidden` phone copy
- * and a `max-sm:hidden` desktop copy. Drop the other breakpoint's copy.
+ * The tree as one breakpoint paints it. When a phone lifts Upcoming events to
+ * the top (#33 C9), that band renders twice: a `sm:hidden` phone copy and a
+ * `max-sm:hidden` desktop copy. Drop the other breakpoint's copy.
  */
 function paintedAt(node: ReactNode, at: "phone" | "desktop"): ReactNode {
   if (Array.isArray(node)) return node.map((n) => paintedAt(n, at));
@@ -404,11 +405,18 @@ describe("GridHome", () => {
     walk(paintedAt(tree, "desktop"));
     expect(seq).toEqual(["home_1", "Latest newsletters", "home_2", "Upcoming events", "Latest videos", "home_3"]);
 
-    // A phone paints its own copy, in its own DOM order (so reading and tab
-    // order match the screen): Upcoming events first, banners still apart.
+    // A phone paints Upcoming events first, in DOM order (so reading and tab
+    // order match the screen); the banners stay where desktop has them.
     seq.length = 0;
     walk(paintedAt(tree, "phone"));
-    expect(seq).toEqual(["home_1", "Upcoming events", "home_2", "Latest newsletters", "Latest videos", "home_3"]);
+    expect(seq).toEqual(["home_1", "Upcoming events", "Latest newsletters", "home_2", "Latest videos", "home_3"]);
+
+    // Only the events band is duplicated for that — not the whole run.
+    expect(countOf(tree, AdSlot)).toBe(3);
+    expect(countOf(tree, GhStatsBand)).toBe(1);
+    expect(countOf(tree, GhFeaturedMembers)).toBe(1);
+    expect(sectionTitles(tree).filter((t) => t === "Upcoming events")).toHaveLength(2);
+    expect(sectionTitles(tree).filter((t) => t === "Latest videos")).toHaveLength(1);
   });
 
   it("never places the same story twice across the page's sections", () => {

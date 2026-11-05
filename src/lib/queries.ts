@@ -438,31 +438,36 @@ export async function activeTakeover(): Promise<ActiveTakeover | null> {
 
 const VIDEO_CARD = "id, slug, title, url, thumbnail_path, source, member:members(slug, name)";
 
-export async function publishedVideos(opts: { limit?: number; offset?: number; industry?: string | number } = {}) {
+/**
+ * The one published-videos query, shared by publishedVideos() and
+ * latestVideos() so the select, the status filter and the ordering can't drift
+ * apart. `withCount` is the only difference: a "More videos" row has no
+ * pagination, so it skips the exact count.
+ */
+async function videoCards(
+  opts: { limit?: number; offset?: number; industry?: string | number },
+  withCount: boolean,
+) {
   const db = publicDb();
   const limit = opts.limit ?? 8;
   const offset = opts.offset ?? 0;
+  // No query when no industry is asked for (resolveIndustryId short-circuits).
   const industryId = await resolveIndustryId(db, opts.industry);
-  let q = db.from("videos").select(VIDEO_CARD, { count: "exact" }).eq("status", "published");
+  let q = db.from("videos").select(VIDEO_CARD, withCount ? { count: "exact" } : undefined).eq("status", "published");
   if (industryId) q = q.eq("industry_id", industryId);
-  const { data, count } = await q
+  return q
     .order("published_at", { ascending: false })
     .range(offset, offset + limit - 1);
+}
+
+export async function publishedVideos(opts: { limit?: number; offset?: number; industry?: string | number } = {}) {
+  const { data, count } = await videoCards(opts, true);
   return { videos: data ?? [], total: count ?? 0 };
 }
 
-/**
- * The newest published videos, for a "More videos" row (#33 C14). No count
- * and no industry lookup, unlike publishedVideos(): a row needs neither, and
- * it runs on every video page, crawler 404s included.
- */
+/** The newest published videos, for a "More videos" row (#33 C14). No count. */
 export async function latestVideos(limit: number) {
-  const { data } = await publicDb()
-    .from("videos")
-    .select(VIDEO_CARD)
-    .eq("status", "published")
-    .order("published_at", { ascending: false })
-    .limit(limit);
+  const { data } = await videoCards({ limit }, false);
   return data ?? [];
 }
 

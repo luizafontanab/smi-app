@@ -1,22 +1,46 @@
 import { describe, expect, it, vi } from "vitest";
-import { belowFoldSequence, phoneSectionOrder } from "@/app/(public)/home.grid";
+import { bannersTouch, belowFoldSequence, phoneSequence } from "@/app/(public)/home.grid";
+import type { HomeSectionId } from "@/lib/home-sections";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 vi.mock("@/app/(public)/actions", () => ({ subscribeNewsletter: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ currentUser: vi.fn(async () => null) }));
 
-/** Two banners next to each other is the thing the rhythm exists to prevent. */
-const bannersTouch = (seq: string[]) =>
-  seq.some((p, i) => p.startsWith("home_") && seq[i + 1]?.startsWith("home_"));
-
-describe("phoneSectionOrder (#33 C9)", () => {
-  it("lifts Upcoming events to the front and keeps the rest in configured order", () => {
-    expect(phoneSectionOrder(["videos", "member_news", "supplier_logos", "events", "newsletters"]))
-      .toEqual(["events", "videos", "member_news", "supplier_logos", "newsletters"]);
+describe("phoneSequence (#33 C9)", () => {
+  it("lifts Upcoming events to the front and leaves every other piece, banners included, where it was", () => {
+    const desktop = belowFoldSequence(["videos", "member_news", "supplier_logos", "events", "newsletters"]);
+    expect(phoneSequence(desktop))
+      .toEqual(["events", "videos", "home_2", "member_news", "supplier_logos", "newsletters", "home_3", "stats"]);
   });
 
-  it("leaves the order alone when events aren't showing", () => {
-    expect(phoneSectionOrder(["newsletters", "videos"])).toEqual(["newsletters", "videos"]);
+  it("returns the desktop run itself when events aren't showing or already lead", () => {
+    for (const sections of [["newsletters", "videos"], ["events", "videos", "newsletters"]] as HomeSectionId[][]) {
+      const desktop = belowFoldSequence(sections);
+      expect(phoneSequence(desktop)).toBe(desktop);
+    }
+  });
+
+  // events the only section between the banners: lifting it would join them,
+  // so the phone keeps the desktop order (events is already second of two).
+  it("doesn't lift events when that would leave home_2 and home_3 touching", () => {
+    const desktop = belowFoldSequence(["videos", "events"]);
+    expect(bannersTouch(["videos", "home_2", "home_3", "stats"])).toBe(true);
+    expect(phoneSequence(desktop)).toBe(desktop);
+  });
+
+  it.each([
+    [["videos", "events"]],
+    [["events", "videos"]],
+    [["videos", "member_news", "supplier_logos", "events", "newsletters"]],
+    [["newsletters", "events", "videos"]],
+    [["videos", "newsletters", "events"]],
+    [["events"]],
+  ] as const)("never lets banners touch on a phone: %j", (sections) => {
+    const desktop = belowFoldSequence([...sections]);
+    const phone = phoneSequence(desktop);
+    expect(bannersTouch(phone)).toBe(false);
+    // same pieces as desktop, just reordered
+    expect([...phone].sort()).toEqual([...desktop].sort());
   });
 });
 
@@ -28,20 +52,5 @@ describe("belowFoldSequence", () => {
 
   it("drops home_3 below the stats band with a single section", () => {
     expect(belowFoldSequence(["videos"])).toEqual(["videos", "home_2", "stats", "home_3"]);
-  });
-
-  // The phone order is derived through the same rule, so moving events up
-  // can never leave two banners together — including the case where events
-  // was the only section between them on desktop.
-  it.each([
-    [["videos", "events"]],
-    [["events", "videos"]],
-    [["videos", "member_news", "supplier_logos", "events", "newsletters"]],
-    [["newsletters", "events", "videos"]],
-  ] as const)("never lets banners touch on a phone: %j", (sections) => {
-    const phone = belowFoldSequence(phoneSectionOrder([...sections]));
-    expect(bannersTouch(phone)).toBe(false);
-    // same pieces as desktop, just reordered
-    expect([...phone].sort()).toEqual([...belowFoldSequence([...sections])].sort());
   });
 });

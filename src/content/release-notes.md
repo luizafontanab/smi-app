@@ -30,6 +30,8 @@
 - Stats charts show month labels and the peak value, and say "Not enough data yet" when there's nothing to show. The same applies to the console's views-per-day chart.
 - The My page form is split into sections and keeps its Submit button on screen. The editor's buttons are larger on touch screens and stay at the top while you write. Upload fields have a proper "Choose File" button.
 - On Buy advertising, the notes box has a label, and for Featured Member you pick the month before pressing Buy. An advert's page shows the mobile artwork as well as the desktop banner.
+- On the homepage, story pages and the member dashboard, someone using a keyboard or a screen reader now moves through the page in the order it appears on screen. The homepage on phones also loads faster, because it no longer builds the lower half of the page twice.
+- In the Stats charts that split each month by type, a small number next to a large one now shows as a thin slice instead of disappearing, and each bar's height matches its total.
 
 ## 2026-11-04 — Console calendars fit a phone
 - On a phone, the console overview and the Story, Video, Events and Newsletter calendars no longer make the whole page slide sideways. The calendar scrolls inside its own box, and the Live/Scheduled key moves under the month name when there isn't room beside it.

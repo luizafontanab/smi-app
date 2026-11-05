@@ -58,11 +58,15 @@ export function FeaturedMembersCarousel({ className, count, children }: {
   // optimistically would flash a control that then vanishes.
   const [overflows, setOverflows] = useState(false);
 
-  /** Scroll offset of slide i, in the scroller's own coordinates, on its axis. */
-  const offsetOf = (el: HTMLElement, i: number) => {
+  /**
+   * Scroll offset of slide i, in the scroller's own coordinates, on its axis.
+   * `side` is passed in by callers that loop over slides, so the axis is read
+   * (one getComputedStyle) once per call site rather than once per slide.
+   */
+  const offsetOf = (el: HTMLElement, i: number, side = sideways(el)) => {
     const li = el.children[i] as HTMLElement | undefined;
     if (!li) return 0;
-    return sideways(el) ? li.offsetLeft - el.offsetLeft : li.offsetTop - el.offsetTop;
+    return side ? li.offsetLeft - el.offsetLeft : li.offsetTop - el.offsetTop;
   };
   const scrollTo = (el: HTMLElement, offset: number) =>
     el.scrollTo(sideways(el) ? { left: offset, behavior: "smooth" } : { top: offset, behavior: "smooth" });
@@ -89,11 +93,14 @@ export function FeaturedMembersCarousel({ className, count, children }: {
   const onScroll = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    const at = sideways(el) ? el.scrollLeft : el.scrollTop;
+    // Axis read once per scroll event, not once per slide: scroll events fire
+    // dozens of times a swipe.
+    const side = sideways(el);
+    const at = side ? el.scrollLeft : el.scrollTop;
     let best = 0;
     let bestDistance = Infinity;
     for (let i = 0; i < el.children.length; i++) {
-      const d = Math.abs(offsetOf(el, i) - at);
+      const d = Math.abs(offsetOf(el, i, side) - at);
       if (d < bestDistance) [bestDistance, best] = [d, i];
     }
     setActive(best);

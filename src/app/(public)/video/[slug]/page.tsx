@@ -36,16 +36,16 @@ const fmt = (iso: string | null) =>
 export default async function VideoPage(props: PageProps<"/video/[slug]">) {
   const { slug } = await props.params;
   const sp = await props.searchParams;
-  // Five latest, so four remain once this one is left out — the "More videos"
-  // row below (#33 C14).
-  const [video, ctx, issue, latest] = await Promise.all([
+  const [video, ctx, issue] = await Promise.all([
     videoBySlug(slug),
     requestContext(),
     issueFromLink(newsletterLinkParams(sp)),
-    latestVideos(5),
   ]);
   if (!video) notFound();
-  const more = latest.filter((v) => v.id !== video.id).slice(0, 4);
+  // Five latest, so four remain once this one is left out — the "More videos"
+  // row below (#33 C14). Fetched after the 404 check so a missing slug costs
+  // no second query.
+  const more = (await latestVideos(5)).filter((v) => v.id !== video.id).slice(0, 4);
   // The newsletter issue rides on the page_view only, so a video counts once in the issue's report.
   // From a newsletter link it counts without consent too, anonymously (lib/analytics newsletterClick).
   record([{ kind: "page_view", path: `/video/${slug}`, newsletter_issue_id: issue?.id ?? null, ...newsletterClick(ctx, newsletterLinkParams(sp).src) }]);

@@ -125,25 +125,30 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
   // An advert directly above the story's cover (the default story layout, and
   // any stored layout that keeps that order) put headline → 300px advert →
   // cover on a phone, so the first screen after tapping a story held no
-  // article at all (#33 C1). Below md the pair swaps, cover first; from md up
-  // it is a plain block and margins collapse exactly as before. Detected
+  // article at all (#33 C1). Below md the pair swaps, cover first. Detected
   // here rather than changed in the default, so layouts admins have already
-  // saved get the same treatment. Visual order only — the ad keeps its slot
-  // key, because keys are dealt by position in the layout.
+  // saved get the same treatment. The ad keeps its slot key, because keys are
+  // dealt by position in the layout.
+  //
+  // The swap is made in the SOURCE, not with CSS `order`: the advert renders
+  // twice, before the hero from md up and after it below md, each copy
+  // display:none at the other width. A CSS-only swap left the advert first in
+  // tab and screen-reader order while it was drawn second. The hero renders
+  // once (it carries the h1). A hidden copy never counts an impression —
+  // AdCreative only counts an image with an offsetParent.
   const out: React.ReactNode[] = [];
   const blocks = layout.blocks;
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     const next = blocks[i + 1];
     if (pageType === "story" && block.type === "ad_banner" && next?.type === "story_hero") {
+      // One render, placed twice: renderBlock advances the slot-key counter,
+      // so calling it twice would deal the second copy the next slot's key.
       const ad = renderBlock(block);
       const hero = renderBlock(next);
-      out.push(
-        <div key={`${block.id}+${next.id}`} className="flex flex-col md:block">
-          {ad && <div className="order-2 md:order-none">{ad}</div>}
-          <div className="order-1 md:order-none">{hero}</div>
-        </div>,
-      );
+      if (ad) out.push(<div key={`${block.id}:md`} className="max-md:hidden">{ad}</div>);
+      out.push(hero);
+      if (ad) out.push(<div key={`${block.id}:phone`} className="md:hidden">{ad}</div>);
       i++;
       continue;
     }

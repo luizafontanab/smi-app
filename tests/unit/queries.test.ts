@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   activePlacements, activeTakeover, eventBySlug, eventsInRange, featuredEvent, featuredMemberPlacements, featuredMembers,
-  forYouStories, headlineStory, headlineVideo, ilikeTerm, industries,
+  forYouStories, headlineStory, headlineVideo, ilikeTerm, industries, latestVideos,
   industryBySlug, MEMBER_STORY_CAROUSEL, memberBySlug, memberDirectory, memberFacets, memberPins, membershipTypes, mostViewedStories, newsletterBySlug,
   pastEvents, publishedStories, publishedVideos,
   searchSite, sentNewsletters, services, staticPage, storyBySlug, storyFilterMember, storyForPreview, storyMembers, storyCategories, storyIndustrySlug, storyIntros,
@@ -360,8 +360,10 @@ describe("activeTakeover", () => {
 
 describe("publishedVideos", () => {
   it("returns rows and total, defaulting an empty result to []", async () => {
-    db({ videos: () => queryBuilder(dbOk(null, 0)) });
+    const videosBuilder = queryBuilder(dbOk(null, 0));
+    db({ videos: () => videosBuilder });
     expect(await publishedVideos()).toEqual({ videos: [], total: 0 });
+    expect(videosBuilder.select).toHaveBeenCalledWith(expect.any(String), { count: "exact" });
   });
 
   it("filters on industry_id, alongside the published filter rather than instead of it", async () => {
@@ -381,6 +383,24 @@ describe("publishedVideos", () => {
     await publishedVideos({ industry: "bogus" });
 
     expect(videosBuilder.eq).not.toHaveBeenCalledWith("industry_id", expect.anything());
+  });
+});
+
+describe("latestVideos", () => {
+  it("runs the same published query as publishedVideos, newest first, but without the exact count", async () => {
+    const videosBuilder = queryBuilder(dbOk([{ id: "v1" }]));
+    db({ videos: () => videosBuilder });
+
+    expect(await latestVideos(5)).toEqual([{ id: "v1" }]);
+    expect(videosBuilder.select).toHaveBeenCalledWith(expect.any(String), undefined);
+    expect(videosBuilder.eq).toHaveBeenCalledWith("status", "published");
+    expect(videosBuilder.order).toHaveBeenCalledWith("published_at", { ascending: false });
+    expect(videosBuilder.range).toHaveBeenCalledWith(0, 4);
+  });
+
+  it("defaults an empty result to []", async () => {
+    db({ videos: () => queryBuilder(dbOk(null)) });
+    expect(await latestVideos(5)).toEqual([]);
   });
 });
 

@@ -168,6 +168,44 @@ describe("ad_banner", () => {
   });
 });
 
+// #33 C1: on a phone the story's cover comes before the advert above it. The
+// swap is in the source, so tab and screen-reader order match the screen.
+describe("ad_banner before story_hero on a story page", () => {
+  function renderPair() {
+    return render(
+      <BlockRenderer
+        pageType="story"
+        path="/news/x"
+        layout={layout({ id: "ad", type: "ad_banner" }, { id: "hero", type: "story_hero" })}
+        anchors={{ story_hero: <h1>Cover</h1> }}
+        showPlaceholders
+      />,
+    );
+  }
+
+  it("puts the advert before the hero from md up and after it below md, rendering the hero once", () => {
+    const { container } = renderPair();
+    const [desktopAd, hero, phoneAd, ...rest] = [...container.children];
+    expect(rest).toHaveLength(0);
+    expect(desktopAd).toHaveClass("max-md:hidden");
+    expect(hero).toContainElement(screen.getByRole("heading", { name: "Cover" }));
+    expect(phoneAd).toHaveClass("md:hidden");
+    expect(container.querySelectorAll("h1")).toHaveLength(1);
+  });
+
+  it("deals both copies the same slot key — they are one advert, not two slots", () => {
+    const { container } = renderPair();
+    const [desktopAd, , phoneAd] = [...container.children];
+    expect(desktopAd.innerHTML).toContain("story_ad_1");
+    expect(desktopAd.innerHTML).toBe(phoneAd.innerHTML);
+  });
+
+  it("uses no CSS order utilities to fake the swap", () => {
+    const { container } = renderPair();
+    expect(container.innerHTML).not.toMatch(/\border-\d/);
+  });
+});
+
 describe("join_cta", () => {
   it("renders the join CTA", () => {
     render(<BlockRenderer pageType="static_page" path="/news" layout={layout({ id: "b1", type: "join_cta" })} anchors={{}} />);

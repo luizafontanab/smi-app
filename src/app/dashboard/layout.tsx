@@ -20,6 +20,10 @@ export const dynamic = "force-dynamic";
 // content"; an item's edit page is "Your content"; an advert's own page is
 // "Advertising"; paying an invoice is Settings → Billing; notifications
 // (reached from the dashboard's "See all") are Dashboard; resources are Help.
+// An equipment edit page is "Your content" even though Advertising → Assets
+// also links to it: machines are listed in Your content too (lib/submissions
+// EDIT_HREF), and the layout can't see which list the member came from, so
+// it follows the same rule as every other item's edit page.
 const NAV: NavSection[] = [
   { key: "overview", href: "/dashboard", label: "Dashboard", match: ["/dashboard/notifications"] },
   { key: "profile", href: "/dashboard/profile", label: "My page" },

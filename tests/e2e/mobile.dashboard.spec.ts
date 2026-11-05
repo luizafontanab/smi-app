@@ -105,8 +105,16 @@ test("M10: on a phone the dashboard shows Your submissions before the shortcut c
   test.skip(!isPhone(page), "phone layout only");
   await page.goto("/dashboard");
   const submissions = await page.getByRole("heading", { name: "Your submissions" }).boundingBox();
-  const card = await page.getByRole("main").getByRole("link", { name: /Statistics/ }).boundingBox();
+  const cardLink = page.getByRole("main").getByRole("link", { name: /Statistics/ });
+  const card = await cardLink.boundingBox();
   expect(submissions!.y).toBeLessThan(card!.y);
+  // Source order too, not just paint order: keyboard and screen-reader users
+  // must meet the cards where they're drawn (WCAG 2.4.3).
+  const cardAfterHeading = await cardLink.evaluate((link) => {
+    const heading = [...document.querySelectorAll("h2")].find((h) => h.textContent === "Your submissions")!;
+    return Boolean(heading.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(cardAfterHeading).toBe(true);
 });
 
 test("M2: member-area text fields are at least 16px, so iOS doesn't zoom on focus", async ({ page }) => {

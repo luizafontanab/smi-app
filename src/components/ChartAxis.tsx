@@ -44,8 +44,9 @@ export function ChartAxis({ labels }: { labels: string[] }) {
     // Decorative for screen readers — each chart's aria-label already names the range.
     <div aria-hidden className="mt-1 flex text-xs text-graphite">
       {labels.map((l, i) => (
+        // Index keys: labels are the caller's and need not be unique.
         <span
-          key={l}
+          key={i}
           className={`min-w-0 flex-1 overflow-visible whitespace-nowrap text-center ${
             ticks[i] === "none" ? "invisible" : ticks[i] === "wide" ? "invisible sm:visible" : ""
           }`}
