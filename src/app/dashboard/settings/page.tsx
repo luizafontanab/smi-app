@@ -27,10 +27,10 @@ export default async function SettingsPage(props: PageProps<"/dashboard/settings
           </select>
         </div>
         <div>
-          <label htmlFor="leads_frequency" className="font-medium">Sales-lead alerts (companies engaging with you)</label>
+          <label htmlFor="leads_frequency" className="font-medium">Page-view alerts (how many times your page was viewed)</label>
           <select id="leads_frequency" name="leads_frequency" defaultValue={prefs?.leads_frequency ?? "weekly"} className="mt-1 w-full rounded border px-3 py-2 text-base sm:text-sm">
             <option value="daily">Daily</option>
-            <option value="weekly">Weekly (recommended — leads go cold)</option>
+            <option value="weekly">Weekly (recommended)</option>
             <option value="never">Never</option>
           </select>
         </div>

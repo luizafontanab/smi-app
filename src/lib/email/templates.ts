@@ -109,7 +109,10 @@ export type NotificationPayload = {
   comped_until?: string;
   action_link?: string;
   page_views?: number;
+  /** lead_alert: the member's page views over the alert window. */
   count?: number;
+  /** lead_alert: the window in days (7 weekly, 1 daily). Absent on alerts queued before #12. */
+  days?: number;
   [key: string]: unknown;
 };
 
@@ -157,12 +160,44 @@ export function resolveTemplate(kind: string, overrides?: EmailTemplateMap): Tem
 }
 
 /**
+ * `resolveTemplate` for copy that is about to reach a reader.
+ *
+ * The console refuses to save a placeholder the email doesn't have, but one
+ * can be retired after a row was saved (#12 retired lead_alert's `count` and
+ * `companies_phrase`). Such a field would send raw `{{…}}`, and was written for
+ * wording the email no longer has, so it falls back to the shipped copy.
+ *
+ * Kept apart from `resolveTemplate` on purpose: the console editor's fields and
+ * the newsletter's pre-send check read the stored edit as it is, so they can
+ * show an admin what needs fixing rather than hide it. The editor's preview
+ * goes through here, so it shows what will actually be sent, and saving the
+ * stale field again is refused with the placeholder named.
+ */
+function sendableTemplate(kind: string, overrides?: EmailTemplateMap): TemplateDefault {
+  const key = templateKey(kind);
+  const row = overrides?.[key];
+  if (!row) return resolveTemplate(key, overrides);
+  const allowed = allowedTokensFor(key);
+  const keep = (field: string | null | undefined): string | null =>
+    field && tokensIn(field).every((name) => allowed.includes(name)) ? field : null;
+  return resolveTemplate(key, {
+    [key]: {
+      subject: keep(row.subject),
+      label: keep(row.label),
+      body_html: keep(row.body_html),
+      body_text: keep(row.body_text),
+      cta_label: keep(row.cta_label),
+    },
+  });
+}
+
+/**
  * Human label for a kind. Shared with the in-app notification feed, which used
  * to render the raw enum — a member genuinely saw "advert_scheduled" (GAPS
  * A4.10). One table feeds both surfaces so they can't drift.
  */
 export function notificationLabel(kind: string, overrides?: EmailTemplateMap): string {
-  return resolveTemplate(kind, overrides).label ?? "Update from SMI";
+  return sendableTemplate(kind, overrides).label ?? "Update from SMI";
 }
 
 /**
@@ -218,8 +253,12 @@ function varsFor(kind: string, payload: NotificationPayload): TemplateVars {
     }
 
     case "lead_alert": {
-      const count = Number(payload.count ?? 0);
-      return { count: String(count), companies_phrase: count === 1 ? "company has" : "companies have" };
+      // `count` is the member's page views over the alert window (#12).
+      const views = Number(payload.count ?? 0);
+      const days = Number(payload.days ?? 0);
+      // Alerts queued before `days` was recorded say "recently".
+      const period = days === 7 ? "this week" : days === 1 ? "since yesterday" : "recently";
+      return { views: String(views), views_s: views === 1 ? "" : "s", period };
     }
 
     default:
@@ -291,7 +330,7 @@ function assemble(
   overrides?: EmailTemplateMap,
   audience: ShellAudience = "member",
 ): RenderedEmail {
-  const tpl = resolveTemplate(kind, overrides);
+  const tpl = sendableTemplate(kind, overrides);
   const raw = tpl.tokens.filter((t) => t.raw).map((t) => t.token);
 
   // The subject is plain text in a mail header; it only gets escaped where the

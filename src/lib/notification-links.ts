@@ -136,9 +136,9 @@ export function notificationHref(kind: string, payload: NotificationPayload, slu
     case "membership_cancelled":
       return "/dashboard/settings/billing";
 
-    // lead_alert counts engagement_audit rows (companies engaging with the
-    // member's page), not the mock prospect list at /dashboard/leads, so it
-    // goes where its email's button already goes.
+    // lead_alert reports the member's page views (the sum of engagement_audit
+    // views), not the mock prospect list at /dashboard/leads, so it goes where
+    // its email's button already goes.
     case "stats_summary":
     case "lead_alert":
       return "/dashboard/stats";

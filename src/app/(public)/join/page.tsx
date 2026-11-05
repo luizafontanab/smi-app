@@ -9,7 +9,7 @@ export const metadata = {
 const BENEFITS = [
   ["Your company page", "A permanent, Google-indexed profile with your story library, map, video and contact routes."],
   ["Post your own news", "Publish through SMI's site, newsletter and social channels — every story links back to you."],
-  ["See who's engaging", "Analytics showing readership and which companies are looking at your page and machines."],
+  ["See your reach", "Statistics showing how often your page is viewed, how far your stories reach and how your adverts perform."],
   ["Community", "Part of the UK's sheet metal trade network — events, the golf day, and the monthly newsletter."],
 ];
 

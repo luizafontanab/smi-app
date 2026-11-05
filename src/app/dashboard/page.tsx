@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 const CARDS = [
   { href: "/dashboard/story/new", Icon: IconNewspaper, title: "Add content", sub: "Stories, videos, events" },
   { href: "/dashboard/advertising", Icon: IconMegaphone, title: "Advertising", sub: "Adverts, featured slots & newsletter" },
-  { href: "/dashboard/stats", Icon: IconChart, title: "Statistics", sub: "Who's engaging with you" },
+  { href: "/dashboard/stats", Icon: IconChart, title: "Statistics", sub: "Page views, story reach & adverts" },
   { href: "/dashboard/profile", Icon: IconBuilding, title: "Your page", sub: "Description, images, video, socials" },
   { href: "/dashboard/help", Icon: IconHelp, title: "Help", sub: "Guides and support" },
   { href: "/dashboard/settings", Icon: IconSettings, title: "Settings", sub: "Notifications, security & billing" },
