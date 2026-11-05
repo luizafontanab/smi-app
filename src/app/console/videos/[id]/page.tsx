@@ -5,7 +5,7 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
-import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus } from "../../actions";
+import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus, confirmVideoSocial } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -13,8 +13,10 @@ import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { UploadField } from "@/components/UploadField";
 import { SocialPostFields } from "@/components/console/SocialPostFields";
-import { latestSocialJob, readSocialCaps, socialStatusLine } from "@/lib/social-push";
-import { isSocialLive } from "@/lib/adapters/social";
+import { latestSocialJob, readSocialCaps } from "@/lib/social-push";
+import { getSocialPublisher, isSocialLive } from "@/lib/adapters/social";
+import { loadSocialPanel } from "@/lib/social-post";
+import { socialNotes } from "@/lib/social-confirm";
 import { formatLondon, londonInputValue } from "@/lib/london-time";
 import { excerptFromHtml } from "@/lib/sanitize";
 
@@ -56,9 +58,11 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
   // Approve / Schedule send the Industry box as it stands, so what Jas sees is what goes Live.
   const industryField = <MirrorInput source="industry_id" name="industry_id" defaultValue={String(industryDefault)} />;
   const isPinned = !!video?.pinned_until && new Date(video.pinned_until) > new Date();
-  const socialStatus = video
-    ? socialStatusLine({ ...video, job: socialJob, caps: socialCaps, live: isSocialLive() })
-    : undefined;
+  // Issue #43: each channel's preview, confirmation and status.
+  const socialPanel = video
+    ? await loadSocialPanel(db, { video_id: id }, { networks: () => getSocialPublisher().channelNetworks(), delayMinutes: socialCaps.delay_minutes })
+    : null;
+  const socialNoteLines = video ? socialNotes({ live: isSocialLive(), job: socialJob }) : [];
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -69,6 +73,11 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
       )}
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {typeof sp.confirmed === "string" && (
+        <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">
+          Social post confirmed for {sp.confirmed === "1" ? "1 channel" : `${Number(sp.confirmed) || 0} channels`}.
+        </p>
+      )}
 
       <form action={saveVideo} className="mt-4 space-y-4 rounded-xl bg-white p-5 shadow-sm">
         <UnsavedChangesGuard />
@@ -116,7 +125,9 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
           fallback={excerptFromHtml(video?.description) ?? video?.title ?? ""}
           fallbackName="description"
           caps={socialCaps}
-          status={socialStatus}
+          panel={socialPanel}
+          notes={socialNoteLines}
+          confirmAction={confirmVideoSocial}
         />
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>

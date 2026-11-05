@@ -177,7 +177,8 @@ account and £40/month Price created, `STRIPE_PRICE_ID` set. Staging-only items
 `supabase db push` applies every pending migration in one go; you can't push
 just one. Deploy the `staging` code at the same moment: old code against the new
 schema breaks member profiles, the directory and the CRM page. Pending, as far
-as this repo knows: none. Everything through `20261027000004` was pushed to
+as this repo knows: `20261105000002` (issue #43: the `social_channel_posts`
+table, and every story and video already Live marked "Don't post"). Everything through `20261027000004` was pushed to
 `bvyxeujhecxulzwvpxfr` on 28 Oct, without the backup or pre-checks below;
 `20261028000001` and `20261029000001` followed on 4 Nov.
 Confirm with `supabase migration list --linked`. From `20261020000005` on, nothing sends
@@ -318,12 +319,17 @@ through Proof and approval first.
         live response. If they stay empty, look at the `social_links` jobs; a link
         can still be pasted by hand meanwhile.
       - Check that the organisation id is filled in next to the channel ids on
-        `/console/stories`. Then check the first post on each network carries only
-        that network's tags (GAPS B4.5). The network comes from Buffer's
-        `channels(input: { organizationId })` → `service`, which is in its API
-        reference but untested. If X shows `linkedin:` tags too, the lookup is
-        failing, and every channel gets one shared text cut to fit X's 280.
-        That's safe, but untidy.
+        `/console/stories`. Then open any story's editor: under "Social post"
+        each channel's preview should be named by its network (LinkedIn, X, …)
+        and carry only that network's tags (GAPS B4.5, issue #43). The network
+        comes from Buffer's `channels(input: { organizationId })` → `service`,
+        which is in its API reference but untested. Previews named "Channel …"
+        mean there is no organisation id (every channel then gets one shared
+        text cut to fit X's 280); a red "confirming is off" note means the
+        lookup itself is failing.
+      - Nothing posts until a channel is confirmed in the editor (issue #43).
+        Confirm one channel on the first live story and check it went out on
+        that channel only.
       - Confirm X really refuses a post over 280 through Buffer (as a
         `MutationError`) rather than truncating it. Our counting treats every
         link as 23 characters.

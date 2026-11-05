@@ -12,7 +12,7 @@
  *     not a success check. `publishToChannel` discriminates positively on
  *     `__typename` — anything else is a failure. Getting this wrong means every
  *     failed post silently marks its job `done` and increments the daily cap.
- *   - `profile_ids[]` is gone: one mutation per channel, so `publish()` fans out.
+ *   - `profile_ids[]` is gone: one mutation per channel (`publishChannel`).
  *
  * GAPS B4.2: `tagHandles` is populated from `members.social` — there is no
  * separate CRM-stored handle field anywhere in the schema, despite this
@@ -29,6 +29,7 @@
 import { socialHandle, socialHref } from "@/lib/social";
 import { mediaUrl, serviceDb } from "../db/server";
 import { readSocialChannels } from "../social-channels";
+import type { ChannelPost } from "../social-confirm";
 
 const BUFFER_API = "https://api.buffer.com";
 
@@ -39,7 +40,8 @@ const BUFFER_API = "https://api.buffer.com";
  * (`jobs.ts`). Buffer must therefore post at the moment we call and add no
  * schedule of its own — a queue-shaped mode would stack Buffer's delay on top
  * of ours, make the time the editor shows untrue, and make the cap accounting
- * fiction (it counts `social_posted_at`, stamped when this call returns).
+ * fiction (it counts each channel's `social_channel_posts.posted_at`, stamped
+ * when this call returns).
  * For the same reason we send no `dueAt`.
  *
  * ⚠ UNVERIFIED: these two enum literals have not been checked against a live
@@ -83,29 +85,41 @@ export type SocialPost = {
 /**
  * At most this many co-featured members are tagged on top of the primary. A
  * story can feature a dozen members, and every tag lands in the post's text
- * (see formatTags) — past a handful an X post overruns 280 characters and a
+ * (see channelText) — past a handful an X post overruns 280 characters and a
  * LinkedIn post reads as a list of handles rather than a story.
  */
 export const MAX_EXTRA_TAGGED_MEMBERS = 4;
 
 export interface SocialPublisher {
-  /** One entry per channel Buffer accepted — so the live links can be collected afterwards. */
-  publish(post: SocialPost, opts?: PublishOptions): Promise<SentPost[]>;
+  /**
+   * Which network each connected channel is, so its post can be shaped for it.
+   * "unknown" when there is nothing to look up (no organisation id stored, or
+   * the local stub); "failed" when the lookup itself went wrong.
+   */
+  channelNetworks(): Promise<ChannelNetworks>;
+  /**
+   * Posts exactly this text and image to one channel — the text an admin
+   * confirmed (issue #43), so nothing here reshapes it. Throws on any failure.
+   * The post is null when Buffer took it without returning one.
+   */
+  publishChannel(send: ChannelPost): Promise<SentPost | null>;
   /** Re-reads posts by id for their status and live URL. Ids Buffer can't find are left out. */
   postLinks(ids: string[]): Promise<SentPost[]>;
 }
 
-/**
- * "channel:handle" pairs, readable in the dev-log stub. Also the fallback
- * for a real post's text body (GAPS B4.1/B4.3): Buffer *does* support real
- * LinkedIn @-mentions via `metadata.linkedin.annotations[]`, but each one needs
- * a `urn:li:organization:<id>` we don't store and can't derive from the vanity
- * name in `members.social`. Until that data exists, tags ride along in the text
- * rather than silently vanishing. See GAPS B4.3 for what closing it needs.
+export type ChannelNetworks =
+  | { kind: "known"; services: Map<string, string> }
+  | { kind: "unknown" }
+  | { kind: "failed" };
+
+/*
+ * Tags ride along in the text body as "channel:handle" pairs (GAPS
+ * B4.1/B4.3): Buffer *does* support real LinkedIn @-mentions via
+ * `metadata.linkedin.annotations[]`, but each one needs a
+ * `urn:li:organization:<id>` we don't store and can't derive from the vanity
+ * name in `members.social`. Until that data exists, tags ride along in the
+ * text rather than silently vanishing. See GAPS B4.3 for what closing it needs.
  */
-function formatTags(post: Pick<SocialPost, "tagHandles" | "extraTagHandles">): string {
-  return tagList(post).join(" ");
-}
 
 /**
  * The tags in order, the primary member's first, so trimming from the end
@@ -179,27 +193,35 @@ export function channelText(post: SocialPost, service: string | null): string {
 }
 
 /**
- * Some channels took the post and at least one didn't. Carries what did go
- * out, so the job can record it and a retry posts only to the channels still
- * owed — Buffer has no idempotency key, so nothing else stops a re-post.
+ * What each connected channel would receive (issue #43): the preview an admin
+ * confirms, and the post built again just before sending to compare with it.
+ * A network not known — nothing to look up, or the lookup failed — gets the
+ * one X-fitted text every channel falls back to.
  */
-export class SocialPublishError extends Error {
-  constructor(message: string, readonly sent: SentPost[], readonly doneChannelIds: string[]) {
-    super(message);
-    this.name = "SocialPublishError";
-  }
+export function channelPosts(post: SocialPost, channelIds: string[], networks: ChannelNetworks): (ChannelPost & { network: string | null })[] {
+  return channelIds.map((channelId) => {
+    const network = networks.kind === "known" ? networks.services.get(channelId) ?? null : null;
+    return { channelId, network, text: channelText(post, network), imagePath: post.imagePath };
+  });
 }
 
-export type PublishOptions = {
-  /** Channels an earlier attempt of the same job already posted to. */
-  skipChannelIds?: string[];
+const NETWORK_LABEL: Partial<Record<string, string>> = {
+  linkedin: "LinkedIn", twitter: "X", x: "X", facebook: "Facebook", instagram: "Instagram", youtube: "YouTube", tiktok: "TikTok",
 };
 
+/** "LinkedIn", "X", … for a Buffer service name; the channel id when the network isn't known. */
+export function channelLabel(channelId: string, network: string | null): string {
+  return (network && NETWORK_LABEL[network.toLowerCase()]) ?? `Channel ${channelId}`;
+}
+
 class LoggingSocialStub implements SocialPublisher {
-  async publish(post: SocialPost): Promise<SentPost[]> {
-    const tags = formatTags(post);
-    console.log(`[social] would post (${tags || "no tags"}): ${post.text.split("\n")[0].slice(0, 80)}`);
-    return [];
+  async channelNetworks(): Promise<ChannelNetworks> {
+    return { kind: "unknown" };
+  }
+
+  async publishChannel(send: ChannelPost): Promise<null> {
+    console.log(`[social] would post to ${send.channelId}: ${send.text.split("\n")[0].slice(0, 80)}`);
+    return null;
   }
 
   async postLinks(): Promise<SentPost[]> {
@@ -207,10 +229,10 @@ class LoggingSocialStub implements SocialPublisher {
   }
 }
 
-/** Which connected Buffer channels a post goes to — one createPost mutation each. */
-async function bufferChannels(): Promise<{ channelIds: string[]; legacyProfileIds: string[]; organizationId?: string }> {
+/** The stored Buffer organisation id — what the channel lookup needs. */
+async function bufferOrganizationId(): Promise<string | undefined> {
   const { data } = await serviceDb().from("settings").select("value").eq("key", "social_channels").maybeSingle();
-  return readSocialChannels(data?.value);
+  return readSocialChannels(data?.value).organizationId;
 }
 
 type ChannelInput = {
@@ -224,84 +246,46 @@ type ChannelInput = {
 class BufferPublisher implements SocialPublisher {
   constructor(private token: string) {}
 
-  async publish(post: SocialPost, opts: PublishOptions = {}): Promise<SentPost[]> {
-    const { channelIds, legacyProfileIds, organizationId } = await bufferChannels();
-    if (!channelIds.length) {
-      // Fail closed rather than let Buffer reject a channel-less request with a
-      // cryptic error — same posture as the other adapters (A7.5, B3.1).
-      const stale = legacyProfileIds.length
-        ? " The stored ids are Buffer v1 profile ids, which the current API does not accept — re-enter them as channel ids."
-        : "";
-      throw new Error(`[social] no Buffer channel configured — set channel ids in /console/stories.${stale}`);
-    }
-
-    const skip = new Set(opts.skipChannelIds ?? []);
-    const owed = channelIds.filter((id) => !skip.has(id));
-    if (!owed.length) return [];
-
-    // GAPS B4.5: each channel gets its own network's tags, fitted to 280 on X.
-    const services = organizationId ? await this.channelServices(organizationId) : null;
-    const image = mediaUrl(post.imagePath);
-
-    // Every channel is attempted: one bad channel must not stop the others.
-    // Buffer exposes no idempotency key, so a retry must not post again to a
-    // channel this attempt reached: the error carries those, and the job
-    // passes them back as `skipChannelIds` (GAPS B4.5).
-    const failures: string[] = [];
-    const sent: SentPost[] = [];
-    const done: string[] = [];
-    for (const channelId of owed) {
-      const text = channelText(post, services?.get(channelId) ?? null);
-      const input: ChannelInput = { text, channelId, mode: SHARE_MODE, schedulingType: SCHEDULING_TYPE };
-      if (image) input.assets = [{ image: { url: image } }];
-
-      const result = await this.publishToChannel(input);
-      if (!result.ok) failures.push(`${channelId}: ${result.error}`);
-      else {
-        done.push(channelId);
-        if (result.post) sent.push(result.post);
-      }
-    }
-
-    if (failures.length) {
-      // job retries the rest; dead-letter surfaces in Needs You Today
-      throw new SocialPublishError(
-        `[social] Buffer publish failed for ${failures.length} of ${owed.length} channel(s) — ${failures.join("; ")}`,
-        sent,
-        done,
-      );
-    }
-    return sent;
+  async publishChannel(send: ChannelPost): Promise<SentPost | null> {
+    const input: ChannelInput = { text: send.text, channelId: send.channelId, mode: SHARE_MODE, schedulingType: SCHEDULING_TYPE };
+    const image = mediaUrl(send.imagePath);
+    if (image) input.assets = [{ image: { url: image } }];
+    const result = await this.publishToChannel(input);
+    if (!result.ok) throw new Error(`[social] Buffer publish failed for channel ${send.channelId} — ${result.error}`);
+    return result.post;
   }
 
   /**
-   * Which network each connected channel is, so its post can be shaped for it
-   * (GAPS B4.5). Null on any failure — the caller then fits one text to X's
-   * limit for every channel rather than not posting.
+   * GAPS B4.5. "unknown" with no organisation id stored: every channel then
+   * gets the one X-fitted text, consistently, so a confirmation still holds.
+   * "failed" on any error — the caller must not fall back then, or a passing
+   * Buffer outage would change every channel's text and undo its confirmation.
    *
    * ⚠ UNVERIFIED against a live account, like the enums above: the query
    * shape and the `service` values ("twitter", "linkedin", …) follow Buffer's
    * GraphQL reference. The organisation id is inlined as a string literal so
    * a wrong guess at the input type's name can't fail the query.
    */
-  private async channelServices(organizationId: string): Promise<Map<string, string> | null> {
+  async channelNetworks(): Promise<ChannelNetworks> {
     try {
+      const organizationId = await bufferOrganizationId();
+      if (!organizationId) return { kind: "unknown" };
       const res = await fetch(BUFFER_API, {
         method: "POST",
         headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ query: `query { channels(input: { organizationId: ${JSON.stringify(organizationId)} }) { id service } }` }),
       });
-      if (!res.ok) return null;
+      if (!res.ok) return { kind: "failed" };
       const body = (await res.json()) as { data?: { channels?: { id?: unknown; service?: unknown }[] }; errors?: unknown[] };
-      if (body.errors?.length || !Array.isArray(body.data?.channels)) return null;
-      const map = new Map<string, string>();
+      if (body.errors?.length || !Array.isArray(body.data?.channels)) return { kind: "failed" };
+      const services = new Map<string, string>();
       for (const c of body.data.channels) {
-        if (typeof c.id === "string" && typeof c.service === "string") map.set(c.id, c.service);
+        if (typeof c.id === "string" && typeof c.service === "string") services.set(c.id, c.service);
       }
-      return map;
+      return { kind: "known", services };
     } catch (e) {
       console.error("[social] buffer channel lookup failed:", e);
-      return null;
+      return { kind: "failed" };
     }
   }
 

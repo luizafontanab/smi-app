@@ -5,7 +5,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { renderableHtml } from "@/lib/sanitize";
-import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, setStoryStatus } from "../../actions";
+import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, setStoryStatus, confirmStorySocial } from "../../actions";
 import { CoverField } from "@/components/CoverField";
 import { parseFocus } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -24,8 +24,10 @@ import { STORY_STATUS_LABELS, isMemberDraft, parseStoryListFilters, storyListHre
 import { SocialPostFields } from "@/components/console/SocialPostFields";
 import { CountedInput } from "@/components/console/CountedInput";
 import { STORY_SUMMARY_WORDS } from "@/lib/newsletter-layout";
-import { latestSocialJob, readSocialCaps, socialStatusLine } from "@/lib/social-push";
-import { isSocialLive } from "@/lib/adapters/social";
+import { latestSocialJob, readSocialCaps } from "@/lib/social-push";
+import { getSocialPublisher, isSocialLive } from "@/lib/adapters/social";
+import { loadSocialPanel } from "@/lib/social-post";
+import { socialNotes, socialSummary } from "@/lib/social-confirm";
 import { formatLondon, londonInputValue } from "@/lib/london-time";
 
 export const dynamic = "force-dynamic";
@@ -99,9 +101,12 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const storedPosts = (story?.social_posts && typeof story.social_posts === "object" && !Array.isArray(story.social_posts)
     ? story.social_posts
     : {}) as Partial<Record<string, string>>;
-  const socialStatus = story
-    ? socialStatusLine({ ...story, job: socialJob, caps: socialCaps, live: isSocialLive() })
-    : undefined;
+  // Issue #43: each channel's preview, confirmation and status.
+  const socialPanel = story
+    ? await loadSocialPanel(db, { story_id: id }, { networks: () => getSocialPublisher().channelNetworks(), delayMinutes: socialCaps.delay_minutes })
+    : null;
+  const socialStatus = socialPanel ? socialSummary(socialPanel.channels.map((c) => c.state)) : undefined;
+  const socialNoteLines = story ? socialNotes({ live: isSocialLive(), job: socialJob }) : [];
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -134,6 +139,11 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
       )}
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
+      {typeof sp.confirmed === "string" && (
+        <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">
+          Social post confirmed for {sp.confirmed === "1" ? "1 channel" : `${Number(sp.confirmed) || 0} channels`}.
+        </p>
+      )}
       {typeof sp.notice === "string" && (
         <div role="status" className="mt-2 rounded bg-shade p-2 text-sm text-ink">
           <p className="font-medium">Draft pre-loaded from the article. Still to do:</p>
@@ -212,7 +222,15 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           </div>
         </fieldset>
         <CoverField cover={cover} focus={focus} hint="Landscape works best: at least 1200×675px (16:9), JPG/PNG/WebP, max 8MB. Leaving this empty keeps the current image. The crop fixes lost heads — it applies on the story page, the news cards and the homepage." />
-        <SocialPostFields item={story} fallback={story?.summary ?? story?.title ?? ""} fallbackName="summary" caps={socialCaps} status={socialStatus} />
+        <SocialPostFields
+          item={story}
+          fallback={story?.summary ?? story?.title ?? ""}
+          fallbackName="summary"
+          caps={socialCaps}
+          panel={socialPanel}
+          notes={socialNoteLines}
+          confirmAction={confirmStorySocial}
+        />
         {/* Jas 13/10 item 8: the story page links readers to SMI's own post of
             the story rather than offering share buttons. Filled from Buffer once
             it has sent the post (social_links job); still editable, for a post
@@ -264,7 +282,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           </div>
           <p className="mt-1 text-sm text-graphite">{statusNext(story)}</p>
           <p className="mt-0.5 text-sm text-graphite">
-            {socialStatus} <a href="#social" className="underline">Change the social post</a>
+            {socialStatus} <a href="#social" className="underline">See and confirm the social post</a>
           </p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           {/* Ready to review (Jas's flow chart, 16 Oct): approve, then schedule.

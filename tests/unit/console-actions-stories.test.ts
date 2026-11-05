@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  consoleUploadImage, decideStory, moveStory, pinStory, saveSocialCaps, saveStory, scheduleStory, setStoryStatus,
+  confirmStorySocial, consoleUploadImage, decideStory, moveStory, pinStory, saveSocialCaps, saveStory, scheduleStory, setStoryStatus,
   saveSiteVariant, clearMyVariantOverride, saveHomeSections, setErrorStatus, saveFeatureFlag,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import type { CurrentUser } from "@/lib/auth";
 import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
 import { LIFECYCLE_MESSAGES } from "@/lib/content-lifecycle";
+import { CONFIRM_MESSAGES } from "@/lib/social-push";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
@@ -226,14 +227,14 @@ describe("saveStory", () => {
 });
 
 describe("scheduleStory", () => {
-  it("publishes immediately and enqueues the social push + member notification", async () => {
+  it("publishes immediately and notifies the member, but queues no social post nobody confirmed", async () => {
     const storiesBuilder = queryBuilder(dbOk({ id: "s1", member_id: "m1", status: "draft" }));
     db({ stories: () => storiesBuilder });
 
     await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
 
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published" }));
-    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, expect.any(Date));
+    expect(enqueue).not.toHaveBeenCalledWith("social_push", expect.anything(), expect.anything());
     expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "story_live" }));
   });
 
@@ -277,7 +278,6 @@ describe("scheduleStory", () => {
     await expect(scheduleStory(form({ id: "s1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/stories$/);
 
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "story", decision: "approved" }));
-    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, expect.any(Date));
   });
 
   it("Approve & schedule saves the editor's Industry box in the scheduling write", async () => {
@@ -812,31 +812,38 @@ describe("per-story social posts", () => {
   const NOW = new Date("2026-07-01T12:00:00Z");
   afterEach(() => vi.useRealTimers());
   const at = (iso: string) => new Date(iso);
+  /**
+   * The story as the lifecycle reads it, then — once it has written it Live —
+   * as the push reads it back; one channel, confirmed before it went Live.
+   */
+  function goingLive(row: Record<string, unknown>) {
+    const before = queryBuilder(dbOk({ id: "s1", member_id: null, status: "awaiting_approval", source: "admin", member_draft: false, social_at: null, published_at: null, ...row }));
+    const after = queryBuilder(dbOk({ status: "published", social_skip: false, social_at: null, published_at: NOW.toISOString(), ...row }));
+    db({
+      stories: () => ((before.update as ReturnType<typeof vi.fn>).mock.calls.length ? after : before),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45, channelIds: ["li"] } })),
+      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, confirmed_at: "2026-07-01T09:00:00Z" }])),
+    });
+  }
 
   it.each([
     ["Publish now", () => scheduleStory(form({ id: "s1", mode: "now" })).catch(() => {})],
     ["Approve & publish now", () => decideStory(form({ id: "s1", decision: "approve" }))],
     ["dragging to Live", () => moveStory({ id: "s1", to: "published" })],
-  ])("%s queues the post at the configured delay — the 30 minutes is no longer hard-coded", async (_how, act) => {
+  ])("%s queues a confirmed post at the configured delay — the 30 minutes is no longer hard-coded", async (_how, act) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
-    db({
-      stories: () => queryBuilder(dbOk({ id: "s1", member_id: null, status: "awaiting_approval", source: "admin", member_draft: false, social_at: null, social_posted_at: null, published_at: null })),
-      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
-    });
+    goingLive({});
 
     await act();
 
     expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, at("2026-07-01T12:45:00Z"));
   });
 
-  it("approving queues the post for the story's own time", async () => {
+  it("approving queues a confirmed post for the story's own time", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
-    db({
-      stories: () => queryBuilder(dbOk({ id: "s1", member_id: null, status: "awaiting_approval", source: "admin", social_at: "2026-07-01T16:00:00Z", social_posted_at: null, published_at: null })),
-      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
-    });
+    goingLive({ social_at: "2026-07-01T16:00:00Z" });
 
     await decideStory(form({ id: "s1", decision: "approve" }));
 
@@ -886,20 +893,56 @@ describe("per-story social posts", () => {
     expect(uploadImage).not.toHaveBeenCalled();
   });
 
-  it("saving moves a post that's already waiting to the edited time", async () => {
-    const pending = queryBuilder(dbOk([{ id: "j1" }]));
-    const update = queryBuilder(dbOk(null));
-    let jobsCalls = 0;
+  it("saving moves a confirmed post to the edited time", async () => {
+    const jobs = queryBuilder(dbOk(null));
     db({
-      stories: () => readThenUpdate({ id: "s1", cover_path: null, member_draft: false, social_at: "2099-01-01T10:00:00Z", published_at: NOW.toISOString() }),
-      jobs: () => (jobsCalls++ === 0 ? pending : update),
-      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
+      stories: () => readThenUpdate({ id: "s1", cover_path: null, member_draft: false, status: "published", social_skip: false, social_at: "2099-01-01T10:00:00Z", published_at: NOW.toISOString() }),
+      jobs: () => jobs,
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45, channelIds: ["li"] } })),
+      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, confirmed_at: "2026-07-01T09:00:00Z" }])),
     });
 
     await expect(saveStory(form({ id: "s1", title: "T", social_at: "2099-01-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
-    expect(update.update).toHaveBeenCalledWith(expect.objectContaining({ due_at: "2099-01-01T10:00:00.000Z" }));
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(jobs.delete).toHaveBeenCalled();
+    expect(jobs.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "social_push", payload: { story_id: "s1" }, due_at: "2099-01-01T10:00:00.000Z" }));
+  });
+
+  it("saving queues no post for a Live story nobody confirmed", async () => {
+    const jobs = queryBuilder(dbOk(null));
+    db({
+      stories: () => readThenUpdate({ id: "s1", cover_path: null, member_draft: false, status: "published", social_skip: false, social_at: null, published_at: "2020-01-01T09:00:00Z" }),
+      jobs: () => jobs,
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45, channelIds: ["li"] } })),
+      social_channel_posts: () => queryBuilder(dbOk([])),
+    });
+
+    await expect(saveStory(form({ id: "s1", title: "T", social_at: "" }))).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(jobs.insert).not.toHaveBeenCalled();
+  });
+
+  it("saving stores each listed channel's Don't post box, ticked or not", async () => {
+    const rows = queryBuilder(dbOk([]));
+    db({
+      stories: () => readThenUpdate({ id: "s1", cover_path: null, member_draft: false }),
+      jobs: () => queryBuilder(dbOk(null)),
+      social_channel_posts: () => rows,
+    });
+    const fd = form({ id: "s1", title: "T", social_at: "" });
+    fd.append("social_channel", "li");
+    fd.append("social_channel", "x");
+    fd.append("social_skip_channel", "x");
+
+    await expect(saveStory(fd)).rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?saved=1");
+
+    expect(rows.upsert).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ story_id: "s1", channel_id: "li", skip: false }),
+        expect.objectContaining({ story_id: "s1", channel_id: "x", skip: true }),
+      ],
+      { onConflict: "story_id,channel_id" },
+    );
   });
 
   it("taking a live story off the site drops its waiting post", async () => {
@@ -926,5 +969,52 @@ describe("saveStory — SMI's post links filled from Buffer", () => {
       .rejects.toThrow("NEXT_REDIRECT:/console/stories/s1?saved=1");
 
     expect(storiesBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ social_posts: { linkedin: LI } }));
+  });
+});
+
+// Issue #43: an admin confirms what each channel will receive, from the saved story.
+describe("confirmStorySocial", () => {
+  const ID = "11111111-1111-4111-8111-111111111111";
+  const story = {
+    id: ID, title: "Acme wins award", slug: "acme-wins-award", cover_path: null, member_id: null, status: "draft",
+    social_at: null, social_text: null, social_skip: false, published_at: null, summary: "Acme took the top prize.", member: null,
+  };
+
+  it("confirms every waiting channel as the signed-in admin and comes back to the editor", async () => {
+    const rows = queryBuilder(dbOk([]));
+    db({
+      stories: () => queryBuilder(dbOk(story)),
+      story_members: () => queryBuilder(dbOk([])),
+      settings: () => queryBuilder(dbOk({ value: { channelIds: ["li", "x"] } })),
+      social_channel_posts: () => rows,
+      jobs: () => queryBuilder(dbOk(null)),
+    });
+
+    await expect(confirmStorySocial(form({ id: ID, confirm_channel: "all", title: "edited but unsaved" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?confirmed=2#social`);
+
+    const [upserted] = (rows.upsert as ReturnType<typeof vi.fn>).mock.calls[0] as unknown as [{ channel_id: string; confirmed_by: string; confirmed_text: string }[]];
+    expect(upserted.map((r) => r.channel_id)).toEqual(["li", "x"]);
+    expect(upserted[0].confirmed_by).toBe("admin1");
+    // the saved story, not the form
+    expect(upserted[0].confirmed_text).toMatch(/^Acme took the top prize\./);
+    expect(revalidatePath).toHaveBeenCalledWith("/console");
+  });
+
+  it("says so when there are no channels to confirm", async () => {
+    db({
+      stories: () => queryBuilder(dbOk(story)),
+      story_members: () => queryBuilder(dbOk([])),
+      settings: () => queryBuilder(dbOk({ value: {} })),
+    });
+
+    await expect(confirmStorySocial(form({ id: ID, confirm_channel: "all" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?error=${encodeURIComponent(CONFIRM_MESSAGES.noChannels)}#social`);
+  });
+
+  it("refuses a malformed id without touching the database", async () => {
+    const from = db({});
+    await expect(confirmStorySocial(form({ id: "nope", confirm_channel: "all" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories?error=");
+    expect(from).not.toHaveBeenCalled();
   });
 });

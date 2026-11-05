@@ -8,6 +8,7 @@ import { requireConsole } from "@/lib/auth";
 import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
 import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
+import { CONFIRM_MESSAGES, confirmSocialPost } from "@/lib/social-push";
 import { parseLondonInput } from "@/lib/london-time";
 import type { SocialChannels } from "@/lib/social-channels";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
@@ -214,6 +215,44 @@ export async function setStoryStatus(formData: FormData) {
   const res = await moveStory({ id, to });
   if (!res.ok) redirect(`${back}?error=${encodeURIComponent(res.error ?? "That move isn't allowed.")}`);
   redirect(back);
+}
+
+/* ---------- social posts (issue #43) ---------- */
+
+/**
+ * The editor's Confirm / Confirm all under "Social post": snapshots what each
+ * channel would receive from the saved item (lib/social-push
+ * confirmSocialPost) and queues the post. The buttons sit in the editor's
+ * form and are disabled while it has unsaved changes; the form's other fields
+ * are ignored here either way. Not exported: "use server".
+ */
+async function confirmSocial(kind: "story" | "video", formData: FormData) {
+  const user = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const which = String(formData.get("confirm_channel") ?? "");
+  const list = `/console/${kind === "story" ? "stories" : "videos"}`;
+  if (!UUID_RE.test(id)) redirect(`${list}?error=${encodeURIComponent(CONFIRM_MESSAGES.notFound)}`);
+  const editor = `${list}/${id}`;
+  if (!which) redirect(`${editor}?error=${encodeURIComponent(CONFIRM_MESSAGES.nothingWaiting)}#social`);
+  const { getSocialPublisher } = await import("@/lib/adapters/social");
+  const res = await confirmSocialPost(
+    serviceDb(),
+    kind === "story" ? { story_id: id } : { video_id: id },
+    { only: which === "all" ? "all" : [which], userId: user.userId },
+    { networks: () => getSocialPublisher().channelNetworks(), enqueue },
+  );
+  revalidatePath(editor);
+  revalidatePath("/console");
+  if (!res.ok) redirect(`${editor}?error=${encodeURIComponent(res.error)}#social`);
+  redirect(`${editor}?confirmed=${res.confirmed.length}#social`);
+}
+
+export async function confirmStorySocial(formData: FormData) {
+  await confirmSocial("story", formData);
+}
+
+export async function confirmVideoSocial(formData: FormData) {
+  await confirmSocial("video", formData);
 }
 
 /* ---------- videos ---------- */
