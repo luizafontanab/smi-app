@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addSource, deleteSource, dismissSuggestion, recheckSource, startStoryFromSuggestion, syncSourcesFromBigin, updateSourceUrl,
+  addSource, checkSourcesNow, deleteSource, dismissSuggestion, recheckSource, startStoryFromSuggestion, syncSourcesFromBigin, updateSourceUrl,
 } from "@/app/console/sources/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
@@ -24,6 +24,8 @@ const { isFeatureEnabled, syncBiginSources } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
 vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
+const { runSourceCheck } = vi.hoisted(() => ({ runSourceCheck: vi.fn() }));
+vi.mock("@/lib/sources/run", () => ({ runSourceCheck }));
 const DRAFT = {
   title: "Acme installs a laser", excerpt: "Acme has a laser.", body: "<p>Acme has a laser.</p>",
   cover: new File([new Uint8Array([1])], "cover.jpg", { type: "image/jpeg" }),
@@ -42,6 +44,7 @@ afterEach(() => {
   logError.mockReset();
   isFeatureEnabled.mockReset().mockResolvedValue(true);
   syncBiginSources.mockReset();
+  runSourceCheck.mockReset();
   prepareDraft.mockReset().mockResolvedValue(DRAFT);
   uploadImage.mockReset().mockResolvedValue("stories/cover.jpg");
   removeMedia.mockClear();
@@ -325,5 +328,41 @@ describe("syncSourcesFromBigin", () => {
     syncBiginSources.mockRejectedValue(new Error("db down"));
     await expect(syncSourcesFromBigin()).rejects.toThrow(encodeURIComponent("The Bigin sync failed part-way"));
     expect(logError).toHaveBeenCalled();
+  });
+});
+
+describe("checkSourcesNow", () => {
+  it("runs a check as the admin who clicked, and comes back to the page it was clicked on", async () => {
+    runSourceCheck.mockResolvedValue({ status: "done", run: {} });
+    await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=done#source-check");
+    expect(runSourceCheck).toHaveBeenCalledWith({ startedBy: "Jas" });
+  });
+
+  it("keeps the Sources tab's own query when it comes back there", async () => {
+    runSourceCheck.mockResolvedValue({ status: "done", run: {} });
+    await expect(checkSourcesNow(form({ return: "/console/sources?view=sources" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/sources?view=sources&sourcecheck=done#source-check");
+  });
+
+  it("never sends the admin anywhere but the two pages with the button", async () => {
+    runSourceCheck.mockResolvedValue({ status: "done", run: {} });
+    await expect(checkSourcesNow(form({ return: "https://evil.example/" }))).rejects.toThrow("NEXT_REDIRECT:/console/sources?sourcecheck=done#source-check");
+  });
+
+  it("says so when another check is already running", async () => {
+    runSourceCheck.mockResolvedValue({ status: "busy", run: null });
+    await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=busy#source-check");
+  });
+
+  it("refuses while the story crawler is off, without checking anything", async () => {
+    isFeatureEnabled.mockResolvedValue(false);
+    await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=off#source-check");
+    expect(runSourceCheck).not.toHaveBeenCalled();
+  });
+
+  it("logs a check that throws and reports it as stopped part-way", async () => {
+    runSourceCheck.mockRejectedValue(new Error("source check: taking the lock: boom"));
+    await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=failed#source-check");
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:checkSourcesNow" }));
   });
 });

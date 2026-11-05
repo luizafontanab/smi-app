@@ -10,6 +10,7 @@ import { removeMedia, uploadImage } from "@/lib/media";
 import { isMemberLinkable } from "@/lib/member-visibility";
 import { syncBiginSources } from "@/lib/sources/bigin";
 import { prepareDraft } from "@/lib/sources/draft";
+import { runSourceCheck, type SourceCheckOutcome } from "@/lib/sources/run";
 import { normalizeSourceUrl } from "@/lib/sources/extract";
 import { UploadRejectedError } from "@/lib/upload-limits";
 import { replaceStoryMembers } from "@/lib/story-members";
@@ -252,4 +253,31 @@ export async function syncSourcesFromBigin() {
   if (!run) redirect(back(`view=sources&error=${encodeURIComponent("Bigin isn't connected, so there's nothing to sync.")}`));
   revalidatePath(PAGE);
   redirect(back("view=sources&bigin=synced"));
+}
+
+/** Where "Check sources now" may send the admin back to: the pages that show the button. */
+const CHECK_RETURNS = ["/console", "/console/sources", "/console/sources?view=sources"] as const;
+
+/**
+ * "Check sources now" (issue #42): one source check, the same batch a
+ * scheduled run does, started by an admin from Command Centre or Story
+ * sources. It runs inside the click (up to 50s, so both pages allow 120s) and
+ * never alongside another check: a second click while one runs gets "busy",
+ * and nothing is fetched (lib/sources/run).
+ */
+export async function checkSourcesNow(formData: FormData) {
+  const user = await requireConsole();
+  const ret = CHECK_RETURNS.find((r) => r === formData.get("return")) ?? "/console/sources";
+  const to = (result: string) => `${ret}${ret.includes("?") ? "&" : "?"}sourcecheck=${result}#source-check`;
+  if (!(await isFeatureEnabled("story_crawler"))) redirect(to("off"));
+  let outcome: SourceCheckOutcome;
+  try {
+    outcome = await runSourceCheck({ startedBy: user.displayName || user.email });
+  } catch (e) {
+    logError({ source: "job", area: "action:checkSourcesNow", error: e });
+    redirect(to("failed"));
+  }
+  revalidatePath("/console");
+  revalidatePath(PAGE);
+  redirect(to(outcome.status));
 }

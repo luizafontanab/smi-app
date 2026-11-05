@@ -10,6 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-05 — Check story sources now
+- Command Centre and Story sources have a "Check sources now" button. It looks for new articles straight away instead of waiting for the daily check, and new ones appear as suggestions on Story sources as usual.
+- One click checks up to about a minute's worth of the sources that are due, then says how many it checked, how many new suggestions it found, how many couldn't be read and how many are still due. Click again to carry on with the rest.
+- Each source is still checked no more than about once a day, so a source checked in the last 20 hours is skipped; when nothing is due, the button says when the next ones are.
+- Only one check runs at a time. If one is already going, from the button or the daily schedule, the button says so and waits.
+- Both pages show when the last check ran and whether you or the schedule started it. The button works only while the Story crawler is on in Features.
+
 ## 2026-11-04 — The lead alert reports page views
 - The members' "sales-lead" alert email now says how many times their page was viewed this week (or since yesterday, for daily alerts), with a "See your statistics" button. It used to say a number of companies had engaged and offer to show who they were, but that number was really a count of days with views, and no member page lists companies.
 - The setting for this email, under Settings, is now called "Page-view alerts". The Statistics shortcuts in the member area say "Page views, story reach & adverts" instead of "Who's engaging", and the Become a Member page no longer promises a list of the companies looking at your page.

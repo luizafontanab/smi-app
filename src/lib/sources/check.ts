@@ -145,8 +145,8 @@ function newestDate(items: FoundItem[], previous: string | null): string | null 
   return dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null;
 }
 
-/** Check one source and record what it found. Returns how many new suggestions it made. */
-export async function checkSource(db: Db, source: Source, now = new Date()): Promise<{ newItems: number; access: Access }> {
+/** Check one source and record what it found. Returns how many new suggestions it made, and whether the source could be read at all. */
+export async function checkSource(db: Db, source: Source, now = new Date()): Promise<{ newItems: number; access: Access; read: boolean }> {
   const stamp = now.toISOString();
   let reading: Reading | Unreadable;
   if (source.method && source.method_url && source.failure_count < REDETECT_AFTER) {
@@ -157,7 +157,7 @@ export async function checkSource(db: Db, source: Source, now = new Date()): Pro
         last_error: `couldn't read the ${source.method.replace("_", " ")} at ${source.method_url}`, updated_at: stamp,
       }).eq("id", source.id);
       if (error) throw new Error(`content_sources update: ${error.message}`);
-      return { newItems: 0, access: "ok" };
+      return { newItems: 0, access: "ok", read: false };
     }
     reading = { method: source.method as ReadMethod, methodUrl: source.method_url, items };
   } else {
@@ -170,7 +170,7 @@ export async function checkSource(db: Db, source: Source, now = new Date()): Pro
       last_checked_at: stamp, failure_count: source.failure_count + 1, updated_at: stamp,
     }).eq("id", source.id);
     if (error) throw new Error(`content_sources update: ${error.message}`);
-    return { newItems: 0, access: reading.access };
+    return { newItems: 0, access: reading.access, read: false };
   }
 
   const rows = itemRows(source, reading.items, now);
@@ -190,7 +190,7 @@ export async function checkSource(db: Db, source: Source, now = new Date()): Pro
     failure_count: 0, last_error: null, updated_at: stamp,
   }).eq("id", source.id);
   if (error) throw new Error(`content_sources update: ${error.message}`);
-  return { newItems, access: "ok" };
+  return { newItems, access: "ok", read: true };
 }
 
 /**
@@ -198,28 +198,38 @@ export async function checkSource(db: Db, source: Source, now = new Date()): Pro
  * recently checked first, until the time budget runs out. Sources are
  * different sites, so a few run at once; one site is never hit in parallel.
  * Whatever isn't reached is simply still due next run.
+ *
+ * The budget is a hard stop: a slow site can keep one source busy for a
+ * minute or more (every address discovery tries can wait out fetch.ts's 15s
+ * timeout), so once the budget and `overrunMs` have passed it stops waiting.
+ * A source still being read then is left out of the counts; whatever it
+ * hasn't written yet keeps it due. Without this, a click ran 70s against a
+ * 45s budget and would have hit the 60s server limit (issue #42).
+ *
+ * Call it through runSourceCheck (./run.ts), which makes sure only one check
+ * runs at a time and keeps the record the console shows.
  */
-export async function runSourceWatch({ budgetMs = 45_000, concurrency = 6, maxSources = 300, now = () => new Date() } = {}) {
+export async function runSourceWatch({ budgetMs = 45_000, overrunMs = 5_000, concurrency = 6, maxSources = 300, now = () => new Date() } = {}) {
   const db = serviceDb();
-  const cutoff = new Date(now().getTime() - CHECK_EVERY_MS).toISOString();
   const { data: due, error } = await db.from("content_sources")
     .select("id, url, method, method_url, last_ok_at, last_item_at, failure_count")
     .eq("active", true)
-    .or(`last_checked_at.is.null,last_checked_at.lt.${cutoff}`)
+    .or(dueFilter(now()))
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .limit(maxSources);
   if (error) throw new Error(`source_watch: reading sources: ${error.message}`);
 
   const deadline = Date.now() + budgetMs;
   const queue = [...(due ?? [])];
-  let checked = 0, newItems = 0, failed = 0;
-  await Promise.all(Array.from({ length: concurrency }, async () => {
+  let checked = 0, newItems = 0, unreadable = 0, failed = 0;
+  const workers = Promise.all(Array.from({ length: concurrency }, async () => {
     while (queue.length && Date.now() < deadline) {
       const source = queue.shift()!;
       try {
         const result = await checkSource(db, source, now());
         checked++;
         newItems += result.newItems;
+        if (!result.read) unreadable++;
       } catch (e) {
         // One bad source must not stop the rest; it stays due and is retried next run.
         failed++;
@@ -227,5 +237,15 @@ export async function runSourceWatch({ budgetMs = 45_000, concurrency = 6, maxSo
       }
     }
   }));
-  return { due: due?.length ?? 0, checked, newItems, failed };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hardStop = new Promise<void>((resolve) => { timer = setTimeout(resolve, Math.max(0, deadline - Date.now()) + overrunMs); });
+  await Promise.race([workers, hardStop]);
+  clearTimeout(timer);
+  return { due: due?.length ?? 0, checked, newItems, unreadable, failed };
+}
+
+/** PostgREST `or` filter for an active source's being due: never checked, or last checked a day ago or more. */
+export function dueFilter(now: Date): string {
+  const cutoff = new Date(now.getTime() - CHECK_EVERY_MS).toISOString();
+  return `last_checked_at.is.null,last_checked_at.lt.${cutoff}`;
 }

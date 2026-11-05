@@ -42,13 +42,13 @@ vi.mock("@/lib/adapters/newsletter", () => ({
 // raises the right KIND, about the right thing.
 const { notifyConsole } = vi.hoisted(() => ({ notifyConsole: vi.fn(async () => {}) }));
 vi.mock("@/lib/notify-admin", () => ({ ADMIN_EMAIL: "jas@sheetmetalindustries.com", notifyConsole }));
-const { storyCrawlerOn, runSourceWatch, syncBiginSources } = vi.hoisted(() => ({
+const { storyCrawlerOn, runSourceCheck, syncBiginSources } = vi.hoisted(() => ({
   storyCrawlerOn: vi.fn(async () => true),
-  runSourceWatch: vi.fn(async () => ({})),
+  runSourceCheck: vi.fn(async () => ({ status: "done" })),
   syncBiginSources: vi.fn(async () => null),
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: storyCrawlerOn }));
-vi.mock("@/lib/sources/check", () => ({ runSourceWatch }));
+vi.mock("@/lib/sources/run", () => ({ runSourceCheck }));
 vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
 const { refreshSocialFollowers } = vi.hoisted(() => ({
   refreshSocialFollowers: vi.fn(async (): Promise<{ instagramProblem: string | null }> => ({ instagramProblem: null })),
@@ -288,12 +288,12 @@ describe("runJob kinds", () => {
   describe("story crawler jobs follow the Story crawler flag", () => {
     afterEach(() => {
       storyCrawlerOn.mockReset().mockResolvedValue(true);
-      runSourceWatch.mockClear();
+      runSourceCheck.mockClear();
       syncBiginSources.mockClear();
     });
 
     it.each([
-      ["source_watch", runSourceWatch],
+      ["source_watch", runSourceCheck],
       ["source_bigin_sync", syncBiginSources],
     ] as const)("%s runs while the flag is on", async (kind, fn) => {
       const j = job(kind);
@@ -304,7 +304,7 @@ describe("runJob kinds", () => {
     });
 
     it.each([
-      ["source_watch", runSourceWatch],
+      ["source_watch", runSourceCheck],
       ["source_bigin_sync", syncBiginSources],
     ] as const)("%s does nothing while it's off, and still completes", async (kind, fn) => {
       storyCrawlerOn.mockResolvedValue(false);

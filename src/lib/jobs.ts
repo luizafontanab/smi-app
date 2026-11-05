@@ -599,9 +599,11 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       // being down is an outcome, not a job failure.
       // The "Story crawler" flag (/console/features) stops it outright; the job
       // still completes, so the queue doesn't back up while it's off.
+      // An admin's "Check sources now" already running is a skip, not a
+      // failure: those sources get checked either way (lib/sources/run).
       if (!(await storyCrawlerOn())) break;
-      const { runSourceWatch } = await import("./sources/check");
-      await runSourceWatch();
+      const { runSourceCheck } = await import("./sources/run");
+      await runSourceCheck({ startedBy: null });
       break;
     }
     case "source_bigin_sync": {

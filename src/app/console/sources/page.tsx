@@ -5,6 +5,8 @@ import { must } from "@/lib/db/must";
 import { getCrmSync } from "@/lib/adapters/crm";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { readBiginSourcesRun } from "@/lib/sources/bigin";
+import { readSourceCheckRun } from "@/lib/sources/run";
+import { SourceCheckPanel } from "@/components/console/SourceCheckPanel";
 import { Pagination } from "@/components/Pagination";
 import { SubmitButton } from "@/components/SubmitButton";
 import { lastPage, pagedList } from "../paged-list";
@@ -44,7 +46,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
   const access = ACCESS_FILTERS.find((a) => a === sp.access) ?? "all";
   const db = serviceDb();
 
-  const [suggestions, drafted, sources, statusRows, crawlerOn, biginRun] = await Promise.all([
+  const [suggestions, drafted, sources, statusRows, crawlerOn, biginRun, sourceCheck] = await Promise.all([
     view === "suggested"
       ? pagedList(
           (from, to) => db.from("source_items")
@@ -73,7 +75,10 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
     must(db.from("content_sources").select("access, active, bigin_account_id"), "console/sources counts"),
     isFeatureEnabled("story_crawler"),
     view === "sources" ? readBiginSourcesRun() : Promise.resolve(null),
+    readSourceCheckRun(),
   ]);
+  // eslint-disable-next-line react-hooks/purity -- server component, per-request render is the point
+  const nowMs = Date.now();
   const biginConnected = getCrmSync().live;
 
   const counts = new Map<string, number>();
@@ -108,6 +113,15 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
       {sp.queued && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Queued — the next check works out how to read it again.</p>}
       {sp.removed && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Source removed.</p>}
       {sp.bigin === "synced" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Synced from Bigin.</p>}
+
+      <SourceCheckPanel
+        className="mt-4"
+        run={sourceCheck}
+        crawlerOn={crawlerOn}
+        returnTo={view === "sources" ? "/console/sources?view=sources" : "/console/sources"}
+        flash={typeof sp.sourcecheck === "string" ? sp.sourcecheck : undefined}
+        nowMs={nowMs}
+      />
 
       <div className="mt-4 flex gap-1 border-b text-sm">
         {(["suggested", "sources"] as const).map((v) => (

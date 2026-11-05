@@ -40,6 +40,7 @@ filters rather than hiding them.
 - `src/lib/sources/extract.ts` (parsing)
 - `src/lib/sources/fetch.ts` (the one network call)
 - `src/lib/sources/check.ts` (discovery and the job)
+- `src/lib/sources/run.ts` (one check at a time, and the record of the last one)
 - `src/app/console/sources/` (the page and its actions)
 - migration `20261020000002_content_sources.sql`
 
@@ -57,6 +58,15 @@ filters rather than hiding them.
   currently runs once a day, which reaches only one batch, roughly 100–300
   sources depending on how many need discovery. With an hourly cron the whole
   list is covered daily.
+- **"Check sources now" (issue #42, 5 Nov 2026)** on Command Centre and Story
+  sources runs the same batch inside the click (up to 50 seconds; both pages
+  allow 120s). It keeps the once-a-day rule, so it only reaches sources
+  that are due. Every check, scheduled or clicked, goes through
+  `runSourceCheck`: the record in `settings.source_check_last` is also a lock,
+  so a second check while one runs is refused ("busy"), and the scheduled job
+  just skips that turn. A check that started over 3 minutes ago and never
+  finished counts as abandoned and no longer blocks. The same record is the
+  "Last check …" line on both pages.
 - **The user agent is honest:** `SMI-story-sources/1.0 (+<site url>)`. Sites
   that block automated requests are left blocked, never worked around.
 

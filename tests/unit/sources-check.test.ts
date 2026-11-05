@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkSource, classifyUnreadable, itemRows, runSourceWatch } from "@/lib/sources/check";
+import { checkSource, classifyUnreadable, dueFilter, itemRows, runSourceWatch } from "@/lib/sources/check";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -80,7 +80,7 @@ describe("checkSource", () => {
 
     const result = await checkSource(t.db, source(), NOW);
 
-    expect(result).toEqual({ newItems: 0, access: "ok" });
+    expect(result).toEqual({ newItems: 0, access: "ok", read: true });
     const [rows, opts] = vi.mocked(t.items.upsert as (...a: unknown[]) => unknown).mock.calls[0] as [Record<string, unknown>[], unknown];
     expect(rows).toEqual([expect.objectContaining({ source_id: "src-1", url: "https://example-fab.co.uk/news/new-laser/", state: "baseline" })]);
     expect(opts).toEqual({ onConflict: "url", ignoreDuplicates: true });
@@ -105,8 +105,10 @@ describe("checkSource", () => {
     serve({});
     const t = tables();
 
-    await checkSource(t.db, source({ method: "feed", method_url: FEED, failure_count: 1, last_ok_at: "2026-10-19T09:00:00Z" }), NOW);
+    const result = await checkSource(t.db, source({ method: "feed", method_url: FEED, failure_count: 1, last_ok_at: "2026-10-19T09:00:00Z" }), NOW);
 
+    // Still "ok" (one bad read isn't a verdict on the site), but it wasn't read this time.
+    expect(result).toEqual({ newItems: 0, access: "ok", read: false });
     expect(vi.mocked(t.sources.update as (...a: unknown[]) => unknown).mock.calls[0][0]).toEqual(expect.objectContaining({ failure_count: 2 }));
     expect(t.items.upsert).not.toHaveBeenCalled();
   });
@@ -119,7 +121,7 @@ describe("checkSource", () => {
 
     const result = await checkSource(t.db, source({ method: "feed", method_url: FEED, failure_count: 3 }), NOW);
 
-    expect(result.access).toBe("blocked");
+    expect(result).toEqual({ newItems: 0, access: "blocked", read: false });
     expect(vi.mocked(t.sources.update as (...a: unknown[]) => unknown).mock.calls[0][0]).toEqual(expect.objectContaining({
       access: "blocked", method: null, failure_count: 4,
     }));
@@ -167,8 +169,48 @@ describe("runSourceWatch", () => {
 
     const result = await runSourceWatch({ concurrency: 1, now: () => NOW });
 
-    expect(result).toEqual({ due: 2, checked: 1, newItems: 0, failed: 1 });
+    expect(result).toEqual({ due: 2, checked: 1, newItems: 0, unreadable: 0, failed: 1 });
     expect(logError).toHaveBeenCalledTimes(1);
     expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "job:source_watch", context: { url: SOURCE_URL } }));
+  });
+
+  it("counts a source it couldn't read as checked and unreadable, not as failed", async () => {
+    const GONE = "https://example-fab.co.uk/gone-feed/";
+    serve({ [FEED]: page(FEED, rss(["A", "https://example-fab.co.uk/news/a/"])) });
+    const due = [
+      { id: "gone", url: SOURCE_URL, method: "feed", method_url: GONE, last_ok_at: null, last_item_at: null, failure_count: 0 },
+      { id: "good", url: SOURCE_URL, method: "feed", method_url: FEED, last_ok_at: null, last_item_at: null, failure_count: 0 },
+    ];
+    let sourceCalls = 0;
+    const from = vi.fn((table: string) => {
+      if (table === "source_items") return queryBuilder(dbOk([{ state: "new" }]));
+      if (table !== "content_sources") throw new Error(`unexpected table ${table}`);
+      return queryBuilder(sourceCalls++ === 0 ? dbOk(due) : dbOk(null));
+    });
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from })));
+
+    const result = await runSourceWatch({ concurrency: 1, now: () => NOW });
+
+    expect(result).toEqual({ due: 2, checked: 2, newItems: 1, unreadable: 1, failed: 0 });
+    expect(logError).not.toHaveBeenCalled();
+  });
+  it("stops waiting once the budget is spent, even with a site still answering", async () => {
+    // never answers: without the hard stop this test would hang until vitest's timeout
+    fetchText.mockImplementation(() => new Promise(() => {}));
+    const due = [{ id: "slow", url: SOURCE_URL, method: "feed", method_url: FEED, last_ok_at: null, last_item_at: null, failure_count: 0 }];
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ content_sources: () => queryBuilder(dbOk(due)) }) })));
+
+    const started = Date.now();
+    const result = await runSourceWatch({ budgetMs: 20, overrunMs: 20, now: () => NOW });
+
+    expect(Date.now() - started).toBeLessThan(1000);
+    // still being read, so neither checked nor failed — and it stays due
+    expect(result).toEqual({ due: 1, checked: 0, newItems: 0, unreadable: 0, failed: 0 });
+  });
+});
+
+describe("dueFilter", () => {
+  it("is due when never checked, or last checked a day (20h) ago or more", () => {
+    expect(dueFilter(NOW)).toBe("last_checked_at.is.null,last_checked_at.lt.2026-10-19T14:00:00.000Z");
   });
 });
