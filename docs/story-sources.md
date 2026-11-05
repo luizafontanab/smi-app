@@ -64,7 +64,11 @@ filters rather than hiding them.
 
 Each Bigin company's **News Page URL** (Companies module, field API name in
 `NEWS_PAGE_FIELD`, `src/lib/adapters/crm.ts`) is a second source list next to the
-imported spreadsheet. The daily `source_bigin_sync` job (and "Sync from Bigin
+imported spreadsheet. When it's blank, the company's **Website** stands in
+(5 Nov 2026, migration `20261105000001`): the source is marked
+`bigin_from_website` and labelled "from website" on the console. A homepage
+still reads well, because the checker tries the site's feed, WordPress API and
+sitemap before the page's own links. The daily `source_bigin_sync` job (and "Sync from Bigin
 now" on `/console/sources` → Sources) reads every company and:
 
 - links a URL that's already on the list to the company, without adding a second row;
@@ -76,7 +80,13 @@ now" on `/console/sources` → Sources) reads every company and:
   part-way), or after a read that found no URLs at all while some are linked
   (a renamed field looks exactly like that);
 - skips a URL that isn't an address, or that a second company also lists, and
-  lists it on the console to be fixed in Bigin;
+  lists it on the console to be fixed in Bigin. A News Page URL always beats
+  another company's Website for the same address;
+- uses no Website at all in a read where no company has a News Page URL. That
+  is what a misnamed field looks like, and falling back would swap every news
+  page for a homepage. The console shows a warning instead, and nothing changes;
+- when a company that was using its Website gets a News Page URL, the Website
+  source is unlinked (and paused if `bigin_only`) and the news page added;
 - matches each linked source to one member: through a contact linked to both
   the company and the member, otherwise through the member's website domain.
   If more than one member matches, no one is tagged. "Start story" on that

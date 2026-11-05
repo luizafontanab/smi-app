@@ -26,18 +26,19 @@ export type MockContact = {
   Modified_Time: string;
 };
 
-export type MockAccount = { id: string; Account_Name: string; News_Page_URL: string | null };
+export type MockAccount = { id: string; Account_Name: string; News_Page_URL: string | null; Website: string | null };
 
 type Org = { contacts: Map<string, MockContact>; accounts: MockAccount[]; nextId: number };
 
 const g = globalThis as typeof globalThis & { __biginMockOrg?: Org };
 
 function seedOrg(): Org {
-  // News_Page_URL feeds the story crawler (src/lib/sources/bigin.ts); one blank, as in a real org.
+  // News_Page_URL feeds the story crawler (src/lib/sources/bigin.ts), with
+  // Website as its fallback: one company has only a Website, as in a real org.
   const accounts: MockAccount[] = [
-    { id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/" },
-    { id: "9100000000002", Account_Name: "Brightsteel Engineering", News_Page_URL: "https://brightsteel.test/blog" },
-    { id: "9100000000003", Account_Name: "Northern Laser Cutting", News_Page_URL: null },
+    { id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/", Website: "https://acme-fabrication.test" },
+    { id: "9100000000002", Account_Name: "Brightsteel Engineering", News_Page_URL: "https://brightsteel.test/blog", Website: null },
+    { id: "9100000000003", Account_Name: "Northern Laser Cutting", News_Page_URL: null, Website: "https://northern-laser.test" },
   ];
   const contacts = new Map<string, MockContact>();
   const now = Date.now();
