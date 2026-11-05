@@ -29,9 +29,10 @@ test.describe("header", () => {
     await page.goto("/");
     const header = page.locator("header").first();
     const logo = header.locator("img").first();
-    // 206px at h-8 on a phone, ~310px at sm:h-12 — it used to be squeezed to 136–159px.
+    // ~175px for the stacked lockup at h-15 on a phone, ~310px for the wide
+    // mark at sm:h-12 — it used to be squeezed to 136–159px.
     const box = (await logo.boundingBox())!;
-    expect(box.width).toBeGreaterThanOrEqual(isPhone(page) ? 200 : 300);
+    expect(box.width).toBeGreaterThanOrEqual(isPhone(page) ? 170 : 300);
     // One row: the bar was 101px (phone) / 81px (tablet) when labels wrapped.
     expect((await header.boundingBox())!.height).toBeLessThanOrEqual(80);
     for (const el of await header.locator("nav > *").all()) {

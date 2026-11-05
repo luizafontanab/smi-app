@@ -10,6 +10,9 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-05 — The stacked logo on phones
+- On phones the top bar now shows the stacked Sheet Metal Industries logo, the same one as in the footer, in the site's brand orange. This applies across the site, the member area and the login pages. Tablets and computers keep the wide logo.
+
 ## 2026-11-04 — The lead alert reports page views
 - The members' "sales-lead" alert email now says how many times their page was viewed this week (or since yesterday, for daily alerts), with a "See your statistics" button. It used to say a number of companies had engaged and offer to show who they were, but that number was really a count of days with views, and no member page lists companies.
 - The setting for this email, under Settings, is now called "Page-view alerts". The Statistics shortcuts in the member area say "Page views, story reach & adverts" instead of "Who's engaging", and the Become a Member page no longer promises a list of the companies looking at your page.
