@@ -160,6 +160,202 @@
 
 /* ── #73 Home ────────────────────────────────────────────────────────────── */
 
+/* Layout only. The cards themselves (story-card, featured-member-card, …) are
+   styled by #75; the rules below place them, and reach inside a card only
+   where the Newsroom's tile shapes need it. Everything is scoped to the home
+   view's wrapper, ClassicHomeView's [data-part="home-page"]. */
+
+/* Section heads: an orange disc plus a large title. The disc is decorative
+   (an empty ::before), so it adds nothing to what a screen reader hears. */
+[data-site="public"] [data-part="home-page"] [data-part="section-head"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+[data-site="public"] [data-part="home-page"] [data-part="section-head"] > [data-part="section-title"],
+[data-site="public"] [data-part="home-page"] [data-part="supplier-logos"] [data-part="section-title"],
+[data-site="public"] [data-part="home-page"] [data-part="home-stats"] [data-part="section-title"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem);
+  line-height: 1.2;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="home-page"] [data-part="section-head"] > [data-part="section-title"]::before,
+[data-site="public"] [data-part="home-page"] [data-part="supplier-logos"] [data-part="section-title"]::before,
+[data-site="public"] [data-part="home-page"] [data-part="home-stats"] [data-part="section-title"]::before {
+  content: "";
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  background-color: var(--smi-brand);
+}
+
+/* Sections sit in white panels on the canvas; the Newsroom tiles and the
+   advert banners sit on the canvas itself. */
+[data-site="public"] [data-part="home-page"] :is(
+  [data-part="home-fold"], [data-part="home-videos"], [data-part="home-featured-members"],
+  [data-part="home-member-news"], [data-part="home-events"], [data-part="home-newsletters"],
+  [data-part="supplier-logos"], [data-part="home-stats"]
+) {
+  background-color: transparent;
+  border: 0;
+  padding-block: 0.75rem;
+}
+[data-site="public"] [data-part="home-page"] :is(
+  [data-part="home-fold"], [data-part="home-videos"], [data-part="home-featured-members"],
+  [data-part="home-member-news"], [data-part="home-events"], [data-part="home-newsletters"],
+  [data-part="supplier-logos"], [data-part="home-stats"]
+) > div {
+  margin-inline: 0.75rem;
+  padding: 1rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+@media (min-width: 768px) {
+  [data-site="public"] [data-part="home-page"] :is(
+    [data-part="home-fold"], [data-part="home-videos"], [data-part="home-featured-members"],
+    [data-part="home-member-news"], [data-part="home-events"], [data-part="home-newsletters"],
+    [data-part="supplier-logos"], [data-part="home-stats"]
+  ) > div {
+    margin-inline: auto;
+    padding: 2rem;
+  }
+}
+
+/* The Newsroom: one large tile and three small ones. Phones stack them; from
+   lg the lead takes 65% and the three small tiles share the column beside it. */
+[data-site="public"] [data-part="home-page"] [data-part="home-newsroom-list"] {
+  display: grid;
+  gap: 1.5rem;
+  margin: 0;
+  padding: 0.5rem 0 0 0.5rem; /* room for the badges that hang off the corners */
+  list-style: none;
+}
+@media (min-width: 1024px) {
+  [data-site="public"] [data-part="home-page"] [data-part="home-newsroom-list"] {
+    grid-template-columns: minmax(0, 65fr) minmax(0, 35fr);
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+  }
+  [data-site="public"] [data-part="home-page"] [data-part="home-newsroom-tile"]:first-child {
+    grid-row: 1 / span 3;
+  }
+  /* The lead's cover grows to fill the tile, at least 500px tall in all. */
+  [data-site="public"] [data-part="home-page"] [data-part="home-newsroom-tile"]:first-child > [data-part="story-card"] {
+    display: flex;
+    flex-direction: column;
+    min-height: 500px;
+  }
+  [data-site="public"] [data-part="home-page"] [data-part="home-newsroom-tile"]:first-child [data-part="card-image"] {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 20rem;
+  }
+}
+[data-site="public"] [data-part="home-page"] [data-part="home-newsroom-tile"] {
+  position: relative;
+  min-width: 0;
+}
+[data-site="public"] [data-part="home-page"] [data-part="home-newsroom-tile"] > [data-part="story-card"] {
+  height: 100%;
+}
+/* Small tiles: cover on the left (35%), text beside it. */
+@media (min-width: 640px) {
+  [data-site="public"] [data-part="home-page"] [data-part="home-newsroom-tile"]:not(:first-child) > [data-part="story-card"] {
+    display: grid;
+    grid-template-columns: 35% minmax(0, 1fr);
+  }
+  [data-site="public"] [data-part="home-page"] [data-part="home-newsroom-tile"]:not(:first-child) [data-part="card-image"] {
+    aspect-ratio: auto;
+    height: auto;
+    min-height: 7rem;
+  }
+}
+/* The #1–#4 badge hangs off the tile's top-left corner: ink on orange. */
+[data-site="public"] [data-part="home-page"] [data-part="home-newsroom-rank"] {
+  position: absolute;
+  top: -0.5rem;
+  left: -0.5rem;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--classic-radius);
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+  font-size: 1.125rem;
+  line-height: 1;
+  pointer-events: none;
+}
+/* The rank badge takes the top-left corner, so a member-news badge moves right. */
+[data-site="public"] [data-part="home-page"] [data-part="home-newsroom-tile"] [data-part="card-badge"] {
+  left: auto;
+  right: 0.5rem;
+}
+
+/* The fold's placement cards (featured machine, featured event), side by side
+   from md, above the More News row. */
+[data-site="public"] [data-part="home-page"] [data-part="home-placements"] {
+  display: grid;
+  gap: 1.5rem;
+}
+[data-site="public"] [data-part="home-page"] [data-part="home-placements"] + [data-part="home-more-news"] {
+  margin-top: 2rem;
+}
+@media (min-width: 768px) {
+  [data-site="public"] [data-part="home-page"] [data-part="home-placements"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Sideways rows: More News and the Featured members. Full width, scrolling
+   in place, never pushing the page sideways. */
+[data-site="public"] [data-part="home-page"] [data-part="carousel"] {
+  display: flex;
+  gap: 1.5rem;
+  margin: 0;
+  padding: 0.25rem 0.25rem 0.75rem;
+  overflow-x: auto;
+  list-style: none;
+  scroll-snap-type: x proximity;
+}
+[data-site="public"] [data-part="home-page"] [data-part="carousel"] > li {
+  flex: 0 0 15rem;
+  scroll-snap-align: start;
+}
+[data-site="public"] [data-part="home-page"] [data-part="carousel"] > li > * {
+  height: 100%;
+}
+
+/* Card rows: one column on phones, three from sm. */
+[data-site="public"] [data-part="home-page"] [data-part="card-grid"] {
+  display: grid;
+  gap: 1.5rem;
+}
+[data-site="public"] [data-part="home-page"] [data-part="home-panels"] {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+@media (min-width: 640px) {
+  [data-site="public"] [data-part="home-page"] [data-part="card-grid"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  [data-site="public"] [data-part="home-page"] [data-part="home-panels"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ── end #73 ── */
 
 /* ── #74 Story ───────────────────────────────────────────────────────────── */
