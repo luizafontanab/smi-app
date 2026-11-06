@@ -51,8 +51,10 @@ export default async function PublicLayout({ children }: { children: React.React
 
   return (
     // data-site="public" scopes a design option's stylesheet to the public site;
-    // it never goes on /console or /dashboard (#69).
-    <div data-site="public" style={style} className="flex min-h-full flex-1 flex-col">
+    // it never goes on /console or /dashboard (#69). data-takeover flags the
+    // inline --smi-brand above, so an option can change what it puts on that
+    // colour; Current's stylesheet ignores it (#68 review).
+    <div data-site="public" data-takeover={takeover ? "" : undefined} style={style} className="flex min-h-full flex-1 flex-col">
       {/* Site identity for search/AI crawlers — page-specific types (Article,
           Event, …) are added by the pages themselves. */}
       <JsonLd data={[organizationLd(), webSiteLd()]} />

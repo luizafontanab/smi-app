@@ -34,6 +34,7 @@ const m = vi.hoisted(() => ({
   storyForPreview: vi.fn(),
   newsletterBySlug: vi.fn(),
   loadIndustryHub: vi.fn(),
+  activeTakeover: vi.fn(async (): Promise<unknown> => null),
 }));
 vi.mock("@/lib/variant", () => ({
   siteVariant: async () => "grid",
@@ -45,7 +46,7 @@ vi.mock("@/lib/queries", () => ({
   storyForPreview: m.storyForPreview,
   newsletterBySlug: m.newsletterBySlug,
   industryBySlug: vi.fn(async () => null),
-  activeTakeover: vi.fn(async () => null),
+  activeTakeover: m.activeTakeover,
   industries: vi.fn(async () => []),
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: vi.fn(async () => true) }));
@@ -159,6 +160,24 @@ describe('the public-site scope, data-site="public"', () => {
     expect(scope).toContainElement(screen.getByTestId("piece-Header"));
     expect(scope).toContainElement(screen.getByRole("main"));
     expect(scope).toContainElement(screen.getByTestId("piece-Footer"));
+  });
+
+  /*
+   * A sponsor takeover recolours --smi-brand inline on the wrapper. The flag
+   * lets an option's stylesheet change what it puts on that colour (decision
+   * 16): Current ignores it, so nothing visible changes on staging.
+   */
+  it("flags a sponsor takeover with data-takeover, alongside the inline --smi-brand", async () => {
+    m.activeTakeover.mockResolvedValueOnce({ hex: "#00a0e0", bannerPath: "banners/t.png", memberSlug: null });
+    const { container, unmount } = render(await PublicLayout({ children: <p>page</p> }));
+    const scope = scoped(container) as HTMLElement;
+    expect(scope).toHaveAttribute("data-takeover");
+    expect(scope.style.getPropertyValue("--smi-brand")).toBe("#00a0e0");
+    unmount();
+
+    const plain = scoped(render(await PublicLayout({ children: <p>page</p> })).container) as HTMLElement;
+    expect(plain).not.toHaveAttribute("data-takeover");
+    expect(plain.style.getPropertyValue("--smi-brand")).toBe("");
   });
 
   it("is on each public surface outside the layout: login, reset, reset/new, unsubscribe, root 404", async () => {
