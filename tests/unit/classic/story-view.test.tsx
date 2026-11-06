@@ -148,4 +148,12 @@ describe("ClassicStoryView: what Current's story page keeps", () => {
     expect(screen.getAllByRole("link", { name: /Back to/ })).toHaveLength(1);
     expect(screen.getByRole("link", { name: "‹ Back to Laser news" })).toHaveAttribute("href", "/industry/laser");
   });
+
+  // Classic's story page always starts "‹ Back to News" (#68, #74), even when
+  // the admin's layout has no back_link block of its own.
+  it("still draws one '‹ Back to News' when the layout has no back_link block", () => {
+    renderView({ layout: { ...DEFAULT_LAYOUTS.story, blocks: DEFAULT_LAYOUTS.story.blocks.filter((b) => b.type !== "back_link") } });
+    expect(screen.getAllByRole("link", { name: /Back to/ })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "‹ Back to News" })).toHaveAttribute("href", "/news");
+  });
 });
