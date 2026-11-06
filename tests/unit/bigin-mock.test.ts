@@ -355,6 +355,51 @@ describe("the adapter against the mock", () => {
       expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme-fabrication.test/news/");
     });
 
+    it("a refused write, through the save, leaves the push pending and queues a crm_push retry", async () => {
+      org().scopes.delete("ZohoBigin.modules.accounts.UPDATE");
+      const STAMP = "2026-11-06T10:00:00.000Z";
+      const companyUpdates: unknown[] = [];
+      vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+        from: fromByTable({
+          crm_companies: () => {
+            const b = queryBuilder(dbOk({
+              bigin_id: ACME, name: "Acme Fabrication Ltd", website: "https://acme-fabrication.test",
+              news_page_url: "https://acme.test/press", news_page_pending_at: STAMP, deleted_in_bigin_at: null,
+            }));
+            b.update = vi.fn((patch: unknown) => (companyUpdates.push(patch), b));
+            return b;
+          },
+          settings: () => {
+            // the stored write check says yes (the scope was granted, then taken away in Bigin)
+            const b: ReturnType<typeof queryBuilder> = queryBuilder(() => {
+              const key = (b.eq as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[0] === "key")?.[1];
+              return dbOk(key === "crm_companies_write" ? { value: { allowed: true, at: "2026-11-05T00:00:00Z" } } : null);
+            });
+            return b;
+          },
+        }),
+      })));
+      const crm = await adapter();
+      const enqueue = vi.fn(async () => {});
+      vi.doMock("@/lib/jobs", () => ({ enqueue }));
+      vi.doMock("@/lib/log", () => ({ logError: vi.fn() }));
+      try {
+        const { setCompanyNewsPage } = await import("@/lib/crm-companies/news-page");
+        const outcome = await setCompanyNewsPage({ id: "11111111-1111-4111-8111-111111111111" }, "https://acme.test/press", {
+          crm, now: () => new Date(STAMP), deriveSources: false,
+        });
+
+        expect(outcome).toBe("pending");
+        // saved and marked pending, and the mark never cleared
+        expect(companyUpdates).toEqual([{ news_page_url: "https://acme.test/press", news_page_pending_at: STAMP, updated_at: STAMP }]);
+        expect(enqueue).toHaveBeenCalledWith("crm_push", { company_id: ACME }, expect.any(Date));
+        expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme-fabrication.test/news/");
+      } finally {
+        vi.doUnmock("@/lib/jobs");
+        vi.doUnmock("@/lib/log");
+      }
+    });
+
     it("checks whether the token may write companies without changing any", async () => {
       const crm = await adapter();
       expect(await crm.canWriteCompanies()).toBe(true);
