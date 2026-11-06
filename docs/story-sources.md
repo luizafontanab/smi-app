@@ -109,6 +109,13 @@ Companies box), then derives sources from them exactly as before. For each compa
   page for a homepage. The console shows a warning instead, and nothing changes;
 - when a company that was using its Website gets a News Page URL, the Website
   source is unlinked (and paused if `bigin_only`) and the news page added;
+- when a company is deleted in Bigin (missing from a complete read), keeps it
+  in `crm_companies` marked `deleted_in_bigin_at` (6 Nov 2026, issue #52) —
+  hidden in CRM's Companies box except under its "Deleted in Bigin" filter —
+  and unlinks its source, pausing it if `bigin_only`, as for a cleared URL.
+  If the company comes back, the mark is cleared and its source re-linked.
+  Nothing is ever deleted, on either side. A partial read, or a read that
+  found no companies at all, marks nothing deleted;
 - matches each linked source to one member: through a contact linked to both
   the company and the member, otherwise through the member's website domain.
   If more than one member matches, no one is tagged. "Start story" on that

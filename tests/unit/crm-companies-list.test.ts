@@ -13,9 +13,10 @@ describe("addressInUse", () => {
 });
 
 describe("parseCompanyFilter", () => {
-  it("accepts the three filters and falls back to all for anything else", () => {
+  it("accepts the filters and falls back to all for anything else", () => {
     expect(parseCompanyFilter("using_website")).toBe("using_website");
     expect(parseCompanyFilter("no_address")).toBe("no_address");
+    expect(parseCompanyFilter("deleted")).toBe("deleted");
     expect(parseCompanyFilter("deleted; drop table")).toBe("all");
     expect(parseCompanyFilter(undefined)).toBe("all");
   });
@@ -43,6 +44,42 @@ describe("readCompanyList", () => {
     ]);
   });
 
+  describe("companies deleted in Bigin (issue #52)", () => {
+    const companiesDb = (rows: Record<string, unknown>[]) => {
+      const companies = queryBuilder(dbOk(rows, rows.length));
+      const db = asDb(mockDb({
+        from: fromByTable({
+          crm_companies: () => companies,
+          contacts: () => queryBuilder(dbOk([])),
+          content_sources: () => queryBuilder(dbOk([])),
+        }),
+      }));
+      return { db, companies };
+    };
+
+    it("hides deleted companies by default, under every other filter too", async () => {
+      for (const filter of ["all", "using_website", "no_address"] as const) {
+        const { db, companies } = companiesDb([]);
+        await readCompanyList(db, { filter });
+        expect(companies.is).toHaveBeenCalledWith("deleted_in_bigin_at", null);
+        expect(companies.not).not.toHaveBeenCalledWith("deleted_in_bigin_at", "is", null);
+      }
+    });
+
+    it("the deleted filter shows only deleted companies, each with when it was found missing", async () => {
+      const { db, companies } = companiesDb([
+        { id: "u3", bigin_id: "3", name: "Gone Ltd", website: null, news_page_url: "https://gone.test/news", last_synced_at: "2026-11-01T03:00:00Z", deleted_in_bigin_at: "2026-11-06T03:00:00Z" },
+      ]);
+      const list = await readCompanyList(db, { filter: "deleted" });
+
+      expect(companies.not).toHaveBeenCalledWith("deleted_in_bigin_at", "is", null);
+      expect(companies.is).not.toHaveBeenCalledWith("deleted_in_bigin_at", null);
+      expect(list.rows).toEqual([expect.objectContaining({ name: "Gone Ltd", deletedInBiginAt: "2026-11-06T03:00:00Z" })]);
+    });
+  });
+});
+
+describe("readCompanyList: member override (#53)", () => {
   it("shows whether the member was chosen by hand (#53) or matched automatically, the choice winning", async () => {
     const db = asDb(mockDb({
       from: fromByTable({

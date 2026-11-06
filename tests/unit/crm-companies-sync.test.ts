@@ -30,7 +30,7 @@ type Tables = "crm_companies" | "content_sources" | "contacts" | "members" | "se
  * 1 linked rows, 2 rows by URL, then writes, then the linked rows for members.
  */
 function fakeDb({ local = [], sources = () => dbOk([]), members = [], contacts = [], overrides = [] }: {
-  local?: { bigin_id: string; name: string; website: string | null; news_page_url: string | null }[];
+  local?: { bigin_id: string; name: string; website: string | null; news_page_url: string | null; deleted_in_bigin_at?: string | null }[];
   sources?: (n: number) => DbResult;
   members?: { id: string; website: string | null }[];
   contacts?: { bigin_company_id: string; member_id: string }[];
@@ -43,7 +43,7 @@ function fakeDb({ local = [], sources = () => dbOk([]), members = [], contacts =
   const track = (t: Tables, b: Builder) => ((made[t] ??= []).push(b), b);
   vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
     from: fromByTable({
-      crm_companies: () => track("crm_companies", queryBuilder<unknown>(companyCalls++ === 0 ? dbOk(local) : dbOk(overrides))),
+      crm_companies: () => track("crm_companies", queryBuilder<unknown>(companyCalls++ === 0 ? dbOk(local.map((r) => ({ deleted_in_bigin_at: null, ...r }))) : dbOk(overrides))),
       content_sources: () => track("content_sources", queryBuilder(sources(++sourceCalls))),
       contacts: () => track("contacts", queryBuilder(dbOk(contacts))),
       members: () => track("members", queryBuilder(dbOk(members))),
@@ -72,9 +72,9 @@ describe("syncCompanies", () => {
 
     const stamp = "2026-11-06T03:00:00.000Z";
     expect(t.callsOf("crm_companies", "upsert").flat()).toEqual([
-      { bigin_id: "1", name: "Acme", website: "https://acme.test", news_page_url: "https://acme.test/news", last_synced_at: stamp, updated_at: stamp },
-      { bigin_id: "2", name: "Co 2", website: "https://bright.test", news_page_url: null, last_synced_at: stamp, updated_at: stamp },
-      { bigin_id: "3", name: "Nowhere Ltd", website: null, news_page_url: null, last_synced_at: stamp, updated_at: stamp },
+      { bigin_id: "1", name: "Acme", website: "https://acme.test", news_page_url: "https://acme.test/news", deleted_in_bigin_at: null, last_synced_at: stamp, updated_at: stamp },
+      { bigin_id: "2", name: "Co 2", website: "https://bright.test", news_page_url: null, deleted_in_bigin_at: null, last_synced_at: stamp, updated_at: stamp },
+      { bigin_id: "3", name: "Nowhere Ltd", website: null, news_page_url: null, deleted_in_bigin_at: null, last_synced_at: stamp, updated_at: stamp },
     ]);
     expect(run).toMatchObject({ at: stamp, complete: true, read: 3, added: 3, updated: 0 });
     const saved = t.callsOf("settings", "upsert");
@@ -161,6 +161,8 @@ describe("syncCompanies", () => {
 
     expect(t.callsOf("crm_companies", "upsert").flat().map((r) => r.bigin_id)).toEqual(["1"]);
     expect(t.callsOf("crm_companies", "delete")).toEqual([]);
+    expect(t.callsOf("crm_companies", "update").filter((u) => "deleted_in_bigin_at" in u)).toEqual([]);
+    expect(run).toMatchObject({ deleted: 0 });
     expect(t.callsOf("content_sources", "update").filter((u) => u.bigin_account_id === null || u.active === false)).toEqual([]);
     expect(run).toMatchObject({ complete: false, read: 1 });
     expect(run?.sources).toMatchObject({ complete: false, unlinked: 0, paused: 0, added: 1 });
@@ -174,6 +176,84 @@ describe("syncCompanies", () => {
     expect(t.made.content_sources).toBeUndefined();
     expect(run?.sources).toBeNull();
     expect(t.callsOf("settings", "upsert").map((s) => s.key)).toEqual(["crm_companies_last"]);
+  });
+
+  describe("companies deleted in Bigin (issue #52)", () => {
+    const stamp = "2026-11-06T03:00:00.000Z";
+
+    it("a complete read marks a missing company deleted, unlinks its source and pauses it if only Bigin added it", async () => {
+      const t = fakeDb({
+        local: [
+          { bigin_id: "1", name: "Co 1", website: null, news_page_url: "https://one.test/news" },
+          { bigin_id: "2", name: "Co 2", website: null, news_page_url: "https://two.test/news" },
+        ],
+        sources: (n) => n === 1
+          ? dbOk([
+            { id: "s1", url: "https://one.test/news", bigin_account_id: "1", bigin_account_name: "Co 1", bigin_only: true, bigin_from_website: false },
+            { id: "s2", url: "https://two.test/news", bigin_account_id: "2", bigin_account_name: "Co 2", bigin_only: true, bigin_from_website: false },
+          ])
+          : dbOk([]),
+      });
+      const run = await syncCompanies({ crm: crm({ complete: true, companies: [rec("1", "https://one.test/news")] }), now: NOW });
+
+      const marks = t.made.crm_companies!.filter((b) => (b.update as ReturnType<typeof vi.fn>).mock.calls.some((c) => "deleted_in_bigin_at" in c[0]));
+      expect(marks).toHaveLength(1);
+      expect(marks[0].update).toHaveBeenCalledWith({ deleted_in_bigin_at: stamp, updated_at: stamp });
+      expect(marks[0].in).toHaveBeenCalledWith("bigin_id", ["2"]);
+      // a company already marked keeps the time it was first found missing
+      expect(marks[0].is).toHaveBeenCalledWith("deleted_in_bigin_at", null);
+      expect(t.callsOf("crm_companies", "delete")).toEqual([]);
+      expect(t.callsOf("content_sources", "update")).toContainEqual(expect.objectContaining({ bigin_account_id: null, active: false }));
+      expect(run).toMatchObject({ complete: true, read: 1, deleted: 1, restored: 0 });
+      expect(run?.sources).toMatchObject({ unlinked: 1, paused: 1 });
+    });
+
+    it("a deleted company's spreadsheet source is unlinked but keeps running", async () => {
+      const t = fakeDb({
+        local: [
+          { bigin_id: "1", name: "Co 1", website: null, news_page_url: "https://one.test/news" },
+          { bigin_id: "2", name: "Co 2", website: null, news_page_url: "https://two.test/news" },
+        ],
+        sources: (n) => n === 1
+          ? dbOk([{ id: "s2", url: "https://two.test/news", bigin_account_id: "2", bigin_account_name: "Co 2", bigin_only: false, bigin_from_website: false }])
+          : dbOk([]),
+      });
+      const run = await syncCompanies({ crm: crm({ complete: true, companies: [rec("1", "https://one.test/news")] }), now: NOW });
+
+      const unlinks = t.callsOf("content_sources", "update").filter((u) => u.bigin_account_id === null);
+      expect(unlinks).toHaveLength(1);
+      expect(unlinks[0]).not.toHaveProperty("active");
+      expect(run).toMatchObject({ deleted: 1 });
+      expect(run?.sources).toMatchObject({ unlinked: 1, paused: 0 });
+    });
+
+    it("a partial read marks nothing deleted", async () => {
+      const t = fakeDb({ local: [{ bigin_id: "2", name: "Co 2", website: null, news_page_url: null }] });
+      const run = await syncCompanies({ crm: crm({ complete: false, companies: [rec("1", "https://one.test/news")] }), now: NOW });
+      expect(t.callsOf("crm_companies", "update").filter((u) => "deleted_in_bigin_at" in u)).toEqual([]);
+      expect(run).toMatchObject({ deleted: 0 });
+    });
+
+    it("a complete read with no companies at all marks nothing deleted — that is a broken read, not an empty CRM", async () => {
+      const t = fakeDb({ local: [{ bigin_id: "2", name: "Co 2", website: null, news_page_url: null }] });
+      const run = await syncCompanies({ crm: crm({ complete: true, companies: [] }), now: NOW });
+      expect(t.callsOf("crm_companies", "update").filter((u) => "deleted_in_bigin_at" in u)).toEqual([]);
+      expect(run).toMatchObject({ deleted: 0 });
+    });
+
+    it("a company that comes back is restored and its mark cleared, even with nothing else changed", async () => {
+      const t = fakeDb({
+        local: [{ bigin_id: "2", name: "Co 2", website: null, news_page_url: "https://two.test/news", deleted_in_bigin_at: "2026-11-01T03:00:00Z" }],
+      });
+      const run = await syncCompanies({ crm: crm({ complete: true, companies: [rec("2", "https://two.test/news")] }), now: NOW });
+
+      expect(t.callsOf("crm_companies", "upsert").flat()).toEqual([
+        expect.objectContaining({ bigin_id: "2", deleted_in_bigin_at: null, last_synced_at: stamp }),
+      ]);
+      expect(run).toMatchObject({ read: 1, added: 0, restored: 1, deleted: 0 });
+      // a company that came back hasn't been edited — not counted as changed
+      expect(run).toMatchObject({ updated: 0 });
+    });
   });
 
   describe("member override (#53)", () => {
@@ -234,6 +314,41 @@ describe("syncCompanies", () => {
       const written = t.callsOf("crm_companies", "upsert").flat();
       expect(written.map((w) => w.bigin_id)).toEqual(["1"]);
       expect(written[0]).not.toHaveProperty("member_override_id");
+      expect(memberWrites(t)).toEqual(["m-chosen"]);
+    });
+
+    it("survives the company being deleted in Bigin (#52): the mark leaves the override alone", async () => {
+      const t = fakeDb({
+        local: [
+          { bigin_id: "1", name: "Acme", website: null, news_page_url: "https://acme.test/news" },
+          { bigin_id: "2", name: "Gone", website: null, news_page_url: null },
+        ],
+        sources: sourcesFor("m-chosen"),
+        overrides: [{ bigin_id: "1", member_override_id: "m-chosen" }, { bigin_id: "2", member_override_id: "m-two" }],
+      });
+      const run = await syncCompanies({ crm: acme(), now: NOW });
+      expect(run).toMatchObject({ deleted: 1 });
+      const companyWrites = [...t.callsOf("crm_companies", "upsert").flat(), ...t.callsOf("crm_companies", "update")];
+      expect(companyWrites.some((w) => "deleted_in_bigin_at" in w)).toBe(true);
+      expect(companyWrites.some((w) => "member_override_id" in w)).toBe(false);
+    });
+
+    it("applies again when a deleted company comes back: its re-linked source is tagged with the chosen member", async () => {
+      // deleted earlier, so its bigin_only source was unlinked and paused; Bigin lists it again
+      const paused = { id: "s1", url: "https://acme.test/news", bigin_account_id: null, bigin_only: true };
+      const t = fakeDb({
+        local: [{ bigin_id: "1", name: "Acme", website: null, news_page_url: "https://acme.test/news", deleted_in_bigin_at: "2026-11-01T03:00:00Z" }],
+        // 1 linked (none), 2 by URL (the paused row), 3 the re-link, 4 linked rows for members
+        sources: (n) => n === 2 ? dbOk([paused]) : n === 4 ? dbOk([{ id: "s1", domain: "acme.test", bigin_account_id: "1", member_id: null }]) : dbOk([]),
+        members: [{ id: "m-a", website: "acme.test" }, { id: "m-b", website: "acme.test" }],
+        overrides: [{ bigin_id: "1", member_override_id: "m-chosen" }],
+      });
+      const run = await syncCompanies({ crm: acme(), now: NOW });
+      expect(run).toMatchObject({ restored: 1 });
+      const restoredRow = t.callsOf("crm_companies", "upsert").flat()[0];
+      expect(restoredRow).toMatchObject({ bigin_id: "1", deleted_in_bigin_at: null });
+      expect(restoredRow).not.toHaveProperty("member_override_id");
+      expect(t.callsOf("content_sources", "update")).toContainEqual(expect.objectContaining({ bigin_account_id: "1", active: true }));
       expect(memberWrites(t)).toEqual(["m-chosen"]);
     });
   });

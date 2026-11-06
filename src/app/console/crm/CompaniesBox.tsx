@@ -14,8 +14,11 @@ import { setCompanyMember, syncCompaniesNow } from "./actions";
  * (#53): the member chosen by hand wins over the automatic match.
  *
  * Later tickets add to it: the Bigin sources panel moved from Story sources
- * (#51), the deleted-in-Bigin filter (#52), every Bigin field (#54) and the
- * News Page URL (#55) in the same editor, and "covered by imported list" (#56).
+ * (#51), every Bigin field (#54) and the News Page URL (#55) in the same
+ * editor, and "covered by imported list" (#56).
+ *
+ * A company deleted in Bigin (#52) stays, marked, under its own filter; the
+ * other filters hide it.
  */
 
 const IN_USE_LABEL: Record<AddressInUse, string> = { news_page: "News Page URL", website: "Website stand-in", none: "none" };
@@ -28,6 +31,8 @@ export function describeCompanyRun(run: CompanySyncRun): string {
   const parts = [plural(run.read, "company", "companies") + " read"];
   if (run.added) parts.push(`${run.added} new`);
   if (run.updated) parts.push(`${run.updated} changed`);
+  if (run.deleted) parts.push(`${run.deleted} deleted in Bigin`);
+  if (run.restored) parts.push(`${run.restored} back in Bigin`);
   const s = run.sources;
   if (!s) parts.push("story sources not updated (story crawler off)");
   else {
@@ -37,7 +42,7 @@ export function describeCompanyRun(run: CompanySyncRun): string {
     ].filter(Boolean);
     parts.push(`story sources: ${changed.length ? changed.join(", ") : "no change"}`);
   }
-  return parts.join(" · ") + (run.complete ? "" : ". Bigin stopped part-way, so nothing was removed or paused.");
+  return parts.join(" · ") + (run.complete ? "" : ". Bigin stopped part-way, so nothing was marked deleted, unlinked or paused.");
 }
 
 export function CompaniesBox({
@@ -129,7 +134,10 @@ export function CompaniesBox({
                 <tbody>
                   {list.rows.map((c) => (
                     <tr key={c.id} className="border-t align-top">
-                      <td className="py-1.5">{c.name || <span className="text-graphite">(no name)</span>}</td>
+                      <td className="py-1.5">
+                        {c.name || <span className="text-graphite">(no name)</span>}
+                        {c.deletedInBiginAt && <span className="block text-xs text-danger">Deleted in Bigin {fmt(c.deletedInBiginAt)}</span>}
+                      </td>
                       <td className="max-w-48 break-all text-xs text-graphite">{c.website ?? "—"}</td>
                       <td className="max-w-48 break-all text-xs text-graphite">{c.newsPageUrl ?? "—"}</td>
                       <td className={`text-xs ${c.inUse === "none" ? "text-danger" : c.inUse === "website" ? "text-graphite" : "text-success"}`}>{IN_USE_LABEL[c.inUse]}</td>

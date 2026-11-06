@@ -16,6 +16,12 @@
 - Each company shows whether its member was "chosen by hand" or "matched automatically". "Use automatic match" clears your choice and goes back to the automatic match straight away.
 - The choice stays in the app only: Bigin has no member field, so nothing is sent to Bigin.
 
+## 2026-11-06 — Companies deleted in Bigin
+- A company deleted in Bigin is no longer just dropped from view. The Companies box on the CRM page keeps it, marked "Deleted in Bigin" with the date it was found missing, and hides it unless you pick the new "Deleted in Bigin" filter.
+- Its story source stops being linked to the company. If the source came only from Bigin it is paused; if it is also on the imported spreadsheet list, it keeps running.
+- If the company reappears in Bigin, the next sync brings it back into the list and clears the mark.
+- A sync where Bigin stops part-way never marks a company deleted. Nothing is ever deleted, here or in Bigin.
+
 ## 2026-11-06 — Companies on the CRM page
 - The CRM page has a new Companies box under Contacts. It lists every company in Bigin, members and non-members, including companies with no web address at all.
 - Each company shows its Website, its News Page URL, which of the two the story crawler watches ("News Page URL", "Website stand-in" or "none"), how many contacts are linked to it, and the member its stories are tagged with.

@@ -13,15 +13,17 @@ import { ilikeTerm } from "../queries";
  * The member shown is the admin's override when there is one (#53), else
  * the member the company's source is matched to.
  *
- * Later tickets hook in here: the deleted-in-Bigin filter and default (#52),
- * and the "covered by
+ * Companies deleted in Bigin (#52) are hidden under every filter but their
+ * own, "Deleted in Bigin".
+ *
+ * Later tickets hook in here: the "covered by
  * imported list" state and filter (#56) — a display state worked out at read
  * time, so it belongs in this module, not the sync.
  */
 
-export const COMPANY_FILTERS = ["all", "using_website", "no_address"] as const;
+export const COMPANY_FILTERS = ["all", "using_website", "no_address", "deleted"] as const;
 export type CompanyFilter = (typeof COMPANY_FILTERS)[number];
-export const COMPANY_FILTER_LABEL: Record<CompanyFilter, string> = { all: "All", using_website: "Using website", no_address: "No address" };
+export const COMPANY_FILTER_LABEL: Record<CompanyFilter, string> = { all: "All", using_website: "Using website", no_address: "No address", deleted: "Deleted in Bigin" };
 
 export function parseCompanyFilter(raw: unknown): CompanyFilter {
   return COMPANY_FILTERS.find((f) => f === raw) ?? "all";
@@ -41,6 +43,8 @@ export type CompanyListRow = {
   newsPageUrl: string | null;
   inUse: AddressInUse;
   lastSyncedAt: string;
+  /** when the sync first found it missing from a complete Bigin read; null while Bigin has it */
+  deletedInBiginAt: string | null;
   /** contacts here (not in Bigin) whose Bigin company is this one */
   contacts: number;
   /** the admin's member override, else the member the company's story source is matched to */
@@ -59,10 +63,11 @@ export async function readCompanyList(
   // Rebuilt per attempt: pagedList re-runs it as the last page when ?cpage= is past the end.
   const build = (from: number, to: number) => {
     let query = db.from("crm_companies")
-      .select("id, bigin_id, name, website, news_page_url, last_synced_at, override:members!crm_companies_member_override_id_fkey(id, name)", { count: "exact" })
+      .select("id, bigin_id, name, website, news_page_url, last_synced_at, deleted_in_bigin_at, override:members!crm_companies_member_override_id_fkey(id, name)", { count: "exact" })
       .order("name")
       .order("bigin_id");
     if (term) query = query.or(`name.ilike.%${term}%,website.ilike.%${term}%,news_page_url.ilike.%${term}%`);
+    query = filter === "deleted" ? query.not("deleted_in_bigin_at", "is", null) : query.is("deleted_in_bigin_at", null);
     if (filter === "using_website") query = query.is("news_page_url", null).not("website", "is", null);
     if (filter === "no_address") query = query.is("news_page_url", null).is("website", null);
     return query.range(from, to);
@@ -95,6 +100,7 @@ export async function readCompanyList(
       newsPageUrl: c.news_page_url,
       inUse: addressInUse(c),
       lastSyncedAt: c.last_synced_at,
+      deletedInBiginAt: c.deleted_in_bigin_at,
       contacts: contactCount.get(c.bigin_id) ?? 0,
       member: c.override ?? memberOf.get(c.bigin_id) ?? null,
       memberChosen: !!c.override,
