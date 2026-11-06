@@ -91,7 +91,7 @@ import "./classic/classic.css";
  * Which design option this branch builds. `classic` sets "classic" when it
  * repoints the pieces below, so tests that only hold for Current can tell.
  */
-export const DESIGN_OPTION: "current" | "classic" = "current";
+export const DESIGN_OPTION: "current" | "classic" = "classic";
 
 type PropsOf<C> = C extends ComponentType<infer P> ? P : never;
 
