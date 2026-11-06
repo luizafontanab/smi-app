@@ -13,15 +13,22 @@ import { unreadNotificationCount } from "@/lib/notifications";
 import { activeTakeover, industries as industryList } from "@/lib/queries";
 import { siteVariant } from "@/lib/variant";
 import { IndustryBar } from "@/components/IndustryBar";
+// PROTOTYPE (issue #59) — throwaway branch prototype-classic only.
+import { classicVariant, CLASSIC_VARIANTS, VARIANT_NAMES } from "@/components/classic-prototype/variant";
+import { ClassicHeader } from "@/components/classic-prototype/ClassicHeader";
+import { ClassicFooter } from "@/components/classic-prototype/ClassicFooter";
+import { PrototypeSwitcher } from "@/components/classic-prototype/PrototypeSwitcher";
+import "./classic.prototype.css";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   // The industry strip only exists while Jas has industries on for the public
   // site (feature flag industries_public); off, it isn't even fetched.
-  const [user, takeover, industries, variant] = await Promise.all([
+  const [user, takeover, industries, variant, proto] = await Promise.all([
     currentUser(),
     activeTakeover(),
     isFeatureEnabled("industries_public").then((on) => (on ? industryList() : [])),
     siteVariant(),
+    classicVariant(),
   ]);
 
   // The header is one structure in two tones — grid's the light bar from the
@@ -49,7 +56,7 @@ export default async function PublicLayout({ children }: { children: React.React
   const bannerHref = takeover?.memberSlug ? `/member/${takeover.memberSlug}` : undefined;
 
   return (
-    <div style={style} className="flex min-h-full flex-1 flex-col">
+    <div style={style} data-classic={proto === "current" ? undefined : proto} className="flex min-h-full flex-1 flex-col">
       {/* Site identity for search/AI crawlers — page-specific types (Article,
           Event, …) are added by the pages themselves. */}
       <JsonLd data={[organizationLd(), webSiteLd()]} />
@@ -69,12 +76,34 @@ export default async function PublicLayout({ children }: { children: React.React
           client's placement for each design, not an inconsistency. On grid it
           reads as the header's secondary nav; on forge it is the first thing
           on the page as before. */}
-      {!isGrid && <IndustryBar industries={industries} tone="dark" />}
-      <SiteHeader user={user} unread={unread} tone={isGrid ? "light" : "dark"} />
-      {isGrid && <IndustryBar industries={industries} tone="grey" />}
-      <main id="main" className="flex-1">{children}</main>
-      <Footer />
+      {proto === "current" ? (
+        <>
+          {!isGrid && <IndustryBar industries={industries} tone="dark" />}
+          <SiteHeader user={user} unread={unread} tone={isGrid ? "light" : "dark"} />
+          {isGrid && <IndustryBar industries={industries} tone="grey" />}
+        </>
+      ) : (
+        <>
+          <ClassicHeader user={user} unread={unread} shape={proto === "B" ? "adapted" : "faithful"} />
+          {proto === "B" && <IndustryBar industries={industries} tone="grey" />}
+        </>
+      )}
+      <main id="main" className="relative flex-1">
+        {proto === "A" && <ClassicStripes />}
+        {children}
+      </main>
+      {proto === "current" ? <Footer /> : <ClassicFooter buttons={proto === "C" ? "ink" : "blue"} />}
+      <PrototypeSwitcher variants={CLASSIC_VARIANTS} names={VARIANT_NAMES} current={proto} />
       <CookieConsent />
     </div>
+  );
+}
+
+/* PROTOTYPE: the live site's big diagonal chevrons behind the top of the page (#dbdbdb on #e2e2e2). */
+function ClassicStripes() {
+  return (
+    <svg aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-[-1] h-[900px] w-full" preserveAspectRatio="none" viewBox="0 0 1440 900">
+      <path d="M0 0h260L760 450 260 900H0l500-450z M520 0h180l500 450-500 450H520l500-450z" fill="#dbdbdb" />
+    </svg>
   );
 }

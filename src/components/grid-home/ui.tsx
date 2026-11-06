@@ -77,7 +77,7 @@ export function Band({ tone = "plain", className = "", inner = "", children }: {
   children: React.ReactNode;
 }) {
   return (
-    <section className={`${BAND_TONES[tone]} ${className}`}>
+    <section data-band={tone} className={`${BAND_TONES[tone]} ${className}`}>
       <div className={`mx-auto max-w-6xl px-4 ${inner}`}>{children}</div>
     </section>
   );

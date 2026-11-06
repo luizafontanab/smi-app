@@ -8,6 +8,7 @@ import { loadStoryPageData } from "@/lib/story-page";
 import { JsonLd } from "@/components/JsonLd";
 import { StoryPageView } from "@/components/story/StoryPageView";
 import { RecordViewed } from "../RecordViewed";
+import { classicVariant } from "@/components/classic-prototype/variant";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,8 @@ export async function generateMetadata(props: PageProps<"/news/[slug]">) {
 export default async function StoryPage(props: PageProps<"/news/[slug]">) {
   const { slug } = await props.params;
   const sp = await props.searchParams;
-  const [story, ctx, issue] = await Promise.all([storyBySlug(slug), requestContext(), issueFromLink(newsletterLinkParams(sp))]);
+  const [story, ctx, issue, classic] = await Promise.all([storyBySlug(slug), requestContext(), issueFromLink(newsletterLinkParams(sp)), classicVariant()]);
+  const faithful = classic === "A"; // PROTOTYPE (issue #59)
   if (!story) notFound();
 
   const path = `/news/${slug}`;
@@ -53,7 +55,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
 
   return (
     // Wider from lg so the article and its member sidebar fill the screen (Jas 13/10 item 13).
-    <div className="mx-auto max-w-4xl px-4 lg:max-w-6xl">
+    <div data-story-page className={`mx-auto px-4 ${faithful ? "max-w-4xl" : "max-w-4xl lg:max-w-6xl"}`}>
       {/* Notes this story's category + author-industry slugs in the viewed_cats
           cookie (consent-gated client-side) — feeds /news's "For you" rail. */}
       <RecordViewed slugs={[...cats.map((c) => c.slug), ...(data.industrySlug ? [data.industrySlug] : [])]} />
@@ -66,7 +68,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
           ]),
         ]}
       />
-      <StoryPageView story={story} categories={cats} cover={cover} members={data.members} socialPosts={story.social_posts} data={data} path={path} />
+      <StoryPageView story={story} categories={cats} cover={cover} members={data.members} socialPosts={story.social_posts} data={data} path={path} memberLayout={faithful ? "inline" : "page"} />
     </div>
   );
 }

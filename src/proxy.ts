@@ -14,7 +14,7 @@ function toLogin(request: NextRequest, next: string) {
  * and /dashboard. Role-level authorization happens again inside layouts/actions —
  * this is only the outer gate.
  */
-export async function proxy(request: NextRequest) {
+async function authProxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   // The member area lives at /dashboard precisely so this can be a plain prefix
   // test: /member is now the PUBLIC directory, and gating it would send every
@@ -55,6 +55,20 @@ export async function proxy(request: NextRequest) {
   } else {
     await supabase.auth.getSession();
   }
+  return response;
+}
+
+/*
+ * PROTOTYPE (issue #59, throwaway branch prototype-classic): `?variant=` sets
+ * the classic-proto cookie, on the request (so this render sees it) and on the
+ * response (so it sticks while you click around).
+ */
+const PROTO_COOKIE = "classic-proto";
+export async function proxy(request: NextRequest) {
+  const v = request.nextUrl.searchParams.get("variant");
+  if (v) request.cookies.set(PROTO_COOKIE, v);
+  const response = await authProxy(request);
+  if (v) response.cookies.set(PROTO_COOKIE, v, { path: "/", sameSite: "lax" });
   return response;
 }
 

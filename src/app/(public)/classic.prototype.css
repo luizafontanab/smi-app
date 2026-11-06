@@ -1,0 +1,152 @@
+/*
+ * PROTOTYPE — issue #59. Throwaway, prototype-classic branch only.
+ *
+ * Everything is scoped to the public wrapper's data-classic attribute, so
+ * Current (no attribute) is untouched. Unlayered on purpose: it beats
+ * Tailwind's utilities, which is the cheapest way to restyle grid's existing
+ * components without touching them. A real build would not do it this way.
+ *
+ * Live-site values (research-live-site:docs/research/live-site-visual-language.md):
+ *   canvas #e2e2e2, panels #fff r5, blue #3100ff (hover orange), black chrome,
+ *   League Spartan 400/500, headings never bold.
+ * Accessibility departures (both A and B):
+ *   · meta grey #666 (5.7:1 on white) instead of #a5a5a5 (2.46:1)
+ *   · ink text on orange, never white
+ *   · blue buttons hover to orange WITH ink text (white on orange fails)
+ *   · focus rings kept (globals.css :focus-visible)
+ */
+
+/* ── A + B: grey canvas, white panels, blue action colour ─────────────── */
+[data-classic="A"],
+[data-classic="B"] {
+  background: #e2e2e2;
+}
+[data-classic="A"] main,
+[data-classic="B"] main { isolation: isolate; }
+
+/* grid-home Bands: plain ones become white rounded panels on the canvas,
+   grey (advert) ones drop their tint and sit on the canvas directly. */
+[data-classic="A"] main [data-band],
+[data-classic="B"] main [data-band] {
+  background: transparent;
+  padding-top: 1.5rem;
+}
+[data-classic="A"] main [data-band="plain"] > div,
+[data-classic="B"] main [data-band="plain"] > div {
+  background: #fff;
+  border-radius: 5px;
+  padding: 2rem;
+  box-shadow: 0 5px 25px rgb(0 0 0 / 0.05);
+}
+@media (max-width: 767px) {
+  [data-classic="A"] main [data-band="plain"] > div,
+  [data-classic="B"] main [data-band="plain"] > div { padding: 1rem; margin-inline: 0.75rem; }
+}
+
+/* Primary buttons: blue, orange on hover (with ink text — the live white fails). */
+[data-classic="A"] main a.bg-ink,
+[data-classic="B"] main a.bg-ink,
+[data-classic="A"] main button.bg-ink,
+[data-classic="B"] main button.bg-ink {
+  background: #3100ff;
+  color: #fff;
+  border-radius: 5px;
+}
+[data-classic="A"] main a.bg-ink:hover,
+[data-classic="B"] main a.bg-ink:hover {
+  background: #ff8200;
+  color: #111418;
+}
+/* "See all →" links and in-text links: blue */
+[data-classic="A"] main a.text-brand-text,
+[data-classic="B"] main a.text-brand-text,
+[data-classic="A"] .story-body a,
+[data-classic="B"] .story-body a {
+  color: #3100ff;
+}
+[data-classic="A"] main a.text-brand-text:hover,
+[data-classic="B"] main a.text-brand-text:hover,
+[data-classic="A"] .story-body a:hover,
+[data-classic="B"] .story-body a:hover {
+  color: #1d0099;
+}
+
+/* Story page: the article sits in one white panel. */
+[data-classic="A"] [data-story-page],
+[data-classic="B"] [data-story-page] {
+  background: #fff;
+  border-radius: 5px;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding-top: 1rem;
+  padding-bottom: 2rem;
+  box-shadow: 0 5px 25px rgb(0 0 0 / 0.05);
+}
+@media (min-width: 768px) {
+  [data-classic="A"] [data-story-page],
+  [data-classic="B"] [data-story-page] { padding-inline: 3rem; }
+}
+
+/* ── A only: League Spartan everywhere, light headings, live type scale ── */
+[data-classic="A"] {
+  --smi-font-sans: var(--font-league-spartan), sans-serif;
+  font-family: var(--font-league-spartan), sans-serif;
+}
+[data-classic="A"] main h1,
+[data-classic="A"] main h2,
+[data-classic="A"] main h3,
+[data-classic="A"] main h4 {
+  font-weight: 400;
+}
+[data-classic="A"] [data-story-page] h1 {
+  text-transform: uppercase;
+  font-size: clamp(2rem, 1.2rem + 2.7vw, 3.25rem);
+  line-height: 1.1;
+}
+/* live body copy: 20px / 1.6 */
+[data-classic="A"] .story-read,
+[data-classic="A"] .story-read .story-body {
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+/* Meta lines and eyebrows: muted grey, not orange (fixed grey, see top). */
+[data-classic="A"] main div.text-brand-text,
+[data-classic="A"] main p.text-brand-text {
+  color: #666;
+  text-transform: uppercase;
+}
+/* Cards lose their hairline: on the live site they're borderless inside a panel. */
+[data-classic="A"] main [data-band] .border-line {
+  border-color: transparent;
+}
+/* Section heads: the orange chip becomes the live "orange disc + big title". */
+[data-classic="A"] main h2.bg-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: none;
+  padding: 0;
+  font-family: var(--font-league-spartan), sans-serif;
+  font-size: 2rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #000;
+}
+[data-classic="A"] main h2.bg-brand::before {
+  content: "";
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  background: #ff8200;
+  flex-shrink: 0;
+}
+
+/* A: featured members as a full-width sideways row, not a sidebar column. */
+[data-classic="A"] .classic-fm-row ul {
+  display: flex !important;
+  height: auto !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+[data-classic="A"] .classic-fm-row ul > * { flex: 0 0 16rem; border: 0 !important; }

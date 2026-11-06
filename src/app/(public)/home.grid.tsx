@@ -10,6 +10,8 @@ import {
 } from "@/components/grid-home/cards";
 import { Band, SectionHead } from "@/components/grid-home/ui";
 import { excluding, type HomeData } from "./home.data";
+// PROTOTYPE (issue #59): variant A swaps the fold for the live "Newsroom" and drops the sidebar.
+import { ClassicNewsroom } from "@/components/classic-prototype/ClassicNewsroom";
 
 /**
  * The grid home page. Above the fold is two equally-weighted news highlights
@@ -53,8 +55,9 @@ import { excluding, type HomeData } from "./home.data";
  */
 export function GridHome({
   stories, memberNews, videos, events, newsletters, featuredMembers, featuredMachine, featuredEvent,
-  adverts, showPlaceholders, storyTotal, memberCount, reach, homeSections,
-}: HomeData) {
+  adverts, showPlaceholders, storyTotal, memberCount, reach, homeSections, classic,
+}: HomeData & { classic?: string }) {
+  const faithful = classic === "A";
   // One call, because a slot family is a FORMAT and all three positions now
   // take the same full-width banner. The keys match forge's so impression
   // reporting stays comparable across the two designs.
@@ -68,11 +71,11 @@ export function GridHome({
   // Member news rotates into it near the top instead of living only at the
   // foot of the page (GAPS A9.3) — capped so the fold stays ≤20% member.
   const moreNews = weaveMemberNews({
-    carousel: rest.slice(0, 8),
-    alsoInFold: [lead, second].filter((s): s is NonNullable<typeof s> => Boolean(s)),
+    carousel: faithful ? stories.slice(4, 12) : rest.slice(0, 8),
+    alsoInFold: (faithful ? stories.slice(0, 4) : [lead, second]).filter((s): s is NonNullable<typeof s> => Boolean(s)),
     memberNews,
   });
-  const placedStoryIds = new Set([lead, second, ...moreNews].filter(Boolean).map((s) => s!.id));
+  const placedStoryIds = new Set([...(faithful ? stories.slice(0, 4) : [lead, second]), ...moreNews].filter(Boolean).map((s) => s!.id));
   const railNews = excluding(memberNews, placedStoryIds);
   const machine = featuredMachine?.machine;
 
@@ -128,14 +131,14 @@ export function GridHome({
           {/* grid-cols-1 for the same reason as the fold's: the Featured
               members box is a sideways scroller below lg, and an implicit
               track would grow to its full width and push the page sideways. */}
-          <div className={`grid grid-cols-1 gap-5 ${featured.length > 0 ? "lg:grid-cols-[3fr_9fr]" : ""}`}>
+          <div className={`grid grid-cols-1 gap-5 ${featured.length > 0 && !faithful ? "lg:grid-cols-[3fr_9fr]" : ""}`}>
             <div className="lg:col-start-2 lg:row-start-1">
               <SectionHead title="Latest videos" href="/video" seeAll="See all videos" />
               <div className="grid gap-5 sm:grid-cols-3">
                 {videos.slice(0, 3).map((v, i) => <div key={v.id} className={phoneCap(i)}><GhVideoCard video={v} /></div>)}
               </div>
             </div>
-            <GhFeaturedMembers members={featured} className="lg:col-start-1 lg:row-start-1 lg:row-span-2" />
+            {!faithful && <GhFeaturedMembers members={featured} className="lg:col-start-1 lg:row-start-1 lg:row-span-2" />}
             {/* Side by side, not stacked: half of this column is still wide
                 enough for the signup field and its button to sit on one line,
                 and stacking them would leave the sidebar stretching past three
@@ -148,6 +151,11 @@ export function GridHome({
             </div>
           </div>
         </Band>
+        {faithful && featured.length > 0 && (
+          <Band inner="py-8">
+            <div className="classic-fm-row"><GhFeaturedMembers members={featured} /></div>
+          </Band>
+        )}
       </>
     ),
     member_news: (
@@ -276,6 +284,18 @@ export function GridHome({
        * both. No items-start here on purpose — the two story cards stretch to
        * each other so their "Read more" links land on one line.
        */}
+      {faithful ? (
+        <>
+          <Band inner="pt-6 pb-6"><ClassicNewsroom stories={stories.slice(0, 4)} /></Band>
+          <Band inner="py-6">
+            <div className="grid gap-5 md:grid-cols-2">
+              {machine && <GhMachineCard machine={machine} />}
+              {featuredEvent && <GhEventCard event={featuredEvent} featured />}
+            </div>
+            <div className="mt-6 h-56"><GhMoreNews stories={moreNews} /></div>
+          </Band>
+        </>
+      ) : (
       <Band inner="pt-6">
         {/* grid-cols-1 below lg, not the implicit column: an implicit track
             grows to its widest child's min-content, and the More News row is
@@ -301,6 +321,7 @@ export function GridHome({
           </div>
         </div>
       </Band>
+      )}
 
       {/* The rotating banner is a real advert slot, not an editorial hero —
           see the top-of-file note on the above-the-fold exception. */}

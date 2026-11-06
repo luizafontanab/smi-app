@@ -14,7 +14,7 @@ import type { StoryPageData } from "@/lib/story-page";
  * Live-site structure: single column — title/meta, ad below meta, hero, body,
  * then post-article blocks. Order comes from the (admin-arranged) layout.
  */
-export function StoryPageView({ story, categories, cover, members, socialPosts, data, path }: {
+export function StoryPageView({ story, categories, cover, members, socialPosts, data, path, memberLayout = "page" }: {
   story: StoryArticleStory;
   /** stories.social_posts — SMI's own posts of this story (Jas 13/10 item 8). */
   socialPosts: unknown;
@@ -24,6 +24,8 @@ export function StoryPageView({ story, categories, cover, members, socialPosts, 
   members: StoryArticleMember[];
   data: StoryPageData;
   path: string;
+  /** PROTOTYPE (issue #59): "inline" drops the member sidebar under the article. */
+  memberLayout?: "page" | "inline";
 }) {
   const { slots, showPlaceholders, bodyKeys, segments } = data;
   const body = (
@@ -57,7 +59,7 @@ export function StoryPageView({ story, categories, cover, members, socialPosts, 
         story,
         categories,
         cover,
-        main: <StoryMain body={body} share={<StorySocialLinks posts={socialPosts} />} members={members} />,
+        main: <StoryMain body={body} share={<StorySocialLinks posts={socialPosts} />} members={members} layout={memberLayout} />,
       })}
     />
   );
