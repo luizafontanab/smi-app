@@ -138,7 +138,10 @@ export default async function SocialReachPage(props: PageProps<"/console/social-
         </p>
 
         <form action={saveSocialReachPlatforms} noValidate>
-          <div className="mt-3 overflow-x-auto">
+          {/* relative: the inputs' sr-only labels are absolutely positioned, and
+              without a positioned box here they escape this scroller's clipping
+              and widen the whole page on a phone (#33). */}
+          <div className="relative mt-3 overflow-x-auto">
             <table className="w-full min-w-[40rem] text-left text-sm">
               <thead>
                 <tr className="border-b text-xs uppercase tracking-wide text-graphite">

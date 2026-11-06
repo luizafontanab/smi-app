@@ -10,6 +10,9 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-05 — Social reach fits a phone screen
+- On a phone, the Social reach page in the console no longer slides sideways. The platform figures table scrolls on its own, as the other console tables do.
+
 ## 2026-11-05 — Social posts wait for you to confirm each channel
 - A story or video no longer posts to social media by itself. Under "Social post" in the editor you now see exactly what each connected channel will receive (the lead-in, the link, that network's member tags and the picture), and nothing goes out on a channel until you press its Confirm button, or Confirm all.
 - Confirm works on the saved version, so it is greyed out with "Save first" while you have unsaved changes. You can confirm in any status; a confirmed channel still posts only once the story is live and its post time has come.

@@ -55,13 +55,10 @@ async function storyWithCover(page: Page): Promise<string | null> {
   for (const href of hrefs) {
     await page.goto(href);
     await expect(page.locator("main h1")).toBeVisible();
-    const hasCover = await page.evaluate(() => {
-      const h1 = document.querySelector("main h1");
-      if (!h1) return false;
-      const below = h1.getBoundingClientRect().bottom;
-      return [...document.querySelectorAll("main img")].some((img) => !img.closest('a[aria-label^="Advert:"]') && img.getBoundingClientRect().top > below);
-    });
-    if (hasCover) return href;
+    // The hero's own marker, not "any image below the h1": a cover-less story
+    // (flows.spec publishes one each run) still has card and logo images
+    // further down, which the old guess took for its cover.
+    if ((await page.locator('main [data-testid="story-cover"]').count()) > 0) return href;
   }
   return null;
 }
@@ -157,9 +154,7 @@ test("on a phone the story's top advert sits below the cover, not above it (C1)"
   const href = await storyWithCover(page);
   test.skip(!href, "no story with a cover in this data");
   const order = await page.evaluate(() => {
-    const h1 = document.querySelector("main h1")!;
-    const below = h1.getBoundingClientRect().bottom;
-    const cover = [...document.querySelectorAll("main img")].find((img) => !img.closest('a[aria-label^="Advert:"]') && img.getBoundingClientRect().top > below)!;
+    const cover = document.querySelector('main [data-testid="story-cover"]')!;
     const ad = [...document.querySelectorAll('main a[aria-label^="Advert:"]')].find((a) => a.getBoundingClientRect().height > 0);
     return ad ? { coverBottom: cover.getBoundingClientRect().bottom, adTop: ad.getBoundingClientRect().top } : null;
   });

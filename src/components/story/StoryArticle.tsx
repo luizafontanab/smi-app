@@ -49,7 +49,7 @@ export function StoryHero({ cover, focus }: { cover: string | null; focus: unkno
   return (
     // Shorter below md: a 384px cover on a 390px-wide phone was taller than it
     // was wide and pushed the article off the first screen (#33 C1).
-    <div className="relative mt-4 h-60 overflow-hidden rounded-lg sm:h-80 md:h-96">
+    <div data-testid="story-cover" className="relative mt-4 h-60 overflow-hidden rounded-lg sm:h-80 md:h-96">
       {cover.startsWith("blob:") ? (
         // A cover the member has picked but not yet uploaded (the Preview tab):
         // a local object URL, which next/image has no business handling.
