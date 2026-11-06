@@ -22,6 +22,9 @@ export const CLASSIC_COLOURS = {
   "--classic-button-text": "#ffffff",
   // #606060, not the spec's #666: #666 on the canvas is 4.43:1 (decisions 6 Nov, 1).
   "--classic-meta": "#606060",
+  // #71 header: the grey top bar, and the flat menu's resting link colour.
+  "--classic-topbar": "#555555",
+  "--classic-nav-link": "#b4b4b4",
 } as const;
 
 const c = CLASSIC_COLOURS;
@@ -66,4 +69,10 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   // The black stack: white text, links hovering orange.
   { label: "footer text: white on black", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
   { label: "footer link hover: orange on black", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: TEXT },
+  // #71 header. White is written as the panel colour (#fff).
+  { label: "top bar text", fg: c["--classic-panel"], bg: c["--classic-topbar"], min: TEXT },
+  { label: "focus ring on the top bar", fg: c["--classic-panel"], bg: c["--classic-topbar"], min: NON_TEXT },
+  { label: "menu link on the black chrome", fg: c["--classic-nav-link"], bg: c["--classic-chrome"], min: TEXT },
+  { label: "current menu link on the black chrome", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
+  { label: "current-section underline on the black chrome", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: NON_TEXT },
 ];
