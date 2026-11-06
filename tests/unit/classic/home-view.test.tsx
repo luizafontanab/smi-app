@@ -121,6 +121,17 @@ describe("ClassicHomeView: nothing Current shows is dropped", () => {
     expect([...current].filter((href) => !classic.has(href))).toEqual([]);
   });
 
+  it("shows exactly the stories Current shows, no more and no fewer", () => {
+    const data = fullDay();
+    const storyLinks = (container: HTMLElement) =>
+      [...hrefsOf(container)].filter((href): href is string => Boolean(href?.startsWith("/news/"))).sort();
+    const current = storyLinks(render(<GridHome {...data} />).container);
+    const classic = storyLinks(render(<ClassicHomeView {...data} />).container);
+    // Sanity: the fixture has more stories than either view places.
+    expect(current).not.toContain("/news/s17");
+    expect(classic).toEqual(current);
+  });
+
   it("carries exactly Current's three advert positions, each once", () => {
     const keys = slotKeys(ClassicHomeView(fullDay()));
     expect([...keys].sort()).toEqual(["home_1", "home_2", "home_3"]);

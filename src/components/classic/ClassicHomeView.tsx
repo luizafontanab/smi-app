@@ -41,10 +41,11 @@ export function ClassicHomeView({
   const banners = dealSlots(adverts.banner, ["home_1", "home_2", "home_3"]);
 
   // Four stories in the Newsroom; More News takes the run straight after them,
-  // with member news woven in as on Current (GAPS A9.3). Disjoint, so nothing
-  // repeats and nothing is skipped.
-  const newsroom = stories.slice(0, 4);
-  const moreNews = weaveMemberNews({ carousel: stories.slice(4, 12), alsoInFold: newsroom, memberNews });
+  // up to the same story Current stops at, with member news woven in as on
+  // Current (GAPS A9.3). Disjoint, so nothing repeats and nothing is skipped,
+  // and the page shows exactly Current's stories.
+  const newsroom = stories.slice(0, NEWSROOM_SIZE);
+  const moreNews = weaveMemberNews({ carousel: stories.slice(NEWSROOM_SIZE, CURRENT_TOP_STORIES), alsoInFold: newsroom, memberNews });
   const placedStoryIds = new Set([...newsroom, ...moreNews].map((s) => s.id));
   const railNews = excluding(memberNews, placedStoryIds);
   const machine = featuredMachine?.machine;
@@ -207,6 +208,18 @@ function DiscHead({ title, href, seeAll, id }: { title: string; href?: string; s
     </div>
   );
 }
+
+/** The Newsroom's ranked tiles, #1–#4. */
+const NEWSROOM_SIZE = 4;
+
+/**
+ * How far down `stories` Current's GridHome reaches: its two fold highlights
+ * plus its eight-tile More News carousel (`rest.slice(0, 8)` in home.grid.tsx,
+ * which exports no constant for it). Classic stops at the same story, so the
+ * two options show the same stories; tests/unit/classic/home-view.test.tsx
+ * compares them and fails if GridHome's count changes.
+ */
+const CURRENT_TOP_STORIES = 2 + 8;
 
 /** Third and later cards of a row drop below sm, as on Current (#33 C9). */
 const phoneCap = (i: number) => (i >= 2 ? "max-sm:hidden" : undefined);
