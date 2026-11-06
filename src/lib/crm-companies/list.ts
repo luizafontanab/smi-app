@@ -1,8 +1,9 @@
 import "server-only";
-import { pagedList } from "@/app/console/paged-list";
+import { lastPage, pagedList } from "@/app/console/paged-list";
 import { allRows } from "../db/all-rows";
 import type { serviceDb } from "../db/server";
 import { ilikeTerm } from "../queries";
+import { normalizeSourceUrl } from "../sources/extract";
 
 /**
  * The read model behind CRM's Companies box (issue #50): one page of stored
@@ -16,14 +17,21 @@ import { ilikeTerm } from "../queries";
  * Companies deleted in Bigin (#52) are hidden under every filter but their
  * own, "Deleted in Bigin".
  *
- * Later tickets hook in here: the "covered by
- * imported list" state and filter (#56) — a display state worked out at read
- * time, so it belongs in this module, not the sync.
+ * "Covered by imported list" (#56): a company with no News Page URL whose
+ * Website is on the same domain as an imported source (bigin_only false)
+ * that no company is linked to. Many of the imported spreadsheet's pages are
+ * these companies' news pages under a slightly different address, so they're
+ * already watched. It's a display state worked out here at read time, never
+ * stored and never acted on by the sync: the source is linked only when an
+ * admin clicks "Use as News Page URL" (lib/crm-companies/covered.ts). Such a
+ * company shows under its own filter, not under "Using website".
  */
 
-export const COMPANY_FILTERS = ["all", "using_website", "no_address", "deleted"] as const;
+export const COMPANY_FILTERS = ["all", "using_website", "no_address", "covered", "deleted"] as const;
 export type CompanyFilter = (typeof COMPANY_FILTERS)[number];
-export const COMPANY_FILTER_LABEL: Record<CompanyFilter, string> = { all: "All", using_website: "Using website", no_address: "No address", deleted: "Deleted in Bigin" };
+export const COMPANY_FILTER_LABEL: Record<CompanyFilter, string> = {
+  all: "All", using_website: "Using website", no_address: "No address", covered: "Covered by imported list", deleted: "Deleted in Bigin",
+};
 
 export function parseCompanyFilter(raw: unknown): CompanyFilter {
   return COMPANY_FILTERS.find((f) => f === raw) ?? "all";
@@ -33,6 +41,14 @@ export function parseCompanyFilter(raw: unknown): CompanyFilter {
 export type AddressInUse = "news_page" | "website" | "none";
 export function addressInUse(c: { news_page_url: string | null; website: string | null }): AddressInUse {
   return c.news_page_url ? "news_page" : c.website ? "website" : "none";
+}
+
+/** An imported source that could be the company's News Page URL (#56). */
+export type CoveringSource = { id: string; url: string; label: string | null };
+
+/** The domain of a company's Website, the way story sources record theirs (no www., lower case). */
+export function websiteDomain(website: string | null): string | null {
+  return website ? normalizeSourceUrl(website)?.domain ?? null : null;
 }
 
 export type CompanyListRow = {
@@ -55,9 +71,50 @@ export type CompanyListRow = {
   sourceId: string | null;
   /** a News Page URL edit made here that Bigin hasn't accepted yet (#55) */
   pushPending: boolean;
+  /** the unlinked imported sources on its Website's domain; any → "covered by imported list" (#56) */
+  covered: CoveringSource[];
 };
 
 type Db = ReturnType<typeof serviceDb>;
+type SourceRow = CoveringSource & { domain: string; bigin_account_id: string | null; bigin_only: boolean };
+
+/**
+ * Imported sources linked to no company, by domain: all of them, or those on
+ * `domains`. Filtered again here, so only rows that qualify ever count.
+ */
+async function readImportedSources(db: Db, domains?: string[]): Promise<Map<string, CoveringSource[]>> {
+  const byDomain = new Map<string, CoveringSource[]>();
+  if (domains && !domains.length) return byDomain;
+  const rows = await allRows<SourceRow>(async (from, to) => {
+    let query = db.from("content_sources")
+      .select("id, url, label, domain, bigin_account_id, bigin_only")
+      .is("bigin_account_id", null)
+      .eq("bigin_only", false);
+    if (domains) query = query.in("domain", domains);
+    const { data, error } = await query.order("url").range(from, to);
+    if (error) throw new Error(`console/crm imported sources: ${error.message}`);
+    return { data: Array.isArray(data) ? data : [] };
+  });
+  for (const s of rows) {
+    if (s.bigin_account_id || s.bigin_only || !s.domain) continue;
+    const list = byDomain.get(s.domain) ?? [];
+    list.push({ id: s.id, url: s.url, label: s.label ?? null });
+    byDomain.set(s.domain, list);
+  }
+  return byDomain;
+}
+
+/** What covers a company, given the imported sources by domain: nothing once it has a News Page URL or is gone from Bigin. */
+function coveredBy(
+  c: { website: string | null; news_page_url: string | null; deleted_in_bigin_at?: string | null },
+  imported: ReadonlyMap<string, CoveringSource[]>,
+): CoveringSource[] {
+  if (c.news_page_url || c.deleted_in_bigin_at) return [];
+  const domain = websiteDomain(c.website);
+  return (domain && imported.get(domain)) || [];
+}
+
+const LIST_SELECT = "id, bigin_id, name, website, news_page_url, last_synced_at, deleted_in_bigin_at, news_page_pending_at, override:members!crm_companies_member_override_id_fkey(id, name)" as const;
 
 export async function readCompanyList(
   db: Db,
@@ -68,20 +125,54 @@ export async function readCompanyList(
   },
 ): Promise<{ rows: CompanyListRow[]; count: number; page: number }> {
   const term = ilikeTerm(q);
-  // Rebuilt per attempt: pagedList re-runs it as the last page when ?cpage= is past the end.
-  const build = (from: number, to: number) => {
-    let query = db.from("crm_companies")
-      .select("id, bigin_id, name, website, news_page_url, last_synced_at, deleted_in_bigin_at, news_page_pending_at, override:members!crm_companies_member_override_id_fkey(id, name)", { count: "exact" })
-      .order("name")
-      .order("bigin_id");
-    if (biginId) query = query.eq("bigin_id", biginId);
-    if (term) query = query.or(`name.ilike.%${term}%,website.ilike.%${term}%,news_page_url.ilike.%${term}%`);
-    query = filter === "deleted" ? query.not("deleted_in_bigin_at", "is", null) : query.is("deleted_in_bigin_at", null);
-    if (filter === "using_website") query = query.is("news_page_url", null).not("website", "is", null);
-    if (filter === "no_address") query = query.is("news_page_url", null).is("website", null);
-    return query.range(from, to);
-  };
-  const { data, count, page: shown } = await pagedList(build, page, size, "console/crm companies");
+  const search = term ? `name.ilike.%${term}%,website.ilike.%${term}%,news_page_url.ilike.%${term}%` : null;
+
+  let data: { id: string; bigin_id: string; name: string; website: string | null; news_page_url: string | null; last_synced_at: string; deleted_in_bigin_at: string | null; news_page_pending_at: string | null; override: { id: string; name: string } | null }[];
+  let count: number;
+  let shown: number;
+  let imported: Map<string, CoveringSource[]>;
+  if (filter === "covered" || filter === "using_website") {
+    // Covered depends on the sources' domains, which a query on crm_companies
+    // can't see: filter every Website-only company here, then read one page.
+    imported = await readImportedSources(db);
+    const candidates = await allRows<{ id: string; website: string | null }>(async (from, to) => {
+      let query = db.from("crm_companies").select("id, website")
+        .is("deleted_in_bigin_at", null).is("news_page_url", null).not("website", "is", null);
+      if (biginId) query = query.eq("bigin_id", biginId);
+      if (search) query = query.or(search);
+      const { data: rows, error } = await query.order("name").order("bigin_id").range(from, to);
+      if (error) throw new Error(`console/crm companies: ${error.message}`);
+      return { data: rows ?? [] };
+    });
+    const wanted = candidates
+      .filter((c) => (coveredBy({ website: c.website, news_page_url: null }, imported).length > 0) === (filter === "covered"))
+      .map((c) => c.id);
+    count = wanted.length;
+    shown = Math.min(Math.max(1, Math.floor(page) || 1), lastPage(count, size));
+    const ids = wanted.slice((shown - 1) * size, shown * size);
+    if (ids.length) {
+      const { data: rows, error } = await db.from("crm_companies").select(LIST_SELECT).in("id", ids).order("name").order("bigin_id");
+      if (error) throw new Error(`console/crm companies: ${error.message}`);
+      data = rows ?? [];
+    } else data = [];
+  } else {
+    // Rebuilt per attempt: pagedList re-runs it as the last page when ?cpage= is past the end.
+    const build = (from: number, to: number) => {
+      let query = db.from("crm_companies")
+        .select(LIST_SELECT, { count: "exact" })
+        .order("name")
+        .order("bigin_id");
+      if (biginId) query = query.eq("bigin_id", biginId);
+      if (search) query = query.or(search);
+      query = filter === "deleted" ? query.not("deleted_in_bigin_at", "is", null) : query.is("deleted_in_bigin_at", null);
+      if (filter === "no_address") query = query.is("news_page_url", null).is("website", null);
+      return query.range(from, to);
+    };
+    ({ data, count, page: shown } = await pagedList(build, page, size, "console/crm companies"));
+    const domains = data.filter((c) => !c.news_page_url && !c.deleted_in_bigin_at).map((c) => websiteDomain(c.website)).filter((d): d is string => !!d);
+    imported = await readImportedSources(db, [...new Set(domains)]);
+  }
+  if (!data.length) return { rows: [], count, page: shown };
   const ids = data.map((c) => c.bigin_id);
 
   const [contacts, sources] = ids.length
@@ -120,6 +211,7 @@ export async function readCompanyList(
       memberChosen: !!c.override,
       sourceId: sourceOf.get(c.bigin_id) ?? null,
       pushPending: !!c.news_page_pending_at,
+      covered: coveredBy(c, imported),
     })),
   };
 }
@@ -130,12 +222,12 @@ export async function readCompanyList(
  * an edit of the latter is still on its way to Bigin (#55).
  */
 export type CompanyMemberDetail = Pick<
-  CompanyListRow, "id" | "biginId" | "name" | "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending"
+  CompanyListRow, "id" | "biginId" | "name" | "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending" | "covered"
 >;
 
 export async function readCompanyMember(db: Db, id: string): Promise<CompanyMemberDetail | null> {
   const { data: c, error } = await db.from("crm_companies")
-    .select("id, bigin_id, name, website, news_page_url, news_page_pending_at, override:members!crm_companies_member_override_id_fkey(id, name)")
+    .select("id, bigin_id, name, website, news_page_url, news_page_pending_at, deleted_in_bigin_at, override:members!crm_companies_member_override_id_fkey(id, name)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`console/crm company: ${error.message}`);
@@ -146,8 +238,11 @@ export async function readCompanyMember(db: Db, id: string): Promise<CompanyMemb
     if (e) throw new Error(`console/crm company source: ${e.message}`);
     member = source?.member ?? null;
   }
+  const domain = !c.news_page_url && !c.deleted_in_bigin_at ? websiteDomain(c.website) : null;
+  const imported = await readImportedSources(db, domain ? [domain] : []);
   return {
     id: c.id, biginId: c.bigin_id, name: c.name, member, memberChosen: !!c.override,
     website: c.website, newsPageUrl: c.news_page_url, inUse: addressInUse(c), pushPending: !!c.news_page_pending_at,
+    covered: coveredBy(c, imported),
   };
 }

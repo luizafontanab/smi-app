@@ -6,7 +6,7 @@ import { CompaniesBox } from "@/app/console/crm/CompaniesBox";
 import type { CompanyListRow } from "@/lib/crm-companies/list";
 import type { BiginSourcesRun } from "@/lib/sources/bigin";
 
-vi.mock("@/app/console/crm/actions", () => ({ syncCompaniesNow: vi.fn(), setCompanyMember: vi.fn(), saveCompanyNewsPage: vi.fn() }));
+vi.mock("@/app/console/crm/actions", () => ({ syncCompaniesNow: vi.fn(), setCompanyMember: vi.fn(), saveCompanyNewsPage: vi.fn(), adoptImportedNewsPage: vi.fn() }));
 
 /* The Bigin sources panel, moved from Story Sources into CRM's Companies box (#51). */
 
@@ -70,7 +70,7 @@ describe("BiginSourcesPanel", () => {
 
 const company = (over: Partial<CompanyListRow>): CompanyListRow => ({
   id: "u1", biginId: "9100000000001", name: "Acme", website: null, newsPageUrl: "https://acme.test/news", inUse: "news_page",
-  lastSyncedAt: "2026-11-06T03:00:00Z", deletedInBiginAt: null, contacts: 0, member: null, memberChosen: false, sourceId: null, pushPending: false, ...over,
+  lastSyncedAt: "2026-11-06T03:00:00Z", deletedInBiginAt: null, contacts: 0, member: null, memberChosen: false, sourceId: null, pushPending: false, covered: [], ...over,
 });
 const box = (props: Partial<Parameters<typeof CompaniesBox>[0]>) =>
   render(
@@ -114,7 +114,7 @@ describe("CRM Companies box", () => {
       open: {
         id: acme.id, biginId: acme.biginId, name: acme.name, lastSyncedAt: acme.lastSyncedAt, member: acme.member, memberChosen: true,
         rows: [{ apiName: "Phone", label: "Phone", value: "0161 000" }, { apiName: "Machine_Brands", label: "Machine Brands", value: null }],
-        website: null, newsPageUrl: acme.newsPageUrl, inUse: "news_page", pushPending: false,
+        website: null, newsPageUrl: acme.newsPageUrl, inUse: "news_page", pushPending: false, covered: [],
       },
       members: [{ id: "m1", name: "Jo" }],
     });
@@ -143,7 +143,7 @@ describe("CRM Companies box", () => {
 describe("the company editor's News Page URL (issue #55)", () => {
   const acme = {
     id: "u1", biginId: "9100000000001", name: "Acme", lastSyncedAt: "2026-11-06T03:00:00Z", rows: [], member: null, memberChosen: false,
-    website: "https://acme.test", newsPageUrl: "https://acme.test/news", inUse: "news_page" as const, pushPending: false,
+    website: "https://acme.test", newsPageUrl: "https://acme.test/news", inUse: "news_page" as const, pushPending: false, covered: [],
   };
 
   it("edits the News Page URL in the company's one panel, beside the member and Bigin's fields, showing the Website without a field for it", () => {
@@ -168,5 +168,47 @@ describe("the company editor's News Page URL (issue #55)", () => {
     box({ list: { rows: [company({ pushPending: true })], count: 1, page: 1, pages: 1 }, open: { ...acme, pushPending: true }, canEditCompanies: true });
     expect(screen.getByRole("table")).toHaveTextContent("push pending");
     expect(screen.getByText(/Push pending\./).closest("p")).toHaveTextContent("retried automatically");
+  });
+});
+
+describe("covered by imported list (issue #56)", () => {
+  const SOURCES = [
+    { id: "s1", url: "https://bright.test/news", label: "Bright news" },
+    { id: "s2", url: "https://bright.test/press/", label: null },
+  ];
+  const bright = {
+    id: "u2", biginId: "9100000000002", name: "Bright", lastSyncedAt: "2026-11-06T03:00:00Z", rows: [], member: null, memberChosen: false,
+    website: "https://bright.test", newsPageUrl: null, inUse: "website" as const, pushPending: false, covered: SOURCES,
+  };
+
+  it("labels a covered company in the list instead of its Website stand-in, and has its own filter", () => {
+    box({ list: { rows: [company({ id: "u2", name: "Bright", newsPageUrl: null, website: "https://bright.test", inUse: "website", covered: SOURCES })], count: 1, page: 1, pages: 1 } });
+    const row = screen.getByRole("link", { name: "Bright" }).closest("tr")!;
+    expect(row).toHaveTextContent("Covered by imported list");
+    expect(row).not.toHaveTextContent("Website stand-in");
+    expect(screen.getByRole("link", { name: "Covered by imported list" })).toHaveAttribute("href", "/console/crm?cfilter=covered#companies");
+  });
+
+  it("lists every covering source in the panel, each with Use as News Page URL", () => {
+    box({ open: bright, canEditCompanies: true });
+    const buttons = screen.getAllByRole("button", { name: "Use as News Page URL" });
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0].closest("li")).toHaveTextContent("Bright news · https://bright.test/news");
+    expect(buttons[1].closest("li")).toHaveTextContent("https://bright.test/press/");
+    const form = buttons[1].closest("form")!;
+    expect(form.querySelector("input[name=company]")).toHaveValue("u2");
+    expect(form.querySelector("input[name=source]")).toHaveValue("s2");
+    expect(buttons[0]).toBeEnabled();
+  });
+
+  it("disables Use as News Page URL with \"edit in Bigin for now\" while the token can't write companies", () => {
+    box({ open: bright, canEditCompanies: false });
+    for (const b of screen.getAllByRole("button", { name: "Use as News Page URL" })) expect(b).toBeDisabled();
+    expect(screen.getAllByText(/edit in Bigin for now/).length).toBeGreaterThan(0);
+  });
+
+  it("offers nothing for a company that isn't covered", () => {
+    box({ open: { ...bright, covered: [] }, canEditCompanies: true });
+    expect(screen.queryByRole("button", { name: "Use as News Page URL" })).toBeNull();
   });
 });

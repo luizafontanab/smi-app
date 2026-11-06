@@ -148,6 +148,23 @@ run on every company sync and stored in `settings.crm_companies_write`, and
 from any push refused with `OAUTH_SCOPE_MISMATCH`. The Website is never edited
 in the console. A source can still be paused on Story sources.
 
+**Covered by imported list** (6 Nov 2026, issue #56). Many companies' news
+pages are already on the imported spreadsheet list under a slightly different
+address, so the sync doesn't link them. CRM's Companies box shows a company
+with no News Page URL as "covered by imported list", with its own filter,
+when an imported source (not `bigin_only`) that no company is linked to is on
+the same domain as its Website. This is worked out when the page loads
+(`src/lib/crm-companies/list.ts`) and never stored; such a company no longer
+shows under "Using website". Opening it lists every covering source, each with
+**Use as News Page URL** (`src/lib/crm-companies/covered.ts`): the source's
+address goes through the same write-through as an edit (pending, pushed to
+Bigin), and that existing source is linked to the company, with no second
+row; the company's Website source, if Bigin made one, is unlinked and paused.
+It's linked even with the Story crawler off, since nothing new is read. Nothing
+is ever linked by domain automatically. The button is disabled with the
+editor while the token lacks the Companies write scope; the label and filter
+work without it.
+
 **Where it shows (6 Nov 2026, issue #51, ADR 0002).** Story Sources keeps only
 what's about *reading* a source. The Bigin panel (the last run's summary, the
 skipped or clashing addresses to fix in Bigin, and the misnamed-field warning)

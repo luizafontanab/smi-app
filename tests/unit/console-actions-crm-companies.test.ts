@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { saveCompanyNewsPage, setCompanyMember, syncCompaniesNow } from "@/app/console/crm/actions";
+import { adoptImportedNewsPage, saveCompanyNewsPage, setCompanyMember, syncCompaniesNow } from "@/app/console/crm/actions";
 import type { CurrentUser } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
@@ -24,6 +24,10 @@ const { setCompanyNewsPage, checkCompanyWriteAccess } = vi.hoisted(() => ({
   checkCompanyWriteAccess: vi.fn(async () => ({ allowed: true, at: "2026-11-06T10:00:00Z" })),
 }));
 vi.mock("@/lib/crm-companies/news-page", () => ({ setCompanyNewsPage, checkCompanyWriteAccess }));
+const { adoptImportedSource } = vi.hoisted(() => ({
+  adoptImportedSource: vi.fn(async (): Promise<{ outcome: "pushed" | "pending" | "not_allowed" | "not_found" | "not_covering"; linked: boolean }> => ({ outcome: "pushed", linked: true })),
+}));
+vi.mock("@/lib/crm-companies/covered", () => ({ adoptImportedSource }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/log", () => ({ logError }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
@@ -38,6 +42,7 @@ afterEach(() => {
   syncCompanies.mockReset();
   setCompanyNewsPage.mockReset().mockResolvedValue("pushed");
   checkCompanyWriteAccess.mockClear();
+  adoptImportedSource.mockReset().mockResolvedValue({ outcome: "pushed", linked: true });
   refreshMembers.mockReset().mockResolvedValue(1);
   resetDbServerMocks();
 });
@@ -219,5 +224,65 @@ describe("setCompanyMember (#53)", () => {
     refreshMembers.mockRejectedValue(new Error("db down"));
     await expect(setCompanyMember(form({ company: COMPANY, member_id: MEMBER }))).rejects.toThrow(encodeURIComponent("next company sync"));
     expect(logError).toHaveBeenCalled();
+  });
+});
+
+/*
+ * "Use as News Page URL" (#56). The link itself — the existing source linked,
+ * no second row — is driven through the real write-through in
+ * crm-companies-covered.test.ts; here, what the admin is told.
+ */
+describe("adoptImportedNewsPage (#56)", () => {
+  const form = (fields: Record<string, string>) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    return fd;
+  };
+  const ID = "33333333-3333-4333-8333-333333333333";
+  const SOURCE = "44444444-4444-4444-8444-444444444444";
+  const back = (query: string) => `NEXT_REDIRECT:/console/crm?company=${ID}&${query}#companies`;
+
+  it("is behind the console guard", async () => {
+    requireConsole.mockRejectedValueOnce(new Error("NEXT_REDIRECT:/login?next=/console"));
+    await expect(adoptImportedNewsPage(form({ company: ID, source: SOURCE }))).rejects.toThrow("NEXT_REDIRECT:/login");
+    expect(adoptImportedSource).not.toHaveBeenCalled();
+  });
+
+  it("uses the chosen imported source and lands back on the company with a flash", async () => {
+    await expect(adoptImportedNewsPage(form({ company: ID, source: SOURCE }))).rejects.toThrow(back("companies=imported_used"));
+    expect(adoptImportedSource).toHaveBeenCalledWith(ID, SOURCE);
+  });
+
+  it("says when the address is saved and linked but still on its way to Bigin", async () => {
+    adoptImportedSource.mockResolvedValue({ outcome: "pending", linked: true });
+    await expect(adoptImportedNewsPage(form({ company: ID, source: SOURCE }))).rejects.toThrow(back("companies=imported_used_pending"));
+  });
+
+  it("is refused cleanly while the Bigin token can't write companies", async () => {
+    adoptImportedSource.mockResolvedValue({ outcome: "not_allowed", linked: false });
+    await expect(adoptImportedNewsPage(form({ company: ID, source: SOURCE })))
+      .rejects.toThrow(back(`companies_error=${encodeURIComponent("Bigin doesn't let the app change companies yet, so edit in Bigin for now.")}`));
+  });
+
+  it("refuses a source that no longer covers the company", async () => {
+    adoptImportedSource.mockResolvedValue({ outcome: "not_covering", linked: false });
+    await expect(adoptImportedNewsPage(form({ company: ID, source: SOURCE }))).rejects.toThrow(`NEXT_REDIRECT:/console/crm?company=${ID}&companies_error=`);
+  });
+
+  it("says so when the address is saved but the source couldn't be linked just now", async () => {
+    adoptImportedSource.mockResolvedValue({ outcome: "pushed", linked: false });
+    await expect(adoptImportedNewsPage(form({ company: ID, source: SOURCE }))).rejects.toThrow(encodeURIComponent("The next company sync will link it."));
+  });
+
+  it("a failure is logged and reported, not thrown to the error page", async () => {
+    adoptImportedSource.mockRejectedValue(new Error("db down"));
+    await expect(adoptImportedNewsPage(form({ company: ID, source: SOURCE }))).rejects.toThrow(`NEXT_REDIRECT:/console/crm?company=${ID}&companies_error=`);
+    expect(logError).toHaveBeenCalled();
+  });
+
+  it("refuses a malformed company or source id without touching anything", async () => {
+    await expect(adoptImportedNewsPage(form({ company: "91; drop", source: SOURCE }))).rejects.toThrow("companies_error=");
+    await expect(adoptImportedNewsPage(form({ company: ID, source: "nope" }))).rejects.toThrow("companies_error=");
+    expect(adoptImportedSource).not.toHaveBeenCalled();
   });
 });

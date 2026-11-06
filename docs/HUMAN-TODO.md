@@ -81,7 +81,8 @@ Each service is independent; do them in any order.
       `ZohoBigin.settings.fields.READ` (read the Companies field list: every
       field in a company's detail view, and the News Page URL found by its
       label, #54) and `ZohoBigin.modules.accounts.UPDATE` (write a company's
-      News Page URL back to Bigin, #55). Scope names are from Bigin's v2 API
+      News Page URL back to Bigin, #55, and "Use as News Page URL" on a
+      company covered by the imported list, #56). Scope names are from Bigin's v2 API
       docs, not yet tried on a live token. In the Zoho API Console's Self
       Client (portal Bigin), generate a code with the full list in
       `.env.example` (the CRM section), exchange it for a refresh token, and

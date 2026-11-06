@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
+import { adoptImportedSource } from "@/lib/crm-companies/covered";
 import { checkCompanyWriteAccess, setCompanyNewsPage, type NewsPageSave } from "@/lib/crm-companies/news-page";
 import { syncCompanies } from "@/lib/crm-companies/sync";
 import { serviceDb } from "@/lib/db/server";
@@ -137,4 +138,40 @@ export async function saveCompanyNewsPage(formData: FormData) {
   revalidatePath(BOX);
   revalidatePath("/console/sources");
   redirect(at(`companies=${outcome === "pushed" ? "news_page_saved" : "news_page_pending"}`));
+}
+
+/**
+ * "Use as News Page URL" (#56): a company "covered by imported list" takes
+ * one of those imported sources' address as its News Page URL, through the
+ * same write-through as saveCompanyNewsPage, and that existing source is
+ * linked to the company (no second row). The only way such a source is ever
+ * linked. Refused like the editor while the Bigin token can't write
+ * companies, and when the source no longer covers the company (linked
+ * meanwhile, or the company got a News Page URL).
+ */
+export async function adoptImportedNewsPage(formData: FormData) {
+  await requireConsole();
+  const company = String(formData.get("company") ?? "");
+  const source = String(formData.get("source") ?? "");
+  if (!UUID_RE.test(company)) redirect(back(`companies_error=${encodeURIComponent("That company couldn't be found.")}`));
+  const at = (query: string) => back(`company=${company}&${query}`);
+  const fail = (message: string) => redirect(at(`companies_error=${encodeURIComponent(message)}`));
+  if (!UUID_RE.test(source)) fail("Choose one of the imported sources listed.");
+
+  let result: Awaited<ReturnType<typeof adoptImportedSource>> | null = null;
+  try {
+    result = await adoptImportedSource(company, source);
+  } catch (e) {
+    logError({ source: "server", area: "action:adoptImportedNewsPage", error: e, context: { company, source } });
+  }
+  if (!result) return fail("The News Page URL couldn't be saved. Please try again.");
+  if (result.outcome === "not_allowed") fail("Bigin doesn't let the app change companies yet, so edit in Bigin for now.");
+  if (result.outcome === "not_found") fail("That company isn't stored any more. Sync companies and try again.");
+  if (result.outcome === "not_covering") {
+    fail("That imported source can't be used for this company any more: it may have been linked to a company meanwhile. Choose again from the list.");
+  }
+  revalidatePath(BOX);
+  revalidatePath("/console/sources");
+  if (!result.linked) fail("News Page URL saved, but the imported source couldn't be linked just now. The next company sync will link it.");
+  redirect(at(`companies=${result.outcome === "pushed" ? "imported_used" : "imported_used_pending"}`));
 }

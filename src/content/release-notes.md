@@ -10,6 +10,12 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — Companies already on the imported list
+- In the Companies box on the CRM page, a company with no News Page URL now shows as "Covered by imported list" when a page on the imported spreadsheet list is on the same website and isn't linked to any company yet. These companies are probably watched already. The new "Covered by imported list" filter lists just them.
+- Open such a company to see every imported page on its website, each with a "Use as News Page URL" button. The page's address becomes the company's News Page URL, saved in Bigin too, and that imported page is linked to the company. No second copy of it is added.
+- Nothing is linked unless you click the button.
+- Until the Bigin connection is given permission to change companies, the button is greyed out with "edit in Bigin for now". The label and the filter work already.
+
 ## 2026-11-06 — Edit a company's News Page URL in CRM
 - In the Companies box on the CRM page, click a company's name and change its News Page URL there. The change is saved in Bigin too, so the next sync won't undo it.
 - The story crawler starts watching the new address straight away. Leave the field empty to watch the company's Website instead.

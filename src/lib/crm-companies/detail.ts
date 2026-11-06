@@ -76,10 +76,11 @@ export async function readCompanyDetail(db: Db, id: string | null): Promise<Comp
  * Everything the Companies box's one company panel (`?company=`) shows: the
  * Bigin fields (#54, read-only), the member override (#53), and the News
  * Page URL editor (#55): the Website beside it, and whether an edit is still
- * on its way to Bigin.
+ * on its way to Bigin; and the imported sources that cover it (#56), each
+ * offered as "Use as News Page URL".
  */
 export type OpenCompany = CompanyDetail &
-  Pick<CompanyMemberDetail, "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending">;
+  Pick<CompanyMemberDetail, "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending" | "covered">;
 
 export async function readOpenCompany(db: Db, id: string | null): Promise<OpenCompany | null> {
   if (!id || !UUID_RE.test(id)) return null;
@@ -88,6 +89,7 @@ export async function readOpenCompany(db: Db, id: string | null): Promise<OpenCo
   return {
     ...detail, member: member.member, memberChosen: member.memberChosen,
     website: member.website, newsPageUrl: member.newsPageUrl, inUse: member.inUse, pushPending: member.pushPending,
+    covered: member.covered,
   };
 }
 

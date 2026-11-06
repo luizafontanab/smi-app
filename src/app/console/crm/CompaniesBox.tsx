@@ -5,7 +5,7 @@ import type { CompanySyncRun } from "@/lib/crm-companies/sync";
 import { COMPANY_FILTERS, COMPANY_FILTER_LABEL, type AddressInUse, type CompanyFilter, type CompanyListRow } from "@/lib/crm-companies/list";
 import { describeFieldRead, type OpenCompany } from "@/lib/crm-companies/detail";
 import type { BiginSourcesRun } from "@/lib/sources/bigin";
-import { saveCompanyNewsPage, setCompanyMember, syncCompaniesNow } from "./actions";
+import { adoptImportedNewsPage, saveCompanyNewsPage, setCompanyMember, syncCompaniesNow } from "./actions";
 import { BiginSourcesPanel } from "./BiginSourcesPanel";
 
 /**
@@ -26,7 +26,11 @@ import { BiginSourcesPanel } from "./BiginSourcesPanel";
  * While the Bigin token can't write companies (`canEditCompanies` false) the
  * field is disabled with "edit in Bigin for now".
  *
- * Later tickets add to it: "covered by imported list" (#56).
+ * A company with no News Page URL whose Website shares its domain with an
+ * imported source no company is linked to shows as "covered by imported
+ * list" (#56), with its own filter. Its panel lists those sources, each with
+ * "Use as News Page URL": the address is saved and pushed like an edit, and
+ * that source is linked to the company. Disabled with the editor.
  *
  * A company deleted in Bigin (#52) stays, marked, under its own filter; the
  * other filters hide it.
@@ -107,6 +111,14 @@ export function CompaniesBox({
           News Page URL saved. Bigin hasn&apos;t accepted it yet, so it shows as push pending and is retried automatically.
         </p>
       )}
+      {flash === "imported_used" && (
+        <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Imported address saved as the News Page URL, and Bigin has it. The imported source is now this company&apos;s.</p>
+      )}
+      {flash === "imported_used_pending" && (
+        <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">
+          Imported address saved as the News Page URL, and the imported source is now this company&apos;s. Bigin hasn&apos;t accepted it yet, so it shows as push pending and is retried automatically.
+        </p>
+      )}
       {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
 
       {!live || !list ? (
@@ -175,7 +187,7 @@ export function CompaniesBox({
                         {c.newsPageUrl ?? "—"}
                         {c.pushPending && <span className="block whitespace-nowrap text-danger">push pending</span>}
                       </td>
-                      <td className={`text-xs ${c.inUse === "none" ? "text-danger" : c.inUse === "website" ? "text-graphite" : "text-success"}`}>{IN_USE_LABEL[c.inUse]}</td>
+                      <td className={`text-xs ${c.inUse === "none" ? "text-danger" : c.inUse === "website" ? "text-graphite" : "text-success"}`}>{c.covered.length ? <span className="text-success">Covered by imported list</span> : IN_USE_LABEL[c.inUse]}</td>
                       <td className="text-xs text-graphite">{c.contacts}</td>
                       <td className="text-xs text-graphite">
                         {c.member?.name ?? "—"}
@@ -225,6 +237,7 @@ function CompanyPanel({ company, members, canEditNewsPage, closeHref }: {
       </div>
       <p className="text-xs text-graphite">Bigin id {company.biginId} · as of the sync at {fmt(company.lastSyncedAt)}</p>
       <CompanyNewsPageEditor company={company} canEdit={canEditNewsPage} />
+      {company.covered.length > 0 && <CoveredByImported company={company} canEdit={canEditNewsPage} />}
       <CompanyMemberEditor company={company} members={members} />
       <CompanyFields company={company} />
     </section>
@@ -271,6 +284,41 @@ function CompanyNewsPageEditor({ company, canEdit }: { company: OpenCompany; can
         </p>
       )}
     </form>
+  );
+}
+
+/**
+ * "Covered by imported list" (#56): the imported sources on the company's
+ * Website domain that no company is linked to — every one, for the admin to
+ * pick. Nothing is linked until one is chosen here.
+ */
+function CoveredByImported({ company, canEdit }: { company: OpenCompany; canEdit: boolean }) {
+  return (
+    <div className="mt-3">
+      <h4 className="text-xs font-bold uppercase tracking-wide text-graphite">Covered by imported list</h4>
+      <p className="mt-1 text-xs text-graphite">
+        {company.covered.length === 1 ? "An imported source is" : `${company.covered.length} imported sources are`} on this company&apos;s
+        domain, so it&apos;s probably watched already. Use one as its News Page URL to link it to the company: it&apos;s saved here and in Bigin.
+      </p>
+      <ul className="mt-2 space-y-1">
+        {company.covered.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-center gap-2">
+            <span className="min-w-0 flex-1 break-all">
+              {s.label && <span className="text-ink">{s.label} · </span>}
+              <span className="text-graphite">{s.url}</span>
+            </span>
+            <form action={adoptImportedNewsPage}>
+              <input type="hidden" name="company" value={company.id} />
+              <input type="hidden" name="source" value={s.id} />
+              <SubmitButton disabled={!canEdit} className="rounded border px-3 py-1 text-xs disabled:opacity-50" pendingLabel="Saving…">
+                Use as News Page URL
+              </SubmitButton>
+            </form>
+          </li>
+        ))}
+      </ul>
+      {!canEdit && <p className="mt-1 text-xs text-graphite">Bigin doesn&apos;t let the app change companies yet, so edit in Bigin for now.</p>}
+    </div>
   );
 }
 
