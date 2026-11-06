@@ -2226,4 +2226,26 @@
   outline-color: var(--classic-panel);
 }
 
+/* Industry Topics: the select and its blue Go button share a row, the button
+   level with the select (decisions 6 Nov, 18). The form takes the room the
+   Topics label had; the label grows inside it. */
+[data-site="public"] [data-part="industry-page"] [data-part="industry-topics-form"] {
+  display: flex;
+  flex: 1 1 18rem;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: 36rem;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-topics-form"] [data-part="industry-filter"] {
+  flex: 1 1 auto;
+  max-width: none;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-topics-form"] [data-part="button-primary"] {
+  min-height: 3.25rem;
+  padding-inline: 1.5rem;
+  font: inherit;
+  font-size: 1.125rem;
+  cursor: pointer;
+}
+
 /* ── end #68 review ── */

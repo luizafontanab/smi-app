@@ -18,7 +18,9 @@ type Sort = "recent" | "az";
 
 /**
  * Everything on the Classic industry page below its title (#76): the Sort By
- * and Topics selects, then one panel per section. A client component because
+ * and Topics selects, then one panel per section. Choosing a topic waits for
+ * the Go button: a select that navigates on change breaks WCAG 3.2.2
+ * (decisions 6 Nov, 18). A client component because
  * Sort By reorders in place; the cards arrive already rendered from
  * ClassicIndustryView, so the shared cards stay server components.
  *
@@ -39,6 +41,7 @@ export function ClassicIndustryBody({ sections, topics, current, emptyText }: {
 }) {
   const router = useRouter();
   const [sort, setSort] = useState<Sort>("recent");
+  const [topic, setTopic] = useState(current.slug);
   // Never a select that can't show where the reader is, even if the route
   // passed no list or the list is missing this industry.
   const options = topics.some((t) => t.slug === current.slug) ? topics : [current, ...topics];
@@ -55,12 +58,21 @@ export function ClassicIndustryBody({ sections, topics, current, emptyText }: {
             </select>
           </label>
         )}
-        <label data-part="industry-filter">
-          <span data-part="form-label">Topics</span>
-          <select data-part="industry-topics" value={current.slug} onChange={(e) => router.push(`/industry/${e.target.value}`)}>
-            {options.map((t) => <option key={t.slug} value={t.slug}>{t.name}</option>)}
-          </select>
-        </label>
+        <form
+          data-part="industry-topics-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            router.push(`/industry/${topic}`);
+          }}
+        >
+          <label data-part="industry-filter">
+            <span data-part="form-label">Topics</span>
+            <select data-part="industry-topics" value={topic} onChange={(e) => setTopic(e.target.value)}>
+              {options.map((t) => <option key={t.slug} value={t.slug}>{t.name}</option>)}
+            </select>
+          </label>
+          <button type="submit" data-part="button-primary">Go</button>
+        </form>
       </div>
 
       {sections.length === 0 && <p data-part="empty-state">{emptyText}</p>}

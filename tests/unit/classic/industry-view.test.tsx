@@ -86,13 +86,24 @@ describe("ClassicIndustryView", () => {
     expect(seeAll("Past events")).toEqual(["See all events", "/event?industry=welding"]);
   });
 
-  it("offers every public industry under Topics, on the current one, and switching goes to the chosen industry's page", () => {
+  it("offers every public industry under Topics, on the current one", () => {
     render(<ClassicIndustryView slug="welding" hub={hub()} industries={INDUSTRIES} />);
     const topics = screen.getByRole("combobox", { name: "Topics" });
     expect(within(topics).getAllByRole("option").map((o) => o.textContent)).toEqual(["Laser Cutting", "Welding"]);
     expect(topics).toHaveValue("welding");
+  });
+
+  // WCAG 3.2.2 (decisions 6 Nov, 18): changing a select must not change the
+  // page by itself, so choosing a topic waits for the Go button.
+  it("goes to the chosen industry's page on Go, not on choosing it", () => {
+    render(<ClassicIndustryView slug="welding" hub={hub()} industries={INDUSTRIES} />);
+    const topics = screen.getByRole("combobox", { name: "Topics" });
 
     fireEvent.change(topics, { target: { value: "laser-cutting" } });
+    expect(topics).toHaveValue("laser-cutting");
+    expect(push).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
     expect(push).toHaveBeenCalledWith("/industry/laser-cutting");
   });
 
