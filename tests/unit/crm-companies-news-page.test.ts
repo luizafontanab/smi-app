@@ -10,6 +10,7 @@ import { resetDbServerMocks } from "../stubs/db-server";
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 const { enqueue } = vi.hoisted(() => ({ enqueue: vi.fn(async () => {}) }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
+vi.mock("@/lib/log", () => ({ logError: vi.fn() }));
 
 afterEach(() => {
   resetDbServerMocks();
@@ -80,6 +81,7 @@ function fakeDb({ company = null, access = { allowed: true, at: "2026-11-05T00:0
   return { made, calls, first: (t: T, method: string) => calls(t, method).map((c) => c[0]) };
 }
 
+const ROW = "11111111-1111-4111-8111-111111111111";
 const ACME = { bigin_id: "91", name: "Acme", website: "https://acme.test", news_page_url: "https://acme.test/press", news_page_pending_at: STAMP };
 
 describe("setCompanyNewsPage", () => {
@@ -87,7 +89,7 @@ describe("setCompanyNewsPage", () => {
     const t = fakeDb({ company: ACME });
     const crm = fakeCrm();
 
-    expect(await setCompanyNewsPage({ biginId: "91" }, "https://acme.test/press", { crm, now: NOW, deriveSources: false })).toBe("pushed");
+    expect(await setCompanyNewsPage({ id: ROW }, "https://acme.test/press", { crm, now: NOW, deriveSources: false })).toBe("pushed");
 
     expect(t.first("crm_companies", "update")).toEqual([
       { news_page_url: "https://acme.test/press", news_page_pending_at: STAMP, updated_at: STAMP },
@@ -101,7 +103,7 @@ describe("setCompanyNewsPage", () => {
   it("writes to the field Bigin's field list named News Page URL, once the sync has read it (#54)", async () => {
     fakeDb({ company: ACME, fieldLabels: { newsPageField: "News_Page" } });
     const crm = fakeCrm();
-    await setCompanyNewsPage({ biginId: "91" }, "https://acme.test/press", { crm, now: NOW, deriveSources: false });
+    await setCompanyNewsPage({ id: ROW }, "https://acme.test/press", { crm, now: NOW, deriveSources: false });
     expect(crm.updateCompanyNewsPage).toHaveBeenCalledWith("91", "https://acme.test/press", "News_Page");
   });
 
@@ -114,29 +116,27 @@ describe("setCompanyNewsPage", () => {
   it("a blank address is saved as no address, and Bigin's field is cleared", async () => {
     const t = fakeDb({ company: { ...ACME, news_page_url: null } });
     const crm = fakeCrm();
-    await setCompanyNewsPage({ biginId: "91" }, "   ", { crm, now: NOW, deriveSources: false });
+    await setCompanyNewsPage({ id: ROW }, "   ", { crm, now: NOW, deriveSources: false });
     expect(t.first("crm_companies", "update")[0]).toMatchObject({ news_page_url: null });
     expect(crm.updateCompanyNewsPage).toHaveBeenCalledWith("91", null, "News_Page_URL");
   });
 
   it("a failed push stays pending and queues a retry on the CRM push path", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const t = fakeDb({ company: ACME });
     const crm = fakeCrm({ updateCompanyNewsPage: vi.fn(async () => { throw new BiginApiError("Bigin down", 503, null); }) });
 
-    expect(await setCompanyNewsPage({ biginId: "91" }, "https://acme.test/press", { crm, now: NOW, deriveSources: false })).toBe("pending");
+    expect(await setCompanyNewsPage({ id: ROW }, "https://acme.test/press", { crm, now: NOW, deriveSources: false })).toBe("pending");
 
     expect(t.first("crm_companies", "update")).toEqual([{ news_page_url: "https://acme.test/press", news_page_pending_at: STAMP, updated_at: STAMP }]);
     expect(enqueue).toHaveBeenCalledWith("crm_push", { company_id: "91" }, expect.any(Date));
   });
 
   it("a scope refusal also turns editing off until the token can write companies", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const t = fakeDb({ company: ACME });
     const refusal = new BiginApiError("scope", 401, { code: "OAUTH_SCOPE_MISMATCH" });
     const crm = fakeCrm({ updateCompanyNewsPage: vi.fn(async () => { throw refusal; }) });
 
-    expect(await setCompanyNewsPage({ biginId: "91" }, "https://acme.test/press", { crm, now: NOW, deriveSources: false })).toBe("pending");
+    expect(await setCompanyNewsPage({ id: ROW }, "https://acme.test/press", { crm, now: NOW, deriveSources: false })).toBe("pending");
 
     expect(t.first("settings", "upsert")).toContainEqual({ key: "crm_companies_write", value: { allowed: false, at: STAMP } });
     expect(enqueue).toHaveBeenCalledWith("crm_push", { company_id: "91" }, expect.any(Date));
@@ -146,7 +146,7 @@ describe("setCompanyNewsPage", () => {
     for (const access of [null, { allowed: false, at: "2026-11-05T00:00:00Z" }]) {
       const t = fakeDb({ company: ACME, access });
       const crm = fakeCrm();
-      expect(await setCompanyNewsPage({ biginId: "91" }, "https://acme.test/press", { crm, now: NOW })).toBe("not_allowed");
+      expect(await setCompanyNewsPage({ id: ROW }, "https://acme.test/press", { crm, now: NOW })).toBe("not_allowed");
       expect(t.first("crm_companies", "update")).toEqual([]);
       expect(crm.updateCompanyNewsPage).not.toHaveBeenCalled();
     }
@@ -154,13 +154,23 @@ describe("setCompanyNewsPage", () => {
 
   it("is refused when Bigin isn't connected", async () => {
     fakeDb({ company: ACME });
-    expect(await setCompanyNewsPage({ biginId: "91" }, "https://x.test", { crm: { ...fakeCrm(), live: false } as CrmSync, now: NOW })).toBe("not_allowed");
+    expect(await setCompanyNewsPage({ id: ROW }, "https://x.test", { crm: { ...fakeCrm(), live: false } as CrmSync, now: NOW })).toBe("not_allowed");
+  });
+
+  it("a company deleted in Bigin is refused: nothing saved, no source moved, nothing pushed", async () => {
+    const t = fakeDb({ company: { ...ACME, deleted_in_bigin_at: "2026-11-05T03:00:00Z" } });
+    const crm = fakeCrm();
+    expect(await setCompanyNewsPage({ id: ROW }, "https://acme.test/press", { crm, now: NOW })).toBe("deleted");
+    expect(t.first("crm_companies", "update")).toEqual([]);
+    expect(t.made.content_sources).toBeUndefined();
+    expect(crm.updateCompanyNewsPage).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("an unknown company saves nothing and pushes nothing", async () => {
     fakeDb({ company: null });
     const crm = fakeCrm();
-    expect(await setCompanyNewsPage({ biginId: "404" }, "https://x.test", { crm, now: NOW })).toBe("not_found");
+    expect(await setCompanyNewsPage({ id: ROW }, "https://x.test", { crm, now: NOW })).toBe("not_found");
     expect(crm.updateCompanyNewsPage).not.toHaveBeenCalled();
   });
 
@@ -173,7 +183,7 @@ describe("setCompanyNewsPage", () => {
           ? dbOk([{ id: "s-old", url: "https://acme.test/news", bigin_account_id: "91", bigin_account_name: "Acme", bigin_only: true, bigin_from_website: false }])
           : n === 3 ? dbOk([{ id: "s-new" }]) : dbOk([]),
       });
-      await setCompanyNewsPage({ biginId: "91" }, "https://acme.test/press", { crm: fakeCrm(), now: NOW });
+      await setCompanyNewsPage({ id: ROW }, "https://acme.test/press", { crm: fakeCrm(), now: NOW });
 
       expect(t.first("content_sources", "update")).toContainEqual(expect.objectContaining({ bigin_account_id: null, active: false }));
       expect(t.first("content_sources", "insert")).toEqual([expect.objectContaining({ url: "https://acme.test/press", bigin_account_id: "91", bigin_from_website: false })]);
@@ -183,7 +193,7 @@ describe("setCompanyNewsPage", () => {
 
     it("a cleared address falls back to the Website", async () => {
       const t = fakeDb({ company: { ...ACME, news_page_url: null }, sources: (n) => n === 3 ? dbOk([{ id: "s-new" }]) : dbOk([]) });
-      await setCompanyNewsPage({ biginId: "91" }, "", { crm: fakeCrm(), now: NOW });
+      await setCompanyNewsPage({ id: ROW }, "", { crm: fakeCrm(), now: NOW });
       expect(t.first("content_sources", "insert")).toEqual([expect.objectContaining({ url: "https://acme.test/", bigin_account_id: "91", bigin_from_website: true })]);
     });
 
@@ -194,14 +204,14 @@ describe("setCompanyNewsPage", () => {
           ? dbOk([{ id: "s-old", url: "https://acme.test/news", bigin_account_id: "91", bigin_account_name: "Acme", bigin_only: false, bigin_from_website: false }])
           : dbOk([]),
       });
-      await setCompanyNewsPage({ biginId: "91" }, "", { crm: fakeCrm(), now: NOW });
+      await setCompanyNewsPage({ id: ROW }, "", { crm: fakeCrm(), now: NOW });
       expect(t.first("content_sources", "update")).toContainEqual(expect.objectContaining({ bigin_account_id: null }));
       expect(t.first("content_sources", "update")).not.toContainEqual(expect.objectContaining({ active: false }));
     });
 
     it("leaves sources alone when asked to (Story crawler off)", async () => {
       const t = fakeDb({ company: ACME });
-      await setCompanyNewsPage({ biginId: "91" }, "https://acme.test/press", { crm: fakeCrm(), now: NOW, deriveSources: false });
+      await setCompanyNewsPage({ id: ROW }, "https://acme.test/press", { crm: fakeCrm(), now: NOW, deriveSources: false });
       expect(t.made.content_sources).toBeUndefined();
     });
   });
@@ -215,8 +225,14 @@ describe("pushCompanyNewsPage (the crm_push retry)", () => {
     expect(crm.updateCompanyNewsPage).not.toHaveBeenCalled();
   });
 
+  it("does nothing for a company deleted in Bigin since the edit, so its queued retry ends quietly", async () => {
+    fakeDb({ company: { ...ACME, deleted_in_bigin_at: "2026-11-05T03:00:00Z" } });
+    const crm = fakeCrm();
+    expect(await pushCompanyNewsPage("91", { crm, now: NOW, queueRetry: false })).toBe("nothing");
+    expect(crm.updateCompanyNewsPage).not.toHaveBeenCalled();
+  });
+
   it("from the retry job, a refusal is reported for the job to retry, not queued twice", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     fakeDb({ company: ACME });
     const crm = fakeCrm({ updateCompanyNewsPage: vi.fn(async () => { throw new Error("down"); }) });
     expect(await pushCompanyNewsPage("91", { crm, now: NOW, queueRetry: false })).toBe("pending");
@@ -230,6 +246,15 @@ describe("retryPendingCompanyPushes (the crm_sync sweep)", () => {
     const crm = fakeCrm();
     expect(await retryPendingCompanyPushes({ crm, now: NOW })).toEqual({ pushed: 1, failed: 0 });
     expect(crm.updateCompanyNewsPage).toHaveBeenCalledWith("91", "https://acme.test/press", "News_Page_URL");
+  });
+
+  it("leaves a company deleted in Bigin alone: Bigin would only refuse it again on every sweep", async () => {
+    const t = fakeDb({ company: { ...ACME, deleted_in_bigin_at: "2026-11-05T03:00:00Z" }, pending: [{ bigin_id: "91" }] });
+    const crm = fakeCrm();
+    expect(await retryPendingCompanyPushes({ crm, now: NOW })).toEqual({ pushed: 0, failed: 0 });
+    expect(crm.updateCompanyNewsPage).not.toHaveBeenCalled();
+    // left out of the sweep's read too, so a pile of them can't fill its batch and starve live ones
+    expect(t.calls("crm_companies", "is")).toContainEqual(["deleted_in_bigin_at", null]);
   });
 
   it("waits while the token can't write companies, rather than failing every 15 minutes", async () => {

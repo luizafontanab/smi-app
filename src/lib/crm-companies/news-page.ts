@@ -1,6 +1,7 @@
 import { getCrmSync, isScopeRefusal, NEWS_PAGE_FIELD, type CompanyNewsPages, type CrmSync } from "../adapters/crm";
 import { serviceDb } from "../db/server";
 import type { Json } from "../db/types";
+import { logError } from "../log";
 import { applyBiginSources } from "../sources/bigin";
 
 /**
@@ -51,6 +52,11 @@ export async function readCompanyWriteAccess(): Promise<CompanyWriteAccess | nul
   return (data?.value as CompanyWriteAccess | undefined) ?? null;
 }
 
+/** Bigin is connected and the token is known to write companies: the gate on every save and sweep. */
+async function mayWriteCompanies(crm: CrmSync): Promise<boolean> {
+  return crm.live && !!(await readCompanyWriteAccess())?.allowed;
+}
+
 /** The News Page URL field's API name as Bigin's field list gave it, else the assumed NEWS_PAGE_FIELD. */
 async function newsPageField(): Promise<string> {
   const { data, error } = await serviceDb().from("settings").select("value").eq("key", COMPANY_FIELDS_KEY).maybeSingle();
@@ -77,33 +83,41 @@ export async function checkCompanyWriteAccess({ crm = getCrmSync(), now = () => 
   return recordWriteAccess(allowed, now);
 }
 
-export type NewsPageSave = "pushed" | "pending" | "not_allowed" | "not_found";
+export type NewsPageSave = "pushed" | "pending" | "not_allowed" | "not_found" | "deleted";
 
 /**
  * Save a company's News Page URL (blank → none), point its story source at
- * it, and push it to Bigin. The company is named by its row id (the CRM
- * editor) or its Bigin id. "pending" means saved but not yet in Bigin, with
- * a retry queued. "not_allowed": Bigin isn't connected, or the token isn't
- * known to write companies — nothing was saved. `deriveSources: false`
+ * it, and push it to Bigin. The company is named by its row id. "pending"
+ * means saved but not yet in Bigin, with a retry queued. "not_allowed":
+ * Bigin isn't connected, or the token isn't known to write companies —
+ * nothing was saved. "deleted": the company is gone from Bigin (#52), so
+ * there's nothing there to write to — nothing was saved. `deriveSources: false`
  * leaves story sources alone (the Story crawler is off); the next sync with
  * it on derives them from the saved value.
  */
 export async function setCompanyNewsPage(
-  company: { id: string } | { biginId: string },
+  company: { id: string },
   url: string | null,
   { crm = getCrmSync(), now = () => new Date(), deriveSources = true }: Opts & { deriveSources?: boolean } = {},
 ): Promise<NewsPageSave> {
-  if (!crm.live || !(await readCompanyWriteAccess())?.allowed) return "not_allowed";
+  if (!(await mayWriteCompanies(crm))) return "not_allowed";
   const db = serviceDb();
+  const { data: current, error: readError } = await db.from("crm_companies")
+    .select("deleted_in_bigin_at").eq("id", company.id).maybeSingle();
+  if (readError) throw new Error(`reading company ${company.id}: ${readError.message}`);
+  if (!current) return "not_found";
+  if (current.deleted_in_bigin_at) return "deleted";
+
   const stamp = now().toISOString();
-  const [column, key] = "id" in company ? ["id", company.id] as const : ["bigin_id", company.biginId] as const;
   const { data: row, error } = await db.from("crm_companies")
     .update({ news_page_url: url?.trim() || null, news_page_pending_at: stamp, updated_at: stamp })
-    .eq(column, key)
+    .eq("id", company.id)
+    // a sync that marks it deleted between the read and here wins
+    .is("deleted_in_bigin_at", null)
     .select("bigin_id, name, website, news_page_url")
     .maybeSingle();
-  if (error) throw new Error(`saving company ${key}'s News Page URL: ${error.message}`);
-  if (!row) return "not_found";
+  if (error) throw new Error(`saving company ${company.id}'s News Page URL: ${error.message}`);
+  if (!row) return "deleted";
   const biginId = row.bigin_id;
 
   if (deriveSources) {
@@ -111,7 +125,7 @@ export async function setCompanyNewsPage(
     try {
       await followSource(row, now);
     } catch (e) {
-      console.error(`[crm] company ${biginId}: moving its story source to the new address failed; the next company sync will:`, e);
+      logError({ source: "server", area: "crm:company_news_page:source", error: e, context: { biginId } });
     }
   }
   const pushed = await pushCompanyNewsPage(biginId, { crm, now });
@@ -130,7 +144,9 @@ async function followSource(c: { bigin_id: string; name: string; website: string
 
 /**
  * Push a company's pending News Page URL to Bigin. "nothing" when no edit is
- * pending. On success the mark is cleared — only if no newer edit was saved
+ * pending, or the company has since been deleted in Bigin (#52): there's no
+ * record left to write to, and the edit stays pending in case it comes
+ * back. On success the mark is cleared — only if no newer edit was saved
  * meanwhile, which then has its own push. On a refusal the edit stays
  * pending; `queueRetry` (off for the retry job itself, which is retried by
  * the queue) queues a `crm_push` for it. Never throws for a Bigin refusal.
@@ -141,14 +157,14 @@ export async function pushCompanyNewsPage(
 ): Promise<"pushed" | "pending" | "nothing"> {
   const db = serviceDb();
   const { data: row, error } = await db.from("crm_companies")
-    .select("news_page_url, news_page_pending_at").eq("bigin_id", biginId).maybeSingle();
+    .select("news_page_url, news_page_pending_at, deleted_in_bigin_at").eq("bigin_id", biginId).maybeSingle();
   if (error) throw new Error(`reading company ${biginId} to push: ${error.message}`);
-  if (!row?.news_page_pending_at) return "nothing";
+  if (!row?.news_page_pending_at || row.deleted_in_bigin_at) return "nothing";
 
   try {
     await crm.updateCompanyNewsPage(biginId, row.news_page_url, await newsPageField());
   } catch (e) {
-    console.error(`[crm] pushing company ${biginId}'s News Page URL failed${queueRetry ? "; queued for retry" : ""}:`, e);
+    logError({ source: "adapter", area: "crm:company_news_page:push", error: e, context: { biginId, queueRetry } });
     if (isScopeRefusal(e)) await recordWriteAccess(false, now);
     if (queueRetry) {
       try {
@@ -157,7 +173,7 @@ export async function pushCompanyNewsPage(
         await enqueue("crm_push", { company_id: biginId }, new Date(now().getTime() + 5 * 60_000));
       } catch (queueError) {
         // still not lost: the row stays pending and the crm_sync sweep pushes it
-        console.error(`[crm] could not queue the retry for company ${biginId}:`, queueError);
+        logError({ source: "job", area: "crm:company_news_page:queue_retry", error: queueError, context: { biginId } });
       }
     }
     return "pending";
@@ -175,13 +191,16 @@ export async function pushCompanyNewsPage(
  * The `crm_sync` sweep: pushes whose own retry died or never got queued.
  * Skipped while the token can't write companies — they'd only be refused
  * again; the next company sync that finds the scope granted resumes them.
+ * Companies deleted in Bigin are left out for the same reason (and so they
+ * can't fill the batch); their edit waits in case they come back.
  */
 export async function retryPendingCompanyPushes({ crm = getCrmSync(), now = () => new Date() }: Opts = {}): Promise<{ pushed: number; failed: number }> {
   const result = { pushed: 0, failed: 0 };
-  if (!crm.live || !(await readCompanyWriteAccess())?.allowed) return result;
+  if (!(await mayWriteCompanies(crm))) return result;
   const { data, error } = await serviceDb().from("crm_companies")
     .select("bigin_id")
     .not("news_page_pending_at", "is", null)
+    .is("deleted_in_bigin_at", null)
     .lt("news_page_pending_at", new Date(now().getTime() - PENDING_GRACE_MS).toISOString())
     .limit(SWEEP_LIMIT);
   if (error) throw new Error(`reading pending company pushes: ${error.message}`);

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { adoptImportedSource } from "@/lib/crm-companies/covered";
+import { companyListParams, parseCompanyListState, type CompanyListState } from "@/lib/crm-companies/list";
 import { checkCompanyWriteAccess, setCompanyNewsPage, type NewsPageSave } from "@/lib/crm-companies/news-page";
 import { syncCompanies } from "@/lib/crm-companies/sync";
 import { serviceDb } from "@/lib/db/server";
@@ -20,11 +21,43 @@ import { UUID_RE } from "@/lib/validate";
  * (#53) join this file. "use server": every export must be async.
  *
  * Each redirects back to the box (#companies) with `companies=` on success or
- * `companies_error=` on failure, read by the Companies box.
+ * `companies_error=` on failure, read by the Companies box. A company form
+ * carries the box's list state (`cid`, `cq`, `cfilter`, `cpage`) as hidden
+ * inputs, so its redirect lands on the list the admin was looking at.
  */
 
 const BOX = "/console/crm";
-const back = (query: string) => `${BOX}?${query}#companies`;
+
+/** The box, showing `list` (the defaults when none), with `query` (a flash or an error). */
+function back(query: string, list: CompanyListState = {}): string {
+  const kept = new URLSearchParams(companyListParams(list)).toString();
+  return `${BOX}?${kept ? `${kept}&` : ""}${query}#companies`;
+}
+
+/** Both pages that show a company's address or member. */
+function revalidateCompanies() {
+  revalidatePath(BOX);
+  revalidatePath("/console/sources");
+}
+
+/**
+ * A company form's way back: its company (`company`, a row id) and the
+ * list state it carried. `done` and `fail` land on the company's panel —
+ * `fail(message, { panel: false })` on the list only, for a company that
+ * isn't there to open. A company id that isn't a uuid is refused here.
+ */
+function companyForm(formData: FormData) {
+  const company = String(formData.get("company") ?? "");
+  const list = parseCompanyListState((name) => formData.get(name));
+  const at = (query: string, panel = true) => back(`${panel ? `company=${company}&` : ""}${query}`, list);
+  const fail = (message: string, { panel = true } = {}): never => redirect(at(`companies_error=${encodeURIComponent(message)}`, panel));
+  if (!UUID_RE.test(company)) fail("That company couldn't be found.", { panel: false });
+  return { company, fail, done: (flash: string): never => redirect(at(`companies=${flash}`)) };
+}
+
+const NOT_ALLOWED = "Bigin doesn't let the app change companies yet, so edit in Bigin for now.";
+const NOT_FOUND = "That company isn't stored any more. Sync companies and try again.";
+const DELETED = "That company was deleted in Bigin, so its News Page URL can't be changed. Restore it in Bigin and sync companies to edit it again.";
 
 /**
  * "Sync companies": the company sync, on demand. Works whether or not the
@@ -48,8 +81,7 @@ export async function syncCompaniesNow() {
   if (!run) redirect(back(`companies_error=${encodeURIComponent("Bigin isn't connected, so there are no companies to sync.")}`));
   // Whether News Page URL editing is on (#55). A failed check keeps the last answer.
   await checkCompanyWriteAccess().catch((e: unknown) => logError({ source: "server", area: "action:syncCompaniesNow:writeAccess", error: e }));
-  revalidatePath(BOX);
-  revalidatePath("/console/sources");
+  revalidateCompanies();
   redirect(back(`companies=${run.sources ? "synced" : "synced_no_sources"}`));
 }
 
@@ -65,11 +97,8 @@ export async function syncCompaniesNow() {
  */
 export async function setCompanyMember(formData: FormData) {
   await requireConsole();
-  const company = String(formData.get("company") ?? "");
+  const { company, fail, done } = companyForm(formData);
   const memberId = String(formData.get("member_id") ?? "");
-  const fail = (message: string, keep = true): never =>
-    redirect(back(`${keep ? `company=${company}&` : ""}companies_error=${encodeURIComponent(message)}`));
-  if (!UUID_RE.test(company)) fail("That company couldn't be found.", false);
   if (memberId && !UUID_RE.test(memberId)) fail("Choose a member from the list.");
 
   const db = serviceDb();
@@ -90,7 +119,7 @@ export async function setCompanyMember(formData: FormData) {
     logError({ source: "db", area: "action:setCompanyMember", error: error.message, context: { company, code: error.code ?? null } });
     fail("The member couldn't be saved — please try again.");
   }
-  if (!saved?.length) fail("That company couldn't be found. Sync companies and try again.", false);
+  if (!saved?.length) fail("That company couldn't be found. Sync companies and try again.", { panel: false });
 
   let retagged = true;
   try {
@@ -99,10 +128,9 @@ export async function setCompanyMember(formData: FormData) {
     retagged = false;
     logError({ source: "server", area: "action:setCompanyMember", error: e, context: { company } });
   }
-  revalidatePath(BOX);
-  revalidatePath("/console/sources");
+  revalidateCompanies();
   if (!retagged) fail("Saved, but the company's story source couldn't be re-tagged just now — the next company sync will do it.");
-  redirect(back(`company=${company}&companies=${memberId ? "member_set" : "member_cleared"}`));
+  done(memberId ? "member_set" : "member_cleared");
 }
 
 /**
@@ -110,15 +138,13 @@ export async function setCompanyMember(formData: FormData) {
  * #55), written through to Bigin by setCompanyNewsPage. An empty field
  * clears it, so the company's Website stands in. An address without
  * https:// is completed; anything that isn't a web address is refused before
- * anything is saved. While the Bigin token can't write companies the editor
- * is disabled; a post that gets here anyway is refused the same way.
+ * anything is saved. While the Bigin token can't write companies, or for a
+ * company deleted in Bigin, the editor is disabled; a post that gets here
+ * anyway is refused the same way.
  */
 export async function saveCompanyNewsPage(formData: FormData) {
   await requireConsole();
-  const company = String(formData.get("company") ?? "");
-  if (!UUID_RE.test(company)) redirect(back(`companies_error=${encodeURIComponent("That company couldn't be found.")}`));
-  const at = (query: string) => back(`company=${company}&${query}`);
-  const fail = (message: string) => redirect(at(`companies_error=${encodeURIComponent(message)}`));
+  const { company, fail, done } = companyForm(formData);
 
   const raw = String(formData.get("news_page_url") ?? "").trim();
   const parsed = raw ? normalizeSourceUrl(raw) : null;
@@ -133,11 +159,11 @@ export async function saveCompanyNewsPage(formData: FormData) {
     outcome = "failed";
   }
   if (outcome === "failed") fail("The News Page URL couldn't be saved. Please try again.");
-  if (outcome === "not_allowed") fail("Bigin doesn't let the app change companies yet, so edit in Bigin for now.");
-  if (outcome === "not_found") fail("That company isn't stored any more. Sync companies and try again.");
-  revalidatePath(BOX);
-  revalidatePath("/console/sources");
-  redirect(at(`companies=${outcome === "pushed" ? "news_page_saved" : "news_page_pending"}`));
+  if (outcome === "not_allowed") fail(NOT_ALLOWED);
+  if (outcome === "not_found") fail(NOT_FOUND);
+  if (outcome === "deleted") fail(DELETED);
+  revalidateCompanies();
+  done(outcome === "pushed" ? "news_page_saved" : "news_page_pending");
 }
 
 /**
@@ -151,11 +177,8 @@ export async function saveCompanyNewsPage(formData: FormData) {
  */
 export async function adoptImportedNewsPage(formData: FormData) {
   await requireConsole();
-  const company = String(formData.get("company") ?? "");
+  const { company, fail, done } = companyForm(formData);
   const source = String(formData.get("source") ?? "");
-  if (!UUID_RE.test(company)) redirect(back(`companies_error=${encodeURIComponent("That company couldn't be found.")}`));
-  const at = (query: string) => back(`company=${company}&${query}`);
-  const fail = (message: string) => redirect(at(`companies_error=${encodeURIComponent(message)}`));
   if (!UUID_RE.test(source)) fail("Choose one of the imported sources listed.");
 
   let result: Awaited<ReturnType<typeof adoptImportedSource>> | null = null;
@@ -165,13 +188,13 @@ export async function adoptImportedNewsPage(formData: FormData) {
     logError({ source: "server", area: "action:adoptImportedNewsPage", error: e, context: { company, source } });
   }
   if (!result) return fail("The News Page URL couldn't be saved. Please try again.");
-  if (result.outcome === "not_allowed") fail("Bigin doesn't let the app change companies yet, so edit in Bigin for now.");
-  if (result.outcome === "not_found") fail("That company isn't stored any more. Sync companies and try again.");
+  if (result.outcome === "not_allowed") fail(NOT_ALLOWED);
+  if (result.outcome === "not_found") fail(NOT_FOUND);
+  if (result.outcome === "deleted") fail(DELETED);
   if (result.outcome === "not_covering") {
     fail("That imported source can't be used for this company any more: it may have been linked to a company meanwhile. Choose again from the list.");
   }
-  revalidatePath(BOX);
-  revalidatePath("/console/sources");
+  revalidateCompanies();
   if (!result.linked) fail("News Page URL saved, but the imported source couldn't be linked just now. The next company sync will link it.");
-  redirect(at(`companies=${result.outcome === "pushed" ? "imported_used" : "imported_used_pending"}`));
+  done(result.outcome === "pushed" ? "imported_used" : "imported_used_pending");
 }

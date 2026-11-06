@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { Pagination } from "@/components/Pagination";
 import { SubmitButton } from "@/components/SubmitButton";
+import { NEWS_PAGE_LABEL } from "@/lib/adapters/crm";
 import type { CompanySyncRun } from "@/lib/crm-companies/sync";
-import { COMPANY_FILTERS, COMPANY_FILTER_LABEL, type AddressInUse, type CompanyFilter, type CompanyListRow } from "@/lib/crm-companies/list";
+import {
+  COMPANY_FILTERS, COMPANY_FILTER_LABEL, companyListParams, type AddressInUse, type CompanyListRow, type CompanyListState,
+} from "@/lib/crm-companies/list";
 import { describeFieldRead, type OpenCompany } from "@/lib/crm-companies/detail";
 import type { BiginSourcesRun } from "@/lib/sources/bigin";
 import { adoptImportedNewsPage, saveCompanyNewsPage, setCompanyMember, syncCompaniesNow } from "./actions";
@@ -33,12 +36,16 @@ import { BiginSourcesPanel } from "./BiginSourcesPanel";
  * that source is linked to the company. Disabled with the editor.
  *
  * A company deleted in Bigin (#52) stays, marked, under its own filter; the
- * other filters hide it.
+ * other filters hide it. Its News Page URL can't be edited.
+ *
+ * Every company form carries the list's state (`state`) as hidden inputs, so
+ * saving lands back on the same list (console/crm/actions).
  */
 
-const IN_USE_LABEL: Record<AddressInUse, string> = { news_page: "News Page URL", website: "Website stand-in", none: "none" };
+const IN_USE_LABEL: Record<AddressInUse, string> = { news_page: NEWS_PAGE_LABEL, website: "Website stand-in", none: "none" };
 
-const fmt = (iso: string) => iso.slice(0, 16).replace("T", " ");
+/** A stored ISO timestamp as "YYYY-MM-DD HH:MM" (UTC, as stored). */
+const isoMinute = (iso: string) => iso.slice(0, 16).replace("T", " ");
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** The last-synced line: what the run read and changed, leaving out the zeros. */
@@ -61,14 +68,12 @@ export function describeCompanyRun(run: CompanySyncRun): string {
 }
 
 export function CompaniesBox({
-  live, list, q, filter, only, run, sourcesRun, flash, error, href, keep, open, members, canEditCompanies,
+  live, list, state, run, sourcesRun, flash, error, href, keep, open, members, canEditCompanies,
 }: {
   live: boolean;
   list: { rows: CompanyListRow[]; count: number; page: number; pages: number } | null;
-  q: string;
-  filter: CompanyFilter;
-  /** the Bigin id the list is narrowed to (`?cid=`), from a Story Sources link */
-  only: string | undefined;
+  /** the list's search, filter, page and Bigin id narrowing (`?cid=`, from a Story Sources link) */
+  state: CompanyListState;
   run: CompanySyncRun | null;
   /** the last time Bigin's addresses updated the story sources */
   sourcesRun: BiginSourcesRun | null;
@@ -86,6 +91,9 @@ export function CompaniesBox({
   canEditCompanies: boolean;
 }) {
   const fieldNote = run && describeFieldRead(run);
+  const q = state.cq ?? "";
+  const filter = state.cfilter ?? "all";
+  const only = state.cid;
   return (
     <section id="companies" aria-labelledby="companies-heading" className="mt-4 rounded-xl bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -128,7 +136,7 @@ export function CompaniesBox({
       ) : (
         <>
           <p className="mt-1 text-xs text-graphite">
-            {run ? <>Last synced {fmt(run.at)}: {describeCompanyRun(run)}</> : "Not synced yet. Sync companies to bring in every company from Bigin."}
+            {run ? <>Last synced {isoMinute(run.at)}: {describeCompanyRun(run)}</> : "Not synced yet. Sync companies to bring in every company from Bigin."}
           </p>
           {fieldNote && <p className="mt-1 text-xs text-graphite">{fieldNote}</p>}
           <p className="mt-1 text-xs text-graphite">Change a company&apos;s details in Bigin, then sync. Only its News Page URL and member are changed here: open a company by its name.</p>
@@ -162,14 +170,14 @@ export function CompaniesBox({
 
           {/* One panel above the table, as Contacts has: a member <select> in
               every row would put every member's name into every row's text. */}
-          {open && <CompanyPanel company={open} members={members} canEditNewsPage={canEditCompanies} closeHref={href({ company: undefined })} />}
+          {open && <CompanyPanel company={open} members={members} canEditNewsPage={canEditCompanies} state={state} closeHref={href({ company: undefined })} />}
 
           <div className="mt-3 max-h-80 overflow-y-auto">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="text-left text-xs uppercase text-graphite">
-                    <th scope="col" className="py-1">Company</th><th scope="col">Website</th><th scope="col">News Page URL</th>
+                    <th scope="col" className="py-1">Company</th><th scope="col">Website</th><th scope="col">{NEWS_PAGE_LABEL}</th>
                     <th scope="col">In use</th><th scope="col">Contacts</th><th scope="col">Member</th><th scope="col">Story source</th>
                   </tr>
                 </thead>
@@ -180,7 +188,7 @@ export function CompaniesBox({
                         <Link href={href({ company: c.id })} aria-current={open?.id === c.id ? "true" : undefined} className="hover:underline">
                           {c.name || <span className="text-graphite">(no name)</span>}
                         </Link>
-                        {c.deletedInBiginAt && <span className="block text-xs text-danger">Deleted in Bigin {fmt(c.deletedInBiginAt)}</span>}
+                        {c.deletedInBiginAt && <span className="block text-xs text-danger">Deleted in Bigin {isoMinute(c.deletedInBiginAt)}</span>}
                       </td>
                       <td className="max-w-48 break-all text-xs text-graphite">{c.website ?? "—"}</td>
                       <td className="max-w-48 break-all text-xs text-graphite">
@@ -195,7 +203,7 @@ export function CompaniesBox({
                       </td>
                       <td className="text-xs">
                         {c.sourceId
-                          ? <Link href={`/console/sources?view=sources&company=${encodeURIComponent(c.biginId)}`} className="text-graphite underline hover:text-ink">On Story Sources</Link>
+                          ? <Link href={`/console/sources?view=sources&cid=${encodeURIComponent(c.biginId)}`} className="text-graphite underline hover:text-ink">On Story Sources</Link>
                           : <span className="text-graphite">—</span>}
                       </td>
                     </tr>
@@ -223,10 +231,11 @@ export function CompaniesBox({
  * Page URL (#55) is its own block too: saved here and in Bigin, and the
  * company's story source moves to it straight away.
  */
-function CompanyPanel({ company, members, canEditNewsPage, closeHref }: {
+function CompanyPanel({ company, members, canEditNewsPage, state, closeHref }: {
   company: OpenCompany;
   members: { id: string; name: string }[];
   canEditNewsPage: boolean;
+  state: CompanyListState;
   closeHref: string;
 }) {
   return (
@@ -235,26 +244,39 @@ function CompanyPanel({ company, members, canEditNewsPage, closeHref }: {
         <h3 id="company-panel-heading" className="font-bold text-ink">{company.name || "(no name)"}</h3>
         <Link href={closeHref} className="text-xs text-graphite hover:text-ink">Close</Link>
       </div>
-      <p className="text-xs text-graphite">Bigin id {company.biginId} · as of the sync at {fmt(company.lastSyncedAt)}</p>
-      <CompanyNewsPageEditor company={company} canEdit={canEditNewsPage} />
-      {company.covered.length > 0 && <CoveredByImported company={company} canEdit={canEditNewsPage} />}
-      <CompanyMemberEditor company={company} members={members} />
+      <p className="text-xs text-graphite">Bigin id {company.biginId} · as of the sync at {isoMinute(company.lastSyncedAt)}</p>
+      <CompanyNewsPageEditor company={company} canWrite={canEditNewsPage} state={state} />
+      {company.covered.length > 0 && <CoveredByImported company={company} canEdit={canEditNewsPage} state={state} />}
+      <CompanyMemberEditor company={company} members={members} state={state} />
       <CompanyFields company={company} />
     </section>
+  );
+}
+
+/** A company form's hidden inputs: the company, and the list's state to come back to. */
+function CompanyFormInputs({ company, state }: { company: OpenCompany; state: CompanyListState }) {
+  return (
+    <>
+      <input type="hidden" name="company" value={company.id} />
+      {companyListParams(state).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+    </>
   );
 }
 
 /**
  * The News Page URL (#55): the one company field edited here. An empty field
  * means the Website stands in. Disabled with "edit in Bigin for now" while
- * the Bigin token can't write companies.
+ * the Bigin token can't write companies, and for a company deleted in Bigin
+ * (#52), which has no record there to write to.
  */
-function CompanyNewsPageEditor({ company, canEdit }: { company: OpenCompany; canEdit: boolean }) {
+function CompanyNewsPageEditor({ company, canWrite, state }: { company: OpenCompany; canWrite: boolean; state: CompanyListState }) {
+  const deleted = !!company.deletedInBiginAt;
+  const canEdit = canWrite && !deleted;
   return (
     <form action={saveCompanyNewsPage} className="mt-3">
-      <input type="hidden" name="company" value={company.id} />
+      <CompanyFormInputs company={company} state={state} />
       <h4 className="text-xs font-bold uppercase tracking-wide text-graphite">
-        <label htmlFor="crm-company-news-page">News Page URL</label>
+        <label htmlFor="crm-company-news-page">{NEWS_PAGE_LABEL}</label>
       </h4>
       <p className="mt-1 text-xs text-graphite">Website: {company.website ?? "none"} (change it in Bigin)</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -273,9 +295,11 @@ function CompanyNewsPageEditor({ company, canEdit }: { company: OpenCompany; can
         </SubmitButton>
       </div>
       <p id="crm-company-news-page-help" className="mt-1 text-xs text-graphite">
-        {canEdit
-          ? "Saved here and in Bigin. Leave it empty to watch the company's Website instead."
-          : "Bigin doesn't let the app change companies yet, so edit in Bigin for now."}
+        {deleted
+          ? "This company was deleted in Bigin, so its News Page URL can't be changed. Restore it in Bigin and sync to edit it again."
+          : canEdit
+            ? "Saved here and in Bigin. Leave it empty to watch the company's Website instead."
+            : "Bigin doesn't let the app change companies yet, so edit in Bigin for now."}
       </p>
       {company.pushPending && (
         <p className="mt-1 text-xs text-graphite">
@@ -292,7 +316,7 @@ function CompanyNewsPageEditor({ company, canEdit }: { company: OpenCompany; can
  * Website domain that no company is linked to — every one, for the admin to
  * pick. Nothing is linked until one is chosen here.
  */
-function CoveredByImported({ company, canEdit }: { company: OpenCompany; canEdit: boolean }) {
+function CoveredByImported({ company, canEdit, state }: { company: OpenCompany; canEdit: boolean; state: CompanyListState }) {
   return (
     <div className="mt-3">
       <h4 className="text-xs font-bold uppercase tracking-wide text-graphite">Covered by imported list</h4>
@@ -308,7 +332,7 @@ function CoveredByImported({ company, canEdit }: { company: OpenCompany; canEdit
               <span className="text-graphite">{s.url}</span>
             </span>
             <form action={adoptImportedNewsPage}>
-              <input type="hidden" name="company" value={company.id} />
+              <CompanyFormInputs company={company} state={state} />
               <input type="hidden" name="source" value={s.id} />
               <SubmitButton disabled={!canEdit} className="rounded border px-3 py-1 text-xs disabled:opacity-50" pendingLabel="Saving…">
                 Use as News Page URL
@@ -322,7 +346,7 @@ function CoveredByImported({ company, canEdit }: { company: OpenCompany; canEdit
   );
 }
 
-function CompanyMemberEditor({ company, members }: { company: OpenCompany; members: { id: string; name: string }[] }) {
+function CompanyMemberEditor({ company, members, state }: { company: OpenCompany; members: { id: string; name: string }[]; state: CompanyListState }) {
   const chosen = company.memberChosen ? company.member : null;
   return (
     <div className="mt-3">
@@ -334,7 +358,7 @@ function CompanyMemberEditor({ company, members }: { company: OpenCompany; membe
         {" "}Drafts from this company&apos;s story source are tagged with this member. Kept in the app only; Bigin has no member field.
       </p>
       <form action={setCompanyMember} className="mt-2 flex flex-wrap items-center gap-2">
-        <input type="hidden" name="company" value={company.id} />
+        <CompanyFormInputs company={company} state={state} />
         <label htmlFor="crm-company-member" className="sr-only">Member</label>
         <select id="crm-company-member" name="member_id" defaultValue={chosen?.id ?? ""} className="max-w-full rounded border px-3 py-1.5">
           <option value="">— automatic match —</option>
@@ -344,7 +368,7 @@ function CompanyMemberEditor({ company, members }: { company: OpenCompany; membe
       </form>
       {chosen && (
         <form action={setCompanyMember} className="mt-2">
-          <input type="hidden" name="company" value={company.id} />
+          <CompanyFormInputs company={company} state={state} />
           <input type="hidden" name="member_id" value="" />
           <SubmitButton className="rounded border px-3 py-1.5 text-xs" pendingLabel="Clearing…">Use automatic match</SubmitButton>
         </form>

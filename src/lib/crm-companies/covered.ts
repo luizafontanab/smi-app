@@ -1,7 +1,7 @@
 import "server-only";
 import { getCrmSync, type CrmSync } from "../adapters/crm";
 import { serviceDb } from "../db/server";
-import { websiteDomain } from "./list";
+import { coverableDomain } from "./list";
 import { setCompanyNewsPage, type NewsPageSave } from "./news-page";
 
 /**
@@ -40,9 +40,8 @@ export async function adoptImportedSource(
   if (sourceError) throw new Error(`reading source ${sourceId}: ${sourceError.message}`);
   if (!company) return { outcome: "not_found", linked: false };
   // Checked again here, not trusted from the page: the list may be stale, and the form is just a post.
-  const covers = !!source && !source.bigin_account_id && !source.bigin_only
-    && !company.news_page_url && !company.deleted_in_bigin_at
-    && source.domain === websiteDomain(company.website);
+  const domain = coverableDomain(company);
+  const covers = !!source && !source.bigin_account_id && !source.bigin_only && !!domain && source.domain === domain;
   if (!covers) return { outcome: "not_covering", linked: false };
 
   const outcome = await setCompanyNewsPage({ id: companyId }, source.url, { crm, now, deriveSources: true });

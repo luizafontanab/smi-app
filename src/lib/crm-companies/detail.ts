@@ -80,7 +80,7 @@ export async function readCompanyDetail(db: Db, id: string | null): Promise<Comp
  * offered as "Use as News Page URL".
  */
 export type OpenCompany = CompanyDetail &
-  Pick<CompanyMemberDetail, "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending" | "covered">;
+  Pick<CompanyMemberDetail, "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending" | "covered" | "deletedInBiginAt">;
 
 export async function readOpenCompany(db: Db, id: string | null): Promise<OpenCompany | null> {
   if (!id || !UUID_RE.test(id)) return null;
@@ -89,7 +89,7 @@ export async function readOpenCompany(db: Db, id: string | null): Promise<OpenCo
   return {
     ...detail, member: member.member, memberChosen: member.memberChosen,
     website: member.website, newsPageUrl: member.newsPageUrl, inUse: member.inUse, pushPending: member.pushPending,
-    covered: member.covered,
+    covered: member.covered, deletedInBiginAt: member.deletedInBiginAt,
   };
 }
 

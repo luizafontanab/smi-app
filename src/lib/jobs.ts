@@ -498,7 +498,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       try {
         await retryPendingCompanyPushes();
       } catch (e) {
-        console.error("[job:crm_sync] sweeping pending company pushes failed:", e);
+        logError({ source: "job", area: "job:crm_sync:company_pushes", error: e });
       }
       const { getCrmSync } = await import("./adapters/crm");
       await getCrmSync().sync();
@@ -588,7 +588,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       // A failed check keeps the stored answer and doesn't fail the job.
       {
         const { checkCompanyWriteAccess } = await import("./crm-companies/news-page");
-        await checkCompanyWriteAccess().catch((e: unknown) => console.error("[job:source_bigin_sync] checking company write access failed:", e));
+        await checkCompanyWriteAccess().catch((e: unknown) => logError({ source: "job", area: "job:source_bigin_sync:write_access", error: e }));
       }
       if (!(await storyCrawlerOn())) break;
       const { syncCompanies } = await import("./crm-companies/sync");

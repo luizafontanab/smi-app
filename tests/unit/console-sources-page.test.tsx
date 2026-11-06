@@ -60,7 +60,7 @@ describe("Story Sources (view=sources)", () => {
 
   it("narrows to one company's source when CRM links here", async () => {
     const list = wire([source({ bigin_account_id: "9100000000001", bigin_account_name: "Acme Ltd" })]);
-    render(await SourcesPage(props({ view: "sources", company: "9100000000001" })));
+    render(await SourcesPage(props({ view: "sources", cid: "9100000000001" })));
 
     expect(list.eq).toHaveBeenCalledWith("bigin_account_id", "9100000000001");
     expect(screen.getByRole("link", { name: "Show all sources" })).toHaveAttribute("href", "/console/sources?view=sources");

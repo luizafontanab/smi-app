@@ -14,7 +14,7 @@ import { firstImportDone, getCrmSync, readLastRun, type LastRun } from "@/lib/ad
 import { addContact, previewBiginPull, runBiginSync, saveContact, searchBiginCompanies } from "../actions";
 import { firstImportPreviewFresh } from "./first-import";
 import { SubmitButton } from "@/components/SubmitButton";
-import { parseCompanyFilter, readCompanyList } from "@/lib/crm-companies/list";
+import { parseCompanyListState, readCompanyList, type CompanyListState } from "@/lib/crm-companies/list";
 import { readCompanyWriteAccess } from "@/lib/crm-companies/news-page";
 import { readCompanySyncRun } from "@/lib/crm-companies/sync";
 import { readOpenCompany } from "@/lib/crm-companies/detail";
@@ -33,12 +33,9 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   const term = ilikeTerm(q);
   const requestedPage = Math.max(1, Number(sp.page) || 1);
   const contactId = typeof sp.contact === "string" ? sp.contact : null;
-  // The Companies box's own search, filter and page, kept apart from the contacts box's.
-  const cq = typeof sp.cq === "string" ? sp.cq : "";
-  const cfilter = parseCompanyFilter(sp.cfilter);
-  const requestedCompanyPage = Math.max(1, Number(sp.cpage) || 1);
+  // The Companies box's own search, filter and page, kept apart from the contacts box's;
   // ?cid=<Bigin id>: one company, the target of a Bigin-linked source's link on Story Sources.
-  const cid = typeof sp.cid === "string" && sp.cid ? sp.cid : undefined;
+  const requested = parseCompanyListState((name) => sp[name]);
   // ?company= opens the Companies box's editor; a junk value just opens nothing (as ?contact=).
   const companyId = typeof sp.company === "string" && UUID_RE.test(sp.company) ? sp.company : null;
 
@@ -66,7 +63,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
     crm.live ? firstImportDone() : Promise.resolve(false),
     readLastRun(),
     // Not connected → the box says so rather than listing a stale or empty copy.
-    crm.live ? readCompanyList(db, { q: cq, filter: cfilter, page: requestedCompanyPage, size: PAGE_SIZE, biginId: cid }) : Promise.resolve(null),
+    crm.live ? readCompanyList(db, { q: requested.cq, filter: requested.cfilter, page: requested.cpage, size: PAGE_SIZE, biginId: requested.cid }) : Promise.resolve(null),
     crm.live ? readCompanySyncRun() : Promise.resolve(null),
     crm.live ? readBiginSourcesRun() : Promise.resolve(null),
     crm.live && companyId ? readOpenCompany(db, companyId) : Promise.resolve(null),
@@ -81,7 +78,8 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   const activity = editing?.member_id ? await memberActivityTimeline(editing.member_id, 10) : [];
 
   // Each box's links keep the other box's search, filter and page.
-  const companyState = { cid, cq, cfilter: cfilter === "all" ? undefined : cfilter, cpage: companies && companies.page > 1 ? companies.page : undefined };
+  // The page actually shown, which is the last one when ?cpage= was past the end.
+  const companyState: CompanyListState = { ...requested, cpage: companies && companies.page > 1 ? companies.page : undefined };
   const link = (merged: Record<string, string | number | undefined>, hash = "") => {
     const params = new URLSearchParams();
     Object.entries(merged).forEach(([k, v]) => v !== undefined && v !== "" && params.set(k, String(v)));
@@ -223,9 +221,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
       <CompaniesBox
         live={crm.live}
         list={companies && { ...companies, pages: Math.max(1, Math.ceil(companies.count / PAGE_SIZE)) }}
-        q={cq}
-        filter={cfilter}
-        only={cid}
+        state={companyState}
         run={companyRun}
         sourcesRun={sourcesRun}
         flash={typeof sp.companies === "string" ? sp.companies : undefined}

@@ -8,6 +8,7 @@ import { readSourceCheckRun } from "@/lib/sources/run";
 import { SourceCheckPanel } from "@/components/console/SourceCheckPanel";
 import { Pagination } from "@/components/Pagination";
 import { SubmitButton } from "@/components/SubmitButton";
+import { formatLondonDate } from "@/lib/london-time";
 import { lastPage, pagedList } from "../paged-list";
 import {
   addSource, deleteSource, dismissSuggestion, recheckSource, setSourceActive, startStoryFromSuggestion, updateSourceUrl,
@@ -35,7 +36,6 @@ const METHOD_LABEL: Record<string, string> = { feed: "Feed", wp_api: "WordPress 
 const ACCESS_FILTERS = ["all", "ok", "unknown", "blocked", "not_found", "unreachable", "empty", "paused", "bigin"] as const;
 const FILTER_LABEL: Record<string, string> = { all: "All", paused: "Paused", bigin: "From Bigin" };
 
-const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" }) : "—");
 
 export default async function SourcesPage(props: PageProps<"/console/sources">) {
   await requireConsole();
@@ -43,8 +43,9 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
   const view = sp.view === "sources" ? "sources" : "suggested";
   const page = Math.max(1, Number(sp.page) || 1);
   const access = ACCESS_FILTERS.find((a) => a === sp.access) ?? "all";
-  // ?company=<Bigin id>: one company's source, the target of a CRM Companies link (#51).
-  const company = typeof sp.company === "string" && sp.company ? sp.company : undefined;
+  // ?cid=<Bigin id>: one company's source, the target of a CRM Companies link (#51) — the
+  // same name and meaning as CRM's ?cid=.
+  const cid = typeof sp.cid === "string" && sp.cid ? sp.cid : undefined;
   const db = serviceDb();
 
   const [suggestions, drafted, sources, statusRows, crawlerOn, sourceCheck] = await Promise.all([
@@ -67,7 +68,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
       ? pagedList((from, to) => {
           let q = db.from("content_sources")
             .select("id, url, domain, label, active, method, method_url, access, last_checked_at, last_item_at, failure_count, last_error, bigin_account_id, bigin_account_name, bigin_from_website, member:members(name, slug)", { count: "exact" });
-          if (company) q = q.eq("bigin_account_id", company);
+          if (cid) q = q.eq("bigin_account_id", cid);
           if (access === "paused") q = q.eq("active", false);
           else if (access === "bigin") q = q.not("bigin_account_id", "is", null);
           else if (access !== "all") q = q.eq("access", access).eq("active", true);
@@ -155,8 +156,8 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                     <p className="mt-0.5 text-xs text-graphite">
                       {item.source?.label ?? item.source?.domain}
                       {item.source?.member && <> · tags {item.source.member.name}</>}
-                      {item.published_at && <> · published {day(item.published_at)}</>}
-                      {" · "}found {day(item.first_seen_at)}
+                      {item.published_at && <> · published {formatLondonDate(item.published_at)}</>}
+                      {" · "}found {formatLondonDate(item.first_seen_at)}
                     </p>
                   </div>
                   <form action={startStoryFromSuggestion}>
@@ -215,7 +216,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
               : "Bigin isn't connected, so only the imported list is used. Its companies will be on "}
             <Link href="/console/crm#companies" className="text-ink underline">CRM → Companies</Link>.
           </p>
-          {company && (
+          {cid && (
             <p className="mt-2 text-xs text-graphite">
               Showing one Bigin company&apos;s source, from CRM. <Link href="/console/sources?view=sources" className="underline hover:text-ink">Show all sources</Link>
             </p>
@@ -260,7 +261,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                     )}
                     {s.member && <span className="text-xs text-graphite">member: {s.member.name}</span>}
                     <span className="ml-auto text-xs text-graphite">
-                      checked {day(s.last_checked_at)} · latest post {day(s.last_item_at)}
+                      checked {formatLondonDate(s.last_checked_at)} · latest post {formatLondonDate(s.last_item_at)}
                     </span>
                   </div>
                   <p className="mt-0.5 break-all text-xs text-graphite">{s.url}</p>

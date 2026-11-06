@@ -37,6 +37,42 @@ export function parseCompanyFilter(raw: unknown): CompanyFilter {
   return COMPANY_FILTERS.find((f) => f === raw) ?? "all";
 }
 
+/**
+ * The Companies box's list in the URL: one company by Bigin id (`cid`, from
+ * a Story Sources link), the search (`cq`), the filter (`cfilter`) and the
+ * page (`cpage`). Defaults are left out (no "all", no page 1). The company
+ * forms carry it as hidden inputs so their redirect lands on the same list.
+ */
+export type CompanyListState = { cid?: string; cq?: string; cfilter?: Exclude<CompanyFilter, "all">; cpage?: number };
+
+const BIGIN_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const SEARCH_MAX = 200;
+const PAGE_MAX = 100_000;
+
+/** Read the list state from search params or a form; anything invalid is dropped, never passed on. */
+export function parseCompanyListState(get: (name: string) => unknown): CompanyListState {
+  const text = (name: string) => {
+    const v = get(name);
+    return typeof v === "string" ? v : "";
+  };
+  const cid = text("cid");
+  const cq = text("cq");
+  const cfilter = parseCompanyFilter(text("cfilter"));
+  const cpage = Number(text("cpage"));
+  return {
+    ...(BIGIN_ID_RE.test(cid) ? { cid } : {}),
+    ...(cq && cq.length <= SEARCH_MAX ? { cq } : {}),
+    ...(cfilter !== "all" ? { cfilter } : {}),
+    ...(Number.isInteger(cpage) && cpage > 1 && cpage <= PAGE_MAX ? { cpage } : {}),
+  };
+}
+
+/** The list state as query parameters, in a fixed order, for a link or a redirect. */
+export function companyListParams(state: CompanyListState): [string, string][] {
+  return (["cid", "cq", "cfilter", "cpage"] as const)
+    .flatMap((k) => (state[k] === undefined ? [] : [[k, String(state[k])] as [string, string]]));
+}
+
 /** Which address the company's story source comes from, by the rule the sync applies. */
 export type AddressInUse = "news_page" | "website" | "none";
 export function addressInUse(c: { news_page_url: string | null; website: string | null }): AddressInUse {
@@ -47,8 +83,17 @@ export function addressInUse(c: { news_page_url: string | null; website: string 
 export type CoveringSource = { id: string; url: string; label: string | null };
 
 /** The domain of a company's Website, the way story sources record theirs (no www., lower case). */
-export function websiteDomain(website: string | null): string | null {
+function websiteDomain(website: string | null): string | null {
   return website ? normalizeSourceUrl(website)?.domain ?? null : null;
+}
+
+/**
+ * The domain an imported source must be on to cover the company (#56): its
+ * Website's, while it has no News Page URL and is still in Bigin; else null,
+ * nothing covers it. The one rule, for the list, the panel and the click.
+ */
+export function coverableDomain(c: { website: string | null; news_page_url: string | null; deleted_in_bigin_at?: string | null }): string | null {
+  return c.news_page_url || c.deleted_in_bigin_at ? null : websiteDomain(c.website);
 }
 
 export type CompanyListRow = {
@@ -109,8 +154,7 @@ function coveredBy(
   c: { website: string | null; news_page_url: string | null; deleted_in_bigin_at?: string | null },
   imported: ReadonlyMap<string, CoveringSource[]>,
 ): CoveringSource[] {
-  if (c.news_page_url || c.deleted_in_bigin_at) return [];
-  const domain = websiteDomain(c.website);
+  const domain = coverableDomain(c);
   return (domain && imported.get(domain)) || [];
 }
 
@@ -169,7 +213,7 @@ export async function readCompanyList(
       return query.range(from, to);
     };
     ({ data, count, page: shown } = await pagedList(build, page, size, "console/crm companies"));
-    const domains = data.filter((c) => !c.news_page_url && !c.deleted_in_bigin_at).map((c) => websiteDomain(c.website)).filter((d): d is string => !!d);
+    const domains = data.map(coverableDomain).filter((d): d is string => !!d);
     imported = await readImportedSources(db, [...new Set(domains)]);
   }
   if (!data.length) return { rows: [], count, page: shown };
@@ -219,10 +263,11 @@ export async function readCompanyList(
 /**
  * One company for the Companies box's editor (`?company=`): its member, and
  * whether it was chosen by hand; its Website and News Page URL, and whether
- * an edit of the latter is still on its way to Bigin (#55).
+ * an edit of the latter is still on its way to Bigin (#55); and whether it's
+ * been deleted in Bigin (#52), which locks the News Page URL.
  */
 export type CompanyMemberDetail = Pick<
-  CompanyListRow, "id" | "biginId" | "name" | "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending" | "covered"
+  CompanyListRow, "id" | "biginId" | "name" | "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending" | "covered" | "deletedInBiginAt"
 >;
 
 export async function readCompanyMember(db: Db, id: string): Promise<CompanyMemberDetail | null> {
@@ -238,11 +283,11 @@ export async function readCompanyMember(db: Db, id: string): Promise<CompanyMemb
     if (e) throw new Error(`console/crm company source: ${e.message}`);
     member = source?.member ?? null;
   }
-  const domain = !c.news_page_url && !c.deleted_in_bigin_at ? websiteDomain(c.website) : null;
+  const domain = coverableDomain(c);
   const imported = await readImportedSources(db, domain ? [domain] : []);
   return {
     id: c.id, biginId: c.bigin_id, name: c.name, member, memberChosen: !!c.override,
     website: c.website, newsPageUrl: c.news_page_url, inUse: addressInUse(c), pushPending: !!c.news_page_pending_at,
-    covered: coveredBy(c, imported),
+    covered: coveredBy(c, imported), deletedInBiginAt: c.deleted_in_bigin_at,
   };
 }

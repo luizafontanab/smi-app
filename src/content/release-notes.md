@@ -22,6 +22,8 @@
 - Until Bigin has accepted the change, the company shows "push pending". If Bigin can't be reached, the app keeps trying by itself.
 - The Website is shown but can only be changed in Bigin.
 - Until the Bigin connection is given permission to change companies, the field is greyed out with "edit in Bigin for now".
+- A company deleted in Bigin can't have its News Page URL changed: the field is greyed out and says why. Restore the company in Bigin and sync to edit it again.
+- After you save a News Page URL or a member, or use an imported page, you come back to the same list you were looking at: your search, filter and page stay as they were.
 
 ## 2026-11-06 — Every Bigin field for a company
 - In the Companies box on the CRM page, click a company's name to see every field Bigin holds for it, your own custom fields included, under the same labels as in Bigin.

@@ -75,7 +75,7 @@ const company = (over: Partial<CompanyListRow>): CompanyListRow => ({
 const box = (props: Partial<Parameters<typeof CompaniesBox>[0]>) =>
   render(
     <CompaniesBox
-      live list={{ rows: [], count: 0, page: 1, pages: 1 }} q="" filter="all" only={undefined} run={null} sourcesRun={null}
+      live list={{ rows: [], count: 0, page: 1, pages: 1 }} state={{}} run={null} sourcesRun={null}
       flash={undefined} error={undefined} href={(over) => `/console/crm?${new URLSearchParams(Object.entries(over).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}#companies`} keep={{}}
       open={null} members={[]} canEditCompanies={false}
       {...props}
@@ -98,23 +98,23 @@ describe("CRM Companies box", () => {
     box({ list: { rows: [company({ sourceId: "src-1" }), company({ id: "u2", biginId: "9100000000002", name: "Nowhere", sourceId: null })], count: 2, page: 1, pages: 1 } });
     const links = screen.getAllByRole("link", { name: "On Story Sources" });
     expect(links).toHaveLength(1);
-    expect(links[0]).toHaveAttribute("href", "/console/sources?view=sources&company=9100000000001");
+    expect(links[0]).toHaveAttribute("href", "/console/sources?view=sources&cid=9100000000001");
   });
 
   it("offers the way back to every company when a Story Sources link narrowed it to one", () => {
-    box({ only: "9100000000001", list: { rows: [company({})], count: 1, page: 1, pages: 1 } });
+    box({ state: { cid: "9100000000001" }, list: { rows: [company({})], count: 1, page: 1, pages: 1 } });
     expect(screen.getByRole("link", { name: "Show all companies" })).toHaveAttribute("href", "/console/crm?#companies");
   });
 
   it("opens one company panel from the company's name, beside the Story Sources link (#51 + #53 + #54)", () => {
     const acme = company({ sourceId: "src-1", member: { id: "m1", name: "Jo" }, memberChosen: true });
     box({
-      only: "9100000000001",
+      state: { cid: "9100000000001" },
       list: { rows: [acme], count: 1, page: 1, pages: 1 },
       open: {
         id: acme.id, biginId: acme.biginId, name: acme.name, lastSyncedAt: acme.lastSyncedAt, member: acme.member, memberChosen: true,
         rows: [{ apiName: "Phone", label: "Phone", value: "0161 000" }, { apiName: "Machine_Brands", label: "Machine Brands", value: null }],
-        website: null, newsPageUrl: acme.newsPageUrl, inUse: "news_page", pushPending: false, covered: [],
+        website: null, newsPageUrl: acme.newsPageUrl, inUse: "news_page", pushPending: false, covered: [], deletedInBiginAt: null,
       },
       members: [{ id: "m1", name: "Jo" }],
     });
@@ -143,7 +143,7 @@ describe("CRM Companies box", () => {
 describe("the company editor's News Page URL (issue #55)", () => {
   const acme = {
     id: "u1", biginId: "9100000000001", name: "Acme", lastSyncedAt: "2026-11-06T03:00:00Z", rows: [], member: null, memberChosen: false,
-    website: "https://acme.test", newsPageUrl: "https://acme.test/news", inUse: "news_page" as const, pushPending: false, covered: [],
+    website: "https://acme.test", newsPageUrl: "https://acme.test/news", inUse: "news_page" as const, pushPending: false, covered: [], deletedInBiginAt: null,
   };
 
   it("edits the News Page URL in the company's one panel, beside the member and Bigin's fields, showing the Website without a field for it", () => {
@@ -164,10 +164,47 @@ describe("the company editor's News Page URL (issue #55)", () => {
     expect(screen.getByText(/edit in Bigin for now/)).toBeInTheDocument();
   });
 
+  it("is disabled for a company deleted in Bigin, even with the write scope: there's nothing there to write to", () => {
+    box({ open: { ...acme, deletedInBiginAt: "2026-11-05T03:00:00Z" }, canEditCompanies: true });
+    expect(screen.getByRole("textbox", { name: "News Page URL" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save News Page URL" })).toBeDisabled();
+    expect(screen.getByText(/deleted in Bigin, so its News Page URL can't be changed/)).toBeInTheDocument();
+    expect(screen.queryByText(/edit in Bigin for now/)).toBeNull();
+  });
+
   it("shows push pending, in the editor and the list, until Bigin accepts the edit", () => {
     box({ list: { rows: [company({ pushPending: true })], count: 1, page: 1, pages: 1 }, open: { ...acme, pushPending: true }, canEditCompanies: true });
     expect(screen.getByRole("table")).toHaveTextContent("push pending");
     expect(screen.getByText(/Push pending\./).closest("p")).toHaveTextContent("retried automatically");
+  });
+});
+
+describe("the list's state rides along in every company form", () => {
+  it("each form in the panel carries the box's search, filter, page and company narrowing, so saving lands on the same list", () => {
+    box({
+      state: { cid: "9100000000002", cq: "bright", cfilter: "covered", cpage: 2 },
+      open: {
+        id: "u2", biginId: "9100000000002", name: "Bright", lastSyncedAt: "2026-11-06T03:00:00Z", rows: [], member: { id: "m1", name: "Jo" }, memberChosen: true,
+        website: "https://bright.test", newsPageUrl: null, inUse: "website", pushPending: false, deletedInBiginAt: null,
+        covered: [{ id: "s1", url: "https://bright.test/news", label: null }],
+      },
+      members: [{ id: "m1", name: "Jo" }],
+      canEditCompanies: true,
+    });
+    const panel = screen.getByRole("region", { name: "Bright" });
+    const forms = [...panel.querySelectorAll("form")];
+    // the News Page URL, Use as News Page URL, Save member and Use automatic match
+    expect(forms).toHaveLength(4);
+    for (const form of forms) {
+      const carried = Object.fromEntries([...form.querySelectorAll<HTMLInputElement>("input[type=hidden]")].map((i) => [i.name, i.value]));
+      expect(carried).toMatchObject({ company: "u2", cid: "9100000000002", cq: "bright", cfilter: "covered", cpage: "2" });
+    }
+  });
+
+  it("carries nothing extra for the default list", () => {
+    box({ open: { id: "u1", biginId: "9100000000001", name: "Acme", lastSyncedAt: "2026-11-06T03:00:00Z", rows: [], member: null, memberChosen: false, website: null, newsPageUrl: null, inUse: "none", pushPending: false, covered: [], deletedInBiginAt: null } });
+    const form = screen.getByRole("textbox", { name: "News Page URL" }).closest("form")!;
+    expect([...form.querySelectorAll<HTMLInputElement>("input[type=hidden]")].map((i) => i.name)).toEqual(["company"]);
   });
 });
 
@@ -178,7 +215,7 @@ describe("covered by imported list (issue #56)", () => {
   ];
   const bright = {
     id: "u2", biginId: "9100000000002", name: "Bright", lastSyncedAt: "2026-11-06T03:00:00Z", rows: [], member: null, memberChosen: false,
-    website: "https://bright.test", newsPageUrl: null, inUse: "website" as const, pushPending: false, covered: SOURCES,
+    website: "https://bright.test", newsPageUrl: null, inUse: "website" as const, pushPending: false, covered: SOURCES, deletedInBiginAt: null,
   };
 
   it("labels a covered company in the list instead of its Website stand-in, and has its own filter", () => {

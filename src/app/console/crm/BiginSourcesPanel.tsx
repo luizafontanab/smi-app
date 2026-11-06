@@ -1,3 +1,4 @@
+import { formatLondonDate } from "@/lib/london-time";
 import type { BiginSourcesRun } from "@/lib/sources/bigin";
 
 /**
@@ -8,8 +9,6 @@ import type { BiginSourcesRun } from "@/lib/sources/bigin";
  * it's read. No button of its own — "Sync companies" updates the sources.
  */
 
-const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
-
 export function BiginSourcesPanel({ live, run }: { live: boolean; run: BiginSourcesRun | null }) {
   return (
     <section aria-labelledby="bigin-sources-heading" className="mt-3 rounded border border-graphite/20 p-3 text-sm">
@@ -18,7 +17,7 @@ export function BiginSourcesPanel({ live, run }: { live: boolean; run: BiginSour
         {!live
           ? "Bigin isn't connected, so story sources come from the imported list only."
           : run
-            ? `Last updated ${day(run.at)}: ${run.companies} companies with an address${run.fromWebsite ? ` (${run.fromWebsite} using their Website)` : ""} — ${run.added} added, ${run.linked} linked, ${run.paused} paused${run.complete ? "" : " (Bigin stopped part-way; nothing was paused)"}.`
+            ? `Last updated ${formatLondonDate(run.at)}: ${run.companies} companies with an address${run.fromWebsite ? ` (${run.fromWebsite} using their Website)` : ""} — ${run.added} added, ${run.linked} linked, ${run.paused} paused${run.complete ? "" : " (Bigin stopped part-way; nothing was paused)"}.`
             : "Not updated from Bigin yet. Sync companies does it while the story crawler is on, and so does the daily sync."}
       </p>
       {live && run?.websiteFallbackWithheld && (
