@@ -14,7 +14,7 @@ import { activeTakeover, industries as industryList } from "@/lib/queries";
 import { siteVariant } from "@/lib/variant";
 import { IndustryBar } from "@/components/IndustryBar";
 // PROTOTYPE (issue #59) — throwaway branch prototype-classic only.
-import { classicVariant, CLASSIC_VARIANTS, VARIANT_NAMES } from "@/components/classic-prototype/variant";
+import { classicVariant, rawClassicVariant, CLASSIC_VARIANTS, VARIANT_NAMES } from "@/components/classic-prototype/variant";
 import { ClassicHeader } from "@/components/classic-prototype/ClassicHeader";
 import { ClassicFooter } from "@/components/classic-prototype/ClassicFooter";
 import { PrototypeSwitcher } from "@/components/classic-prototype/PrototypeSwitcher";
@@ -23,12 +23,13 @@ import "./classic.prototype.css";
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   // The industry strip only exists while Jas has industries on for the public
   // site (feature flag industries_public); off, it isn't even fetched.
-  const [user, takeover, industries, variant, proto] = await Promise.all([
+  const [user, takeover, industries, variant, proto, rawProto] = await Promise.all([
     currentUser(),
     activeTakeover(),
     isFeatureEnabled("industries_public").then((on) => (on ? industryList() : [])),
     siteVariant(),
     classicVariant(),
+    rawClassicVariant(),
   ]);
 
   // The header is one structure in two tones — grid's the light bar from the
@@ -93,7 +94,7 @@ export default async function PublicLayout({ children }: { children: React.React
         {children}
       </main>
       {proto === "current" ? <Footer /> : <ClassicFooter buttons={proto === "C" ? "ink" : "blue"} />}
-      <PrototypeSwitcher variants={CLASSIC_VARIANTS} names={VARIANT_NAMES} current={proto} />
+      <PrototypeSwitcher variants={CLASSIC_VARIANTS} names={VARIANT_NAMES} current={rawProto} />
       <CookieConsent />
     </div>
   );

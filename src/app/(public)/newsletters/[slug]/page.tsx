@@ -6,7 +6,10 @@ import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
 import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "@/lib/newsletter-layout";
 import { issueExtras } from "@/lib/newsletter-extras";
-import { newsletterBySlug } from "@/lib/queries";
+import { newsletterBySlug, sentNewsletters } from "@/lib/queries";
+// PROTOTYPE (issue #63) — throwaway branch prototype-classic only.
+import { pageVariant } from "@/components/classic-prototype/variant";
+import { NewsletterArticleShape, NewsletterLiveShape } from "@/components/classic-prototype/pages/NewsletterVariants";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +65,12 @@ export default async function NewsletterIssuePage(props: PageProps<"/newsletters
   const placed = issue.ads.flatMap((slot) => (slot.advert ? [{ ...slot.advert, after_item: slot.after_item }] : []));
   const { sponsor, banners } = splitMastheadSponsor(placed);
   const sponsorImage = sponsor ? mediaUrl(sponsor.desktop_path) ?? mediaUrl(sponsor.mobile_path) : null;
+
+  const pv = await pageVariant();
+  if (pv === "A2" || pv === "A3") {
+    const props = { issue, blocks: issueBlocks(cards, banners), sponsor, sponsorImage, extras, previous: (await sentNewsletters()).filter((p) => p.number !== issue.number).slice(0, 12) };
+    return pv === "A2" ? <NewsletterLiveShape {...props} /> : <NewsletterArticleShape {...props} />;
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-4">

@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { isFeatureEnabled } from "@/lib/feature-flags";
-import { industryBySlug } from "@/lib/queries";
+import { industries as industryList, industryBySlug } from "@/lib/queries";
+// PROTOTYPE (issue #63) — throwaway branch prototype-classic only.
+import { pageVariant } from "@/components/classic-prototype/variant";
+import { IndustryMiniHome, IndustryTopicPage } from "@/components/classic-prototype/pages/IndustryVariants";
 import { Carousel, StoryCard } from "@/components/StoryCard";
 import { EventCard, MemberTile, VideoCard } from "@/components/cards";
 import { loadIndustryHub } from "./hub.data";
@@ -36,6 +39,9 @@ export default async function IndustryPage(props: PageProps<"/industry/[slug]">)
   if (!(await isFeatureEnabled("industries_public"))) redirect("/news");
   const hub = await loadIndustryHub(slug);
   if (!hub) notFound();
+  const pv = await pageVariant();
+  if (pv === "A2") return <IndustryTopicPage hub={hub} slug={slug} topics={await industryList()} />;
+  if (pv === "A3") return <IndustryMiniHome hub={hub} slug={slug} topics={[]} />;
   const { industry, stories, storyTotal, members, memberTotal, videos, videoTotal, events, eventTotal, eventsTense } = hub;
 
   const newsHref = `/news?industry=${slug}`;

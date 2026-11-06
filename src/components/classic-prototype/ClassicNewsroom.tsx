@@ -17,7 +17,7 @@ function Badge({ n }: { n: number }) {
   return <span className="absolute -left-2 -top-2 z-10 grid h-10 w-10 place-items-center rounded-[5px] bg-brand text-lg text-ink">#{n}</span>;
 }
 
-export function ClassicNewsroom({ stories }: { stories: StoryCard[] }) {
+export function ClassicNewsroom({ stories, title = "Newsroom" }: { stories: StoryCard[]; title?: string }) {
   const [lead, ...small] = stories.slice(0, 4);
   if (!lead) return null;
   const leadImg = mediaUrl(lead.cover_path);
@@ -25,7 +25,7 @@ export function ClassicNewsroom({ stories }: { stories: StoryCard[] }) {
     <div>
       <h2 className="mb-6 inline-flex items-center gap-3 text-[2rem] font-normal">
         <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-full bg-brand text-ink">📣</span>
-        Newsroom
+        {title}
       </h2>
       <div className="grid gap-6 lg:grid-cols-[65fr_35fr]">
         <Link href={`/news/${lead.slug}`} className="group relative block min-h-[500px] overflow-visible">

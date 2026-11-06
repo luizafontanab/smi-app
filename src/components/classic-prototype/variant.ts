@@ -23,7 +23,23 @@ export const VARIANT_NAMES: Record<ClassicVariant, string> = {
   C: "Header + footer only",
 };
 
+/*
+ * Issue #63 adds page-level variants A2 / A3 for /industry/[slug],
+ * /newsletters/[slug] and /join (see pageVariants.ts). They keep variant A's
+ * Faithful chrome, so the layout sees "A" for them.
+ */
+export async function rawClassicVariant(): Promise<string> {
+  return (await cookies()).get("classic-proto")?.value ?? "current";
+}
+
 export async function classicVariant(): Promise<ClassicVariant> {
-  const v = (await cookies()).get("classic-proto")?.value;
-  return (CLASSIC_VARIANTS as readonly string[]).includes(v ?? "") ? (v as ClassicVariant) : "current";
+  const v = await rawClassicVariant();
+  if (v === "A2" || v === "A3") return "A";
+  return (CLASSIC_VARIANTS as readonly string[]).includes(v) ? (v as ClassicVariant) : "current";
+}
+
+/** Issue #63: which page variant a no-live-counterpart page renders. */
+export async function pageVariant(): Promise<"current" | "A" | "A2" | "A3"> {
+  const v = await rawClassicVariant();
+  return v === "A2" || v === "A3" || v === "A" ? v : "current";
 }

@@ -1,4 +1,9 @@
 import Link from "next/link";
+// PROTOTYPE (issue #63) — throwaway branch prototype-classic only.
+import { pageVariant } from "@/components/classic-prototype/variant";
+import { JoinHybrid, JoinLiveShape } from "@/components/classic-prototype/pages/JoinVariants";
+import { publishedStories } from "@/lib/queries";
+import { mediaUrl } from "@/lib/db/server";
 
 export const metadata = {
   title: "Become a Member",
@@ -20,7 +25,14 @@ const STEPS = [
   ["We verify and approve", "The editor checks your page — then you're live in the directory."],
 ];
 
-export default function JoinPage() {
+export default async function JoinPage() {
+  const pv = await pageVariant();
+  if (pv === "A2" || pv === "A3") {
+    // Placeholder photos: real workshop covers (the newest local stories are e2e noise).
+    const { stories } = await publishedStories({ industry: "bending-forming", limit: 8 });
+    const photos = stories.filter((s) => s.cover_path).slice(1, 4).map((s) => ({ src: mediaUrl(s.cover_path), focus: s.cover_focus }));
+    return pv === "A2" ? <JoinLiveShape photos={photos} /> : <JoinHybrid photos={photos} />;
+  }
   return (
     <div className="mx-auto max-w-4xl px-4">
       <div className="mt-8 text-center">

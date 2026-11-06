@@ -2,15 +2,24 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { PAGE_VARIANTS, pageVariantNames } from "./pageVariants";
 
 /* PROTOTYPE switcher (issue #59). Not part of the design being judged. */
-export function PrototypeSwitcher({ variants, names, current }: {
+export function PrototypeSwitcher({ variants: variantsIn, names: namesIn, current: currentIn }: {
   variants: readonly string[];
   names: Record<string, string>;
   current: string;
 }) {
+  let variants = variantsIn, names = namesIn, current = currentIn;
   const router = useRouter();
   const pathname = usePathname();
+  // Issue #63: page-level variants on the three no-live-counterpart pages.
+  const pageNames = pageVariantNames(pathname);
+  if (pageNames) {
+    variants = PAGE_VARIANTS;
+    names = pageNames;
+  }
+  if (!variants.includes(current)) current = (current === "A2" || current === "A3") ? "A" : variants[0];
   const i = Math.max(0, variants.indexOf(current));
   const go = (d: number) => {
     const next = variants[(i + d + variants.length) % variants.length];
