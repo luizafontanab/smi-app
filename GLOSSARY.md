@@ -12,6 +12,10 @@ _Avoid_: client, customer, account
 Someone on SMI's own team (Jas and anyone working the console) who approves, writes and publishes content.
 _Avoid_: the desk, operator, staff
 
+**CRM company**:
+A company as SMI's CRM records it, whether or not it is a member. Its news page, or its website when that is blank, is where its story source comes from.
+_Avoid_: account, client, organisation; never "member" unless it is one
+
 ## Content
 
 **Content item**:
