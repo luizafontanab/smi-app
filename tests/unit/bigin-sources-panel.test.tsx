@@ -6,7 +6,7 @@ import { CompaniesBox } from "@/app/console/crm/CompaniesBox";
 import type { CompanyListRow } from "@/lib/crm-companies/list";
 import type { BiginSourcesRun } from "@/lib/sources/bigin";
 
-vi.mock("@/app/console/crm/actions", () => ({ syncCompaniesNow: vi.fn() }));
+vi.mock("@/app/console/crm/actions", () => ({ syncCompaniesNow: vi.fn(), setCompanyMember: vi.fn() }));
 
 /* The Bigin sources panel, moved from Story Sources into CRM's Companies box (#51). */
 
@@ -70,13 +70,14 @@ describe("BiginSourcesPanel", () => {
 
 const company = (over: Partial<CompanyListRow>): CompanyListRow => ({
   id: "u1", biginId: "9100000000001", name: "Acme", website: null, newsPageUrl: "https://acme.test/news", inUse: "news_page",
-  lastSyncedAt: "2026-11-06T03:00:00Z", deletedInBiginAt: null, contacts: 0, member: null, sourceId: null, ...over,
+  lastSyncedAt: "2026-11-06T03:00:00Z", deletedInBiginAt: null, contacts: 0, member: null, memberChosen: false, sourceId: null, ...over,
 });
 const box = (props: Partial<Parameters<typeof CompaniesBox>[0]>) =>
   render(
     <CompaniesBox
       live list={{ rows: [], count: 0, page: 1, pages: 1 }} q="" filter="all" only={undefined} run={null} sourcesRun={null}
       flash={undefined} error={undefined} href={(over) => `/console/crm?${new URLSearchParams(Object.entries(over).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}#companies`} keep={{}}
+      editing={null} members={[]}
       {...props}
     />,
   );
@@ -103,5 +104,19 @@ describe("CRM Companies box", () => {
   it("offers the way back to every company when a Story Sources link narrowed it to one", () => {
     box({ only: "9100000000001", list: { rows: [company({})], count: 1, page: 1, pages: 1 } });
     expect(screen.getByRole("link", { name: "Show all companies" })).toHaveAttribute("href", "/console/crm?#companies");
+  });
+
+  it("keeps the member override's Edit link and editor beside the Story Sources link (#51 + #53)", () => {
+    const acme = company({ sourceId: "src-1", member: { id: "m1", name: "Jo" }, memberChosen: true });
+    box({
+      only: "9100000000001",
+      list: { rows: [acme], count: 1, page: 1, pages: 1 },
+      editing: { id: acme.id, biginId: acme.biginId, name: acme.name, member: acme.member, memberChosen: true },
+      members: [{ id: "m1", name: "Jo" }],
+    });
+    const row = screen.getByRole("link", { name: "On Story Sources" }).closest("tr")!;
+    expect(within(row).getByRole("link", { name: "Edit Acme" })).toHaveAttribute("href", "/console/crm?company=u1#companies");
+    expect(row).toHaveTextContent("chosen by hand");
+    expect(screen.getByText("Editing Acme")).toBeInTheDocument();
   });
 });

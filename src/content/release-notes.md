@@ -10,6 +10,12 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — Choose a company's member by hand
+- In the CRM Companies box, click Edit on a company to choose its member yourself. Story drafts from that company's news page are then tagged with the member you chose.
+- Your choice takes the place of the automatic match (a linked contact, or the member's website), including when that match found more than one member and tagged nobody. It is kept through every Bigin sync.
+- Each company shows whether its member was "chosen by hand" or "matched automatically". "Use automatic match" clears your choice and goes back to the automatic match straight away.
+- The choice stays in the app only: Bigin has no member field, so nothing is sent to Bigin.
+
 ## 2026-11-06 — Bigin's story sources move to the CRM page
 - The "From Bigin" panel has moved from Story sources to the Companies box on the CRM page. It still shows when Bigin last updated the story sources, any Bigin addresses to fix (not a web address, or listed by two companies), and the warning when no company has a News Page URL.
 - Story sources now has a one-line link to the CRM page in its place, and no "Sync from Bigin now" button: "Sync companies" on the CRM page does the same job.

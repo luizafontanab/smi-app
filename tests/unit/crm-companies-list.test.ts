@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressInUse, parseCompanyFilter, readCompanyList } from "@/lib/crm-companies/list";
+import { addressInUse, parseCompanyFilter, readCompanyList, readCompanyMember } from "@/lib/crm-companies/list";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 
 /* The Companies box's read model (issue #50): what each row shows. */
@@ -113,5 +113,54 @@ describe("readCompanyList", () => {
       expect(companies.is).not.toHaveBeenCalledWith("deleted_in_bigin_at", null);
       expect(list.rows).toEqual([expect.objectContaining({ name: "Gone Ltd", deletedInBiginAt: "2026-11-06T03:00:00Z" })]);
     });
+  });
+});
+
+describe("readCompanyList: member override (#53)", () => {
+  it("shows whether the member was chosen by hand (#53) or matched automatically, the choice winning", async () => {
+    const db = asDb(mockDb({
+      from: fromByTable({
+        crm_companies: () => queryBuilder(dbOk([
+          // chosen by hand, but the sync hasn't re-tagged the source yet: the choice is what's shown
+          { id: "u1", bigin_id: "1", name: "Acme", website: null, news_page_url: "https://acme.test/news", last_synced_at: "2026-11-06T03:00:00Z", override: { id: "m-chosen", name: "Chosen Ltd" } },
+          // chosen by hand with no address, so no source at all
+          { id: "u2", bigin_id: "2", name: "Nowhere Ltd", website: null, news_page_url: null, last_synced_at: "2026-11-06T03:00:00Z", override: { id: "m-two", name: "Two Ltd" } },
+          { id: "u3", bigin_id: "3", name: "Bright", website: "https://bright.test", news_page_url: null, last_synced_at: "2026-11-06T03:00:00Z", override: null },
+        ], 3)),
+        contacts: () => queryBuilder(dbOk([])),
+        content_sources: () => queryBuilder(dbOk([
+          { bigin_account_id: "1", member: { id: "m-auto", name: "Auto Ltd" } },
+          { bigin_account_id: "3", member: { id: "m-bright", name: "Bright Members" } },
+        ])),
+      }),
+    }));
+
+    const list = await readCompanyList(db, {});
+
+    expect(list.rows.map(({ name, member, memberChosen }) => ({ name, member, memberChosen }))).toEqual([
+      { name: "Acme", member: { id: "m-chosen", name: "Chosen Ltd" }, memberChosen: true },
+      { name: "Nowhere Ltd", member: { id: "m-two", name: "Two Ltd" }, memberChosen: true },
+      { name: "Bright", member: { id: "m-bright", name: "Bright Members" }, memberChosen: false },
+    ]);
+  });
+});
+
+describe("readCompanyMember (#53)", () => {
+  const db = (company: unknown, source: unknown = null) => asDb(mockDb({
+    from: fromByTable({ crm_companies: () => queryBuilder(dbOk(company)), content_sources: () => queryBuilder(dbOk(source)) }),
+  }));
+
+  it("is the member chosen by hand when there is one", async () => {
+    expect(await readCompanyMember(db({ id: "u1", bigin_id: "1", name: "Acme", override: { id: "m-c", name: "Chosen" } }), "u1"))
+      .toEqual({ id: "u1", biginId: "1", name: "Acme", member: { id: "m-c", name: "Chosen" }, memberChosen: true });
+  });
+
+  it("else the member its source is matched to automatically", async () => {
+    expect(await readCompanyMember(db({ id: "u1", bigin_id: "1", name: "Acme", override: null }, { member: { id: "m-a", name: "Auto" } }), "u1"))
+      .toEqual({ id: "u1", biginId: "1", name: "Acme", member: { id: "m-a", name: "Auto" }, memberChosen: false });
+  });
+
+  it("is null for a company that isn't stored", async () => {
+    expect(await readCompanyMember(db(null), "u9")).toBeNull();
   });
 });
