@@ -11,9 +11,29 @@ export type NewsletterIssue = NonNullable<Awaited<ReturnType<typeof newsletterBy
 /** The issue's events diary and supplier directory (lib/newsletter-extras). */
 export type NewsletterIssueExtras = Awaited<ReturnType<typeof issueExtras>>;
 
-type Card = { key: string; href: string; title: string; summary: string | null; image: string | null; focus: unknown; kicker: string | null; cta: string };
+/** One story, video or sponsored-story card of an issue, as the web copy draws it. */
+export type IssueCardData = { key: string; href: string; title: string; summary: string | null; image: string | null; focus: unknown; kicker: string | null; cta: string };
 
-function IssueCard({ card, lead = false }: { card: Card; lead?: boolean }) {
+/**
+ * What an issue page draws, read from the loaded issue: its story and video
+ * cards in send order, the masthead sponsor (with its artwork) and the adverts
+ * left to place between rows. Shared by every design option's issue view so
+ * they read an issue the same way.
+ */
+export function issueContent(issue: NewsletterIssue) {
+  // A story or video withdrawn since the send is hidden by RLS and comes back null; it is skipped.
+  const cards = issue.items.flatMap(({ story, video, position }): IssueCardData[] => {
+    if (story) return [{ key: `s${position}`, href: `/news/${story.slug}`, title: story.title, summary: story.excerpt, image: mediaUrl(story.cover_path), focus: story.cover_focus, kicker: null, cta: "Read article" }];
+    if (video) return [{ key: `v${position}`, href: `/video/${video.slug}`, title: video.title, summary: null, image: mediaUrl(video.thumbnail_path), focus: null, kicker: "Video", cta: "Watch video" }];
+    return [];
+  });
+  const placed = issue.ads.flatMap((slot) => (slot.advert ? [{ ...slot.advert, after_item: slot.after_item }] : []));
+  const { sponsor, banners } = splitMastheadSponsor(placed);
+  const sponsorImage = sponsor ? mediaUrl(sponsor.desktop_path) ?? mediaUrl(sponsor.mobile_path) : null;
+  return { cards, sponsor, sponsorImage, banners };
+}
+
+function IssueCard({ card, lead = false }: { card: IssueCardData; lead?: boolean }) {
   return (
     <Link href={card.href} data-part="newsletter-card" className="group block">
       {card.image && (
@@ -39,15 +59,7 @@ function IssueCard({ card, lead = false }: { card: Card; lead?: boolean }) {
  * (src/components/design-option.ts).
  */
 export function NewsletterIssueView({ issue, extras }: { issue: NewsletterIssue; extras: NewsletterIssueExtras }) {
-  // A story or video withdrawn since the send is hidden by RLS and comes back null; it is skipped.
-  const cards = issue.items.flatMap(({ story, video, position }): Card[] => {
-    if (story) return [{ key: `s${position}`, href: `/news/${story.slug}`, title: story.title, summary: story.excerpt, image: mediaUrl(story.cover_path), focus: story.cover_focus, kicker: null, cta: "Read article" }];
-    if (video) return [{ key: `v${position}`, href: `/video/${video.slug}`, title: video.title, summary: null, image: mediaUrl(video.thumbnail_path), focus: null, kicker: "Video", cta: "Watch video" }];
-    return [];
-  });
-  const placed = issue.ads.flatMap((slot) => (slot.advert ? [{ ...slot.advert, after_item: slot.after_item }] : []));
-  const { sponsor, banners } = splitMastheadSponsor(placed);
-  const sponsorImage = sponsor ? mediaUrl(sponsor.desktop_path) ?? mediaUrl(sponsor.mobile_path) : null;
+  const { cards, sponsor, sponsorImage, banners } = issueContent(issue);
 
   return (
     <div data-part="newsletter-issue" className="mx-auto max-w-3xl px-4">
