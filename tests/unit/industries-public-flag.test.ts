@@ -7,19 +7,21 @@ import IndustryPage, { generateMetadata } from "@/app/(public)/industry/[slug]/p
  * as it was.
  */
 
-const { isFeatureEnabled, loadIndustryHub, industryBySlug } = vi.hoisted(() => ({
+const { isFeatureEnabled, loadIndustryHub, industryBySlug, industries } = vi.hoisted(() => ({
   isFeatureEnabled: vi.fn(async () => true),
   loadIndustryHub: vi.fn(async () => null),
   industryBySlug: vi.fn(async () => ({ id: 7, slug: "welding", name: "Welding" })),
+  industries: vi.fn(async () => [{ slug: "welding", name: "Welding" }]),
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
 vi.mock("@/app/(public)/industry/[slug]/hub.data", () => ({ loadIndustryHub }));
-vi.mock("@/lib/queries", () => ({ industryBySlug }));
+vi.mock("@/lib/queries", () => ({ industryBySlug, industries }));
 
 afterEach(() => {
   isFeatureEnabled.mockReset().mockResolvedValue(true);
   loadIndustryHub.mockClear();
   industryBySlug.mockClear();
+  industries.mockClear();
 });
 
 const props = { params: Promise.resolve({ slug: "welding" }), searchParams: Promise.resolve({}) } as unknown as PageProps<"/industry/[slug]">;
@@ -30,6 +32,7 @@ describe("industry page", () => {
     await expect(IndustryPage(props)).rejects.toThrow("NEXT_REDIRECT:/news");
     expect(isFeatureEnabled).toHaveBeenCalledWith("industries_public");
     expect(loadIndustryHub).not.toHaveBeenCalled();
+    expect(industries).not.toHaveBeenCalled();
   });
 
   it("gives no industry metadata while hidden", async () => {
