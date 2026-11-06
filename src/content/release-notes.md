@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — A second design option, Classic
+- There is now a second complete look for the public website, called Classic, to choose between alongside the current design. It follows SMI's existing website, sheetmetalindustries.com: a grey page with diagonal stripes, white panels, blue links and buttons, orange accents and League Spartan type throughout.
+- Classic is shown on its own preview address, so the two can be compared side by side. Nothing changes here: this site, the console and the member area look the same as before.
+
 ## 2026-11-06 — Buttons show they're working
 - Buttons that save, send, approve, publish, delete or pay now grey out as soon as you click them and say what they're doing, for example "Saving…" or "Publishing…", until the job is done. Clicking twice no longer does the job twice.
 - This applies everywhere in the console and the member area, including the Confirm buttons under "Social post" and "Try again" on the error pages.
