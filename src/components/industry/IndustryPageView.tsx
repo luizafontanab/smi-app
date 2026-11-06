@@ -14,7 +14,15 @@ const CARD = "w-64 shrink-0";
  * Current's /industry/[slug] body. The route loads the hub and renders this
  * through the design-option hook point (src/components/design-option.ts).
  */
-export function IndustryPageView({ slug, hub }: { slug: string; hub: IndustryHub }) {
+export function IndustryPageView({ slug, hub }: {
+  slug: string;
+  hub: IndustryHub;
+  /**
+   * Every public industry, in sort order. Passed by the route for a design
+   * option with a topic switcher (Classic, #76); Current doesn't use it.
+   */
+  industries?: { slug: string; name: string }[];
+}) {
   const { industry, stories, storyTotal, members, memberTotal, videos, videoTotal, events, eventTotal, eventsTense } = hub;
 
   const newsHref = `/news?industry=${slug}`;

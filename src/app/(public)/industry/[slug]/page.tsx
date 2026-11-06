@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { isFeatureEnabled } from "@/lib/feature-flags";
-import { industryBySlug } from "@/lib/queries";
+import { industries as industryList, industryBySlug } from "@/lib/queries";
 import { IndustryView } from "@/components/design-option";
 import { loadIndustryHub } from "./hub.data";
 
@@ -25,8 +25,11 @@ export default async function IndustryPage(props: PageProps<"/industry/[slug]">)
   // is a 307, so nothing is cached as permanent and turning the flag back on
   // restores the page.
   if (!(await isFeatureEnabled("industries_public"))) redirect("/news");
-  const hub = await loadIndustryHub(slug);
+  // The industry list rides along for an option that lets the reader switch
+  // topic from the page (Classic's Topics select, #76). One ten-row read, in
+  // parallel with the hub; Current's view ignores it.
+  const [hub, industries] = await Promise.all([loadIndustryHub(slug), industryList()]);
   if (!hub) notFound();
   // Rendered through the design-option hook point, never directly (#69).
-  return <IndustryView slug={slug} hub={hub} />;
+  return <IndustryView slug={slug} hub={hub} industries={industries} />;
 }
