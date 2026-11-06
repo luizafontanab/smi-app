@@ -48,10 +48,10 @@ export function GridSiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 md:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr]">
         <div>
           <Image
-            src="/logo-stacked.png"
+            src="/logo-stacked.svg"
             alt="Sheet Metal Industries"
-            width={500}
-            height={172}
+            width={819}
+            height={270}
             className="h-16 w-auto"
           />
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-white/70">

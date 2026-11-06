@@ -240,7 +240,10 @@ export async function renderIssueHtml(
     : "";
 
   const sponsorImage = sponsor ? mediaUrl(sponsor.desktop_path) ?? mediaUrl(sponsor.mobile_path) : null;
-  const masthead = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+  // PNG, not SVG: Gmail and Outlook don't render SVG. It is a 480×158 render
+  // of public/logo-stacked-ink.svg (".com" in ink, for the white email body).
+  // Keep the filename: issues already sent link to it.
+  const masthead =`<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
     <td valign="middle"><a href="${escapeHtml(base)}"><img src="${escapeHtml(`${base}/logo-stacked.png`)}" width="160" alt="Sheet Metal Industries" style="display:block;width:160px;height:auto;border:0;"></a></td>
     ${sponsor && sponsorImage
       ? `<td valign="middle" align="right">

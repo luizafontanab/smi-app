@@ -29,7 +29,7 @@ test.describe("header", () => {
     await page.goto("/");
     const header = page.locator("header").first();
     const logo = header.locator("img").first();
-    // ~209px for the stacked lockup at h-18 on a phone (matched to the live
+    // ~219px for the stacked lockup at h-18 on a phone (matched to the live
     // site), ~310px for the wide mark at sm:h-12 — it used to be squeezed to
     // 136–159px.
     const box = (await logo.boundingBox())!;

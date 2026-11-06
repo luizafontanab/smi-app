@@ -22,21 +22,26 @@ export const PHONE_MEDIA = "(width < 40rem)";
  *   fill="#fff" path — the wordmark text — set to --smi-ink. Generated, not
  *   redrawn: regenerate it from logo-wide.svg if the client supplies new
  *   artwork.
- * - On a phone, the stacked lockup (public/logo-stacked.png, the footer's
- *   mark) — the client's preferred mobile logo. It is the supplied 500×500
- *   "Deep orange" JPG with the canvas keyed out and its coral (#ff6b4b)
- *   corrected to the brand #ff8200. All one orange, so it reads on both tones.
+ * - On a phone, the stacked lockup (public/logo-stacked.svg, the footer's
+ *   mark) — the client's preferred mobile logo, the approved "SMI LOGO RGB"
+ *   artwork with one change: its orange was exported as #f08119 and is set
+ *   to the confirmed brand #ff8200 (6 Nov). Orange + a white ".com", so it too needs a dark
+ *   surface; `tone="light"` swaps in logo-stacked-ink.svg, the same file with
+ *   only that white fill set to --smi-ink. Nothing else in the artwork may be
+ *   altered — tests/unit/wordmark.test.tsx checks the two files differ by
+ *   that one line.
  */
 export function Wordmark({ tone = "dark" }: {
   /** The surface the mark sits on — "dark" is the near-black chrome header. */
   tone?: "dark" | "light";
 }) {
   const alt = "Sheet Metal Industries";
-  // Stacked lockup is 500 × 172 ≈ 2.9:1, shown 72px tall (≈209px wide, ~55%
-  // of a 390px phone) — matched to the live site's phone header. The headers
-  // keep their phone padding to 8px so the bar stays ~88px, as live; the
-  // artwork itself has no margin to trim.
-  const { props: { srcSet: phone } } = getImageProps({ alt, src: "/logo-stacked.png", width: 209, height: 72 });
+  // Stacked lockup is 818.753 × 269.597 ≈ 3.04:1, shown 72px tall (≈219px
+  // wide, ~56% of a 390px phone) — matched to the live site's phone header.
+  // The headers keep their phone padding to 8px so the bar stays ~88px, as
+  // live; the artwork itself has no margin to trim. A plain path, not
+  // getImageProps: Next serves SVG unoptimized, so it would return no srcSet.
+  const phone = tone === "light" ? "/logo-stacked-ink.svg" : "/logo-stacked.svg";
   // Wide artwork is 1786.05 × 276.97 ≈ 6.45:1. Full size only from xl (lg is
   // where the header shows every nav link, and a 413px logo plus the full nav
   // overflows a 1024px viewport). Every header gives the mark's link shrink-0,
@@ -53,7 +58,7 @@ export function Wordmark({ tone = "dark" }: {
   });
   return (
     <picture>
-      <source media={PHONE_MEDIA} srcSet={phone} width={209} height={72} />
+      <source media={PHONE_MEDIA} srcSet={phone} width={219} height={72} />
       <img {...wide} alt={alt} className="h-18 w-auto sm:h-12 xl:h-16" />
     </picture>
   );

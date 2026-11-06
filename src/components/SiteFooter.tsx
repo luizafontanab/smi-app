@@ -10,14 +10,14 @@ export function SiteFooter() {
     <footer className="mt-12 bg-chrome text-white">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-3">
         <div>
-          {/* The stacked lockup (from the supplied 500×500 "Deep orange" JPG,
-              white canvas keyed out and trimmed to 500×172), not the header's
-              wide SVG — the footer column suits the squarer shape. */}
+          {/* The approved stacked lockup (white ".com", so dark surfaces
+              only), not the header's wide SVG — the footer column suits the
+              squarer shape. */}
           <Image
-            src="/logo-stacked.png"
+            src="/logo-stacked.svg"
             alt="Sheet Metal Industries"
-            width={500}
-            height={172}
+            width={819}
+            height={270}
             className="h-20 w-auto"
           />
           <p className="mt-2 text-sm text-white/70">The voice of the UK sheet metal, fabrication and welding trade.</p>

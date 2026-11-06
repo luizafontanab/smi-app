@@ -241,6 +241,20 @@
     the company's name or "the company" for "we", "its" for "our", quotes left as
     they are.
 
+34. **The wide logo needs exporting again (6 Nov).** The stacked logo
+    ("approved SMI LOGO RGB") is live on phones, in the footers and in the
+    newsletter. The wide one ("SMI and Cut, Shape, Form and Join") can't be
+    used yet: its canvas is smaller than the artwork, so the diamond is cut off
+    on the left, "Join" is cut off on the right, and most of the image is empty
+    space. In Illustrator, *Fit to Artwork Bounds* before exporting fixes it.
+    Until then, tablets and computers keep the wide logo they show today.
+
+    *Note (6 Nov): the orange is confirmed as #ff8200. The stacked file was
+    exported in #f08119, so we set it to #ff8200; a corrected export would let
+    us use the file exactly as supplied. On white backgrounds (member area,
+    login pages, the newsletter) ".com" shows in black instead of white so it
+    stays visible. Nothing else in the artwork is changed.*
+
 ## Data validation
 
 - sent to Jas on oct 4th

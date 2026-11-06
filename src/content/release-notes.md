@@ -10,6 +10,17 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — The approved stacked logo
+- The stacked Sheet Metal Industries logo on phones, in the site footers and at the top of the newsletter is now the approved artwork, in the site's brand orange. It is sharper than before, and the "Cut, Shape, Form and Join" line is a little larger.
+- On white backgrounds (the member area, the login pages and the newsletter) its ".com" shows in black so it stays visible; on the dark bars it stays white, as designed.
+- Newsletters already sent will also show the new logo, because they load it from the website.
+- Tablets and computers keep the current wide logo until a corrected file arrives.
+
+## 2026-11-06 — "Check sources now" no longer waits for the daily rule
+- "Check sources now" now checks sources even if they were checked in the last 20 hours, starting with the ones checked longest ago. Click again to carry on through the list.
+- After a click, the summary says how many of your active sources it checked and how many it didn't reach this time.
+- When there are no sources on the list, the summary now says so, instead of saying every source was checked recently.
+
 ## 2026-11-05 — Social reach fits a phone screen
 - On a phone, the Social reach page in the console no longer slides sideways. The platform figures table scrolls on its own, as the other console tables do.
 

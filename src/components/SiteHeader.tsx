@@ -78,7 +78,7 @@ export function SiteHeader({ user, unread = 0, tone = "dark" }: { user: CurrentU
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2 sm:py-3">
         {/* From sm up the supplied wide mark is orange + white; "light" is
             the same artwork with its wordmark path in ink, for a pale bar.
-            Phones get the all-orange stacked lockup on either tone.
+            Phones get the stacked lockup, its ".com" in ink on "light".
             shrink-0: the mark keeps its natural size at every width — the
             nav gives way instead (#33: it was squeezed to 136px at 360). */}
         <Link href="/" className="shrink-0"><Wordmark tone={tone} /></Link>
