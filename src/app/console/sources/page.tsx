@@ -272,13 +272,8 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                         <p className="text-xs text-graphite">
                           {s.bigin_from_website
                             ? "The address is the company's Website in Bigin, used because its News Page URL is blank — give the company a News Page URL to replace it."
-                            : "The address is the company's News Page URL from Bigin — change or clear it on the company."}{" "}
-                          <Link
-                            href={`/console/crm?cid=${encodeURIComponent(s.bigin_account_id)}&company=${encodeURIComponent(s.bigin_account_id)}#companies`}
-                            className="underline hover:text-ink"
-                          >
-                            Edit the company on CRM
-                          </Link>.
+                            : "The address is the company's News Page URL from Bigin — change or clear it on the company in CRM."}{" "}
+                          <Link href={`/console/crm?cid=${encodeURIComponent(s.bigin_account_id)}#companies`} className="underline hover:text-ink">See the company on CRM</Link>.
                         </p>
                       ) : (
                         <form action={updateSourceUrl} className="flex flex-wrap items-end gap-2">

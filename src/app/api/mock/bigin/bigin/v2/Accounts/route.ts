@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const all = org().accounts;
   const data = all.slice((page - 1) * perPage, page * perPage).map((a) => {
     const row: Record<string, unknown> = { id: a.id };
-    for (const f of fields) if (f in a) row[f] = a[f as keyof typeof a];
+    for (const f of fields) if (f in a) row[f] = a[f];
     return row;
   });
   if (!data.length) return new NextResponse(null, { status: 204 });

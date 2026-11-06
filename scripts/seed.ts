@@ -555,7 +555,15 @@ async function main() {
   // One company deleted in Bigin since (#52): kept, marked, and shown only
   // under the box's "Deleted in Bigin" filter. No source links to it.
   crmCompanies.push({ bigin_id: "seed-bigin-company-deleted", name: "Former Plating Co", website: "https://former-plating.test", news_page_url: null, deleted_in_bigin_at: new Date(Date.now() - 3 * 864e5).toISOString() });
-  await must("crm_companies", db.from("crm_companies").insert(crmCompanies));
+  // The JSON copy of every Bigin field (#54) the Companies box's detail view
+  // lists, as a sync would store it: the known fields, a phone and one custom field.
+  await must("crm_companies", db.from("crm_companies").insert(crmCompanies.map((c, i) => ({
+    ...c,
+    fields: {
+      id: c.bigin_id, Account_Name: c.name, Website: c.website, News_Page_URL: c.news_page_url,
+      Phone: i % 2 ? null : `01234 5678${String(i).padStart(2, "0")}`, Machine_Brands: i % 2 ? null : "Trumpf, Amada",
+    },
+  }))));
 
   console.log("— analytics (~90 days) + engagement audit + rollups");
   const { data: allPub } = await db.from("stories").select("id, member_id, slug").eq("status", "published");

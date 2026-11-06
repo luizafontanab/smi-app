@@ -63,17 +63,33 @@ Each service is independent; do them in any order.
 
 - [ ] **1.15a — After the first Bigin sync, check the "Story sources from
       Bigin" panel in CRM's Companies box (`/console/crm#companies`; it moved
-      there from Story sources on 6 Nov).** The story crawler reads the Companies field "News
-      Page URL" as `News_Page_URL` (`NEWS_PAGE_FIELD` in
-      `src/lib/adapters/crm.ts`), and falls back to the company's Website when
-      it's blank. Bigin shows no API names in its settings (checked 5 Nov), so
-      the name can only be confirmed by a sync. If the panel shows the red "No
-      Bigin company came back with a News Page URL" warning, the name is
-      probably wrong: nothing is added or paused, and the real name has to be
-      found through Bigin's field API, which needs a settings-read scope added
-      to the token. Otherwise, read the count "using their Website": every one
-      is a homepage checked daily, so expect more suggestions than from news
-      pages alone (3.7 covers the first-week review).
+      there from Story sources on 6 Nov).** The company sync now finds the Companies field
+      "News Page URL" by its label in Bigin's field list (#54), so its API name
+      no longer has to be guessed — **once the token can read that list
+      (1.15b)**. Until then it reads `News_Page_URL` (`NEWS_PAGE_FIELD` in
+      `src/lib/adapters/crm.ts`), and the Companies box on `/console/crm` says
+      only the known fields are kept. After 1.15b, that box says nothing about
+      fields if the label was found, or names the field it fell back to if not.
+      If the panel shows the red "No Bigin company came back with a News
+      Page URL" warning, check the label in Bigin reads exactly "News Page URL":
+      nothing is added or paused until it does. Otherwise, read the count
+      "using their Website": every one is a homepage checked daily, so expect
+      more suggestions than from news pages alone (3.7 covers the first-week
+      review).
+- [ ] **1.15b — Regenerate the Bigin refresh token with two more scopes.** The
+      CRM companies work (spec #49) needs, on top of the four from 1.15:
+      `ZohoBigin.settings.fields.READ` (read the Companies field list: every
+      field in a company's detail view, and the News Page URL found by its
+      label, #54) and `ZohoBigin.modules.accounts.UPDATE` (write a company's
+      News Page URL back to Bigin, #55). Scope names are from Bigin's v2 API
+      docs, not yet tried on a live token. In the Zoho API Console's Self
+      Client (portal Bigin), generate a code with the full list in
+      `.env.example` (the CRM section), exchange it for a refresh token, and
+      replace `BIGIN_REFRESH_TOKEN` in Vercel Production. Until then the
+      company sync keeps working with name, Website and News Page URL only,
+      and a News Page URL edited here can't reach Bigin. Afterwards, run
+      "Sync companies" on `/console/crm` and open a company: it should list
+      Bigin's own field labels, custom fields included.
 
 ### Social — Buffer
 
