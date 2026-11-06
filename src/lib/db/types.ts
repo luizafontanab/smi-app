@@ -1002,6 +1002,7 @@ export type Database = {
         Row: {
           bigin_id: string
           created_at: string
+          deleted_in_bigin_at: string | null
           id: string
           last_synced_at: string
           name: string
@@ -1012,6 +1013,7 @@ export type Database = {
         Insert: {
           bigin_id: string
           created_at?: string
+          deleted_in_bigin_at?: string | null
           id?: string
           last_synced_at?: string
           name?: string
@@ -1022,6 +1024,7 @@ export type Database = {
         Update: {
           bigin_id?: string
           created_at?: string
+          deleted_in_bigin_at?: string | null
           id?: string
           last_synced_at?: string
           name?: string

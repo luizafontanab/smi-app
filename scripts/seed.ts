@@ -534,7 +534,7 @@ async function main() {
   const { data: linkedContacts } = await must("contacts (companies)", db.from("contacts")
     .select("bigin_company_id, bigin_company_name").not("bigin_company_id", "is", null));
   const seen = new Set<string>(["seed-bigin-company-1"]);
-  const crmCompanies: { bigin_id: string; name: string; website: string | null; news_page_url: string | null }[] = [{ bigin_id: "seed-bigin-company-1", name: "Example Fabrication Ltd", website: "https://example-fabrication.test", news_page_url: "https://example-fabrication.test/news/" }];
+  const crmCompanies: { bigin_id: string; name: string; website: string | null; news_page_url: string | null; deleted_in_bigin_at?: string }[] = [{ bigin_id: "seed-bigin-company-1", name: "Example Fabrication Ltd", website: "https://example-fabrication.test", news_page_url: "https://example-fabrication.test/news/" }];
   for (const c of linkedContacts ?? []) {
     if (!c.bigin_company_id || seen.has(c.bigin_company_id)) continue;
     seen.add(c.bigin_company_id);
@@ -546,6 +546,9 @@ async function main() {
       news_page_url: n % 3 === 0 ? `https://${domain}/news/` : null,
     });
   }
+  // One company deleted in Bigin since (#52): kept, marked, and shown only
+  // under the box's "Deleted in Bigin" filter. No source links to it.
+  crmCompanies.push({ bigin_id: "seed-bigin-company-deleted", name: "Former Plating Co", website: "https://former-plating.test", news_page_url: null, deleted_in_bigin_at: new Date(Date.now() - 3 * 864e5).toISOString() });
   await must("crm_companies", db.from("crm_companies").insert(crmCompanies));
 
   console.log("— analytics (~90 days) + engagement audit + rollups");
