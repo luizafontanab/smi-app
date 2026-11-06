@@ -101,4 +101,14 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   { label: "form error text: red on a panel", fg: c["--classic-danger"], bg: c["--classic-panel"], min: TEXT },
   { label: "form error edge and invalid field border: red on a panel", fg: c["--classic-danger"], bg: c["--classic-panel"], min: NON_TEXT },
   { label: "form field border on a panel", fg: c["--classic-field-edge"], bg: c["--classic-panel"], min: NON_TEXT },
+  // #81 edge surfaces. Pagination hovers to dark blue, not orange, so a
+  // takeover colour can't break it. The root 404's eyebrow is ink because it
+  // sits on the bare stripes.
+  { label: "pagination link: white on blue", fg: c["--classic-button-text"], bg: c["--classic-blue"], min: TEXT },
+  { label: "pagination link hover: white on dark blue", fg: c["--classic-button-text"], bg: c["--classic-blue-hover"], min: TEXT },
+  { label: "pagination status: meta on a panel", fg: c["--classic-meta"], bg: c["--classic-panel"], min: TEXT },
+  { label: "root 404 eyebrow: ink on a stripe", fg: c["--smi-ink"], bg: c["--classic-stripe"], min: TEXT },
+  { label: "industry strip link: meta on white", fg: c["--classic-meta"], bg: c["--classic-panel"], min: TEXT },
+  { label: "industry strip link hover: ink on the canvas", fg: c["--smi-ink"], bg: c["--classic-canvas"], min: TEXT },
+  { label: "skip link: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: TEXT },
 ];
