@@ -11,7 +11,7 @@ import "./globals.css";
 // instantiation here. League Spartan is the display/heading voice; Source Sans 3
 // carries body and UI text (geometric Spartan is ambiguous at reading sizes —
 // I/l/1 — and has no tabular figures, which the console's stats need). The
-// wordmark is the supplied SVG artwork (components/Wordmark.tsx), not a font.
+// wordmark is the supplied logo artwork (components/Wordmark.tsx), not a font.
 const leagueSpartan = League_Spartan({
   variable: "--font-league-spartan",
   subsets: ["latin"],

@@ -10,6 +10,9 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-05 — The stacked logo on phones
+- On phones the top bar now shows the stacked Sheet Metal Industries logo, the same one as in the footer, in the site's brand orange. This applies across the site, the member area and the login pages. Tablets and computers keep the wide logo.
+
 ## 2026-11-05 — Story sources use a company's website when Bigin has no news page
 - On Story sources, a Bigin company with no News Page URL now uses its Website instead, so far more Bigin companies are checked for new articles each day.
 - These sources say "from website" next to the Bigin label. Fill in the company's News Page URL in Bigin and the next sync swaps the homepage for that page.
