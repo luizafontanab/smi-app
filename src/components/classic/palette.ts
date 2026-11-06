@@ -25,6 +25,11 @@ export const CLASSIC_COLOURS = {
   // #71 header: the grey top bar, and the flat menu's resting link colour.
   "--classic-topbar": "#555555",
   "--classic-nav-link": "#b4b4b4",
+  // #78 join page. The banner's PLACEHOLDER backdrop (no photo yet,
+  // docs/HUMAN-TODO.md 7.5): the lightest stop of its gradient, under white text.
+  "--classic-join-banner": "#2b3440",
+  // The live site's red icon disc (decorative: it holds an emoji, no text).
+  "--classic-red": "#e3141e",
 } as const;
 
 const c = CLASSIC_COLOURS;
@@ -81,4 +86,10 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   { label: "newsletter sponsored story label and copy: meta on the canvas", fg: c["--classic-meta"], bg: c["--classic-canvas"], min: TEXT },
   { label: "newsletter sponsored story link: blue on the canvas", fg: c["--classic-blue"], bg: c["--classic-canvas"], min: TEXT },
   { label: "newsletter sponsored story link hover: blue on the canvas", fg: c["--classic-blue-hover"], bg: c["--classic-canvas"], min: TEXT },
+  // #78 join page. The banner title is white over the placeholder gradient,
+  // whose stops only get darker than this one. A real photo must keep an
+  // overlay at least this dark behind the title.
+  { label: "join banner title: white on the banner", fg: c["--classic-panel"], bg: c["--classic-join-banner"], min: TEXT },
+  { label: "join step numbers: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: TEXT },
+  { label: "join step detail: meta on a panel", fg: c["--classic-meta"], bg: c["--classic-panel"], min: TEXT },
 ];
