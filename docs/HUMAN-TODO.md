@@ -61,15 +61,16 @@ Each service is independent; do them in any order.
 
 ### CRM — Bigin
 
-- [ ] **1.15a — After the first Bigin sync, check the "From Bigin" box on
-      `/console/sources`.** The company sync now finds the Companies field
+- [ ] **1.15a — After the first Bigin sync, check the "Story sources from
+      Bigin" panel in CRM's Companies box (`/console/crm#companies`; it moved
+      there from Story sources on 6 Nov).** The company sync now finds the Companies field
       "News Page URL" by its label in Bigin's field list (#54), so its API name
       no longer has to be guessed — **once the token can read that list
       (1.15b)**. Until then it reads `News_Page_URL` (`NEWS_PAGE_FIELD` in
       `src/lib/adapters/crm.ts`), and the Companies box on `/console/crm` says
       only the known fields are kept. After 1.15b, that box says nothing about
       fields if the label was found, or names the field it fell back to if not.
-      If "From Bigin" shows the red "No Bigin company came back with a News
+      If the panel shows the red "No Bigin company came back with a News
       Page URL" warning, check the label in Bigin reads exactly "News Page URL":
       nothing is added or paused until it does. Otherwise, read the count
       "using their Website": every one is a homepage checked daily, so expect

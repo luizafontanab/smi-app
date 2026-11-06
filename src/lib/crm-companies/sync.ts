@@ -11,12 +11,22 @@ import { applyBiginSources, companyNewsPages, type BiginSourcesRun } from "../so
  *   2. Store every one of them in `crm_companies` — members and non-members,
  *      with or without an address — with a JSON copy of every Bigin field
  *      when the field list could be read (#54).
- *   3. Derive story sources exactly as the sources-from-Bigin sync always
- *      has (lib/sources/bigin: companyNewsPages → applyBiginSources).
+ *   3. Mark companies missing from a complete read as deleted in Bigin
+ *      (#52) — kept, never removed — and clear the mark on any that came back.
+ *   4. Derive story sources exactly as the sources-from-Bigin sync always
+ *      has (lib/sources/bigin: companyNewsPages → applyBiginSources). A
+ *      deleted company is simply absent from that read, so the source rules
+ *      already unlink its source, and pause it only if it was bigin_only.
  *
  * A partial read stores what it got and changes nothing destructive: no
- * company row is removed, and the source rules already never unlink or pause
- * on a partial read.
+ * company is marked deleted (let alone removed), and the source rules already
+ * never unlink or pause on a partial read. Nor does a "complete" read with no
+ * companies at all — an empty CRM is far less likely than a broken read, and
+ * the source rules don't trust that absence either (planBiginSources).
+ *
+ * Deletion is worked out only from the absence in a complete list read —
+ * never from a single-record lookup (the adapter's isGone, used by the
+ * contacts push, plays no part here).
  *
  * planCompanySync is pure (records + local rows in, plan out); syncCompanies
  * only reads and writes. Later tickets hook in here: deleted-in-Bigin marks
@@ -43,13 +53,21 @@ export type CompanySyncRun = {
   updated: number;
   /** which fields were read (#54); absent from runs saved before it */
   fieldList?: Omit<CompanyFieldList, "fields">;
+  /** stored companies newly found missing from a complete read, marked deleted in Bigin (absent before #52) */
+  deleted?: number;
+  /** of `read`, companies marked deleted in Bigin that came back; the mark is cleared (absent before #52) */
+  restored?: number;
   /** the story-source run, or null when sources weren't derived (Story crawler off) */
   sources: BiginSourcesRun | null;
 };
 
-export type LocalCompanyRow = Pick<Tables<"crm_companies">, "bigin_id" | "name" | "website" | "news_page_url" | "fields">;
-/** `fields` is left out when the read didn't get every field and the row is already stored, so a full copy isn't shrunk. */
-type CompanyWrite = Omit<LocalCompanyRow, "fields"> & { fields?: Json };
+export type LocalCompanyRow = Pick<Tables<"crm_companies">, "bigin_id" | "name" | "website" | "news_page_url" | "deleted_in_bigin_at" | "fields">;
+/**
+ * A company in the read is in Bigin, so every write clears the deleted mark.
+ * `fields` is left out when the read didn't get every field and the row is
+ * already stored, so a full copy isn't shrunk (#54).
+ */
+type CompanyWrite = Pick<LocalCompanyRow, "bigin_id" | "name" | "website" | "news_page_url"> & { deleted_in_bigin_at: null; fields?: Json };
 
 /** The same JSON whatever order its keys come in — jsonb returns them in its own. */
 function canonical(v: unknown): string {
@@ -66,6 +84,12 @@ export type CompanyPlan = {
   /** unchanged companies: only their last-synced time moves */
   touch: string[];
   added: number;
+  /** of `write`, stored companies with any field changed (only name, Website and News Page URL while the field list can't be read) */
+  updated: number;
+  /** of `write`, companies marked deleted in Bigin that are back in this read */
+  restored: number;
+  /** stored companies, not yet marked, missing from a complete read: mark them deleted in Bigin */
+  markDeleted: string[];
   /** what the story sources are derived from */
   newsPages: CompanyNewsPages;
 };
@@ -73,24 +97,33 @@ export type CompanyPlan = {
 /** What the sync should do with one read of Bigin, given the companies already stored. */
 export function planCompanySync(read: CrmCompanies, local: readonly LocalCompanyRow[]): CompanyPlan {
   const stored = new Map(local.map((r) => [r.bigin_id, r]));
-  const plan: CompanyPlan = { write: [], touch: [], added: 0, newsPages: companyNewsPages(read) };
+  const plan: CompanyPlan = { write: [], touch: [], added: 0, updated: 0, restored: 0, markDeleted: [], newsPages: companyNewsPages(read) };
   const allFields = read.fieldList?.allFields === true;
   const seen = new Set<string>();
   for (const c of read.companies) {
     if (seen.has(c.id)) continue; // a record repeated across pages: one row, as Bigin has one company
     seen.add(c.id);
+    const row: CompanyWrite = { bigin_id: c.id, name: c.name, website: c.website, news_page_url: c.newsPageUrl, deleted_in_bigin_at: null };
     const before = stored.get(c.id);
-    const row: CompanyWrite = { bigin_id: c.id, name: c.name, website: c.website, news_page_url: c.newsPageUrl };
     // Every field, or a company seen for the first time: keep Bigin's record. Otherwise the stored copy stays.
     if (allFields || !before) row.fields = c.fields as Json;
-    if (!before) plan.added++;
-    const same = before && before.name === row.name && before.website === row.website && before.news_page_url === row.news_page_url &&
-      (!allFields || canonical(before.fields) === canonical(row.fields));
-    if (same) {
-      plan.touch.push(c.id);
-    } else {
+    if (!before) {
+      plan.added++;
       plan.write.push(row);
+      continue;
     }
+    const changed = before.name !== row.name || before.website !== row.website || before.news_page_url !== row.news_page_url ||
+      (allFields && canonical(before.fields) !== canonical(row.fields));
+    if (changed) plan.updated++;
+    if (before.deleted_in_bigin_at) plan.restored++;
+    if (changed || before.deleted_in_bigin_at) plan.write.push(row);
+    else plan.touch.push(c.id);
+  }
+  // Only a complete read can say a company is gone — and not one that found
+  // no companies at all (see the module comment). A company already marked
+  // keeps the time it was first found missing.
+  if (read.complete && seen.size > 0) {
+    for (const r of local) if (!seen.has(r.bigin_id) && !r.deleted_in_bigin_at) plan.markDeleted.push(r.bigin_id);
   }
   return plan;
 }
@@ -121,7 +154,7 @@ export async function syncCompanies({
 
   const local: LocalCompanyRow[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from("crm_companies").select("bigin_id, name, website, news_page_url, fields").order("bigin_id").range(from, from + PAGE - 1);
+    const { data, error } = await db.from("crm_companies").select("bigin_id, name, website, news_page_url, deleted_in_bigin_at, fields").order("bigin_id").range(from, from + PAGE - 1);
     if (error) fail("reading stored companies", error);
     local.push(...(data ?? []));
     if (!data || data.length < PAGE) break;
@@ -141,6 +174,14 @@ export async function syncCompanies({
     const { error } = await db.from("crm_companies").update({ last_synced_at: stamp }).in("bigin_id", part);
     if (error) fail("stamping companies", error);
   }
+  for (const part of chunks(plan.markDeleted)) {
+    // Never removed: kept, marked, and hidden by default in CRM (ADR 0002).
+    const { error } = await db.from("crm_companies")
+      .update({ deleted_in_bigin_at: stamp, updated_at: stamp })
+      .in("bigin_id", part)
+      .is("deleted_in_bigin_at", null);
+    if (error) fail("marking companies deleted in Bigin", error);
+  }
 
   const sources = deriveSources ? await applyBiginSources(plan.newsPages, { now }) : null;
 
@@ -149,7 +190,9 @@ export async function syncCompanies({
     complete: read.complete,
     read: plan.write.length + plan.touch.length,
     added: plan.added,
-    updated: plan.write.length - plan.added,
+    updated: plan.updated,
+    deleted: plan.markDeleted.length,
+    restored: plan.restored,
     sources,
     ...(read.fieldList ? { fieldList: { read: read.fieldList.read, allFields: read.fieldList.allFields, newsPageField: read.fieldList.newsPageField, newsPageFieldFound: read.fieldList.newsPageFieldFound } } : {}),
   };

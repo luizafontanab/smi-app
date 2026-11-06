@@ -49,7 +49,7 @@ export type BiginSourcesRun = {
   linked: number;
   unlinked: number;
   paused: number;
-  /** URLs that aren't an address, or claimed by two companies — listed on /console/sources for fixing in Bigin */
+  /** URLs that aren't an address, or claimed by two companies — listed in CRM's Companies box for fixing in Bigin */
   skipped: { company: string; url: string; reason: "invalid_url" | "clash" }[];
   /** sources whose member changed this run */
   membersSet: number;

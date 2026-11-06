@@ -1008,6 +1008,7 @@ export type Database = {
           last_synced_at: string
           member_override_id: string | null
           name: string
+          news_page_pending_at: string | null
           news_page_url: string | null
           updated_at: string
           website: string | null
@@ -1021,6 +1022,7 @@ export type Database = {
           last_synced_at?: string
           member_override_id?: string | null
           name?: string
+          news_page_pending_at?: string | null
           news_page_url?: string | null
           updated_at?: string
           website?: string | null
@@ -1034,6 +1036,7 @@ export type Database = {
           last_synced_at?: string
           member_override_id?: string | null
           name?: string
+          news_page_pending_at?: string | null
           news_page_url?: string | null
           updated_at?: string
           website?: string | null
