@@ -322,6 +322,26 @@ through Proof and approval first.
       - A PUT to a deleted contact fails safely.
       - Deleting a race-created duplicate (`?wf_trigger=false`) works with the
         granted scopes.
+      - **Companies (spec #49).** Each of these was settled from Bigin's docs
+        only, never against a live account:
+        - *Before 1.15b, on the current token:* does one `GET /Accounts/{id}`
+          return every field, custom ones included? If it does, the company
+          panel's "In Bigin" fields (#54) needn't wait for the new token.
+          The docs' sample suggests so; no sentence says it.
+        - When regenerating the token (1.15b): Zoho accepts both scope names,
+          `ZohoBigin.settings.fields.READ` and `ZohoBigin.modules.accounts.UPDATE`,
+          as written. If it rejects either, the error names the one.
+        - The write check (a `PUT /Accounts` with no records,
+          `canWriteCompanies` in `src/lib/adapters/crm.ts`): record what Bigin
+          answers before and after 1.15b. The app expects `OAUTH_SCOPE_MISMATCH`
+          without the scope and a validation error about the empty `data` with
+          it. Anything else leaves the News Page URL editor in CRM disabled.
+        - Clear a company's News Page URL in CRM: Bigin's field must be empty
+          afterwards (the app sends `null`). If it keeps the old address, the
+          next sync puts it back.
+        - The field list (1.15a): the News Page URL field's `display_label`,
+          not only its `field_label`, reads "News Page URL". The Companies box
+          names the field it fell back to if not.
 - [ ] **3.4 — First Bigin import, with Jas, before the next newsletter.** In
       `/console/crm`, click **Preview import**, read the counts, then **Run first
       import**. Imported contacts are subscribed unless they opted out in Bigin,

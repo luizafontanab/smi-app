@@ -165,10 +165,10 @@ function chunks<T>(items: readonly T[]): T[][] {
 }
 
 /**
- * The `source_bigin_sync` job, "Sync companies" on CRM and "Sync from Bigin
- * now" on Story sources. Null when Bigin isn't connected. Throws on a
- * database error. `deriveSources: false` stores the companies only — the
- * CRM button with the Story crawler off (see syncCompaniesNow).
+ * The `source_bigin_sync` job and "Sync companies" on CRM. Null when Bigin
+ * isn't connected. Throws on a database error. `deriveSources: false`
+ * stores the companies only — the CRM button with the Story crawler off
+ * (see syncCompaniesNow).
  */
 export async function syncCompanies({
   crm = getCrmSync(),

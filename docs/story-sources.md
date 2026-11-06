@@ -172,7 +172,8 @@ is in CRM's Companies box (`/console/crm#companies`); Story Sources has a
 one-line pointer there instead, and no Bigin sync button of its own ("Sync
 companies" does it). The two pages link both ways: a Bigin-linked source's
 "Bigin · company" badge opens that company on CRM (`?cid=<Bigin id>`), and a
-company with a source links to it on Story Sources (`?company=<Bigin id>`).
+company with a source links to it on Story Sources (`?cid=<Bigin id>` too:
+one name, one meaning, on both pages).
 The "From Bigin" filter and badges on Story Sources stay.
 
 Both jobs sit behind the **Story crawler** flag in `/console/features`. The

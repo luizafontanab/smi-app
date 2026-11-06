@@ -40,7 +40,7 @@ import { mockBaseUrl } from "./mock-base-url";
  *     it changes who the next newsletter goes to.
  *
  * Field names and response shapes follow bigin.com/developer/docs/apis/v2/.
- * None of it has run against a live account yet — HUMAN-TODO 7.5 lists what
+ * None of it has run against a live account yet — HUMAN-TODO 3.3 lists what
  * to watch on the first real run.
  */
 
@@ -740,7 +740,7 @@ class BiginCrmSync implements CrmSync {
    * Bigin's update-records docs give a sample of. `trigger: []` so the write
    * fires no Bigin workflow. A blank address is sent as null, which clears
    * the field (as Zoho's other APIs do; unverified on a live account,
-   * HUMAN-TODO 7.5).
+   * HUMAN-TODO 3.3).
    */
   async updateCompanyNewsPage(biginId: string, url: string | null, field = NEWS_PAGE_FIELD): Promise<void> {
     const body = await this.request<WriteResponse>("/Accounts", {
@@ -757,7 +757,7 @@ class BiginCrmSync implements CrmSync {
    * OAUTH_SCOPE_MISMATCH, and one with it gets a validation error about the
    * empty `data` instead. That ordering is how Zoho's API gateway works on
    * its other products; Bigin's docs don't state it, so it's unverified on a
-   * live account until HUMAN-TODO 7.5's first run.
+   * live account until HUMAN-TODO 3.3's first run.
    */
   async canWriteCompanies(): Promise<boolean | null> {
     try {

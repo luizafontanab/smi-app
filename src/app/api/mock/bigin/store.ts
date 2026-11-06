@@ -136,7 +136,7 @@ export function guard(request: Request): NextResponse | null {
  * A call the token's scopes don't cover. Bigin's status-code docs list
  * OAUTH_SCOPE_MISMATCH without an HTTP status; Zoho CRM's (same platform)
  * give it as 401 with this top-level body. Unverified on a live Bigin
- * account (HUMAN-TODO 7.5). It shares 401 with INVALID_TOKEN, so the adapter
+ * account (HUMAN-TODO 3.3). It shares 401 with INVALID_TOKEN, so the adapter
  * tells them apart by `code`.
  */
 export function requireScope(scope: string): NextResponse | null {
@@ -153,7 +153,7 @@ export function requireScope(scope: string): NextResponse | null {
  * specified is incorrect"; Zoho's update-records docs (same platform) give it
  * as HTTP 400 "the id given seems to be invalid". The per-record `data[]`
  * envelope and `details: { id }` follow Zoho's other write errors and are an
- * assumption until a live account confirms them (HUMAN-TODO 7.5).
+ * assumption until a live account confirms them (HUMAN-TODO 3.3).
  */
 export const invalidRecordId = (id: string) =>
   NextResponse.json(

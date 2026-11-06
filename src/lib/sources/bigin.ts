@@ -249,9 +249,8 @@ function chunks<T>(items: readonly T[]): T[][] {
 /**
  * Story sources from one read of Bigin's companies (already turned into
  * addresses by companyNewsPages). Called by the company sync
- * (lib/crm-companies/sync.ts) — the `source_bigin_sync` job, "Sync companies"
- * on CRM and "Sync from Bigin now" on Story sources. Throws on a database
- * error; the run's counts are saved to settings.bigin_sources_last for the
+ * (lib/crm-companies/sync.ts) — the `source_bigin_sync` job and "Sync
+ * companies" on CRM. Throws on a database error; the run's counts are saved to settings.bigin_sources_last for the
  * console — unless `record: false`, for a one-company update (a News Page
  * URL edit, lib/crm-companies/news-page.ts) that isn't a sync run.
  */
