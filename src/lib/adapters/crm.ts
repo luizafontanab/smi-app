@@ -147,10 +147,12 @@ export interface CrmSync {
   listCompanies(): Promise<CrmCompanies | null>;
   /**
    * Write one company's News Page URL to Bigin (issue #55); null clears it.
-   * Throws a BiginApiError when Bigin refuses — isScopeRefusal() tells a
-   * token without the Companies write scope from anything else.
+   * `field` is the field's API name as Bigin's field list gives it (#54),
+   * NEWS_PAGE_FIELD when that hasn't been read. Throws a BiginApiError when
+   * Bigin refuses — isScopeRefusal() tells a token without the Companies
+   * write scope from anything else.
    */
-  updateCompanyNewsPage(biginId: string, url: string | null): Promise<void>;
+  updateCompanyNewsPage(biginId: string, url: string | null, field?: string): Promise<void>;
   /**
    * May this token write companies? Asked without changing any (see the
    * Bigin implementation). True / false when Bigin's answer says so; null
@@ -384,8 +386,8 @@ class LocalMirrorCrmStub implements CrmSync {
   async listCompanies(): Promise<CrmCompanies | null> {
     return null;
   }
-  async updateCompanyNewsPage(biginId: string, url: string | null): Promise<void> {
-    console.log(`[crm] would set company ${biginId}'s News Page URL to ${url ?? "(blank)"} in Bigin`);
+  async updateCompanyNewsPage(biginId: string, url: string | null, field = NEWS_PAGE_FIELD): Promise<void> {
+    console.log(`[crm] (${field})`,`[crm] would set company ${biginId}'s News Page URL to ${url ?? "(blank)"} in Bigin`);
   }
   async canWriteCompanies(): Promise<boolean | null> {
     return false;
@@ -615,12 +617,12 @@ class BiginCrmSync implements CrmSync {
    * Bigin's update-records docs give a sample of. `trigger: []` so the write
    * fires no Bigin workflow. A blank address is sent as null, which clears
    * the field (as Zoho's other APIs do; unverified on a live account,
-   * HUMAN-TODO 7.5). The field name is NEWS_PAGE_FIELD.
+   * HUMAN-TODO 7.5).
    */
-  async updateCompanyNewsPage(biginId: string, url: string | null): Promise<void> {
+  async updateCompanyNewsPage(biginId: string, url: string | null, field = NEWS_PAGE_FIELD): Promise<void> {
     const body = await this.request<WriteResponse>("/Accounts", {
       method: "PUT",
-      body: { data: [{ id: biginId, [NEWS_PAGE_FIELD]: url?.trim() || null }], trigger: [] },
+      body: { data: [{ id: biginId, [field]: url?.trim() || null }], trigger: [] },
     });
     this.writtenId(body, "company update");
   }

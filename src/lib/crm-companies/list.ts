@@ -10,10 +10,13 @@ import { ilikeTerm } from "../queries";
  * use, how many of the app's contacts are linked to it, and the member its
  * story source is matched to.
  *
+ * The member shown is the admin's override when there is one (#53), else
+ * the member the company's source is matched to.
+ *
  * Companies deleted in Bigin (#52) are hidden under every filter but their
  * own, "Deleted in Bigin".
  *
- * Later tickets hook in here: the member override shown beside the match (#53), and the "covered by
+ * Later tickets hook in here: the "covered by
  * imported list" state and filter (#56) — a display state worked out at read
  * time, so it belongs in this module, not the sync.
  */
@@ -44,29 +47,15 @@ export type CompanyListRow = {
   deletedInBiginAt: string | null;
   /** contacts here (not in Bigin) whose Bigin company is this one */
   contacts: number;
-  /** the member the company's story source is matched to, if any */
+  /** the admin's member override, else the member the company's story source is matched to */
   member: { id: string; name: string } | null;
-  /** a News Page URL edit made here that Bigin hasn't accepted yet (#55) */
-  pushPending: boolean;
+  /** `member` was chosen by hand in CRM (#53), not matched automatically */
+  memberChosen: boolean;
   /** its story source on Story Sources, if Bigin's address made one (#51) */
   sourceId: string | null;
+  /** a News Page URL edit made here that Bigin hasn't accepted yet (#55) */
+  pushPending: boolean;
 };
-
-/** The company open in the Companies box's editor (`?company=`). */
-export type CompanyDetail = Pick<CompanyListRow, "biginId" | "name" | "website" | "newsPageUrl" | "inUse" | "pushPending">;
-
-export async function readCompany(db: Db, biginId: string): Promise<CompanyDetail | null> {
-  const { data, error } = await db.from("crm_companies")
-    .select("bigin_id, name, website, news_page_url, news_page_pending_at")
-    .eq("bigin_id", biginId)
-    .maybeSingle();
-  if (error) throw new Error(`console/crm company ${biginId}: ${error.message}`);
-  if (!data) return null;
-  return {
-    biginId: data.bigin_id, name: data.name, website: data.website, newsPageUrl: data.news_page_url,
-    inUse: addressInUse(data), pushPending: !!data.news_page_pending_at,
-  };
-}
 
 type Db = ReturnType<typeof serviceDb>;
 
@@ -82,7 +71,7 @@ export async function readCompanyList(
   // Rebuilt per attempt: pagedList re-runs it as the last page when ?cpage= is past the end.
   const build = (from: number, to: number) => {
     let query = db.from("crm_companies")
-      .select("id, bigin_id, name, website, news_page_url, last_synced_at, deleted_in_bigin_at, news_page_pending_at", { count: "exact" })
+      .select("id, bigin_id, name, website, news_page_url, last_synced_at, deleted_in_bigin_at, news_page_pending_at, override:members!crm_companies_member_override_id_fkey(id, name)", { count: "exact" })
       .order("name")
       .order("bigin_id");
     if (biginId) query = query.eq("bigin_id", biginId);
@@ -127,9 +116,38 @@ export async function readCompanyList(
       lastSyncedAt: c.last_synced_at,
       deletedInBiginAt: c.deleted_in_bigin_at,
       contacts: contactCount.get(c.bigin_id) ?? 0,
-      member: memberOf.get(c.bigin_id) ?? null,
-      pushPending: !!c.news_page_pending_at,
+      member: c.override ?? memberOf.get(c.bigin_id) ?? null,
+      memberChosen: !!c.override,
       sourceId: sourceOf.get(c.bigin_id) ?? null,
+      pushPending: !!c.news_page_pending_at,
     })),
+  };
+}
+
+/**
+ * One company for the Companies box's editor (`?company=`): its member, and
+ * whether it was chosen by hand; its Website and News Page URL, and whether
+ * an edit of the latter is still on its way to Bigin (#55).
+ */
+export type CompanyMemberDetail = Pick<
+  CompanyListRow, "id" | "biginId" | "name" | "member" | "memberChosen" | "website" | "newsPageUrl" | "inUse" | "pushPending"
+>;
+
+export async function readCompanyMember(db: Db, id: string): Promise<CompanyMemberDetail | null> {
+  const { data: c, error } = await db.from("crm_companies")
+    .select("id, bigin_id, name, website, news_page_url, news_page_pending_at, override:members!crm_companies_member_override_id_fkey(id, name)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(`console/crm company: ${error.message}`);
+  if (!c) return null;
+  let member = c.override;
+  if (!member) {
+    const { data: source, error: e } = await db.from("content_sources").select("member:members(id, name)").eq("bigin_account_id", c.bigin_id).maybeSingle();
+    if (e) throw new Error(`console/crm company source: ${e.message}`);
+    member = source?.member ?? null;
+  }
+  return {
+    id: c.id, biginId: c.bigin_id, name: c.name, member, memberChosen: !!c.override,
+    website: c.website, newsPageUrl: c.news_page_url, inUse: addressInUse(c), pushPending: !!c.news_page_pending_at,
   };
 }

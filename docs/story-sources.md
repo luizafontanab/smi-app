@@ -120,7 +120,11 @@ Companies box), then derives sources from them exactly as before. For each compa
   the company and the member, otherwise through the member's website domain.
   If more than one member matches, no one is tagged. "Start story" on that
   source's suggestions makes a draft tagged with the member. Admin drafts
-  aren't shown to the member.
+  aren't shown to the member. An admin can choose the member by hand in CRM's
+  Companies box (Edit on the company, issue #53, `crm_companies.member_override_id`).
+  That choice wins over both rules, ambiguous or not, on every sync, and is
+  kept in the app only (Bigin has no member field). Clearing it goes back to
+  the automatic match. Either way the source is re-tagged straight away.
 
 A Bigin-linked source's address isn't edited on Story sources. Since 6 Nov
 2026 (issue #55, `src/lib/crm-companies/news-page.ts`) the company's **News

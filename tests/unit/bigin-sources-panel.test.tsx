@@ -6,7 +6,7 @@ import { CompaniesBox } from "@/app/console/crm/CompaniesBox";
 import type { CompanyListRow } from "@/lib/crm-companies/list";
 import type { BiginSourcesRun } from "@/lib/sources/bigin";
 
-vi.mock("@/app/console/crm/actions", () => ({ syncCompaniesNow: vi.fn(), saveCompanyNewsPage: vi.fn() }));
+vi.mock("@/app/console/crm/actions", () => ({ syncCompaniesNow: vi.fn(), setCompanyMember: vi.fn(), saveCompanyNewsPage: vi.fn() }));
 
 /* The Bigin sources panel, moved from Story Sources into CRM's Companies box (#51). */
 
@@ -70,14 +70,14 @@ describe("BiginSourcesPanel", () => {
 
 const company = (over: Partial<CompanyListRow>): CompanyListRow => ({
   id: "u1", biginId: "9100000000001", name: "Acme", website: null, newsPageUrl: "https://acme.test/news", inUse: "news_page",
-  lastSyncedAt: "2026-11-06T03:00:00Z", deletedInBiginAt: null, contacts: 0, member: null, sourceId: null, pushPending: false, ...over,
+  lastSyncedAt: "2026-11-06T03:00:00Z", deletedInBiginAt: null, contacts: 0, member: null, memberChosen: false, sourceId: null, pushPending: false, ...over,
 });
 const box = (props: Partial<Parameters<typeof CompaniesBox>[0]>) =>
   render(
     <CompaniesBox
       live list={{ rows: [], count: 0, page: 1, pages: 1 }} q="" filter="all" only={undefined} run={null} sourcesRun={null}
       flash={undefined} error={undefined} href={(over) => `/console/crm?${new URLSearchParams(Object.entries(over).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}#companies`} keep={{}}
-      selected={null} canEditCompanies={false}
+      editing={null} members={[]} canEditCompanies={false}
       {...props}
     />,
   );
@@ -105,31 +105,48 @@ describe("CRM Companies box", () => {
     box({ only: "9100000000001", list: { rows: [company({})], count: 1, page: 1, pages: 1 } });
     expect(screen.getByRole("link", { name: "Show all companies" })).toHaveAttribute("href", "/console/crm?#companies");
   });
+
+  it("keeps the member override's Edit link and editor beside the Story Sources link (#51 + #53)", () => {
+    const acme = company({ sourceId: "src-1", member: { id: "m1", name: "Jo" }, memberChosen: true });
+    box({
+      only: "9100000000001",
+      list: { rows: [acme], count: 1, page: 1, pages: 1 },
+      editing: { id: acme.id, biginId: acme.biginId, name: acme.name, member: acme.member, memberChosen: true, website: null, newsPageUrl: acme.newsPageUrl, inUse: "news_page", pushPending: false },
+      members: [{ id: "m1", name: "Jo" }],
+    });
+    const row = screen.getByRole("link", { name: "On Story Sources" }).closest("tr")!;
+    expect(within(row).getByRole("link", { name: "Edit Acme" })).toHaveAttribute("href", "/console/crm?company=u1#companies");
+    expect(row).toHaveTextContent("chosen by hand");
+    expect(screen.getByText("Editing Acme")).toBeInTheDocument();
+  });
 });
 
-describe("the company editor (issue #55)", () => {
-  const acme = { biginId: "9100000000001", name: "Acme", website: "https://acme.test", newsPageUrl: "https://acme.test/news", inUse: "news_page" as const, pushPending: false };
+describe("the company editor's News Page URL (issue #55)", () => {
+  const acme = {
+    id: "u1", biginId: "9100000000001", name: "Acme", member: null, memberChosen: false,
+    website: "https://acme.test", newsPageUrl: "https://acme.test/news", inUse: "news_page" as const, pushPending: false,
+  };
 
-  it("opens a company from its name, and edits only the News Page URL, showing the Website", () => {
-    box({ list: { rows: [company({})], count: 1, page: 1, pages: 1 }, selected: acme, canEditCompanies: true });
-    expect(screen.getByRole("link", { name: "Acme" })).toHaveAttribute("href", "/console/crm?company=9100000000001#companies");
+  it("edits the News Page URL in the same editor as the member, showing the Website without a field for it", () => {
+    box({ list: { rows: [company({})], count: 1, page: 1, pages: 1 }, editing: acme, canEditCompanies: true });
     const field = screen.getByRole("textbox", { name: "News Page URL" });
     expect(field).toBeEnabled();
     expect(field).toHaveValue("https://acme.test/news");
+    expect(field.closest("form")!.querySelector("input[name=company]")).toHaveValue("u1");
     expect(screen.getByText(/Website: https:\/\/acme\.test/)).toHaveTextContent("change it in Bigin");
-    expect(screen.getAllByRole("textbox").map((t) => t.getAttribute("name"))).not.toContain("website");
-    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(document.querySelector("input[name=website]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Save News Page URL" })).toBeEnabled();
   });
 
   it("is disabled with \"edit in Bigin for now\" while the token can't write companies", () => {
-    box({ selected: acme, canEditCompanies: false });
+    box({ editing: acme, canEditCompanies: false });
     expect(screen.getByRole("textbox", { name: "News Page URL" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save News Page URL" })).toBeDisabled();
     expect(screen.getByText(/edit in Bigin for now/)).toBeInTheDocument();
   });
 
   it("shows push pending, in the editor and the list, until Bigin accepts the edit", () => {
-    box({ list: { rows: [company({ pushPending: true })], count: 1, page: 1, pages: 1 }, selected: { ...acme, pushPending: true }, canEditCompanies: true });
+    box({ list: { rows: [company({ pushPending: true })], count: 1, page: 1, pages: 1 }, editing: { ...acme, pushPending: true }, canEditCompanies: true });
     expect(screen.getByRole("table")).toHaveTextContent("push pending");
     expect(screen.getByText(/Push pending\./).closest("p")).toHaveTextContent("retried automatically");
   });

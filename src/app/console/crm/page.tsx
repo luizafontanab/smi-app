@@ -14,7 +14,7 @@ import { firstImportDone, getCrmSync, readLastRun, type LastRun } from "@/lib/ad
 import { addContact, previewBiginPull, runBiginSync, saveContact, searchBiginCompanies } from "../actions";
 import { firstImportPreviewFresh } from "./first-import";
 import { SubmitButton } from "@/components/SubmitButton";
-import { parseCompanyFilter, readCompany, readCompanyList } from "@/lib/crm-companies/list";
+import { parseCompanyFilter, readCompanyList, readCompanyMember } from "@/lib/crm-companies/list";
 import { readCompanyWriteAccess } from "@/lib/crm-companies/news-page";
 import { readCompanySyncRun } from "@/lib/crm-companies/sync";
 import { readBiginSourcesRun } from "@/lib/sources/bigin";
@@ -38,8 +38,8 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   const requestedCompanyPage = Math.max(1, Number(sp.cpage) || 1);
   // ?cid=<Bigin id>: one company, the target of a Bigin-linked source's link on Story Sources.
   const cid = typeof sp.cid === "string" && sp.cid ? sp.cid : undefined;
-  // ?company=<Bigin id>: the company open in the box's editor (#55).
-  const companyId = typeof sp.company === "string" && sp.company ? sp.company : null;
+  // ?company= opens the Companies box's editor; a junk value just opens nothing (as ?contact=).
+  const companyId = typeof sp.company === "string" && UUID_RE.test(sp.company) ? sp.company : null;
 
   // Rebuilt per attempt: pagedList re-runs it as the last page when ?page= is
   // past the end, rather than letting PostgREST's 416 throw.
@@ -53,7 +53,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   };
 
   const crm = getCrmSync();
-  const [members, { data: contacts, count, page }, editing, imported, lastRun, companies, companyRun, sourcesRun, selectedCompany, companyWrite] = await Promise.all([
+  const [members, { data: contacts, count, page }, editing, imported, lastRun, companies, companyRun, sourcesRun, editingCompany, companyWrite] = await Promise.all([
     must(db.from("members").select("id, name").order("name"), "console/crm members"),
     pagedList(contactsQuery, requestedPage, PAGE_SIZE, "console/crm contacts"),
     // ?contact= is raw user input against a uuid column — a junk value would
@@ -68,9 +68,13 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
     crm.live ? readCompanyList(db, { q: cq, filter: cfilter, page: requestedCompanyPage, size: PAGE_SIZE, biginId: cid }) : Promise.resolve(null),
     crm.live ? readCompanySyncRun() : Promise.resolve(null),
     crm.live ? readBiginSourcesRun() : Promise.resolve(null),
-    crm.live && companyId ? readCompany(db, companyId) : Promise.resolve(null),
+    crm.live && companyId ? readCompanyMember(db, companyId) : Promise.resolve(null),
     crm.live ? readCompanyWriteAccess() : Promise.resolve(null),
   ]);
+  // The member override only offers members not archived; the contact editor keeps every member.
+  const overrideMembers = editingCompany
+    ? await must(db.from("members").select("id, name").is("archived_at", null).order("name"), "console/crm override members")
+    : [];
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
   const activity = editing?.member_id ? await memberActivityTimeline(editing.member_id, 10) : [];
@@ -78,7 +82,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   // Each box's links keep the other box's search, filter and page.
   const companyState = {
     cid, cq, cfilter: cfilter === "all" ? undefined : cfilter, cpage: companies && companies.page > 1 ? companies.page : undefined,
-    company: selectedCompany?.biginId,
+    company: editingCompany?.id,
   };
   const link = (merged: Record<string, string | number | undefined>, hash = "") => {
     const params = new URLSearchParams();
@@ -230,7 +234,8 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
         error={typeof sp.companies_error === "string" ? sp.companies_error : undefined}
         href={companyHref}
         keep={{ q, page: page > 1 ? String(page) : undefined }}
-        selected={selectedCompany}
+        editing={editingCompany}
+        members={overrideMembers ?? []}
         canEditCompanies={!!companyWrite?.allowed}
       />
     </div>

@@ -1,4 +1,4 @@
-import { getCrmSync, isScopeRefusal, type CompanyNewsPages, type CrmSync } from "../adapters/crm";
+import { getCrmSync, isScopeRefusal, NEWS_PAGE_FIELD, type CompanyNewsPages, type CrmSync } from "../adapters/crm";
 import { serviceDb } from "../db/server";
 import type { Json } from "../db/types";
 import { applyBiginSources } from "../sources/bigin";
@@ -29,6 +29,13 @@ import { applyBiginSources } from "../sources/bigin";
  */
 
 export const COMPANY_WRITE_KEY = "crm_companies_write";
+/**
+ * Where the company sync keeps Bigin's Companies field list (#54,
+ * lib/crm-companies/sync COMPANY_FIELDS_KEY): `newsPageField` is the API
+ * name of the field labelled "News Page URL". Read here by key so this
+ * module doesn't depend on the sync's types.
+ */
+const COMPANY_FIELDS_KEY = "crm_company_fields";
 /** Whether the Bigin token may write companies, and when that was last learnt. */
 export type CompanyWriteAccess = { allowed: boolean; at: string };
 
@@ -42,6 +49,14 @@ export async function readCompanyWriteAccess(): Promise<CompanyWriteAccess | nul
   const { data, error } = await serviceDb().from("settings").select("value").eq("key", COMPANY_WRITE_KEY).maybeSingle();
   if (error) throw new Error(`settings read ${COMPANY_WRITE_KEY}: ${error.message}`);
   return (data?.value as CompanyWriteAccess | undefined) ?? null;
+}
+
+/** The News Page URL field's API name as Bigin's field list gave it, else the assumed NEWS_PAGE_FIELD. */
+async function newsPageField(): Promise<string> {
+  const { data, error } = await serviceDb().from("settings").select("value").eq("key", COMPANY_FIELDS_KEY).maybeSingle();
+  if (error) throw new Error(`settings read ${COMPANY_FIELDS_KEY}: ${error.message}`);
+  const name = (data?.value as { newsPageField?: unknown } | undefined)?.newsPageField;
+  return typeof name === "string" && name ? name : NEWS_PAGE_FIELD;
 }
 
 async function recordWriteAccess(allowed: boolean, now: () => Date): Promise<CompanyWriteAccess> {
@@ -66,27 +81,30 @@ export type NewsPageSave = "pushed" | "pending" | "not_allowed" | "not_found";
 
 /**
  * Save a company's News Page URL (blank → none), point its story source at
- * it, and push it to Bigin. "pending" means saved but not yet in Bigin, with
+ * it, and push it to Bigin. The company is named by its row id (the CRM
+ * editor) or its Bigin id. "pending" means saved but not yet in Bigin, with
  * a retry queued. "not_allowed": Bigin isn't connected, or the token isn't
  * known to write companies — nothing was saved. `deriveSources: false`
  * leaves story sources alone (the Story crawler is off); the next sync with
  * it on derives them from the saved value.
  */
 export async function setCompanyNewsPage(
-  biginId: string,
+  company: { id: string } | { biginId: string },
   url: string | null,
   { crm = getCrmSync(), now = () => new Date(), deriveSources = true }: Opts & { deriveSources?: boolean } = {},
 ): Promise<NewsPageSave> {
   if (!crm.live || !(await readCompanyWriteAccess())?.allowed) return "not_allowed";
   const db = serviceDb();
   const stamp = now().toISOString();
+  const [column, key] = "id" in company ? ["id", company.id] as const : ["bigin_id", company.biginId] as const;
   const { data: row, error } = await db.from("crm_companies")
     .update({ news_page_url: url?.trim() || null, news_page_pending_at: stamp, updated_at: stamp })
-    .eq("bigin_id", biginId)
+    .eq(column, key)
     .select("bigin_id, name, website, news_page_url")
     .maybeSingle();
-  if (error) throw new Error(`saving company ${biginId}'s News Page URL: ${error.message}`);
+  if (error) throw new Error(`saving company ${key}'s News Page URL: ${error.message}`);
   if (!row) return "not_found";
+  const biginId = row.bigin_id;
 
   if (deriveSources) {
     // The edit is saved either way; a failure here is put right by the next company sync.
@@ -128,7 +146,7 @@ export async function pushCompanyNewsPage(
   if (!row?.news_page_pending_at) return "nothing";
 
   try {
-    await crm.updateCompanyNewsPage(biginId, row.news_page_url);
+    await crm.updateCompanyNewsPage(biginId, row.news_page_url, await newsPageField());
   } catch (e) {
     console.error(`[crm] pushing company ${biginId}'s News Page URL failed${queueRetry ? "; queued for retry" : ""}:`, e);
     if (isScopeRefusal(e)) await recordWriteAccess(false, now);

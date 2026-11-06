@@ -23,7 +23,9 @@ import { normalizeSourceUrl } from "./extract";
  *
  * Each linked source is matched to one member — through a contact linked to
  * both the company and a member, else by website domain — so "Start story"
- * on its suggestion opens a draft already tagged. Ambiguous → nobody.
+ * on its suggestion opens a draft already tagged. Ambiguous → nobody. An
+ * admin's member override on the CRM company (crm_companies.member_override_id,
+ * issue #53) beats both, on every sync.
  *
  * Since 6 Nov 2026 (issue #50) the entry point is the company sync
  * (lib/crm-companies/sync.ts): it stores every CRM company first, then hands
@@ -192,15 +194,19 @@ export function planBiginSources(
 }
 
 /**
- * The member each company's source belongs to. A contact linked to both the
- * company and an eligible member wins; with no such contact, a single
- * eligible member whose website is on the source's domain. Two candidates
- * either way → null: a wrong tag is worse than none.
+ * The member each company's source belongs to. An admin's override for the
+ * company (`overrides`, by Bigin id — issue #53) wins outright: it was chosen
+ * by hand, so it isn't second-guessed by the eligibility rule below.
+ * Otherwise a contact linked to both the company and an eligible member wins;
+ * with no such contact, a single eligible member whose website is on the
+ * source's domain. Two candidates either way → null: a wrong tag is worse
+ * than none.
  */
 export function matchMembers(
   sources: readonly { accountId: string; domain: string }[],
   contacts: readonly { bigin_company_id: string | null; member_id: string | null }[],
   members: readonly { id: string; website: string | null }[],
+  overrides: ReadonlyMap<string, string> = new Map(),
 ): Map<string, string | null> {
   const eligible = new Set(members.map((m) => m.id));
   const byCompany = new Map<string, Set<string>>();
@@ -221,6 +227,11 @@ export function matchMembers(
   const only = (set: Set<string> | undefined) => (set?.size === 1 ? [...set][0] : null);
   const result = new Map<string, string | null>();
   for (const s of sources) {
+    const chosen = overrides.get(s.accountId);
+    if (chosen) {
+      result.set(s.accountId, chosen);
+      continue;
+    }
     const viaContacts = byCompany.get(s.accountId);
     result.set(s.accountId, viaContacts?.size ? only(viaContacts) : only(byDomain.get(s.domain)));
   }
@@ -316,8 +327,12 @@ export async function applyBiginSources(
   return run;
 }
 
-/** Re-match every Bigin-linked source to its member; returns how many changed. */
-async function refreshMembers(db: ReturnType<typeof serviceDb>): Promise<number> {
+/**
+ * Re-match every Bigin-linked source to its member, the admin's override
+ * winning; returns how many changed. Run by each source sync, and straight
+ * after the member override is set or cleared in CRM (console/crm/actions).
+ */
+export async function refreshMembers(db: ReturnType<typeof serviceDb> = serviceDb()): Promise<number> {
   const { data: sources, error } = await db.from("content_sources")
     .select("id, domain, bigin_account_id, member_id")
     .not("bigin_account_id", "is", null);
@@ -326,16 +341,20 @@ async function refreshMembers(db: ReturnType<typeof serviceDb>): Promise<number>
 
   const accountIds = sources.map((s) => s.bigin_account_id!);
   const contacts: { bigin_company_id: string | null; member_id: string | null }[] = [];
+  const overrides = new Map<string, string>();
   for (const part of chunks(accountIds)) {
     const { data, error: e } = await db.from("contacts").select("bigin_company_id, member_id").in("bigin_company_id", part).not("member_id", "is", null);
     if (e) throw new Error(`source_bigin_sync: reading contacts: ${e.message}`);
     contacts.push(...(data ?? []));
+    const { data: chosen, error: oe } = await db.from("crm_companies").select("bigin_id, member_override_id").in("bigin_id", part).not("member_override_id", "is", null);
+    if (oe) throw new Error(`source_bigin_sync: reading member overrides: ${oe.message}`);
+    for (const c of chosen ?? []) if (c.member_override_id) overrides.set(c.bigin_id, c.member_override_id);
   }
   // Only members with a live page: the same rule a story's byline uses (member-visibility).
   const members = await allRows<{ id: string; website: string | null }>((from, to) =>
     db.from("members").select("id, website").is("archived_at", null).in("status", [...PUBLIC_MEMBER_STATUSES]).order("id").range(from, to));
 
-  const matched = matchMembers(sources.map((s) => ({ accountId: s.bigin_account_id!, domain: s.domain })), contacts, members);
+  const matched = matchMembers(sources.map((s) => ({ accountId: s.bigin_account_id!, domain: s.domain })), contacts, members, overrides);
   let changed = 0;
   for (const s of sources) {
     const memberId = matched.get(s.bigin_account_id!) ?? null;

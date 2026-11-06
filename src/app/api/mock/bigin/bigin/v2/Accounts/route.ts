@@ -25,8 +25,9 @@ export async function GET(request: NextRequest) {
 /**
  * Fake Bigin `PUT /bigin/v2/Accounts` — the bulk update form, the one Bigin's
  * update-records docs give a sample of: `{ data: [{ id, ...fields }] }`,
- * answered per record. Only News_Page_URL is applied (the one company field
- * the app writes, issue #55). Needs the Companies update scope.
+ * answered per record. Any field the company already has is applied (the
+ * app only writes the News Page URL, issue #55); a blank value clears it.
+ * Needs the Companies update scope.
  *
  * An empty `data` is a validation error, not a scope one — which is how the
  * adapter's canWriteCompanies() checks the scope without changing anything.
@@ -42,7 +43,10 @@ export async function PUT(request: NextRequest) {
   const results = items.map((item) => {
     const account = org().accounts.find((a) => a.id === item.id);
     if (!account) return { code: "INVALID_DATA", details: { id: item.id }, message: "the id given seems to be invalid", status: "error" };
-    if ("News_Page_URL" in item) account.News_Page_URL = typeof item.News_Page_URL === "string" && item.News_Page_URL ? item.News_Page_URL : null;
+    const fields = account as Record<string, unknown>;
+    for (const [key, value] of Object.entries(item)) {
+      if (key !== "id" && key in fields) fields[key] = value === "" ? null : value;
+    }
     return success(account.id, "record updated");
   });
   const failed = results.every((r) => r.code !== "SUCCESS");

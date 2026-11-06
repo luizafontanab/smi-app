@@ -2,28 +2,29 @@ import Link from "next/link";
 import { Pagination } from "@/components/Pagination";
 import { SubmitButton } from "@/components/SubmitButton";
 import type { CompanySyncRun } from "@/lib/crm-companies/sync";
-import { COMPANY_FILTERS, COMPANY_FILTER_LABEL, type AddressInUse, type CompanyDetail, type CompanyFilter, type CompanyListRow } from "@/lib/crm-companies/list";
+import { COMPANY_FILTERS, COMPANY_FILTER_LABEL, type AddressInUse, type CompanyFilter, type CompanyListRow, type CompanyMemberDetail } from "@/lib/crm-companies/list";
 import type { BiginSourcesRun } from "@/lib/sources/bigin";
-import { saveCompanyNewsPage, syncCompaniesNow } from "./actions";
+import { saveCompanyNewsPage, setCompanyMember, syncCompaniesNow } from "./actions";
 import { BiginSourcesPanel } from "./BiginSourcesPanel";
 
 /**
- * CRM's Companies box (issue #50): a mirror of every CRM company in Bigin,
- * members and non-members, address or not. Its own "Sync companies" button
- * and last-synced line, separate from the contacts sync above.
- *
- * Opening a company (`?company=`) shows the editor above the table, where its
- * News Page URL is edited and written through to Bigin (#55). The Website is
- * shown, never edited here. While the Bigin token can't write companies
- * (`canEditCompanies` false), the field is disabled with "edit in Bigin for
- * now".
+ * CRM's Companies box (issue #50): a read-only mirror of every CRM company in
+ * Bigin, members and non-members, address or not. Its own "Sync companies"
+ * button and last-synced line, separate from the contacts sync above.
  *
  * The Bigin sources panel moved here from Story Sources (#51); each company
  * links to its source there, and a Bigin-linked source links back with
  * `?cid=<bigin id>`, which narrows the list to that company.
  *
- * Later tickets add to it: the member override (#53) and every Bigin field
- * (#54) in the editor above the table, and "covered by imported list" (#56).
+ * The detail editor above the table (`?company=`) sets the member override
+ * (#53): the member chosen by hand wins over the automatic match. It also
+ * edits the company's News Page URL, written through to Bigin (#55); the
+ * Website is shown, never edited here. While the Bigin token can't write
+ * companies (`canEditCompanies` false) that field is disabled with "edit in
+ * Bigin for now".
+ *
+ * Later tickets add to it: every Bigin field (#54) in the same editor, and
+ * "covered by imported list" (#56).
  *
  * A company deleted in Bigin (#52) stays, marked, under its own filter; the
  * other filters hide it.
@@ -54,7 +55,7 @@ export function describeCompanyRun(run: CompanySyncRun): string {
 }
 
 export function CompaniesBox({
-  live, list, q, filter, only, run, sourcesRun, flash, error, href, keep, selected, canEditCompanies,
+  live, list, q, filter, only, run, sourcesRun, flash, error, href, keep, editing, members, canEditCompanies,
 }: {
   live: boolean;
   list: { rows: CompanyListRow[]; count: number; page: number; pages: number } | null;
@@ -71,8 +72,10 @@ export function CompaniesBox({
   href: (over: Record<string, string | number | undefined>) => string;
   /** the contacts box's state, carried through this box's search form */
   keep: Record<string, string | undefined>;
-  /** the company open in the editor, if any */
-  selected: CompanyDetail | null;
+  /** the company open in the editor (`?company=`), if any */
+  editing: CompanyMemberDetail | null;
+  /** members the override can choose from (not archived) */
+  members: { id: string; name: string }[];
   /** whether the Bigin token may write companies (lib/crm-companies/news-page) */
   canEditCompanies: boolean;
 }) {
@@ -93,6 +96,8 @@ export function CompaniesBox({
           Companies synced from Bigin. Story sources weren&apos;t updated, because the story crawler is off.
         </p>
       )}
+      {flash === "member_set" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Member saved. The company&apos;s story source is tagged with them from now on.</p>}
+      {flash === "member_cleared" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Member choice cleared. The company is back on the automatic match.</p>}
       {flash === "news_page_saved" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">News Page URL saved, and Bigin has it.</p>}
       {flash === "news_page_pending" && (
         <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">
@@ -110,16 +115,12 @@ export function CompaniesBox({
           <p className="mt-1 text-xs text-graphite">
             {run ? <>Last synced {fmt(run.at)}: {describeCompanyRun(run)}</> : "Not synced yet. Sync companies to bring in every company from Bigin."}
           </p>
-          <p className="mt-1 text-xs text-graphite">
-            Open a company to edit its News Page URL. Change any other detail in Bigin, then sync.
-          </p>
+          <p className="mt-1 text-xs text-graphite">Change a company&apos;s details in Bigin, then sync. Only its News Page URL and member are changed here (Edit).</p>
           {only && (
             <p className="mt-2 text-xs text-graphite">
               Showing one company, from Story Sources. <Link href={href({ cid: undefined, cpage: undefined })} className="underline hover:text-ink">Show all companies</Link>
             </p>
           )}
-
-          {selected && <CompanyEditor company={selected} canEdit={canEditCompanies} closeHref={href({ company: undefined })} />}
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
             <nav aria-label="Filter companies" className="flex flex-wrap gap-1">
@@ -143,22 +144,24 @@ export function CompaniesBox({
             </form>
           </div>
 
+          {/* One editor above the table, as Contacts has: a member <select> in
+              every row would put every member's name into every row's text. */}
+          {editing && <CompanyEditor company={editing} members={members} canEditNewsPage={canEditCompanies} cancelHref={href({ company: undefined })} />}
+
           <div className="mt-3 max-h-80 overflow-y-auto">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="text-left text-xs uppercase text-graphite">
                     <th scope="col" className="py-1">Company</th><th scope="col">Website</th><th scope="col">News Page URL</th>
-                    <th scope="col">In use</th><th scope="col">Contacts</th><th scope="col">Member</th><th scope="col">Story source</th>
+                    <th scope="col">In use</th><th scope="col">Contacts</th><th scope="col">Member</th><th scope="col">Story source</th><th scope="col" />
                   </tr>
                 </thead>
                 <tbody>
                   {list.rows.map((c) => (
                     <tr key={c.id} className="border-t align-top">
                       <td className="py-1.5">
-                        <Link href={href({ company: c.biginId })} aria-current={selected?.biginId === c.biginId ? "true" : undefined} className="text-ink underline-offset-2 hover:underline">
-                          {c.name || <span className="text-graphite">(no name)</span>}
-                        </Link>
+                        {c.name || <span className="text-graphite">(no name)</span>}
                         {c.deletedInBiginAt && <span className="block text-xs text-danger">Deleted in Bigin {fmt(c.deletedInBiginAt)}</span>}
                       </td>
                       <td className="max-w-48 break-all text-xs text-graphite">{c.website ?? "—"}</td>
@@ -168,16 +171,22 @@ export function CompaniesBox({
                       </td>
                       <td className={`text-xs ${c.inUse === "none" ? "text-danger" : c.inUse === "website" ? "text-graphite" : "text-success"}`}>{IN_USE_LABEL[c.inUse]}</td>
                       <td className="text-xs text-graphite">{c.contacts}</td>
-                      <td className="text-xs text-graphite">{c.member?.name ?? "—"}</td>
+                      <td className="text-xs text-graphite">
+                        {c.member?.name ?? "—"}
+                        {c.member && <span className="block">{c.memberChosen ? "chosen by hand" : "matched automatically"}</span>}
+                      </td>
                       <td className="text-xs">
                         {c.sourceId
                           ? <Link href={`/console/sources?view=sources&company=${encodeURIComponent(c.biginId)}`} className="text-graphite underline hover:text-ink">On Story Sources</Link>
                           : <span className="text-graphite">—</span>}
                       </td>
+                      <td className="text-right">
+                        <Link href={href({ company: c.id })} className="text-xs text-graphite hover:text-ink" aria-label={`Edit ${c.name || "company"}`}>Edit</Link>
+                      </td>
                     </tr>
                   ))}
                   {list.rows.length === 0 && (
-                    <tr><td colSpan={7} className="py-2 text-sm text-graphite">{run || q || filter !== "all" || only ? "No companies match." : "No companies stored yet."}</td></tr>
+                    <tr><td colSpan={8} className="py-2 text-sm text-graphite">{run || q || filter !== "all" || only ? "No companies match." : "No companies stored yet."}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -192,50 +201,79 @@ export function CompaniesBox({
 }
 
 /**
- * The one editor above the table. Only the News Page URL is editable; an
- * empty field means the Website stands in. A save that hasn't reached Bigin
- * shows as push pending until it does.
+ * The company editor: the News Page URL (#55) and the member override (#53).
+ * A saved News Page URL is written through to Bigin and shows as push
+ * pending until Bigin accepts it; an empty field means the Website stands
+ * in. Saving a member wins over the automatic match on every sync; "Use
+ * automatic match" clears the choice. Each re-points or re-tags the
+ * company's story source straight away.
  */
-function CompanyEditor({ company, canEdit, closeHref }: { company: CompanyDetail; canEdit: boolean; closeHref: string }) {
+function CompanyEditor({ company, members, canEditNewsPage, cancelHref }: {
+  company: CompanyMemberDetail;
+  members: { id: string; name: string }[];
+  canEditNewsPage: boolean;
+  cancelHref: string;
+}) {
+  const chosen = company.memberChosen ? company.member : null;
   return (
-    <div className="mt-3 rounded-lg border p-4" aria-labelledby="company-editor-heading">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 id="company-editor-heading" className="font-semibold text-ink">{company.name || "(no name)"}</h3>
-        <Link href={closeHref} className="text-xs text-graphite hover:text-ink">Close</Link>
-      </div>
-      <p className="mt-1 text-sm text-graphite">
-        Website: {company.website ?? "none"} <span className="text-xs">(change it in Bigin)</span>
+    <div className="mt-4 rounded border border-graphite/30 bg-graphite/5 p-3 text-sm">
+      <p className="text-xs uppercase tracking-wide text-graphite">Editing {company.name || "(no name)"}</p>
+      <p className="mt-1 text-xs text-graphite">
+        Website: {company.website ?? "none"} <span>(change it in Bigin)</span>
       </p>
-      <form action={saveCompanyNewsPage} className="mt-3">
-        <input type="hidden" name="company" value={company.biginId} />
-        <label htmlFor="company-news-page" className="block text-sm font-medium text-ink">News Page URL</label>
-        <div className="mt-1 flex flex-wrap gap-2">
+      <form action={saveCompanyNewsPage} className="mt-2">
+        <input type="hidden" name="company" value={company.id} />
+        <label htmlFor="crm-company-news-page" className="block text-xs text-graphite">News Page URL</label>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
           <input
-            id="company-news-page"
+            id="crm-company-news-page"
             name="news_page_url"
             inputMode="url"
             defaultValue={company.newsPageUrl ?? ""}
             placeholder={company.website ? `empty: ${company.website} is watched instead` : "https://example.com/news"}
-            disabled={!canEdit}
-            aria-describedby="company-news-page-help"
-            className="min-w-0 flex-1 rounded border px-3 py-1.5 text-sm disabled:bg-paper disabled:text-graphite"
+            disabled={!canEditNewsPage}
+            aria-describedby="crm-company-news-page-help"
+            className="min-w-0 flex-1 rounded border bg-white px-3 py-1.5 disabled:bg-paper disabled:text-graphite"
           />
-          <SubmitButton disabled={!canEdit} className="rounded bg-ink px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50" pendingLabel="Saving…">
-            Save
+          <SubmitButton disabled={!canEditNewsPage} className="rounded bg-ink px-4 py-1.5 text-white disabled:opacity-50" pendingLabel="Saving…">
+            Save News Page URL
           </SubmitButton>
         </div>
-        <p id="company-news-page-help" className="mt-1 text-xs text-graphite">
-          {canEdit
+        <p id="crm-company-news-page-help" className="mt-1 text-xs text-graphite">
+          {canEditNewsPage
             ? "Saved here and in Bigin. Leave it empty to watch the company's Website instead."
             : "Bigin doesn't let the app change companies yet, so edit in Bigin for now."}
         </p>
         {company.pushPending && (
-          <p className="mt-2 text-xs text-graphite">
+          <p className="mt-1 text-xs text-graphite">
             <span className="text-danger">Push pending.</span>{" "}
             Saved here, but Bigin hasn&apos;t accepted it yet. It&apos;s retried automatically, and a sync from Bigin won&apos;t undo it meanwhile.
           </p>
         )}
       </form>
+      <p className="mt-1 text-xs text-graphite">
+        {company.member
+          ? <>Member: <strong className="text-ink">{company.member.name}</strong>, {company.memberChosen ? "chosen by hand" : "matched automatically"}.</>
+          : "No member: none matched automatically (no linked contact or website match, or more than one)."}
+        {" "}Drafts from this company&apos;s story source are tagged with this member. Kept in the app only; Bigin has no member field.
+      </p>
+      <form action={setCompanyMember} className="mt-2 flex flex-wrap items-center gap-2">
+        <input type="hidden" name="company" value={company.id} />
+        <label htmlFor="crm-company-member" className="sr-only">Member</label>
+        <select id="crm-company-member" name="member_id" defaultValue={chosen?.id ?? ""} className="max-w-full rounded border px-3 py-1.5">
+          <option value="">— automatic match —</option>
+          {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        <SubmitButton className="rounded bg-ink px-4 py-1.5 text-white" pendingLabel="Saving…">Save member</SubmitButton>
+        <Link href={cancelHref} className="text-xs text-graphite hover:text-ink">Cancel</Link>
+      </form>
+      {chosen && (
+        <form action={setCompanyMember} className="mt-2">
+          <input type="hidden" name="company" value={company.id} />
+          <input type="hidden" name="member_id" value="" />
+          <SubmitButton className="rounded border px-3 py-1.5 text-xs" pendingLabel="Clearing…">Use automatic match</SubmitButton>
+        </form>
+      )}
     </div>
   );
 }

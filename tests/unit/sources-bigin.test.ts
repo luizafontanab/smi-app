@@ -240,6 +240,18 @@ describe("matchMembers", () => {
     const result = matchMembers([{ accountId: "1", domain: "acme.test" }], [{ bigin_company_id: "1", member_id: "m-lapsed" }], members);
     expect(result.get("1")).toBe("m-acme");
   });
+
+  it("an admin's override wins over the contacts, the domain and ambiguity, for that company only", () => {
+    const result = matchMembers(
+      [{ accountId: "1", domain: "acme.test" }, { accountId: "2", domain: "twin.test" }, { accountId: "3", domain: "brightsteel.test" }],
+      [{ bigin_company_id: "1", member_id: "m-acme" }],
+      members,
+      new Map([["1", "m-bright"], ["2", "m-picked"]]),
+    );
+    expect(result.get("1")).toBe("m-bright");
+    expect(result.get("2")).toBe("m-picked");
+    expect(result.get("3")).toBe("m-bright");
+  });
 });
 
 describe("companyNewsPages (Website fallback, 5 Nov 2026)", () => {

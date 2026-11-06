@@ -5,9 +5,12 @@ import { redirect } from "next/navigation";
 import { requireConsole } from "@/lib/auth";
 import { checkCompanyWriteAccess, setCompanyNewsPage, type NewsPageSave } from "@/lib/crm-companies/news-page";
 import { syncCompanies } from "@/lib/crm-companies/sync";
+import { serviceDb } from "@/lib/db/server";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { logError } from "@/lib/log";
+import { refreshMembers } from "@/lib/sources/bigin";
 import { normalizeSourceUrl } from "@/lib/sources/extract";
+import { UUID_RE } from "@/lib/validate";
 
 /*
  * The CRM page's Companies box (issue #50, spec #49, ADR 0002). Contact
@@ -50,6 +53,58 @@ export async function syncCompaniesNow() {
 }
 
 /**
+ * The member override (#53): an admin chooses a CRM company's member by hand,
+ * or clears the choice (an empty `member_id`) to go back to the automatic
+ * match. Kept in the app only — Bigin has no member field — and never written
+ * by the company sync, so it survives every sync. Either way the company's
+ * story sources are re-tagged straight away (refreshMembers, the same step
+ * the sync runs), so "Start story" drafts pick it up without waiting for the
+ * next sync. The sources' member changes even with the Story crawler off:
+ * it's only a tag, and nothing is read because of it.
+ */
+export async function setCompanyMember(formData: FormData) {
+  await requireConsole();
+  const company = String(formData.get("company") ?? "");
+  const memberId = String(formData.get("member_id") ?? "");
+  const fail = (message: string, keep = true): never =>
+    redirect(back(`${keep ? `company=${company}&` : ""}companies_error=${encodeURIComponent(message)}`));
+  if (!UUID_RE.test(company)) fail("That company couldn't be found.", false);
+  if (memberId && !UUID_RE.test(memberId)) fail("Choose a member from the list.");
+
+  const db = serviceDb();
+  if (memberId) {
+    const { data: member, error } = await db.from("members").select("id").eq("id", memberId).is("archived_at", null).maybeSingle();
+    if (error) {
+      logError({ source: "db", area: "action:setCompanyMember", error: error.message, context: { company, code: error.code ?? null } });
+      fail("The member couldn't be saved — please try again.");
+    }
+    if (!member) fail("That member isn't available any more (archived or removed). Choose another.");
+  }
+
+  const { data: saved, error } = await db.from("crm_companies")
+    .update({ member_override_id: memberId || null, updated_at: new Date().toISOString() })
+    .eq("id", company)
+    .select("id");
+  if (error) {
+    logError({ source: "db", area: "action:setCompanyMember", error: error.message, context: { company, code: error.code ?? null } });
+    fail("The member couldn't be saved — please try again.");
+  }
+  if (!saved?.length) fail("That company couldn't be found. Sync companies and try again.", false);
+
+  let retagged = true;
+  try {
+    await refreshMembers(db);
+  } catch (e) {
+    retagged = false;
+    logError({ source: "server", area: "action:setCompanyMember", error: e, context: { company } });
+  }
+  revalidatePath(BOX);
+  revalidatePath("/console/sources");
+  if (!retagged) fail("Saved, but the company's story source couldn't be re-tagged just now — the next company sync will do it.");
+  redirect(back(`company=${company}&companies=${memberId ? "member_set" : "member_cleared"}`));
+}
+
+/**
  * Save a CRM company's News Page URL from the Companies box's editor (issue
  * #55), written through to Bigin by setCompanyNewsPage. An empty field
  * clears it, so the company's Website stands in. An address without
@@ -59,9 +114,9 @@ export async function syncCompaniesNow() {
  */
 export async function saveCompanyNewsPage(formData: FormData) {
   await requireConsole();
-  const biginId = String(formData.get("company") ?? "").trim();
-  if (!biginId) redirect(back(`companies_error=${encodeURIComponent("No company was chosen.")}`));
-  const at = (query: string) => back(`company=${encodeURIComponent(biginId)}&${query}`);
+  const company = String(formData.get("company") ?? "");
+  if (!UUID_RE.test(company)) redirect(back(`companies_error=${encodeURIComponent("That company couldn't be found.")}`));
+  const at = (query: string) => back(`company=${company}&${query}`);
   const fail = (message: string) => redirect(at(`companies_error=${encodeURIComponent(message)}`));
 
   const raw = String(formData.get("news_page_url") ?? "").trim();
@@ -71,7 +126,7 @@ export async function saveCompanyNewsPage(formData: FormData) {
   const crawlerOn = await isFeatureEnabled("story_crawler");
   let outcome: NewsPageSave | "failed";
   try {
-    outcome = await setCompanyNewsPage(biginId, parsed?.url ?? null, { deriveSources: crawlerOn });
+    outcome = await setCompanyNewsPage({ id: company }, parsed?.url ?? null, { deriveSources: crawlerOn });
   } catch (e) {
     logError({ source: "server", area: "action:saveCompanyNewsPage", error: e });
     outcome = "failed";

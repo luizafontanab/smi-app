@@ -11,11 +11,17 @@
 -->
 
 ## 2026-11-06 — Edit a company's News Page URL in CRM
-- In the Companies box on the CRM page, click a company's name to open it, and you can change its News Page URL there. The change is saved in Bigin too, so the next sync won't undo it.
+- In the Companies box on the CRM page, click Edit on a company to change its News Page URL. The change is saved in Bigin too, so the next sync won't undo it.
 - The story crawler starts watching the new address straight away. Leave the field empty to watch the company's Website instead.
 - Until Bigin has accepted the change, the company shows "push pending". If Bigin can't be reached, the app keeps trying by itself.
 - The Website is shown but can only be changed in Bigin.
 - Until the Bigin connection is given permission to change companies, the field is greyed out with "edit in Bigin for now".
+
+## 2026-11-06 — Choose a company's member by hand
+- In the CRM Companies box, click Edit on a company to choose its member yourself. Story drafts from that company's news page are then tagged with the member you chose.
+- Your choice takes the place of the automatic match (a linked contact, or the member's website), including when that match found more than one member and tagged nobody. It is kept through every Bigin sync.
+- Each company shows whether its member was "chosen by hand" or "matched automatically". "Use automatic match" clears your choice and goes back to the automatic match straight away.
+- The choice stays in the app only: Bigin has no member field, so nothing is sent to Bigin.
 
 ## 2026-11-06 — Bigin's story sources move to the CRM page
 - The "From Bigin" panel has moved from Story sources to the Companies box on the CRM page. It still shows when Bigin last updated the story sources, any Bigin addresses to fix (not a web address, or listed by two companies), and the warning when no company has a News Page URL.
