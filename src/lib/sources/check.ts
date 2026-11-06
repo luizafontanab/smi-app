@@ -234,19 +234,22 @@ export async function checkSource(db: Db, source: Source, now = new Date(), stop
  * running: runSourceCheck keeps the lock until it counts as abandoned.
  *
  * `due` is every source that was due when the check started, even past
- * `maxSources`.
+ * `maxSources`. With `force` (an admin's "Check sources now"), every active
+ * source counts as due, so a click reads sources checked within the day too,
+ * least recently checked first: repeated clicks work through the list.
  *
  * Call it through runSourceCheck (./run.ts), which makes sure only one check
  * runs at a time and keeps the record the console shows.
  */
 export async function runSourceWatch({
-  budgetMs = 45_000, overrunMs = 5_000, settleMs = 5_000, concurrency = 6, maxSources = 300, now = () => new Date(),
+  budgetMs = 45_000, overrunMs = 5_000, settleMs = 5_000, concurrency = 6, maxSources = 300, force = false, now = () => new Date(),
 } = {}) {
   const db = serviceDb();
-  const { data: due, count, error } = await db.from("content_sources")
+  let query = db.from("content_sources")
     .select("id, url, method, method_url, last_ok_at, last_item_at, failure_count", { count: "exact" })
-    .eq("active", true)
-    .or(dueFilter(now()))
+    .eq("active", true);
+  if (!force) query = query.or(dueFilter(now()));
+  const { data: due, count, error } = await query
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .limit(maxSources);
   if (error) throw new Error(`source_watch: reading sources: ${error.message}`);

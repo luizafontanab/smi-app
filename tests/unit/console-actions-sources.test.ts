@@ -337,7 +337,7 @@ describe("checkSourcesNow", () => {
   it("runs a check as the admin who clicked, and comes back to the page it was clicked on, naming the run", async () => {
     runSourceCheck.mockResolvedValue(finished);
     await expect(checkSourcesNow(form({ return: "/console" }))).rejects.toThrow("NEXT_REDIRECT:/console?sourcecheck=done&checkrun=run-1#source-check");
-    expect(runSourceCheck).toHaveBeenCalledWith({ startedBy: "Jas" });
+    expect(runSourceCheck).toHaveBeenCalledWith({ startedBy: "Jas", force: true });
   });
 
   it("keeps the Sources tab's own query when it comes back there", async () => {

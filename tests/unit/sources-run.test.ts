@@ -116,9 +116,31 @@ describe("runSourceCheck", () => {
 
     const outcome = await runSourceCheck({ startedBy: null, now });
 
-    expect(outcome.run).toEqual(expect.objectContaining({ finished_at: NOW.toISOString(), due: 0, next_due_at: null }));
+    expect(outcome.run).toEqual(expect.objectContaining({ finished_at: NOW.toISOString(), due: 0 }));
+    // left out, not null: null would claim there are no active sources
+    expect(outcome.run!.next_due_at).toBeUndefined();
     expect(outcome.run!.error).toBeUndefined();
     expect(logError).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes force through to the watcher and marks the record as forced", async () => {
+    runSourceWatch.mockResolvedValue(watched({ due: 724, checked: 150 }));
+    tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)] });
+
+    const outcome = await runSourceCheck({ startedBy: "Jas", force: true, now });
+
+    expect(runSourceWatch).toHaveBeenCalledWith({ force: true, now });
+    expect(outcome.run).toEqual(expect.objectContaining({ forced: true, due: 724, checked: 150, still_due: 574 }));
+  });
+
+  it("records null for the next due time when there are no active sources", async () => {
+    runSourceWatch.mockResolvedValue(watched({ due: 0, checked: 0 }));
+    tables({ settings: [dbOk(null), dbOk([{ key: SOURCE_CHECK_KEY }]), dbOk(null)], content_sources: [dbOk([])] });
+
+    const outcome = await runSourceCheck({ startedBy: null, now });
+
+    expect(outcome.run!.next_due_at).toBeNull();
+    expect(outcome.run!.forced).toBeUndefined();
   });
 
   it("releases the lock when the check throws, keeping the error, and still throws", async () => {
@@ -184,6 +206,21 @@ describe("sourceCheckSummary", () => {
   it("says when the next sources come due if nothing was", () => {
     expect(sourceCheckSummary({ ...base, finished_at: "x", due: 0, next_due_at: "2026-11-05T14:05:00Z" }, nowMs))
       .toBe("Last check 5 Nov, 10:30 by Jas: nothing was due — every source was checked in the last 20 hours. The next are due from 5 Nov, 14:05.");
+  });
+
+  it("says there are no active sources rather than that every one was checked", () => {
+    expect(sourceCheckSummary({ ...base, finished_at: "x", due: 0, next_due_at: null }, nowMs))
+      .toBe("Last check 5 Nov, 10:30 by Jas: there are no active sources to check.");
+    expect(sourceCheckSummary({ ...base, finished_at: "x", forced: true, due: 0, checked: 0 }, nowMs))
+      .toBe("Last check 5 Nov, 10:30 by Jas: there are no active sources to check.");
+    // the next-due lookup failed: no claim either way
+    expect(sourceCheckSummary({ ...base, finished_at: "x", due: 0 }, nowMs))
+      .toBe("Last check 5 Nov, 10:30 by Jas: nothing was due — every source was checked in the last 20 hours.");
+  });
+
+  it("counts a forced check against every active source, and what it didn't reach", () => {
+    expect(sourceCheckSummary({ ...base, finished_at: "x", forced: true, due: 724, checked: 150, new_items: 2, unreadable: 0, failed: 0, still_due: 574 }, nowMs))
+      .toBe("Last check 5 Nov, 10:30 by Jas: checked 150 of 724 active sources — 2 new suggestions. 574 not reached this time.");
   });
 
   it("tells a running check from one that was cut off", () => {

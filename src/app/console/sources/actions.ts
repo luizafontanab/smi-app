@@ -262,7 +262,8 @@ const CHECK_RETURNS = ["/console", "/console/sources", "/console/sources?view=so
  * "Check sources now" (issue #42): one source check, the same batch a
  * scheduled run does, started by an admin from Command Centre or Story
  * sources. It runs inside the click (up to 55s, so both pages allow 120s) and
- * never alongside another check: a second click while one runs gets "busy",
+ * ignores the once-a-day rule: it reads the least recently checked sources
+ * even if they were checked within the day. It never runs alongside another check: a second click while one runs gets "busy",
  * and nothing is fetched (lib/sources/run).
  *
  * The redirect names the run it started (`checkrun`), so the page reports
@@ -276,7 +277,7 @@ export async function checkSourcesNow(formData: FormData) {
   if (!(await isFeatureEnabled("story_crawler"))) redirect(to("off"));
   let outcome: SourceCheckOutcome;
   try {
-    outcome = await runSourceCheck({ startedBy: user.displayName || user.email });
+    outcome = await runSourceCheck({ startedBy: user.displayName || user.email, force: true });
   } catch (e) {
     logError({ source: "job", area: "action:checkSourcesNow", error: e });
     // Before the lock nothing ran; after it, the record keeps what was reached.

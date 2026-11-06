@@ -25,7 +25,9 @@ export type SourceCheckRun = {
   finished_at: string | null;
   /** The admin who clicked "Check sources now"; null when the schedule started it. */
   started_by: string | null;
-  /** Sources due when the check started. */
+  /** Set when an admin's click ignored the once-a-day rule: `due` is then every active source. */
+  forced?: boolean;
+  /** Sources due when the check started (every active source, when forced). */
   due?: number;
   checked?: number;
   new_items?: number;
@@ -35,9 +37,12 @@ export type SourceCheckRun = {
   failed?: number;
   /** Still being read at the hard stop, so cancelled; nothing written, still due. */
   cut_off?: number;
-  /** Sources still due once the check finished. */
+  /** Sources still due once the check finished (when forced: not reached this time). */
   still_due?: number;
-  /** When nothing was due: when the next source comes due. */
+  /**
+   * When nothing was due: when the next source comes due. Null means there
+   * are no active sources at all; left out if that couldn't be worked out.
+   */
   next_due_at?: string | null;
   /** Set when the check stopped with an error. What it reached before that is kept. */
   error?: string;
@@ -124,7 +129,10 @@ async function nextDueAt(db: Db): Promise<string | null> {
  */
 export async function runSourceCheck({ startedBy, now = () => new Date(), ...watch }: { startedBy: string | null; now?: () => Date } & WatchOptions): Promise<SourceCheckOutcome> {
   const db = serviceDb();
-  const run: SourceCheckRun = { id: crypto.randomUUID(), started_at: now().toISOString(), finished_at: null, started_by: startedBy };
+  const run: SourceCheckRun = {
+    id: crypto.randomUUID(), started_at: now().toISOString(), finished_at: null, started_by: startedBy,
+    ...(watch.force ? { forced: true } : {}),
+  };
   let claimed: boolean;
   try {
     claimed = await claim(db, run, now());
@@ -160,7 +168,7 @@ export async function runSourceCheck({ startedBy, now = () => new Date(), ...wat
       ...run,
       ...reached,
       finished_at: finishedAt,
-      next_due_at: result.due === 0 ? await nextDueAtOrNull(db) : null,
+      next_due_at: result.due === 0 ? await nextDueAtIfKnown(db) : null,
     };
     await finish(db, done);
     return { status: "done", run: done };
@@ -172,13 +180,13 @@ export async function runSourceCheck({ startedBy, now = () => new Date(), ...wat
   }
 }
 
-/** nextDueAt, but only a nicety: failing to work it out mustn't fail a finished check. */
-async function nextDueAtOrNull(db: Db): Promise<string | null> {
+/** nextDueAt, but only a nicety: failing to work it out mustn't fail a finished check. Undefined (left out of the record) if it failed. */
+async function nextDueAtIfKnown(db: Db): Promise<string | null | undefined> {
   try {
     return await nextDueAt(db);
   } catch (e) {
     logError({ source: "job", area: "job:source_watch", error: e });
-    return null;
+    return undefined;
   }
 }
 
@@ -212,11 +220,16 @@ export function sourceCheckSummary(run: SourceCheckRun | null, nowMs: number): s
   if (run.error && run.due === undefined) return `${head} stopped with an error before checking any sources.`;
   const tail = run.error ? " Then it stopped with an error." : "";
   if (!run.due) {
+    // Nothing due and no active source last checked: there are no active sources.
+    if (run.forced || run.next_due_at === null) return `${head}: there are no active sources to check.${tail}`;
     const next = run.next_due_at ? ` The next are due from ${when(run.next_due_at)}.` : "";
     return `${head}: nothing was due — every source was checked in the last ${CHECK_EVERY_MS / 3_600_000} hours.${next}${tail}`;
   }
   const parts = [plural(run.new_items ?? 0, "new suggestion")];
   if (run.unreadable) parts.push(`${run.unreadable} couldn't be read`);
   if (run.failed) parts.push(`${run.failed} hit an error`);
+  if (run.forced) {
+    return `${head}: checked ${run.checked ?? 0} of ${plural(run.due, "active source")} — ${parts.join(", ")}. ${run.still_due ?? 0} not reached this time.${tail}`;
+  }
   return `${head}: checked ${run.checked ?? 0} of ${plural(run.due, "due source")} — ${parts.join(", ")}. ${run.still_due ?? 0} still due.${tail}`;
 }

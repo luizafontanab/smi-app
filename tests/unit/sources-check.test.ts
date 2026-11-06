@@ -246,6 +246,30 @@ describe("runSourceWatch", () => {
   });
 });
 
+describe("runSourceWatch's force", () => {
+  it("reads every active source, ignoring the once-a-day rule, least recently checked first", async () => {
+    const lists: ReturnType<typeof queryBuilder>[] = [];
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ content_sources: () => { const b = queryBuilder(dbOk([], 724)); lists.push(b); return b; } }) })));
+
+    const result = await runSourceWatch({ force: true, maxSources: 0, now: () => NOW });
+
+    expect(result.due).toBe(724);
+    const list = lists[0];
+    expect(vi.mocked(list.or as (...a: unknown[]) => unknown)).not.toHaveBeenCalled();
+    expect(vi.mocked(list.eq as (...a: unknown[]) => unknown)).toHaveBeenCalledWith("active", true);
+    expect(vi.mocked(list.order as (...a: unknown[]) => unknown)).toHaveBeenCalledWith("last_checked_at", { ascending: true, nullsFirst: true });
+  });
+
+  it("keeps the due filter without it", async () => {
+    const lists: ReturnType<typeof queryBuilder>[] = [];
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ content_sources: () => { const b = queryBuilder(dbOk([], 3)); lists.push(b); return b; } }) })));
+
+    await runSourceWatch({ maxSources: 0, now: () => NOW });
+
+    expect(vi.mocked(lists[0].or as (...a: unknown[]) => unknown)).toHaveBeenCalledWith(dueFilter(NOW));
+  });
+});
+
 describe("dueFilter", () => {
   it("is due when never checked, or last checked a day (20h) ago or more", () => {
     expect(dueFilter(NOW)).toBe("last_checked_at.is.null,last_checked_at.lt.2026-10-19T14:00:00.000Z");

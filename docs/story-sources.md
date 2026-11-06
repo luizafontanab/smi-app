@@ -60,8 +60,9 @@ filters rather than hiding them.
   list is covered daily.
 - **"Check sources now" (issue #42, 5 Nov 2026)** on Command Centre and Story
   sources runs the same batch inside the click (up to 55 seconds; both pages
-  allow 120s). It keeps the once-a-day rule, so it only reaches sources
-  that are due. Every check, scheduled or clicked, goes through
+  allow 120s). It ignores the once-a-day rule (6 Nov 2026): a click reads
+  every active source, least recently checked first, so repeat clicks work
+  through the list, and the record is marked `forced`. Every check, scheduled or clicked, goes through
   `runSourceCheck`: the record in `settings.source_check_last` is also a lock,
   so a second check while one runs is refused ("busy"). A scheduled job that
   finds it busy queues itself again for when the lock is sure to be free. A
