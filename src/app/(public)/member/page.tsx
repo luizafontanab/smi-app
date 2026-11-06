@@ -14,6 +14,7 @@ import { MemberMap } from "@/components/MemberMap";
 import { MultiSelectCombobox } from "@/components/MultiSelectCombobox";
 import { Pagination } from "@/components/Pagination";
 import { MemberTile } from "@/components/cards";
+import { uniqueFeaturedMembers } from "@/app/(public)/home.grid";
 
 /** A searchParams value is `string | string[] | undefined` — normalise either shape to an array. */
 const asArray = (v: string | string[] | undefined): string[] => (Array.isArray(v) ? v : v ? [v] : []);
@@ -111,7 +112,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
   const withCoords = pinRows.filter((m): m is typeof m & { lat: number; lng: number } => m.lat != null && m.lng != null);
 
   // A member can hold overlapping featured placements — show each member once.
-  const featured = [...new Map(featuredPlacements.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : []))).values()];
+  const featured = uniqueFeaturedMembers(featuredPlacements);
   // The cloud's big orange names are the same paid placement as the strip
   // above, not a second notion of "featured" — reuse the deduped list.
   const featuredSlugs = new Set(featured.map((m) => m.slug));

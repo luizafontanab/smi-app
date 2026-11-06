@@ -68,7 +68,7 @@ export function GridHome({
   // Member news rotates into it near the top instead of living only at the
   // foot of the page (GAPS A9.3) — capped so the fold stays ≤20% member.
   const moreNews = weaveMemberNews({
-    carousel: rest.slice(0, 8),
+    carousel: rest.slice(0, HOME_CAROUSEL_STORIES),
     alsoInFold: [lead, second].filter((s): s is NonNullable<typeof s> => Boolean(s)),
     memberNews,
   });
@@ -84,18 +84,14 @@ export function GridHome({
   const issues = newsletters.filter((i) => i.web_slug);
 
   /*
-   * Sold featured-member placements, for the sidebar box. Deduplicated on slug
-   * because a member can hold overlapping placements — the same rule and the
-   * same one-liner as the directory's featured strip (member/page.tsx). It
-   * doubles as the null-member filter: placements.member_id is nullable.
+   * Sold featured-member placements, for the sidebar box, each member once
+   * (uniqueFeaturedMembers below; the directory's featured strip uses it too).
    *
    * Resolved here rather than inside the box because it also decides the
    * band's column classes below. Two predicates would eventually disagree and
    * leave a 3fr column of nothing down the left of the section.
    */
-  const featured = [...new Map(
-    featuredMembers.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : [])),
-  ).values()];
+  const featured = uniqueFeaturedMembers(featuredMembers);
 
 
   /*
@@ -378,11 +374,29 @@ export const bannersTouch = (seq: BelowFoldPiece[]) =>
 const isBanner = (p: BelowFoldPiece) => p === "home_2" || p === "home_3";
 
 /** Third and later cards of a row drop below sm — the phone page was ~7,000px (#33 C9). */
-const phoneCap = (i: number) => (i >= 2 ? "max-sm:hidden" : undefined);
+export const phoneCap = (i: number) => (i >= 2 ? "max-sm:hidden" : undefined);
 
 /**
  * Banner width on a phone: a 370×280 mobile creative at full width was most
  * of a screen, three times over. Capped and centred as on the story page
  * (BlockRenderer's STORY_AD_WRAPPER); from md the desktop strip shows uncapped.
  */
-const HOME_AD_WRAPPER = "mx-auto w-full max-w-[300px] md:max-w-none";
+export const HOME_AD_WRAPPER = "mx-auto w-full max-w-[300px] md:max-w-none";
+
+/** The More News carousel's length, after the two fold highlights. */
+const HOME_CAROUSEL_STORIES = 8;
+/**
+ * How far down `stories` the home page reaches: the two fold highlights plus
+ * the carousel. Another design option's home view stops at the same story, so
+ * the options show the same stories.
+ */
+export const HOME_TOP_STORIES = 2 + HOME_CAROUSEL_STORIES;
+
+/**
+ * Sold featured-member placements as the members to show, each once: a member
+ * can hold overlapping placements, so they are deduplicated on slug. It
+ * doubles as the null-member filter, since placements.member_id is nullable.
+ */
+export function uniqueFeaturedMembers<M extends { slug: string }>(placements: readonly { member: M | null }[]): M[] {
+  return [...new Map(placements.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : []))).values()];
+}
