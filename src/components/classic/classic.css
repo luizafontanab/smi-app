@@ -1310,4 +1310,195 @@
 
 /* ── #81 Edge surfaces and shared pieces ─────────────────────────────────── */
 
+/* Login, reset, reset/new and unsubscribe, the root 404, the public 404, the
+   error page, the loading skeleton, and the shared pieces every public page
+   can carry. Restyle only: nothing here hides, disables or moves a form
+   control. tests/unit/classic/edge-surfaces.test.ts pins what this reaches.
+
+   Takeover: the layout sets a takeover's hex as an inline --smi-brand on the
+   [data-site="public"] wrapper. An inline declaration beats any normal
+   stylesheet declaration on that element, so the #70 override loses to it and
+   every var(--smi-brand) below the wrapper reads the sponsor's colour. */
+
+/* Login, reset, reset/new, unsubscribe. Login and reset already fill the
+   screen; unsubscribe's root was a 28rem column, which on Classic left a grey
+   strip on the white body, so every root fills the width and height. */
+[data-site="public"][data-part="auth-page"] {
+  max-width: none;
+  min-height: 100vh;
+}
+[data-site="public"][data-part="auth-page"] > [data-part="auth-panel"] {
+  width: 100%;
+  max-width: 24rem;
+  margin-inline: auto;
+}
+[data-site="public"] [data-part="auth-panel"] [data-part="form-input"] {
+  border-radius: var(--classic-radius);
+}
+/* "Forgotten your password?", "Back to sign in" and the rest: blue links. */
+[data-site="public"] [data-part="auth-panel"] p a {
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="auth-panel"] p a:hover {
+  color: var(--classic-blue-hover);
+}
+
+/* The root 404: the page itself (data-site and data-part on one element), with
+   its own small black header. No layout around it, so no database. */
+[data-site="public"][data-part="not-found"] [data-part="not-found-header"] {
+  background-color: var(--classic-chrome);
+  padding-block: 0.875rem;
+}
+[data-site="public"][data-part="not-found"] [data-part="not-found-header"] a {
+  font-weight: 400;
+  color: var(--classic-panel);
+}
+/* The "404" eyebrow sits on the bare canvas and stripes, where Current's
+   brown-orange is 4.24:1 on the stripe. Ink instead. */
+[data-site="public"][data-part="not-found"] > main > p:first-child {
+  color: var(--smi-ink);
+}
+
+/* The public 404 and the error page: one white panel on the canvas. */
+[data-site="public"] [data-part="not-found"],
+[data-site="public"] [data-part="error-page"] {
+  max-width: min(42rem, calc(100% - 1.5rem));
+  margin-block: 2.5rem;
+  padding: 3rem 1.5rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+
+/* Secondary buttons on these surfaces: Classic's white button, an #e2e2e2
+   edge that darkens to ink on hover. */
+[data-site="public"] :is([data-part="not-found"], [data-part="error-page"], [data-part="cookie-banner"]) [data-part="button-secondary"] {
+  background-color: var(--classic-panel);
+  color: var(--smi-ink);
+  border: 1px solid var(--classic-canvas);
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] :is([data-part="not-found"], [data-part="error-page"], [data-part="cookie-banner"]) [data-part="button-secondary"]:hover {
+  border-color: var(--smi-ink);
+}
+
+/* Loading skeleton: the grey blocks on one white panel. */
+[data-site="public"] [data-part="loading-skeleton"] {
+  max-width: min(72rem, calc(100% - 1.5rem));
+  margin-block: 2rem;
+  padding: 2rem 1.5rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-site="public"] [data-part="loading-skeleton"] {
+    animation: none;
+  }
+}
+
+/* Cookie banner: Current's bar, in Classic's colours. Not the live site's
+   full-screen modal. */
+[data-site="public"] [data-part="cookie-banner"] {
+  border-top-color: var(--classic-canvas);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="cookie-banner"] p a {
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="cookie-banner"] p a:hover {
+  color: var(--classic-blue-hover);
+}
+
+/* Skip link: Current's ink on orange, Classic's corners. Its ring goes back
+   to ink: it opens over the black header, where #70's blue ring disappears. */
+[data-site="public"] [data-part="skip-link"] {
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] [data-part="skip-link"]:focus-visible {
+  outline-color: var(--smi-ink);
+}
+
+/* Industry strip (industries_public on): a white secondary bar under the black
+   header, whichever tone the layout passes. Colours only: its rows are shown
+   and hidden by utilities. */
+[data-site="public"] [data-part="industry-strip"] {
+  background-color: var(--classic-panel);
+  border-bottom: 1px solid var(--classic-canvas);
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="industry-strip"] span {
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="industry-strip"] [data-part="industry-strip-link"] {
+  color: var(--classic-meta);
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] [data-part="industry-strip"] [data-part="industry-strip-link"]:hover {
+  background-color: var(--classic-canvas);
+  color: var(--smi-ink);
+}
+
+/* Takeover banner: full bleed on black, no inline-image gap under it. */
+[data-site="public"] > [data-part="takeover-banner"],
+[data-site="public"] > [data-part="takeover-banner"] img {
+  display: block;
+}
+[data-site="public"] > [data-part="takeover-banner"] {
+  background-color: var(--classic-chrome);
+}
+
+/* Empty advert slots (placeholders on): Classic's corners. Booked adverts are
+   the advertiser's artwork and stay as supplied. */
+[data-site="public"] [data-part="ad-placeholder"] > div {
+  border-radius: var(--classic-radius);
+}
+
+/* Supplier logos on /news and in page blocks (the home page's band is #73's):
+   a canvas-grey rule above, and Classic's corners on the placeholder tiles. */
+[data-site="public"] [data-part="supplier-logos-wrap"] > [data-part="supplier-logos"] {
+  border-top-color: var(--classic-canvas);
+}
+[data-site="public"] [data-part="supplier-logos-wrap"] > [data-part="supplier-logos"] [data-part="supplier-logo"] {
+  border-radius: var(--classic-radius);
+}
+
+/* Pagination: blue buttons with white text, darker blue on hover (not orange,
+   so a takeover colour can't make the hover pair fail), meta-grey status.
+   Only inside a pagination nav: the events calendar's month arrows and member
+   videos share the link part but not this look. */
+[data-site="public"] [data-part="pagination"] [data-part="pagination-link"] {
+  background-color: var(--classic-blue);
+  color: var(--classic-button-text);
+  border-color: transparent;
+  border-radius: var(--classic-radius);
+  text-decoration: none;
+}
+[data-site="public"] [data-part="pagination"] [data-part="pagination-link"]:hover {
+  background-color: var(--classic-blue-hover);
+}
+[data-site="public"] [data-part="pagination"] [data-part="pagination-status"] {
+  color: var(--classic-meta);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-site="public"] [data-part="pagination"] [data-part="pagination-link"],
+  [data-site="public"] [data-part="industry-strip"] [data-part="industry-strip-link"],
+  [data-site="public"] :is([data-part="not-found"], [data-part="error-page"], [data-part="cookie-banner"]) [data-part="button-secondary"] {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+}
+
+/* /news: the logos band bleeds to the panel's edge. #79 pads the panel 1rem
+   below md (Current's -mx-4 already matches) and 2rem from md, so the band
+   goes out by 2rem there and its row comes back in by the same 2rem. */
+@media (min-width: 48rem) {
+  [data-site="public"] [data-part="news-page"] > [data-part="supplier-logos-wrap"] {
+    margin-inline: -2rem;
+  }
+  [data-site="public"] [data-part="news-page"] > [data-part="supplier-logos-wrap"] > [data-part="supplier-logos"] > div {
+    padding-inline: 2rem;
+  }
+}
+
 /* ── end #81 ── */
