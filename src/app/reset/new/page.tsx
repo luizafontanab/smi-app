@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { sessionDb } from "@/lib/db/server";
 import { SubmitButton } from "@/components/SubmitButton";
 import { AuthLogo } from "@/components/AuthLogo";
+// Loads the design option's stylesheet: this page sits outside the public
+// layout but is part of the public site (data-site="public" below).
+import "@/components/design-option";
 
 export const metadata = { title: "Set a new password" };
 export const dynamic = "force-dynamic";
@@ -52,17 +55,17 @@ export default async function NewPasswordPage(props: PageProps<"/reset/new">) {
     : "";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-paper px-4">
-      <form action={setPassword} className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
+    <div data-site="public" data-part="auth-page" className="flex min-h-screen items-center justify-center bg-paper px-4">
+      <form action={setPassword} data-part="auth-panel" className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
         <AuthLogo />
         <p className="mt-1 text-center text-sm text-graphite">Set a new password for {user.email}</p>
-        {message && <p className="mt-3 rounded bg-danger/10 p-2 text-center text-sm text-danger">{message}</p>}
+        {message && <p data-part="form-error" className="mt-3 rounded bg-danger/10 p-2 text-center text-sm text-danger">{message}</p>}
 
-        <label htmlFor="password" className="mt-5 block text-sm font-medium">New password</label>
-        <input id="password" name="password" type="password" required minLength={MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2" />
+        <label data-part="form-label" htmlFor="password" className="mt-5 block text-sm font-medium">New password</label>
+        <input id="password" name="password" data-part="form-input" type="password" required minLength={MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2" />
 
-        <label htmlFor="confirm" className="mt-3 block text-sm font-medium">Confirm new password</label>
-        <input id="confirm" name="confirm" type="password" required minLength={MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2" />
+        <label data-part="form-label" htmlFor="confirm" className="mt-3 block text-sm font-medium">Confirm new password</label>
+        <input id="confirm" name="confirm" data-part="form-input" type="password" required minLength={MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2" />
 
         <div className="mt-5">
           <SubmitButton pendingLabel="Saving…">Save password</SubmitButton>

@@ -3,6 +3,9 @@ import { verifyUnsubscribeToken } from "@/lib/unsubscribe";
 import { SubmitButton } from "@/components/SubmitButton";
 import { confirmUnsubscribe, requestUnsubscribe } from "./actions";
 import { AuthLogo } from "@/components/AuthLogo";
+// Loads the design option's stylesheet: this page sits outside the public
+// layout but is part of the public site (data-site="public" below).
+import "@/components/design-option";
 
 export const metadata = { title: "Unsubscribe", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -42,10 +45,10 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
   const linkError = link && !link.ok ? ERRORS[link.reason === "unconfigured" ? "unavailable" : link.reason] : undefined;
 
   return (
-    <div className="mx-auto max-w-md px-4 py-16">
-      <div className="rounded-xl bg-white p-8 shadow-sm">
+    <div data-site="public" data-part="auth-page" className="mx-auto max-w-md px-4 py-16">
+      <div data-part="auth-panel" className="rounded-xl bg-white p-8 shadow-sm">
         <AuthLogo />
-        <h1 className="mt-4 text-xl font-bold text-ink">Unsubscribe</h1>
+        <h1 data-part="page-title" className="mt-4 text-xl font-bold text-ink">Unsubscribe</h1>
 
         {sp.done === "1" ? (
           <>
@@ -59,7 +62,7 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
           </>
         ) : sp.sent === "1" ? (
           <>
-            <p role="status" className="mt-3 text-sm text-graphite">
+            <p role="status" data-part="form-notice" className="mt-3 text-sm text-graphite">
               Check your inbox. If that address gets the SMI newsletter, we&apos;ve sent it an email with a link to confirm —
               nothing changes until you press the button it opens.
             </p>
@@ -81,14 +84,15 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
         ) : (
           <form action={requestUnsubscribe}>
             {(linkError ?? error) && (
-              <p role="alert" className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{linkError ?? error}</p>
+              <p role="alert" data-part="form-error" className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{linkError ?? error}</p>
             )}
             <p className="mt-2 text-sm text-graphite">
               Enter the address you receive the SMI newsletter at. We&apos;ll email it a link to confirm, so only you can
               take it off the list.
             </p>
-            <label htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
+            <label data-part="form-label" htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
             <input
+              data-part="form-input"
               id="email" name="email" type="email" required defaultValue={prefill} autoComplete="email"
               className="mt-1 w-full rounded border px-3 py-2"
             />

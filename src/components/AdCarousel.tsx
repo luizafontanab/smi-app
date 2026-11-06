@@ -140,6 +140,7 @@ export function AdCarousel({ adverts, shape, path }: { adverts: CarouselAdvert[]
 
   return (
     <div
+      data-part="ad-carousel"
       // focus/blur bubble in React (focusin/focusout); relatedTarget says where focus went
       onFocus={(e) => setFocused(holdsFocus(e.target, e.currentTarget))}
       onBlur={(e) => setFocused(holdsFocus(e.relatedTarget, e.currentTarget))}
@@ -170,7 +171,7 @@ export function AdCarousel({ adverts, shape, path }: { adverts: CarouselAdvert[]
         })}
       </div>
       {/* Not a tablist: these switch one advert for another, they label no panels. */}
-      <div className="flex items-center justify-center pt-1">
+      <div data-part="ad-carousel-controls" className="flex items-center justify-center pt-1">
         {adverts.map((ad, i) => (
           <button
             key={`${ad.advertId}-${i}`}

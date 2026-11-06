@@ -6,7 +6,7 @@ import { breadcrumbLd, newsArticleLd } from "@/lib/jsonld";
 import { storyBySlug } from "@/lib/queries";
 import { loadStoryPageData } from "@/lib/story-page";
 import { JsonLd } from "@/components/JsonLd";
-import { StoryPageView } from "@/components/story/StoryPageView";
+import { StoryView } from "@/components/design-option";
 import { RecordViewed } from "../RecordViewed";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +53,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
 
   return (
     // Wider from lg so the article and its member sidebar fill the screen (Jas 13/10 item 13).
-    <div className="mx-auto max-w-4xl px-4 lg:max-w-6xl">
+    <div data-part="story-page" className="mx-auto max-w-4xl px-4 lg:max-w-6xl">
       {/* Notes this story's category + author-industry slugs in the viewed_cats
           cookie (consent-gated client-side) — feeds /news's "For you" rail. */}
       <RecordViewed slugs={[...cats.map((c) => c.slug), ...(data.industrySlug ? [data.industrySlug] : [])]} />
@@ -66,7 +66,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
           ]),
         ]}
       />
-      <StoryPageView story={story} categories={cats} cover={cover} members={data.members} socialPosts={story.social_posts} data={data} path={path} />
+      <StoryView story={story} categories={cats} cover={cover} members={data.members} socialPosts={story.social_posts} data={data} path={path} />
     </div>
   );
 }

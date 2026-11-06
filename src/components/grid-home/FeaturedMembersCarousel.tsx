@@ -135,6 +135,7 @@ export function FeaturedMembersCarousel({ className, count, children }: {
     <>
       <ul
         ref={ref}
+        data-part="carousel"
         className={className}
         onScroll={onScroll}
         onMouseEnter={hold}
@@ -147,7 +148,7 @@ export function FeaturedMembersCarousel({ className, count, children }: {
       {overflows && (
         // Not a tablist: these scroll one list, they don't swap panels. A row
         // of buttons is what it is, and the label carries the position.
-        <div className="flex shrink-0 justify-center pt-2" onMouseEnter={hold} onMouseLeave={release}>
+        <div data-part="carousel-dots" className="flex shrink-0 justify-center pt-2" onMouseEnter={hold} onMouseLeave={release}>
           {Array.from({ length: count }, (_, i) => (
             <button
               key={i}

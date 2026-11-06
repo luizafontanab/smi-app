@@ -26,11 +26,11 @@ export function NewsletterSignup({ surface, tone = "brand" }: { surface: SignupS
   const emailId = `${id}-email`;
   const statusId = `${id}-status`;
   return (
-    <form action={formAction} className="flex flex-wrap gap-2">
+    <form data-part="newsletter-signup" action={formAction} className="flex flex-wrap gap-2">
       <input type="hidden" name="surface" value={surface} />
       <label htmlFor={emailId} className="sr-only">Email address</label>
       {/* 16px below sm so iOS doesn't zoom in on focus; 44px tall on phones. */}
-      <input
+      <input data-part="form-input"
         id={emailId}
         type="email"
         name="email"
@@ -41,7 +41,7 @@ export function NewsletterSignup({ surface, tone = "brand" }: { surface: SignupS
         placeholder="you@company.co.uk"
         className="min-w-0 flex-1 rounded bg-white px-3 py-2.5 text-base text-ink placeholder:text-graphite sm:py-2 sm:text-sm"
       />
-      <button disabled={pending} className={`rounded px-4 py-2 text-sm font-semibold disabled:opacity-50 ${BUTTON_TONES[tone]}`}>
+      <button data-part="button-primary" disabled={pending} className={`rounded px-4 py-2 text-sm font-semibold disabled:opacity-50 ${BUTTON_TONES[tone]}`}>
         {pending ? "…" : "Subscribe"}
       </button>
       {/* Always rendered: a live region announces only if it existed before
@@ -50,7 +50,7 @@ export function NewsletterSignup({ surface, tone = "brand" }: { surface: SignupS
       {/* Inherits the surface's foreground: this form renders on the dark
           footer and on light bands, and no single orange passes AA on both.
           Weight, not hue, carries the emphasis. */}
-      <p id={statusId} aria-live="polite" className={state?.message ? "basis-full text-xs font-semibold" : "sr-only"}>{state?.message}</p>
+      <p data-part="form-notice" id={statusId} aria-live="polite" className={state?.message ? "basis-full text-xs font-semibold" : "sr-only"}>{state?.message}</p>
     </form>
   );
 }

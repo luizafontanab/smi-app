@@ -35,19 +35,19 @@ export default async function FeaturedMachinePage() {
 
   const machineMain = (
     <>
-      <h1 className="mt-6 text-2xl font-bold text-ink">Featured Machine</h1>
+      <h1 data-part="page-title" className="mt-6 text-2xl font-bold text-ink">Featured Machine</h1>
       {/* A real empty state with somewhere to go (#33): the bare one-liner
           left the page to the advert and the bands below it. */}
       {machines.length === 0 && (
-        <section className="mt-6 rounded-xl border border-line bg-white p-6 shadow-sm sm:p-8">
-          <h2 className="text-lg font-bold text-ink">No featured machine this month</h2>
+        <section data-part="empty-state" className="mt-6 rounded-xl border border-line bg-white p-6 shadow-sm sm:p-8">
+          <h2 data-part="section-title" className="text-lg font-bold text-ink">No featured machine this month</h2>
           <p className="mt-2 max-w-prose text-sm text-graphite sm:text-base">
             Each month we take a closer look at one machine working in the UK sheet metal trade, offered by an SMI member.
             Check back soon — in the meantime, the member directory lists the companies that make, sell and service them.
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <Link href="/member" className="tap rounded bg-brand px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand/90">Find a member →</Link>
-            <Link href="/contact" className="tap text-sm text-graphite underline hover:text-ink">Want your machine featured? Get in touch</Link>
+            <Link data-part="button-primary" href="/member" className="tap rounded bg-brand px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand/90">Find a member →</Link>
+            <Link data-part="button-secondary" href="/contact" className="tap text-sm text-graphite underline hover:text-ink">Want your machine featured? Get in touch</Link>
           </div>
         </section>
       )}
@@ -57,19 +57,19 @@ export default async function FeaturedMachinePage() {
           filter the page actually depends on; keeping the call here means a
           future projection change cannot quietly turn the credit back on. */}
       {machines.map(({ machine }) => machine && (
-        <article key={machine.id} className="mt-6 overflow-hidden rounded-xl bg-white shadow-sm">
+        <article data-part="machine-feature" key={machine.id} className="mt-6 overflow-hidden rounded-xl bg-white shadow-sm">
           {/* Contained in a ratio box, not cropped to a fixed 320px (#33): that
               was near-square on a phone and lost a landscape photo's ends. */}
           {machine.image_path && (
-            <div className="relative aspect-[4/3] bg-shade sm:aspect-video">
+            <div data-part="card-image" className="relative aspect-[4/3] bg-shade sm:aspect-video">
               <Image src={mediaUrl(machine.image_path)!} alt="" fill sizes="(max-width: 896px) 100vw, 896px" className="object-contain" unoptimized />
             </div>
           )}
-          <div className="p-6">
-            <p className="text-xs uppercase tracking-widest text-brand-text">Machine of the month</p>
-            <h2 className="mt-1 text-2xl font-bold text-ink">{machine.name}</h2>
+          <div data-part="machine-body" className="p-6">
+            <p data-part="card-meta" className="text-xs uppercase tracking-widest text-brand-text">Machine of the month</p>
+            <h2 data-part="card-title" className="mt-1 text-2xl font-bold text-ink">{machine.name}</h2>
             {isMemberLinkable(machine.member) && (
-              <p className="mt-1 flex items-center gap-2 text-sm text-graphite">
+              <p data-part="machine-seller" className="mt-1 flex items-center gap-2 text-sm text-graphite">
                 {/* the seller's brand beside the credit (REQUIREMENTS §3, 18 Sep) */}
                 {machine.member.logo_path && (
                   <Image src={mediaUrl(machine.member.logo_path)!} alt="" width={96} height={32} className="h-8 w-auto object-contain" unoptimized />
@@ -83,7 +83,7 @@ export default async function FeaturedMachinePage() {
             {(() => {
               const yt = machine.video_url ? youtubeId(machine.video_url) : null;
               return yt ? (
-                <div className="mt-4 aspect-video w-full overflow-hidden rounded-lg bg-ink">
+                <div data-part="video-embed" className="mt-4 aspect-video w-full overflow-hidden rounded-lg bg-ink">
                   <iframe
                     src={`https://www.youtube-nocookie.com/embed/${yt}`}
                     title={`${machine.name} — video`}
@@ -95,14 +95,14 @@ export default async function FeaturedMachinePage() {
               ) : null;
             })()}
             <RichText html={machine.description} className="mt-4 text-ink" />
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div data-part="machine-actions" className="mt-6 flex flex-wrap gap-3">
               {machine.external_url && (
-                <a href={machine.external_url} target="_blank" rel="noopener" className="tap rounded bg-brand px-5 py-2.5 font-semibold text-ink hover:bg-brand/90">
+                <a data-part="button-primary" href={machine.external_url} target="_blank" rel="noopener" className="tap rounded bg-brand px-5 py-2.5 font-semibold text-ink hover:bg-brand/90">
                   Full details on the seller&apos;s site →
                 </a>
               )}
               {isMemberLinkable(machine.member) && (
-                <Link href={`/member/${machine.member.slug}`} className="tap rounded border border-line bg-white px-5 py-2.5">Seller&apos;s SMI page</Link>
+                <Link data-part="button-secondary" href={`/member/${machine.member.slug}`} className="tap rounded border border-line bg-white px-5 py-2.5">Seller&apos;s SMI page</Link>
               )}
             </div>
           </div>
@@ -112,7 +112,7 @@ export default async function FeaturedMachinePage() {
   );
 
   return (
-    <div className="mx-auto max-w-4xl px-4">
+    <div data-part="featured-machine-page" className="mx-auto max-w-4xl px-4">
       <BlockRenderer
         pageType="featured_machine"
         layout={layout}

@@ -35,15 +35,15 @@ export function VideoCard({ video, size = "md" }: { video: VideoCardData; size?:
   return (
     // Internal, not straight out to YouTube: /video/{slug} is a page we own and
     // can be linked to, indexed and advertised against. The embed is there.
-    <Link href={`/video/${video.slug}`} className="group block overflow-hidden rounded-lg bg-white shadow-sm hover:shadow-md">
-      <div className={`relative ${VIDEO_HEIGHTS[size]} bg-ink`}>
+    <Link href={`/video/${video.slug}`} data-part="video-card" className="group block overflow-hidden rounded-lg bg-white shadow-sm hover:shadow-md">
+      <div data-part="card-image" className={`relative ${VIDEO_HEIGHTS[size]} bg-ink`}>
         {img && <Image src={img} alt="" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover opacity-80" unoptimized />}
-        <span className={`absolute inset-0 flex items-center justify-center ${PLAY_GLYPH[size]} text-white drop-shadow`}>▶</span>
+        <span data-part="card-play" className={`absolute inset-0 flex items-center justify-center ${PLAY_GLYPH[size]} text-white drop-shadow`}>▶</span>
         {video.source === "member" && <MemberBadge label="Member video" />}
       </div>
-      <div className="p-3">
-        <p className={`font-semibold line-clamp-2 ${size === "sm" ? "text-sm" : ""}`}>{video.title}</p>
-        {video.member && <p className="mt-1 text-xs text-graphite">{video.member.name}</p>}
+      <div data-part="card-body" className="p-3">
+        <p data-part="card-title" className={`font-semibold line-clamp-2 ${size === "sm" ? "text-sm" : ""}`}>{video.title}</p>
+        {video.member && <p data-part="card-meta" className="mt-1 text-xs text-graphite">{video.member.name}</p>}
       </div>
     </Link>
   );
@@ -65,31 +65,31 @@ export type FeaturedMemberData = {
 export function FeaturedMemberCard({ member, variant = "card" }: { member: FeaturedMemberData; variant?: "band" | "card" | "compact" }) {
   if (variant === "band") {
     return (
-      <Link href={`/member/${member.slug}`} className="group relative flex items-center gap-5 rounded-lg border-2 border-brand bg-white p-5 pt-8 shadow-sm transition hover:shadow-md sm:pt-5">
-        <span className="absolute left-2 top-2 rounded bg-brand px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-ink">Featured member</span>
+      <Link href={`/member/${member.slug}`} data-part="featured-member-card" className="group relative flex items-center gap-5 rounded-lg border-2 border-brand bg-white p-5 pt-8 shadow-sm transition hover:shadow-md sm:pt-5">
+        <span data-part="card-badge" className="absolute left-2 top-2 rounded bg-brand px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-ink">Featured member</span>
         {member.logo_path && (
-          <Image src={mediaUrl(member.logo_path)!} alt="" width={72} height={72} className="hidden shrink-0 rounded sm:block" unoptimized />
+          <Image src={mediaUrl(member.logo_path)!} alt="" data-part="card-image" width={72} height={72} className="hidden shrink-0 rounded sm:block" unoptimized />
         )}
         <div className="min-w-0">
-          <p className="text-lg font-bold">{member.name}</p>
-          {member.category && <p className="text-xs uppercase tracking-wide text-graphite">{member.category.name}</p>}
-          {member.description && <p className="mt-1 text-sm text-graphite line-clamp-2">{member.description}</p>}
+          <p data-part="card-title" className="text-lg font-bold">{member.name}</p>
+          {member.category && <p data-part="card-meta" className="text-xs uppercase tracking-wide text-graphite">{member.category.name}</p>}
+          {member.description && <p data-part="card-excerpt" className="mt-1 text-sm text-graphite line-clamp-2">{member.description}</p>}
         </div>
-        <span className="ml-auto hidden shrink-0 text-sm text-graphite group-hover:underline md:block">View member page →</span>
+        <span data-part="card-cta" className="ml-auto hidden shrink-0 text-sm text-graphite group-hover:underline md:block">View member page →</span>
       </Link>
     );
   }
   return (
-    <Link href={`/member/${member.slug}`} className="relative block rounded-lg border-2 border-brand bg-white p-4 shadow-sm hover:shadow-md">
-      <span className="absolute left-2 top-2 rounded bg-brand px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-ink">Featured member</span>
+    <Link href={`/member/${member.slug}`} data-part="featured-member-card" className="relative block rounded-lg border-2 border-brand bg-white p-4 shadow-sm hover:shadow-md">
+      <span data-part="card-badge" className="absolute left-2 top-2 rounded bg-brand px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-ink">Featured member</span>
       <div className="mt-4 flex items-center gap-3">
-        {member.logo_path && <Image src={mediaUrl(member.logo_path)!} alt="" width={48} height={48} className="rounded" unoptimized />}
+        {member.logo_path && <Image src={mediaUrl(member.logo_path)!} alt="" data-part="card-image" width={48} height={48} className="rounded" unoptimized />}
         <div>
-          <p className="font-bold">{member.name}</p>
-          {member.category && <p className="text-xs text-graphite">{member.category.name}</p>}
+          <p data-part="card-title" className="font-bold">{member.name}</p>
+          {member.category && <p data-part="card-meta" className="text-xs text-graphite">{member.category.name}</p>}
         </div>
       </div>
-      {variant !== "compact" && member.description && <p className="mt-2 text-sm text-graphite line-clamp-3">{member.description}</p>}
+      {variant !== "compact" && member.description && <p data-part="card-excerpt" className="mt-2 text-sm text-graphite line-clamp-3">{member.description}</p>}
     </Link>
   );
 }
@@ -123,20 +123,20 @@ export function MemberTile({ member: m, size = "md", showIndustry = true }: {
 }) {
   const logo = TILE_LOGO[size];
   return (
-    <Link href={`/member/${m.slug}`} className="block rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
+    <Link href={`/member/${m.slug}`} data-part="member-tile" className="block rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
       <div className="flex items-center gap-4">
         {m.logo_path ? (
           // Rounded box bigger than the image inside it, so the corner radius
           // only ever clips white background, never a non-square logo's artwork.
-          <div className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-white`}>
+          <div data-part="card-image" className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-white`}>
             <Image src={mediaUrl(m.logo_path)!} alt="" width={logo.px} height={logo.px} className="max-h-full max-w-full object-contain" unoptimized />
           </div>
         ) : (
-          <div className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30`}>⚙</div>
+          <div data-part="card-image" className={`flex ${logo.box} shrink-0 items-center justify-center rounded-lg bg-graphite/10 text-3xl text-graphite/30`}>⚙</div>
         )}
         <div className="min-w-0">
-          <p className="break-words font-bold text-ink">{m.name}</p>
-          {showIndustry && m.industry && <p className="text-xs text-graphite">{m.industry.name}</p>}
+          <p data-part="card-title" className="break-words font-bold text-ink">{m.name}</p>
+          {showIndustry && m.industry && <p data-part="card-meta" className="text-xs text-graphite">{m.industry.name}</p>}
         </div>
       </div>
     </Link>
@@ -158,7 +158,7 @@ export type EventCardData = {
 
 function EventTypeBadge({ type }: { type: string | null | undefined }) {
   if (!type || !isEventType(type)) return null;
-  return <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand-text">{EVENT_TYPE_LABELS[type]}</span>;
+  return <span data-part="card-badge" className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand-text">{EVENT_TYPE_LABELS[type]}</span>;
 }
 
 // starts_on/ends_on are date columns, not timestamps — format in UTC or they
@@ -182,15 +182,15 @@ const eventTime = (t: string) => {
 export function EventCard({ event, size = "md" }: { event: EventCardData; size?: "sm" | "md" }) {
   if (size === "sm") {
     return (
-      <Link href={`/event/${event.slug}`} className="block h-full overflow-hidden rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
+      <Link href={`/event/${event.slug}`} data-part="event-card" className="block h-full overflow-hidden rounded-lg bg-white p-4 shadow-sm transition hover:shadow-md">
         <div className="flex items-center gap-2">
           {/* graphite, not brand: small orange text on white is 3.3:1 — the
               exact pairing globals.css forbids for body-size text */}
-          <p className="text-xs font-semibold uppercase text-graphite">{eventDate(event.starts_on, false)}</p>
+          <p data-part="card-meta" className="text-xs font-semibold uppercase text-graphite">{eventDate(event.starts_on, false)}</p>
           <EventTypeBadge type={event.type} />
         </div>
-        <p className="mt-1 font-semibold line-clamp-2">{event.title}</p>
-        {event.location && <p className="mt-1 text-sm text-graphite line-clamp-2 break-words">{event.location}</p>}
+        <p data-part="card-title" className="mt-1 font-semibold line-clamp-2">{event.title}</p>
+        {event.location && <p data-part="card-meta" className="mt-1 text-sm text-graphite line-clamp-2 break-words">{event.location}</p>}
       </Link>
     );
   }
@@ -199,23 +199,23 @@ export function EventCard({ event, size = "md" }: { event: EventCardData; size?:
   // card with an ::after, so a tap on the date or excerpt lands too. The
   // external link sits above that layer (relative z-10) and keeps its own target.
   return (
-    <div className="relative overflow-hidden rounded-lg bg-white p-5 shadow-sm transition hover:shadow-md">
+    <div data-part="event-card" className="relative overflow-hidden rounded-lg bg-white p-5 shadow-sm transition hover:shadow-md">
       <div className="flex items-center gap-2">
-        <p className="text-xs font-semibold uppercase text-graphite">
+        <p data-part="card-meta" className="text-xs font-semibold uppercase text-graphite">
           {eventDate(event.starts_on)}{event.ends_on && event.ends_on > event.starts_on && ` – ${eventDate(event.ends_on)}`}
           {event.starts_time && `, ${eventTime(event.starts_time)}`}
         </p>
         <EventTypeBadge type={event.type} />
       </div>
-      <h2 className="mt-1 text-lg font-bold">
+      <h2 data-part="card-title" className="mt-1 text-lg font-bold">
         <Link href={`/event/${event.slug}`} className="after:absolute after:inset-0 after:content-[''] hover:text-graphite">{event.title}</Link>
       </h2>
-      {event.location && <p className="text-sm text-graphite break-words">{event.location}</p>}
-      {excerpt && <p className="mt-2 text-sm text-graphite">{excerpt}</p>}
+      {event.location && <p data-part="card-meta" className="text-sm text-graphite break-words">{event.location}</p>}
+      {excerpt && <p data-part="card-excerpt" className="mt-2 text-sm text-graphite">{excerpt}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-graphite">
         {/* Same target as the stretched title; kept as the visible cue. Out of
             the tab order and the accessibility tree so it isn't read twice. */}
-        <span aria-hidden="true" className="tap font-semibold text-ink">Details →</span>
+        <span aria-hidden="true" data-part="card-cta" className="tap font-semibold text-ink">Details →</span>
         {event.link && <a href={event.link} target="_blank" rel="noopener" className="tap relative z-10 hover:underline">Event website →</a>}
         {event.member && <span className="text-graphite">Hosted by {event.member.name}</span>}
       </div>
@@ -232,14 +232,14 @@ export type MachineCardData = {
 
 export function MachineCard({ machine }: { machine: MachineCardData }) {
   return (
-    <Link href="/featured-machine" className="relative block overflow-hidden rounded-lg border-2 border-graphite bg-white shadow-sm hover:shadow-md">
-      <span className="absolute left-2 top-2 z-10 rounded bg-graphite px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Featured machine</span>
-      <div className="relative h-32 bg-graphite/10">
+    <Link href="/featured-machine" data-part="machine-card" className="relative block overflow-hidden rounded-lg border-2 border-graphite bg-white shadow-sm hover:shadow-md">
+      <span data-part="card-badge" className="absolute left-2 top-2 z-10 rounded bg-graphite px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Featured machine</span>
+      <div data-part="card-image" className="relative h-32 bg-graphite/10">
         {machine.image_path && <Image src={mediaUrl(machine.image_path)!} alt="" fill sizes="33vw" className="object-cover" unoptimized />}
       </div>
       <div className="p-3">
-        <p className="text-sm font-semibold line-clamp-2">{machine.name}</p>
-        {machine.member && <p className="mt-1 text-xs text-graphite">{machine.member.name}</p>}
+        <p data-part="card-title" className="text-sm font-semibold line-clamp-2">{machine.name}</p>
+        {machine.member && <p data-part="card-meta" className="mt-1 text-xs text-graphite">{machine.member.name}</p>}
       </div>
     </Link>
   );

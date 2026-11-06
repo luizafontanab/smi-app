@@ -93,8 +93,8 @@ export function MultiSelectCombobox({
   }
 
   return (
-    <div ref={rootRef} className="relative w-full sm:w-64">
-      <div className={`flex items-center rounded-full border bg-white ${selectedSlugs.length ? "border-ink" : ""}`}>
+    <div data-part="filter-select" ref={rootRef} className="relative w-full sm:w-64">
+      <div data-part="filter-select-control" className={`flex items-center rounded-full border bg-white ${selectedSlugs.length ? "border-ink" : ""}`}>
         <button
           ref={triggerRef}
           type="button"
@@ -120,8 +120,8 @@ export function MultiSelectCombobox({
       </div>
 
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-72 max-w-[85vw] rounded-lg border bg-white p-2 shadow-lg">
-          <input
+        <div data-part="filter-select-popup" className="absolute right-0 z-30 mt-1 w-72 max-w-[85vw] rounded-lg border bg-white p-2 shadow-lg">
+          <input data-part="form-input"
             ref={inputRef}
             type="text"
             role="combobox"
@@ -144,7 +144,7 @@ export function MultiSelectCombobox({
               {matches.map((o, i) => {
                 const isSelected = selectedSlugs.includes(o.slug);
                 return (
-                  <li
+                  <li data-part="filter-select-option"
                     key={o.slug}
                     id={`${listId}-${i}`}
                     role="option"
@@ -162,7 +162,7 @@ export function MultiSelectCombobox({
               })}
             </ul>
           ) : (
-            <p className="px-2.5 py-3 text-sm text-graphite">No {label.toLowerCase()} match “{term.trim()}”.</p>
+            <p data-part="empty-state" className="px-2.5 py-3 text-sm text-graphite">No {label.toLowerCase()} match “{term.trim()}”.</p>
           )}
         </div>
       )}

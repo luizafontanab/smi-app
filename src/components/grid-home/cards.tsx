@@ -53,9 +53,9 @@ export function GhStoryCard({ story, size = "md", eyebrow = "News" }: {
 }) {
   const img = mediaUrl(story.cover_path);
   return (
-    <Panel className="group flex h-full flex-col overflow-hidden">
+    <Panel part="story-card" className="group flex h-full flex-col overflow-hidden">
       <Link href={`/news/${story.slug}`} className="flex h-full flex-col">
-        <div className={`relative ${STORY_MEDIA[size]} flex-1 overflow-hidden bg-graphite/10`}>
+        <div data-part="card-image" className={`relative ${STORY_MEDIA[size]} flex-1 overflow-hidden bg-graphite/10`}>
           {img ? (
             <Image
               src={img}
@@ -84,12 +84,12 @@ export function GhStoryCard({ story, size = "md", eyebrow = "News" }: {
             {story.title}
           </CardTitle>
           {story.excerpt && size !== "sm" && (
-            <p className="mt-2 text-sm leading-relaxed text-graphite line-clamp-2">{story.excerpt}</p>
+            <p data-part="card-excerpt" className="mt-2 text-sm leading-relaxed text-graphite line-clamp-2">{story.excerpt}</p>
           )}
           {/* No date on the fold's cards — the link is the whole row, kept
               tight against the copy so the fold doesn't grow dead space. */}
           <div className="mt-2">
-            <span className="text-xs font-bold text-brand-text">
+            <span data-part="card-cta" className="text-xs font-bold text-brand-text">
               Read more <span aria-hidden="true">→</span>
             </span>
           </div>
@@ -104,9 +104,9 @@ export function GhVideoCard({ video, eyebrow = "Videos" }: { video: VideoCardDat
   const yt = youtubeId(video.url);
   const img = mediaUrl(video.thumbnail_path ?? null) ?? (yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : null);
   return (
-    <Panel className="group flex h-full flex-col overflow-hidden">
+    <Panel part="video-card" className="group flex h-full flex-col overflow-hidden">
       <Link href={`/video/${video.slug}`} className="flex h-full flex-col">
-        <div className="relative min-h-36 flex-1 overflow-hidden bg-ink">
+        <div data-part="card-image" className="relative min-h-36 flex-1 overflow-hidden bg-ink">
           {img && (
             <Image src={img} alt="" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover opacity-85 transition duration-500 group-hover:scale-[1.03]" unoptimized />
           )}
@@ -120,7 +120,7 @@ export function GhVideoCard({ video, eyebrow = "Videos" }: { video: VideoCardDat
         <div className="shrink-0 p-4">
           <Eyebrow>{eyebrow}</Eyebrow>
           <CardTitle className="mt-1.5 text-base sm:text-[0.9375rem] line-clamp-3 group-hover:underline">{video.title}</CardTitle>
-          {video.member && <p className="mt-2 text-xs text-graphite">{video.member.name}</p>}
+          {video.member && <p data-part="card-meta" className="mt-2 text-xs text-graphite">{video.member.name}</p>}
         </div>
       </Link>
     </Panel>
@@ -137,9 +137,9 @@ export function GhVideoCard({ video, eyebrow = "Videos" }: { video: VideoCardDat
  */
 export function GhMachineCard({ machine }: { machine: MachineCardData }) {
   return (
-    <Panel border="border-brand/50" className="group flex h-full flex-col overflow-hidden">
+    <Panel part="machine-card" border="border-brand/50" className="group flex h-full flex-col overflow-hidden">
       <Link href="/featured-machine" className="flex h-full flex-col">
-        <div className="relative min-h-32 flex-1 overflow-hidden bg-graphite/10">
+        <div data-part="card-image" className="relative min-h-32 flex-1 overflow-hidden bg-graphite/10">
           {machine.image_path && (
             <Image src={mediaUrl(machine.image_path)!} alt="" fill sizes="25vw" className="object-cover transition duration-500 group-hover:scale-[1.03]" unoptimized />
           )}
@@ -147,7 +147,7 @@ export function GhMachineCard({ machine }: { machine: MachineCardData }) {
         <div className="p-4">
           <Eyebrow>Featured machine</Eyebrow>
           <CardTitle className="mt-1.5 text-base sm:text-sm line-clamp-2 group-hover:underline">{machine.name}</CardTitle>
-          {machine.member && <p className="mt-1.5 text-xs text-graphite">{machine.member.name}</p>}
+          {machine.member && <p data-part="card-meta" className="mt-1.5 text-xs text-graphite">{machine.member.name}</p>}
         </div>
       </Link>
     </Panel>
@@ -186,12 +186,12 @@ export function GhEventCard({ event, featured = false }: { event: GhEventData; f
   return (
     // Warm border only when featured, matching the machine card beside it on
     // the fold — see the note there.
-    <Panel border={featured ? "border-brand/50" : "border-line"} className="group flex h-full flex-col overflow-hidden">
+    <Panel part="event-card" border={featured ? "border-brand/50" : "border-line"} className="group flex h-full flex-col overflow-hidden">
       <Link href={`/event/${event.slug}`} className="flex h-full flex-col">
         {/* object-contain, not cover: event artwork is usually a logo or a
             poster, and cover cut the bottom off the one and the wording off
             the other (#33 C11). A photo letterboxes onto the light ground. */}
-        <div className="relative min-h-32 flex-1 overflow-hidden bg-shade">
+        <div data-part="card-image" className="relative min-h-32 flex-1 overflow-hidden bg-shade">
           {img ? (
             <Image src={img} alt="" fill sizes="(max-width: 1024px) 100vw, 25vw" className="object-contain transition duration-500 group-hover:scale-[1.03]" unoptimized />
           ) : (
@@ -201,8 +201,8 @@ export function GhEventCard({ event, featured = false }: { event: GhEventData; f
         <div className="p-4">
           <Eyebrow>{featured ? "Featured event" : "Event"}</Eyebrow>
           <CardTitle className="mt-1.5 text-base sm:text-sm line-clamp-2 group-hover:underline">{event.title}</CardTitle>
-          <p className="mt-2 text-xs font-semibold text-brand-text sm:text-[11px]">{date}</p>
-          {event.location && <p className="mt-1 text-xs text-graphite line-clamp-1">{event.location}</p>}
+          <p data-part="card-meta" className="mt-2 text-xs font-semibold text-brand-text sm:text-[11px]">{date}</p>
+          {event.location && <p data-part="card-meta" className="mt-1 text-xs text-graphite line-clamp-1">{event.location}</p>}
         </div>
       </Link>
     </Panel>
@@ -233,13 +233,13 @@ export function GhNewsletterCard({ issue }: { issue: GhNewsletterData }) {
     ? new Date(issue.sent_at).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "Europe/London" })
     : null;
   return (
-    <Panel className="group flex h-full flex-col p-4">
+    <Panel part="newsletter-card" className="group flex h-full flex-col p-4">
       <Link href={`/newsletters/${issue.web_slug}`} className="flex h-full flex-col">
         <Eyebrow>Issue {issue.number}</Eyebrow>
         <CardTitle className="mt-1.5 text-base sm:text-sm line-clamp-2 group-hover:underline">{issue.subject}</CardTitle>
-        {issue.intro && <p className="mt-2 text-sm leading-relaxed text-graphite line-clamp-3 sm:text-xs">{issue.intro}</p>}
+        {issue.intro && <p data-part="card-excerpt" className="mt-2 text-sm leading-relaxed text-graphite line-clamp-3 sm:text-xs">{issue.intro}</p>}
         {/* mt-auto: the dates line up across the row whatever the intros do. */}
-        {sent && <p className="mt-auto pt-3 text-xs font-semibold text-brand-text sm:text-[11px]">{sent}</p>}
+        {sent && <p data-part="card-meta" className="mt-auto pt-3 text-xs font-semibold text-brand-text sm:text-[11px]">{sent}</p>}
       </Link>
     </Panel>
   );
@@ -274,7 +274,7 @@ export type GhFeaturedMemberData = {
 export function GhFeaturedMembers({ members, className = "" }: { members: GhFeaturedMemberData[]; className?: string }) {
   if (members.length === 0) return null;
   return (
-    <Panel className={`flex h-full flex-col p-4 ${className}`}>
+    <Panel part="home-featured-members" className={`flex h-full flex-col p-4 ${className}`}>
       <Chip>Featured members</Chip>
       {/* A vertical carousel, not a list — the placement is sold as a
           "homepage carousel" and had never been one (HUMAN-TODO §14.6).
@@ -304,7 +304,7 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
         className="mt-3 flex shrink-0 snap-x snap-mandatory gap-4 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:snap-start lg:block lg:h-[27rem] lg:snap-y lg:snap-proximity lg:divide-y lg:divide-line lg:overflow-x-hidden lg:overflow-y-auto"
       >
         {members.map((m) => (
-          <li key={m.slug} className="flex w-[calc(50%-0.5rem)] shrink-0 flex-col py-3 md:w-[calc(33.333%-0.667rem)] lg:h-36 lg:w-auto">
+          <li key={m.slug} data-part="featured-member-card" className="flex w-[calc(50%-0.5rem)] shrink-0 flex-col py-3 md:w-[calc(33.333%-0.667rem)] lg:h-36 lg:w-auto">
             {/* The logo is the point of this placement, so it takes most of
                 the row: a flex-1 box that absorbs the panel's spare height,
                 with the name and industry as a caption under it. object-left
@@ -313,7 +313,7 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
                 wide mark and a square one both fit without distortion. */}
             <Link href={`/member/${m.slug}`} className="group flex h-full flex-col gap-2">
               {m.logo_path ? (
-                <span className="relative block min-h-20 flex-1">
+                <span data-part="card-image" className="relative block min-h-20 flex-1">
                   <Image src={mediaUrl(m.logo_path)!} alt="" fill sizes="(min-width: 1024px) 220px, (min-width: 768px) 33vw, 50vw" className="object-contain object-left" unoptimized />
                 </span>
               ) : (
@@ -321,7 +321,7 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
               )}
               <span className="min-w-0">
                 <CardTitle className="text-base sm:text-[0.8125rem] line-clamp-2 group-hover:underline">{m.name}</CardTitle>
-                {m.industry && <span className="mt-1 block text-xs text-graphite line-clamp-1">{m.industry.name}</span>}
+                {m.industry && <span data-part="card-meta" className="mt-1 block text-xs text-graphite line-clamp-1">{m.industry.name}</span>}
               </span>
             </Link>
           </li>
@@ -341,8 +341,8 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
 export function GhMemberRow({ story }: { story: StoryCardType }) {
   const img = mediaUrl(story.cover_path);
   return (
-    <Link href={`/news/${story.slug}`} className="group flex gap-4">
-      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[var(--gh-radius)] bg-graphite/10 sm:h-24 sm:w-24">
+    <Link href={`/news/${story.slug}`} data-part="member-news-card" className="group flex gap-4">
+      <div data-part="card-image" className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[var(--gh-radius)] bg-graphite/10 sm:h-24 sm:w-24">
         {img ? (
           <Image src={img} alt="" fill sizes="96px" style={focusStyle(story.cover_focus)} className="object-cover" unoptimized />
         ) : (
@@ -352,7 +352,7 @@ export function GhMemberRow({ story }: { story: StoryCardType }) {
       <div className="min-w-0">
         <CardTitle className="text-base sm:text-sm line-clamp-2 group-hover:underline">{story.title}</CardTitle>
         <Meta className="mt-2" date={story.published_at} by={story.member?.name} />
-        {story.excerpt && <p className="mt-2 text-sm leading-relaxed text-graphite line-clamp-2 sm:text-xs">{story.excerpt}</p>}
+        {story.excerpt && <p data-part="card-excerpt" className="mt-2 text-sm leading-relaxed text-graphite line-clamp-2 sm:text-xs">{story.excerpt}</p>}
       </div>
     </Link>
   );
@@ -407,6 +407,7 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
            */
           <li
             key={s.id}
+            data-part="home-more-news-tile"
             className="gh-tile group relative h-full min-h-28 w-52 flex-none overflow-hidden rounded-[var(--gh-radius)] border border-line transition-[width] duration-300 ease-out hover:w-80 [@media(hover:hover)]:focus-within:w-80 motion-reduce:transition-none [@media(hover:none)]:min-h-40 [@media(hover:none)]:w-64"
           >
             <Link href={`/news/${s.slug}`} className="block h-full">
@@ -489,8 +490,8 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
 export function GhLogoBand({ adverts, showPlaceholders = false }: { adverts: LiveAdvert[]; showPlaceholders?: boolean }) {
   if (adverts.length === 0 && !showPlaceholders) return null;
   return (
-    <Band inner="py-8 text-center">
-      <h2 className="font-heading text-xl font-extrabold">Suppliers</h2>
+    <Band part="supplier-logos" inner="py-8 text-center">
+      <h2 data-part="section-title" className="font-heading text-xl font-extrabold">Suppliers</h2>
       {/*
        * h-16 rather than h-10: this is a paid placement, and at 40px tall a
        * supplier's wordmark was barely legible next to the editorial around it.
@@ -523,8 +524,8 @@ export function GhLogoBand({ adverts, showPlaceholders = false }: { adverts: Liv
 /** Comp v2's orange newsletter panel. Ink on orange throughout — never white. */
 export function GhNewsletterPanel() {
   return (
-    <div className="flex h-full flex-col justify-center rounded-[var(--gh-radius)] bg-brand p-6 text-ink">
-      <h2 className="font-heading text-xl font-extrabold">{SIGNUP_SURFACES.home_card.heading}</h2>
+    <div data-part="home-signup" className="flex h-full flex-col justify-center rounded-[var(--gh-radius)] bg-brand p-6 text-ink">
+      <h2 data-part="section-title" className="font-heading text-xl font-extrabold">{SIGNUP_SURFACES.home_card.heading}</h2>
       <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink/80">
         {SIGNUP_SURFACES.home_card.blurb}
       </p>
@@ -557,8 +558,8 @@ export function GhStatsBand({ storyTotal, memberCount, reach }: { storyTotal: nu
     ...(reach ? [{ label: "Promote your business", value: reach.value, caption: reach.label }] : []),
   ];
   return (
-    <Band className="border-t border-line" inner="py-10 text-center">
-      <h2 className="font-heading text-2xl font-extrabold">Brand awareness that reaches the right buyers</h2>
+    <Band part="home-stats" className="border-t border-line" inner="py-10 text-center">
+      <h2 data-part="section-title" className="font-heading text-2xl font-extrabold">Brand awareness that reaches the right buyers</h2>
       <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-graphite">
         SMI publishes the UK sheet metal trade&apos;s news, and helps the companies in it promote their
         strengths, products and services to the people specifying and buying equipment.
@@ -572,7 +573,7 @@ export function GhStatsBand({ storyTotal, memberCount, reach }: { storyTotal: nu
             <dt className="text-sm font-bold">{s.label}</dt>
             <dd className="mt-2">
               {/* #ac5800 on white is 5.1:1; the brighter #ff8200 would be 2.5:1. */}
-              <span className="block font-heading text-4xl font-extrabold text-brand-text">{s.value.toLocaleString("en-GB")}</span>
+              <span data-part="home-stat-value" className="block font-heading text-4xl font-extrabold text-brand-text">{s.value.toLocaleString("en-GB")}</span>
               <span className="mt-1 block text-xs text-graphite">{s.caption}</span>
             </dd>
           </div>
@@ -593,9 +594,9 @@ export function GhStatsBand({ storyTotal, memberCount, reach }: { storyTotal: nu
 /** Comp v2's magazine promo — the one editorial block with a dark button. */
 export function GhPublicationPanel() {
   return (
-    <Panel className="flex h-full flex-col p-5 text-center">
+    <Panel part="home-publication" className="flex h-full flex-col p-5 text-center">
       <Eyebrow>Publication</Eyebrow>
-      <h2 className="mt-1.5 font-heading text-lg font-extrabold uppercase leading-tight">
+      <h2 data-part="section-title" className="mt-1.5 font-heading text-lg font-extrabold uppercase leading-tight">
         Sheet Metal Industries MACH Special
       </h2>
       <p className="mt-3 text-sm leading-relaxed text-graphite">

@@ -7,5 +7,5 @@ import { renderableHtml } from "@/lib/sanitize";
 export function RichText({ html, className }: { html: string | null | undefined; className?: string }) {
   const safe = renderableHtml(html);
   if (!safe) return null;
-  return <div className={`story-body ${className ?? ""}`.trim()} dangerouslySetInnerHTML={{ __html: safe }} />;
+  return <div data-part="rich-text" className={`story-body ${className ?? ""}`.trim()} dangerouslySetInnerHTML={{ __html: safe }} />;
 }

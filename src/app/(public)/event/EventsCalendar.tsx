@@ -52,17 +52,17 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
     });
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Link href={hrefForMonth(monthKey(shiftMonth(month, -1)))} className={navLink} aria-label="Previous month">‹</Link>
-        <h3 className="min-w-40 text-center text-lg font-bold text-ink">
+    <div data-part="events-calendar">
+      <div data-part="events-calendar-nav" className="flex flex-wrap items-center gap-2">
+        <Link data-part="pagination-link" href={hrefForMonth(monthKey(shiftMonth(month, -1)))} className={navLink} aria-label="Previous month">‹</Link>
+        <h3 data-part="events-calendar-month" className="min-w-40 text-center text-lg font-bold text-ink">
           {month.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
         </h3>
-        <Link href={hrefForMonth(monthKey(shiftMonth(month, 1)))} className={navLink} aria-label="Next month">›</Link>
-        <Link href={hrefForMonth(null)} className={`${navLink} ml-1`}>Today</Link>
+        <Link data-part="pagination-link" href={hrefForMonth(monthKey(shiftMonth(month, 1)))} className={navLink} aria-label="Next month">›</Link>
+        <Link data-part="button-secondary" href={hrefForMonth(null)} className={`${navLink} ml-1`}>Today</Link>
       </div>
 
-      <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-graphite">
+      <p data-part="events-calendar-legend" className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-graphite">
         {(Object.entries(TYPE_STYLE) as [EventType, typeof UNTYPED_STYLE][]).map(([type, s]) => (
           <span key={type} className="flex items-center gap-1.5">
             <span className={`h-2 w-2 rounded-full ${s.dot}`} /> {EVENT_TYPE_LABELS[type]}
@@ -76,9 +76,9 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
       {/* Phones get the month as an agenda instead of the grid (#33): seven
           ~48px columns truncated every title to two letters, and a title
           attribute is no help without hover. */}
-      <div className="mt-3 rounded-xl bg-white shadow-sm sm:hidden">
+      <div data-part="panel" className="mt-3 rounded-xl bg-white shadow-sm sm:hidden">
         {agenda.length === 0 ? (
-          <p className="p-4 text-sm text-graphite">No events this month.</p>
+          <p data-part="empty-state" className="p-4 text-sm text-graphite">No events this month.</p>
         ) : (
           <ol className="divide-y divide-line">
             {agenda.map(([key, day, dayEvents]) => (
@@ -93,7 +93,7 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
                     <li key={event.slug}>
                       {/* min-h-11, not .tap: the unlayered .tap rule would
                           make this full-width row an inline-flex chip. */}
-                      <Link href={`/event/${event.slug}`} className={`flex min-h-11 items-baseline gap-2 rounded px-2.5 py-2.5 text-sm ${styleFor(event.type).chip}`}>
+                      <Link data-part="events-calendar-chip" href={`/event/${event.slug}`} className={`flex min-h-11 items-baseline gap-2 rounded px-2.5 py-2.5 text-sm ${styleFor(event.type).chip}`}>
                         {event.starts_time && <span className="shrink-0 tabular-nums opacity-80">{event.starts_time.slice(0, 5)}</span>}
                         <span className="min-w-0 break-words font-medium">{event.title}</span>
                       </Link>
@@ -108,7 +108,7 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
 
       {/* No min-width: the calendar can render at any column width — chips
           truncate, colour + the title attr carry the rest. */}
-      <div className="mt-3 hidden rounded-xl bg-white p-3 shadow-sm sm:block">
+      <div data-part="panel" className="mt-3 hidden rounded-xl bg-white p-3 shadow-sm sm:block">
         <div>
           <div className="grid grid-cols-7 gap-px">
             {WEEKDAYS.map((d, i) => (
@@ -125,7 +125,7 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
               const dayEvents = byDay.get(key) ?? [];
               const outside = day.getMonth() !== month.getMonth();
               return (
-                <div
+                <div data-part="events-calendar-day"
                   key={key}
                   className={`min-h-20 p-1.5 ${outside ? "bg-shade/70" : "bg-white"} ${key === today ? "ring-2 ring-inset ring-brand" : ""}`}
                 >
@@ -139,7 +139,7 @@ export function EventsCalendar({ month, events, hrefForMonth }: {
                     {dayEvents.slice(0, MAX_PER_DAY).map((event) => {
                       const style = styleFor(event.type);
                       return (
-                        <Link
+                        <Link data-part="events-calendar-chip"
                           key={event.slug}
                           href={`/event/${event.slug}`}
                           title={event.title}

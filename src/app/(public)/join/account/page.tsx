@@ -11,11 +11,11 @@ export default async function JoinAccountPage() {
   if (user?.role === "member") redirect("/dashboard");
   const types = await membershipTypes();
   return (
-    <div className="mx-auto max-w-md px-4">
-      <div className="mt-10 rounded-xl bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-brand-text">Step 1 of 4</p>
-        <h1 className="mt-1 text-xl font-bold text-ink">Create your account</h1>
-        <p className="mt-1 text-sm text-graphite">
+    <div data-part="join-account-page" className="mx-auto max-w-md px-4">
+      <div data-part="panel" className="mt-10 rounded-xl bg-white p-8 shadow-sm">
+        <p data-part="join-step" className="text-xs font-semibold uppercase tracking-wide text-brand-text">Step 1 of 4</p>
+        <h1 data-part="page-title" className="mt-1 text-xl font-bold text-ink">Create your account</h1>
+        <p data-part="page-intro" className="mt-1 text-sm text-graphite">
           Payment (£40/month) is the next step — card details never touch SMI&apos;s servers.
         </p>
         <AccountForm membershipTypes={types.map(({ id, name }) => ({ id, name }))} maxTypes={MAX_MEMBERSHIP_TYPES} />

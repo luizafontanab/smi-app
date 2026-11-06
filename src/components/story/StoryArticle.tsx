@@ -28,15 +28,15 @@ export type StoryArticleMember = { name: string; slug: string; logoUrl: string |
 
 export function StoryHeader({ story, categories }: { story: StoryArticleStory; categories: { slug: string; name: string }[] }) {
   return (
-    <header className="mt-4">
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+    <header data-part="story-header" className="mt-4">
+      <div data-part="story-categories" className="flex flex-wrap items-center gap-1.5 text-xs">
         {story.is_member_news && <MemberBadge variant="inline" />}
         {categories.map((c) => (
-          <Link key={c.slug} href={`/news?category=${c.slug}`} className="rounded-full bg-graphite/10 px-3 py-1 text-graphite hover:bg-graphite/20">{c.name}</Link>
+          <Link key={c.slug} href={`/news?category=${c.slug}`} data-part="story-category" className="rounded-full bg-graphite/10 px-3 py-1 text-graphite hover:bg-graphite/20">{c.name}</Link>
         ))}
       </div>
-      <h1 className="mt-3 text-3xl font-bold leading-tight text-ink">{story.title}</h1>
-      <p className="mt-2 text-sm text-graphite">
+      <h1 data-part="page-title" className="mt-3 text-3xl font-bold leading-tight text-ink">{story.title}</h1>
+      <p data-part="story-meta" className="mt-2 text-sm text-graphite">
         Sheet Metal Industries
         {story.published_at && ` · ${new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" })}`}
       </p>
@@ -49,7 +49,7 @@ export function StoryHero({ cover, focus }: { cover: string | null; focus: unkno
   return (
     // Shorter below md: a 384px cover on a 390px-wide phone was taller than it
     // was wide and pushed the article off the first screen (#33 C1).
-    <div data-testid="story-cover" className="relative mt-4 h-60 overflow-hidden rounded-lg sm:h-80 md:h-96">
+    <div data-testid="story-cover" data-part="story-cover" className="relative mt-4 h-60 overflow-hidden rounded-lg sm:h-80 md:h-96">
       {cover.startsWith("blob:") ? (
         // A cover the member has picked but not yet uploaded (the Preview tab):
         // a local object URL, which next/image has no business handling.
@@ -84,7 +84,7 @@ export function StoryMain({ body, share, members, layout = "page" }: {
   layout?: "page" | "inline";
 }) {
   const article = (
-    <article className="story-read">
+    <article data-part="story-article" className="story-read">
       {body}
       {share}
     </article>
@@ -93,15 +93,15 @@ export function StoryMain({ body, share, members, layout = "page" }: {
     return (
       <>
         {article}
-        {members.length > 0 && <div className="mt-8"><MemberTiles members={members} layout="inline" /></div>}
+        {members.length > 0 && <div data-part="story-aside" className="mt-8"><MemberTiles members={members} layout="inline" /></div>}
       </>
     );
   }
-  if (members.length === 0) return <div className="story-layout">{article}</div>;
+  if (members.length === 0) return <div data-part="story-layout" className="story-layout">{article}</div>;
   return (
-    <div className="story-layout story-layout--aside lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
+    <div data-part="story-layout" className="story-layout story-layout--aside lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-8">
       {article}
-      <div className="mt-8 lg:mt-6">
+      <div data-part="story-aside" className="mt-8 lg:mt-6">
         <div className={members.length <= 4 ? "lg:sticky lg:top-4" : undefined}>
           <MemberTiles members={members} layout="sidebar" />
         </div>

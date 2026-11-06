@@ -124,14 +124,14 @@ export function GridHome({
          * column. Both class strings appear here whole so Tailwind's scanner
          * sees them.
          */}
-        <Band inner="py-8">
+        <Band part="home-videos" inner="py-8">
           {/* grid-cols-1 for the same reason as the fold's: the Featured
               members box is a sideways scroller below lg, and an implicit
               track would grow to its full width and push the page sideways. */}
           <div className={`grid grid-cols-1 gap-5 ${featured.length > 0 ? "lg:grid-cols-[3fr_9fr]" : ""}`}>
             <div className="lg:col-start-2 lg:row-start-1">
               <SectionHead title="Latest videos" href="/video" seeAll="See all videos" />
-              <div className="grid gap-5 sm:grid-cols-3">
+              <div data-part="card-grid" className="grid gap-5 sm:grid-cols-3">
                 {videos.slice(0, 3).map((v, i) => <div key={v.id} className={phoneCap(i)}><GhVideoCard video={v} /></div>)}
               </div>
             </div>
@@ -154,9 +154,9 @@ export function GridHome({
       <>
         {/* ── Member news ──────────────────────────────────────────────────── */}
         {railNews.length > 0 && (
-          <Band inner="py-8">
+          <Band part="home-member-news" inner="py-8">
             <SectionHead title="Featured member news" href="/news" seeAll="More member news" />
-            <div className="grid gap-8 md:grid-cols-3">
+            <div data-part="card-grid" className="grid gap-8 md:grid-cols-3">
               {railNews.slice(0, 3).map((s, i) => <div key={s.id} className={phoneCap(i)}><GhMemberRow story={s} /></div>)}
             </div>
           </Band>
@@ -203,9 +203,9 @@ export function GridHome({
          * it twice on one page is the thing to avoid.
          */}
         {upcomingEvents.length > 0 && (
-          <Band inner="py-8">
+          <Band part="home-events" inner="py-8">
             <SectionHead title="Upcoming events" href="/event" seeAll="All events" />
-            <div className="grid gap-5 sm:grid-cols-3">
+            <div data-part="card-grid" className="grid gap-5 sm:grid-cols-3">
               {upcomingEvents.map((e) => <GhEventCard key={e.slug} event={e} />)}
             </div>
           </Band>
@@ -215,9 +215,9 @@ export function GridHome({
     newsletters: (
       <>
         {issues.length > 0 && (
-          <Band inner="py-8">
+          <Band part="home-newsletters" inner="py-8">
             <SectionHead title="Latest newsletters" href="/newsletters" seeAll="Newsletter archive" />
-            <div className="grid gap-5 sm:grid-cols-3">
+            <div data-part="card-grid" className="grid gap-5 sm:grid-cols-3">
               {issues.map((issue, i) => <div key={issue.number} className={phoneCap(i)}><GhNewsletterCard issue={issue} /></div>)}
             </div>
           </Band>
@@ -242,7 +242,7 @@ export function GridHome({
        * py-8 rather than pb-8 — a tinted band needs its top padding too, or the
        * artwork sits flush against the colour change.
        */}
-      <Band tone="grey" inner="py-8">
+      <Band tone="grey" part="home-band-ad" inner="py-8">
         <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
       </Band>
     </>
@@ -252,7 +252,7 @@ export function GridHome({
     ...sectionContent,
     home_2: (
       /* Grey, like home_1 — the page alternates white and grey bands. */
-      <Band tone="grey" inner="py-4">
+      <Band tone="grey" part="home-band-ad" inner="py-4">
         <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
       </Band>
     ),
@@ -267,7 +267,7 @@ export function GridHome({
     <>
       {/* Grid has no editorial hero, so the page's h1 is visually the wordmark
           in the header — but the document still needs one. */}
-      <h1 className="sr-only">Sheet Metal Industries — UK sheet metal, fabrication and welding news</h1>
+      <h1 data-part="page-title" className="sr-only">Sheet Metal Industries — UK sheet metal, fabrication and welding news</h1>
 
       {/*
        * ── Above the fold ─────────────────────────────────────────────────
@@ -276,7 +276,7 @@ export function GridHome({
        * both. No items-start here on purpose — the two story cards stretch to
        * each other so their "Read more" links land on one line.
        */}
-      <Band inner="pt-6">
+      <Band part="home-fold" inner="pt-6">
         {/* grid-cols-1 below lg, not the implicit column: an implicit track
             grows to its widest child's min-content, and the More News row is
             ~1700px of fixed-width tiles, which pushed the whole page sideways
@@ -292,11 +292,11 @@ export function GridHome({
           {/* flex-1 on each card so the pair fills the two-row span exactly —
               the covers absorb the slack rather than leaving it under the
               second card. */}
-          <div className="flex flex-col gap-4 md:col-span-2 md:flex-row lg:col-span-1 lg:row-span-2 lg:flex-col">
+          <div data-part="home-placements" className="flex flex-col gap-4 md:col-span-2 md:flex-row lg:col-span-1 lg:row-span-2 lg:flex-col">
             {machine && <div className="flex-1"><GhMachineCard machine={machine} /></div>}
             {featuredEvent && <div className="flex-1"><GhEventCard event={featuredEvent} featured /></div>}
           </div>
-          <div className="md:col-span-2">
+          <div data-part="home-more-news" className="md:col-span-2">
             <GhMoreNews stories={moreNews} />
           </div>
         </div>
@@ -304,7 +304,7 @@ export function GridHome({
 
       {/* The rotating banner is a real advert slot, not an editorial hero —
           see the top-of-file note on the above-the-fold exception. */}
-      <Band tone="grey" className="mt-6" inner="py-4">
+      <Band tone="grey" part="home-band-ad" className="mt-6" inner="py-4">
         <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
       </Band>
 

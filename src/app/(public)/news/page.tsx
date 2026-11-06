@@ -84,8 +84,8 @@ export default async function NewsPage(props: PageProps<"/news">) {
   const hasFilters = Boolean(category || industry || member || from || to || memberOnly);
 
   return (
-    <div className="mx-auto max-w-6xl px-4">
-      <h1 className="mt-6 text-2xl font-bold text-ink">Newsroom</h1>
+    <div data-part="news-page" className="mx-auto max-w-6xl px-4">
+      <h1 data-part="page-title" className="mt-6 text-2xl font-bold text-ink">Newsroom</h1>
 
       {/* ── Rails: Latest / Member news / For you ────────────────────────── */}
       {latest.length > 0 && (
@@ -109,7 +109,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
               <div key={s.id} className="w-64 shrink-0"><StoryCard story={s} showExcerpt={false} /></div>
             ))}
           </Carousel>
-          <p className="mt-2 text-xs text-graphite">
+          <p data-part="carousel-note" className="mt-2 text-xs text-graphite">
             {viewedCats.length > 0 ? "Based on what you’ve been reading." : "Popular with readers over the last 30 days."}
           </p>
         </>
@@ -117,10 +117,10 @@ export default async function NewsPage(props: PageProps<"/news">) {
 
       {/* Rendered unconditionally — the slot is booked inventory, so it must
           not vanish on quiet days. Sits between the rails and the archive. */}
-      <div className="my-8"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} path="/news" /></div>
+      <div data-part="ad-slot-wrap" className="my-8"><AdSlot slotKey="news_mid" adverts={slots.get("news_mid") ?? []} showPlaceholders={showPlaceholders} path="/news" /></div>
 
       {/* ── All news: search, filters, paginated grid ────────────────────── */}
-      <h2 id="all-news" className="text-lg font-bold uppercase tracking-wide text-ink">All news</h2>
+      <h2 data-part="section-title" id="all-news" className="text-lg font-bold uppercase tracking-wide text-ink">All news</h2>
       {/* Safari ignores the #all-news fragment on the date form's full-page GET — see ScrollToHash */}
       <ScrollToHash />
 
@@ -129,16 +129,16 @@ export default async function NewsPage(props: PageProps<"/news">) {
       {/* Pills and the category picker share a row only from lg: at tablet
           width the pills were cut off against the picker and sat a few px
           off its line (#33 C7). */}
-      <div className="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div data-part="filters" className="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         {/* Industry pills — the member-kind list, same data as the industries
             strip; ~69 entries, so it scrolls sideways rather than wrapping.
             PILL_ROW / PILL: touch-height pills and an edge fade that says the
             row scrolls (#33 C6). */}
         {showIndustries && (
-          <nav aria-label="Filter by industry" className={PILL_ROW}>
-            <Link href={qs({ industry: undefined })} className={`${PILL} ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+          <nav data-part="filter-pills" aria-label="Filter by industry" className={PILL_ROW}>
+            <Link data-part="filter-pill" href={qs({ industry: undefined })} className={`${PILL} ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
             {industries.map((c) => (
-              <Link key={c.slug} href={qs({ industry: c.slug })} className={`${PILL} ${industry === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+              <Link data-part="filter-pill" key={c.slug} href={qs({ industry: c.slug })} className={`${PILL} ${industry === c.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
                 {c.name}
               </Link>
             ))}
@@ -153,47 +153,47 @@ export default async function NewsPage(props: PageProps<"/news">) {
 
       {/* GET submit replaces the whole query string, hence the hidden fields */}
       {/* text-base below sm: iOS zooms into any input under 16px (#33 C5) */}
-      <form action="/news#all-news" className="mt-3 flex flex-wrap items-end gap-3 text-base sm:text-sm">
+      <form data-part="news-date-filter" action="/news#all-news" className="mt-3 flex flex-wrap items-end gap-3 text-base sm:text-sm">
         {category && <input type="hidden" name="category" value={category} />}
         {industry && <input type="hidden" name="industry" value={industry} />}
         {member && <input type="hidden" name="member" value={member.slug} />}
         {memberOnly && <input type="hidden" name="filter" value="members" />}
         <label className="flex items-center gap-2">
           <span className="text-graphite">From</span>
-          <input type="date" name="from" defaultValue={from} className="rounded border bg-white px-2 py-1.5" />
+          <input data-part="form-input" type="date" name="from" defaultValue={from} className="rounded border bg-white px-2 py-1.5" />
         </label>
         <label className="flex items-center gap-2">
           <span className="text-graphite">To</span>
-          <input type="date" name="to" defaultValue={to} className="rounded border bg-white px-2 py-1.5" />
+          <input data-part="form-input" type="date" name="to" defaultValue={to} className="rounded border bg-white px-2 py-1.5" />
         </label>
-        <button className="tap rounded border bg-white px-3 py-1.5 hover:border-ink">Apply dates</button>
+        <button data-part="button-secondary" className="tap rounded border bg-white px-3 py-1.5 hover:border-ink">Apply dates</button>
         {hasFilters && (
-          <Link href="/news#all-news" className="text-graphite hover:underline">Clear filters</Link>
+          <Link data-part="filter-clear" href="/news#all-news" className="text-graphite hover:underline">Clear filters</Link>
         )}
       </form>
 
       {member && (
         <p className="mt-4 text-sm">
-          <span className="inline-flex items-center gap-2 rounded-full bg-ink px-3 py-1 text-white">
+          <span data-part="filter-chip" className="inline-flex items-center gap-2 rounded-full bg-ink px-3 py-1 text-white">
             Featuring {member.name}
             <Link href={qs({ member: undefined })} aria-label={`Remove the ${member.name} filter`} className="hover:underline">×</Link>
           </span>
         </p>
       )}
 
-      <div data-testid="all-news-grid" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div data-part="card-grid" data-testid="all-news-grid" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stories.map((s) => <StoryCard key={s.id} story={s} showExcerpt={false} />)}
       </div>
-      {stories.length === 0 && <p className="mt-10 text-center text-graphite">No stories found.</p>}
+      {stories.length === 0 && <p data-part="empty-state" className="mt-10 text-center text-graphite">No stories found.</p>}
 
-      <nav className="my-8 flex items-center justify-center gap-2 text-sm">
-        {page > 1 && <Link href={qs({ page: page - 1 })} className="tap rounded border bg-white px-3 py-1.5">← Prev</Link>}
-        <span className="px-2 text-graphite">Page {page} of {pages}</span>
-        {page < pages && <Link href={qs({ page: page + 1 })} className="tap rounded border bg-white px-3 py-1.5">Next →</Link>}
+      <nav data-part="pagination" className="my-8 flex items-center justify-center gap-2 text-sm">
+        {page > 1 && <Link data-part="pagination-link" href={qs({ page: page - 1 })} className="tap rounded border bg-white px-3 py-1.5">← Prev</Link>}
+        <span data-part="pagination-status" className="px-2 text-graphite">Page {page} of {pages}</span>
+        {page < pages && <Link data-part="pagination-link" href={qs({ page: page + 1 })} className="tap rounded border bg-white px-3 py-1.5">Next →</Link>}
       </nav>
 
-      <div className="-mx-4"><SupplierLogos adverts={logos} showPlaceholders={showPlaceholders} /></div>
-      <div className="my-6"><AdSlot slotKey="footer" adverts={slots.get("footer") ?? []} showPlaceholders={showPlaceholders} path="/news" /></div>
+      <div data-part="supplier-logos-wrap" className="-mx-4"><SupplierLogos adverts={logos} showPlaceholders={showPlaceholders} /></div>
+      <div data-part="ad-slot-wrap" className="my-6"><AdSlot slotKey="footer" adverts={slots.get("footer") ?? []} showPlaceholders={showPlaceholders} path="/news" /></div>
     </div>
   );
 }

@@ -65,7 +65,7 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
   const byline = isMemberLinkable(video.member) ? video.member : null;
 
   return (
-    <div className="mx-auto max-w-4xl px-4">
+    <div data-part="video-page" className="mx-auto max-w-4xl px-4">
       <JsonLd
         data={[
           videoLd({ ...video, youtubeId: yt }),
@@ -77,13 +77,13 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
       />
       {/* tap: a 20px-tall text link was the only way back on a phone (#33 C16) */}
       <div className="mt-6">
-        <Link href="/video" className="tap text-sm text-graphite hover:text-ink">← All videos</Link>
+        <Link data-part="back-link" href="/video" className="tap text-sm text-graphite hover:text-ink">← All videos</Link>
       </div>
 
       {/* youtube-nocookie so an embed does not set advertising cookies before the
           visitor has answered the consent banner. frame-src in next.config.ts
           allows www.youtube.com; the nocookie host needs adding there too. */}
-      <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg bg-ink">
+      <div data-part="video-embed" className="mt-3 aspect-video w-full overflow-hidden rounded-lg bg-ink">
         {yt ? (
           <iframe
             src={`https://www.youtube-nocookie.com/embed/${yt}`}
@@ -93,14 +93,14 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
             className="h-full w-full"
           />
         ) : (
-          <a href={video.url} target="_blank" rel="noopener" className="flex h-full w-full items-center justify-center text-white underline">
+          <a data-part="button-primary" href={video.url} target="_blank" rel="noopener" className="flex h-full w-full items-center justify-center text-white underline">
             Watch this video →
           </a>
         )}
       </div>
 
-      <h1 className="mt-6 text-2xl font-bold text-ink">{video.title}</h1>
-      <p className="mt-1 text-sm text-graphite">
+      <h1 data-part="page-title" className="mt-6 text-2xl font-bold text-ink">{video.title}</h1>
+      <p data-part="video-meta" className="mt-1 text-sm text-graphite">
         {byline && (
           <>
             Posted by <Link href={`/member/${byline.slug}`} className="text-graphite underline">{byline.name}</Link>
@@ -118,12 +118,12 @@ export default async function VideoPage(props: PageProps<"/video/[slug]">) {
           footer — a dead end on a phone (#33 C14). Two cards below sm, so the
           row doesn't become a second page of its own. */}
       {more.length > 0 && (
-        <section className="mt-10">
-          <div className="mb-3 flex items-baseline justify-between gap-4">
-            <h2 className="text-lg font-bold uppercase tracking-wide text-ink">More videos</h2>
-            <Link href="/video" className="tap text-sm text-graphite hover:underline">See all →</Link>
+        <section data-part="video-more" className="mt-10">
+          <div data-part="section-head" className="mb-3 flex items-baseline justify-between gap-4">
+            <h2 data-part="section-title" className="text-lg font-bold uppercase tracking-wide text-ink">More videos</h2>
+            <Link data-part="see-all" href="/video" className="tap text-sm text-graphite hover:underline">See all →</Link>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div data-part="card-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {more.map((v, i) => (
               <div key={v.id} className={i >= 2 ? "hidden sm:block" : undefined}>
                 <VideoCard video={v} />

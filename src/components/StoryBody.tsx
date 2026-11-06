@@ -35,6 +35,7 @@ export function StoryBody({ segments: given, breaks, className, companyLinks = [
       {segments.map((segment, i) => (
         <Fragment key={i}>
           <div
+            data-part="story-body"
             className={`story-body ${i === 0 ? className ?? "" : ""}`.trim()}
             // the closing company line (lib/company-link) — styled apart, and
             // added for each featured member the author's own line doesn't already cover. Only the

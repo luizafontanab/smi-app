@@ -62,7 +62,7 @@ export function MemberCloud({ members, seed, listHref = "/member" }: {
   const order = members.map((_, i) => i).sort((a, b) => members[a].name.localeCompare(members[b].name));
 
   const cloud = (
-    <div
+    <div data-part="member-cloud"
       id={CLOUD_ID}
       className="member-cloud mt-6"
       style={{ "--cloud-h": wide.height, "--cloud-hn": narrow.height, "--cloud-ht": touch.height } as React.CSSProperties}
@@ -106,14 +106,14 @@ export function MemberCloud({ members, seed, listHref = "/member" }: {
               {/* Deliberately not `.tap`: it forces a 44px min-height, which a
                   hundred-plus names cannot each spend. The narrow packing
                   reserves the touch target in its line height instead. */}
-              <Link href={`/member/${m.slug}`} prefetch={false} className="cloud-name">
+              <Link data-part="member-cloud-name" href={`/member/${m.slug}`} prefetch={false} className="cloud-name">
                 {m.name}
               </Link>
               {/* aria-hidden and text-free: the link already carries the
                   accessible name, and a decorative logo must not repeat it.
                   pointer-events:none in CSS so a card overlapping a neighbour
                   can never swallow its click. */}
-              <span className="cloud-card" aria-hidden="true">
+              <span data-part="member-cloud-logo" className="cloud-card" aria-hidden="true">
                 {m.logoUrl ? (
                   // `fill` against the card, which is already sized in cqw —
                   // fixed width/height would fight the container-relative box
@@ -133,9 +133,9 @@ export function MemberCloud({ members, seed, listHref = "/member" }: {
   // The note only shows where a capped packing is in force (CSS, same media
   // queries as the packings), so desktop never sees it.
   const sample = (bucket: "narrow" | "touch", shown: number) => (
-    <p data-cloud-note={bucket} className="cloud-note mt-4 text-center text-sm text-graphite">
+    <p data-part="member-cloud-note" data-cloud-note={bucket} className="cloud-note mt-4 text-center text-sm text-graphite">
       Showing {shown} of {members.length} members.{" "}
-      <Link href={listHref} className="tap font-semibold text-ink underline">See them all in the list</Link>
+      <Link data-part="see-all" href={listHref} className="tap font-semibold text-ink underline">See them all in the list</Link>
     </p>
   );
   return (

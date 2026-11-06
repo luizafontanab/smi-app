@@ -74,15 +74,15 @@ export function SiteHeader({ user, unread = 0, tone = "dark" }: { user: CurrentU
   const links = user ? accountLinks(user, unread) : [];
   const t = TONES[tone];
   return (
-    <header className={t.header}>
+    <header data-part="site-header" className={t.header}>
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2 sm:py-3">
         {/* From sm up the supplied wide mark is orange + white; "light" is
             the same artwork with its wordmark path in ink, for a pale bar.
             Phones get the stacked lockup, its ".com" in ink on "light".
             shrink-0: the mark keeps its natural size at every width — the
             nav gives way instead (#33: it was squeezed to 136px at 360). */}
-        <Link href="/" className="shrink-0"><Wordmark tone={tone} /></Link>
-        <nav className="flex min-w-0 items-center gap-1 whitespace-nowrap text-sm">
+        <Link href="/" data-part="site-logo" className="shrink-0"><Wordmark tone={tone} /></Link>
+        <nav data-part="site-nav" className="flex min-w-0 items-center gap-1 whitespace-nowrap text-sm">
           {/* MobileNav's drawer carries every one of these links (including
               Search) below lg, so the bar only shows what fits beside the
               mark at each width (#33): just the menu button on a phone, the
@@ -94,9 +94,9 @@ export function SiteHeader({ user, unread = 0, tone = "dark" }: { user: CurrentU
           {/* The dropdown's Join entry is navigation; the logged-out
               "Become a Member" CTA below stays as the call to action. */}
           <MediaMenu label="Members" items={MEMBERS_ITEMS} className="hidden lg:block" tone={tone} />
-          <Link href="/featured-machine" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`}>Featured Machine</Link>
-          <Link href="/event" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`}>Events</Link>
-          <Link href="/search" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`} aria-label="Search">
+          <Link href="/featured-machine" data-part="site-nav-link" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`}>Featured Machine</Link>
+          <Link href="/event" data-part="site-nav-link" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`}>Events</Link>
+          <Link href="/search" data-part="site-search" className={`hidden rounded px-3 py-2 lg:inline-flex ${COARSE_TAP} ${t.hover}`} aria-label="Search">
             <IconSearch width={18} height={18} />
           </Link>
           {user ? (
@@ -104,10 +104,10 @@ export function SiteHeader({ user, unread = 0, tone = "dark" }: { user: CurrentU
           ) : (
             <>
               {/* Below sm both live at the foot of the drawer instead. */}
-              <Link href="/join" className={`hidden rounded bg-brand px-3 py-2 font-semibold text-ink hover:brightness-110 sm:inline-flex ${COARSE_TAP}`}>
+              <Link href="/join" data-part="button-primary" className={`hidden rounded bg-brand px-3 py-2 font-semibold text-ink hover:brightness-110 sm:inline-flex ${COARSE_TAP}`}>
                 Become a Member
               </Link>
-              <Link href="/dashboard" className={`hidden rounded border px-3 py-2 sm:inline-flex ${COARSE_TAP} ${t.login}`}>Login</Link>
+              <Link href="/dashboard" data-part="site-login" className={`hidden rounded border px-3 py-2 sm:inline-flex ${COARSE_TAP} ${t.login}`}>Login</Link>
             </>
           )}
           {/* Last, so the menu button sits at the bar's right edge (#33). */}

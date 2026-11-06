@@ -12,8 +12,8 @@ export function MemberLinks({ member }: { member: Parameters<typeof memberLinks>
   const links = memberLinks(member);
   if (!links.length) return null;
   return (
-    <section aria-labelledby="member-links" className="rounded-lg bg-white p-4 shadow-sm">
-      <h3 id="member-links" className="font-bold text-ink">Links</h3>
+    <section data-part="panel" aria-labelledby="member-links" className="rounded-lg bg-white p-4 shadow-sm">
+      <h3 data-part="section-title" id="member-links" className="font-bold text-ink">Links</h3>
       <ul className="mt-3 space-y-2">
         {links.map((l) => (
           <li key={l.key}>
@@ -67,7 +67,7 @@ function LinkRow({ link }: { link: MemberLink }) {
   // lost, but with no border, hover or arrow — it must not look like a button.
   if (!link.href) {
     return (
-      <div className="flex min-h-11 items-center gap-3 px-3 py-2 opacity-70">
+      <div data-part="member-link" className="flex min-h-11 items-center gap-3 px-3 py-2 opacity-70">
         <LinkTile link={link} />
         {text}
       </div>
@@ -76,7 +76,7 @@ function LinkRow({ link }: { link: MemberLink }) {
 
   const name = [link.label, link.detail].filter(Boolean).join(": ");
   return (
-    <a
+    <a data-part="member-link"
       href={link.href}
       {...(link.external ? { target: "_blank", rel: "noopener", "aria-label": `${name} (opens in a new tab)` } : { "aria-label": name })}
       className="group flex min-h-11 items-center gap-3 rounded-lg border border-line bg-white px-3 py-2 transition-colors hover:border-ink hover:bg-shade focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"

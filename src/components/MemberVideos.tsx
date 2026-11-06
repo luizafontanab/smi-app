@@ -28,15 +28,15 @@ export function MemberVideos({ videos }: { videos: MemberVideo[] }) {
   const go = (next: number) => setIndex((next + videos.length) % videos.length);
 
   return (
-    <section className="mt-10" aria-labelledby="member-videos">
-      <h2 id="member-videos" className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">
+    <section data-part="member-videos" className="mt-10" aria-labelledby="member-videos">
+      <h2 data-part="section-title" id="member-videos" className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">
         {many ? "Videos" : current.title}
       </h2>
-      <div className="overflow-hidden rounded-xl bg-white shadow-sm">
+      <div data-part="panel" className="overflow-hidden rounded-xl bg-white shadow-sm">
         {/* The video's own still sits under the player (#33): until YouTube
             paints — or if it never does, on a slow or blocked connection —
             the box shows the video rather than a blank white rectangle. */}
-        <div className="relative aspect-video w-full bg-ink">
+        <div data-part="video-embed" className="relative aspect-video w-full bg-ink">
           <Image src={`https://i.ytimg.com/vi/${current.id}/hqdefault.jpg`} alt="" fill sizes="(max-width: 1152px) 100vw, 1152px" className="object-cover" unoptimized />
           <iframe
             key={current.id}
@@ -48,21 +48,21 @@ export function MemberVideos({ videos }: { videos: MemberVideo[] }) {
           />
         </div>
         {many && (
-          <div className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
-            <button type="button" onClick={() => go(index - 1)} className="tap rounded border border-line px-3 py-1 hover:bg-graphite/10" aria-label="Previous video">←</button>
+          <div data-part="member-videos-nav" className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
+            <button data-part="pagination-link" type="button" onClick={() => go(index - 1)} className="tap rounded border border-line px-3 py-1 hover:bg-graphite/10" aria-label="Previous video">←</button>
             <p className="min-w-0 truncate text-ink" aria-live="polite">
               {current.href ? <Link href={current.href} className="underline">{current.title}</Link> : current.title}
               <span className="text-graphite"> · {index + 1} of {videos.length}</span>
             </p>
-            <button type="button" onClick={() => go(index + 1)} className="tap rounded border border-line px-3 py-1 hover:bg-graphite/10" aria-label="Next video">→</button>
+            <button data-part="pagination-link" type="button" onClick={() => go(index + 1)} className="tap rounded border border-line px-3 py-1 hover:bg-graphite/10" aria-label="Next video">→</button>
           </div>
         )}
       </div>
       {many && (
-        <ul className="mt-3 flex flex-wrap gap-2" aria-label="Choose a video">
+        <ul data-part="filter-pills" className="mt-3 flex flex-wrap gap-2" aria-label="Choose a video">
           {videos.map((v, i) => (
             <li key={v.id}>
-              <button
+              <button data-part="filter-pill"
                 type="button"
                 onClick={() => setIndex(i)}
                 aria-pressed={i === index}

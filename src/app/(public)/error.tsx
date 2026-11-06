@@ -22,8 +22,8 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
   }, [error]);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-      <h1 className="text-3xl font-bold text-ink">Something went wrong at our end</h1>
+    <div data-part="error-page" className="mx-auto max-w-2xl px-4 py-20 text-center">
+      <h1 data-part="page-title" className="text-3xl font-bold text-ink">Something went wrong at our end</h1>
       <p className="mt-4 text-graphite">
         This one is on us, not on you. Trying again often clears it — the page may have hit a
         temporary problem loading its content.
@@ -32,9 +32,10 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
         <RetryButton
           retry={retry}
           error={error}
+          data-part="button-primary"
           className="rounded bg-ink px-4 py-2 font-semibold text-white hover:brightness-110"
         />
-        <Link href="/" className="rounded border border-ink px-4 py-2 font-semibold text-ink hover:bg-ink/5">
+        <Link href="/" data-part="button-secondary" className="rounded border border-ink px-4 py-2 font-semibold text-ink hover:bg-ink/5">
           Back to the homepage
         </Link>
       </div>

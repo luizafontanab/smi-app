@@ -10,7 +10,7 @@ import { Wordmark } from "./Wordmark";
  */
 export function AuthLogo() {
   return (
-    <Link href="/" aria-label="Sheet Metal Industries home" className="mx-auto flex min-h-11 w-fit items-center sm:[&_img]:h-10">
+    <Link href="/" aria-label="Sheet Metal Industries home" data-part="auth-logo" className="mx-auto flex min-h-11 w-fit items-center sm:[&_img]:h-10">
       <Wordmark tone="light" />
     </Link>
   );

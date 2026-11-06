@@ -50,7 +50,7 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
   const isPast = event.starts_on < new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="mx-auto max-w-3xl px-4">
+    <div data-part="event-page" className="mx-auto max-w-3xl px-4">
       <JsonLd
         data={[
           eventLd({ ...event, coverUrl: cover, memberName: event.member?.name }),
@@ -60,38 +60,38 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
           ]),
         ]}
       />
-      <Link href="/event" className="mt-6 inline-block text-sm text-graphite hover:text-ink">← All events</Link>
+      <Link data-part="back-link" href="/event" className="mt-6 inline-block text-sm text-graphite hover:text-ink">← All events</Link>
 
       {/* Contained, not cropped (#33): covers are often posters and square
           emblems, and object-cover in a fixed-height box cut their edges off
           as the column widened. A neutral ground fills the letterbox. */}
       {cover && (
-        <div className="relative mt-3 h-56 overflow-hidden rounded-lg bg-shade sm:h-72">
+        <div data-part="event-cover" className="relative mt-3 h-56 overflow-hidden rounded-lg bg-shade sm:h-72">
           <Image src={cover} alt="" fill sizes="(max-width: 768px) 100vw, 768px" className="object-contain" unoptimized />
         </div>
       )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <p className="text-xs font-semibold uppercase tracking-widest text-brand-text">
+      <div data-part="event-meta" className="mt-6 flex flex-wrap items-center gap-2">
+        <p data-part="card-meta" className="text-xs font-semibold uppercase tracking-widest text-brand-text">
           {fmt(event.starts_on)}
           {event.ends_on && event.ends_on > event.starts_on && ` – ${fmt(event.ends_on)}`}
           {event.starts_time && `, ${fmtTime(event.starts_time)}`}
         </p>
         {event.type && isEventType(event.type) && (
-          <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand-text">
+          <span data-part="card-badge" className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold uppercase text-brand-text">
             {EVENT_TYPE_LABELS[event.type]}
           </span>
         )}
       </div>
-      <h1 className="mt-1 text-2xl font-bold text-ink">{event.title}</h1>
-      {event.location && <p className="mt-1 text-sm text-graphite break-words">{event.location}</p>}
+      <h1 data-part="page-title" className="mt-1 text-2xl font-bold text-ink">{event.title}</h1>
+      {event.location && <p data-part="event-location" className="mt-1 text-sm text-graphite break-words">{event.location}</p>}
 
       {/* The booking link sits with the date and place (#33) — after the full
           description it was ~1150px down on a phone. The bottom block keeps
           one too, for whoever reads to the end. Not for a past event: leading
           with a booking button above "already taken place" misleads. */}
       {event.link && !isPast && (
-        <a href={event.link} target="_blank" rel="noopener" className="tap mt-4 inline-flex items-center rounded bg-brand px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand/90">
+        <a data-part="button-primary" href={event.link} target="_blank" rel="noopener" className="tap mt-4 inline-flex items-center rounded bg-brand px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand/90">
           Event website →
         </a>
       )}
@@ -99,16 +99,16 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
       {/* The page stays live after the date — these URLs were indexed for years
           on the old site. Say plainly that it has been and gone. */}
       {isPast && (
-        <p className="mt-4 rounded border border-line bg-shade px-4 py-2 text-sm text-graphite">
+        <p data-part="form-notice" className="mt-4 rounded border border-line bg-shade px-4 py-2 text-sm text-graphite">
           This event has already taken place.
         </p>
       )}
 
       {event.description && <RichText html={event.description} className="mt-4 text-ink" />}
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <div data-part="event-actions" className="mt-6 flex flex-wrap items-center gap-3">
         {event.link && (
-          <a href={event.link} target="_blank" rel="noopener" className="tap rounded bg-brand px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand/90">
+          <a data-part="button-primary" href={event.link} target="_blank" rel="noopener" className="tap rounded bg-brand px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand/90">
             Event website →
           </a>
         )}
@@ -116,7 +116,7 @@ export default async function EventPage(props: PageProps<"/event/[slug]">) {
             read that selects neither `status` nor `archived_at`, so RLS has
             already nulled the embed for a member who should not be credited. */}
         {isMemberLinkable(event.member) && (
-          <Link href={`/member/${event.member.slug}`} className="tap rounded border border-line bg-white px-5 py-2.5 text-sm">
+          <Link data-part="button-secondary" href={`/member/${event.member.slug}`} className="tap rounded border border-line bg-white px-5 py-2.5 text-sm">
             Hosted by {event.member.name}
           </Link>
         )}

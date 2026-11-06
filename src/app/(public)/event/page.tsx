@@ -87,21 +87,21 @@ export default async function EventsPage(props: PageProps<"/event">) {
   const hrefForMonth = (key: string | null) => `${qs({ month: key ?? undefined })}#calendar`;
 
   return (
-    <div className="mx-auto max-w-6xl px-4">
+    <div data-part="event-list-page" className="mx-auto max-w-6xl px-4">
       <ScrollToHash />
-      <h1 className="mt-6 text-2xl font-bold text-ink">Events</h1>
+      <h1 data-part="page-title" className="mt-6 text-2xl font-bold text-ink">Events</h1>
 
       {/* List leads, map rides in a sidebar (fix list item 37, swapping the
           calendar and map from their original arrangement, fix list item 23).
           Mobile stacks main-first so the filterable list stays on top. */}
-      <div className="mt-6 flex flex-col gap-8 lg:flex-row">
-        <div className="min-w-0 flex-1">
+      <div data-part="event-list-layout" className="mt-6 flex flex-col gap-8 lg:flex-row">
+        <div data-part="event-list-main" className="min-w-0 flex-1">
           {/* GET submit replaces the whole query string, hence the hidden carriers */}
-          <form action="/event" role="search" className="flex gap-2">
+          <form data-part="search-form" action="/event" role="search" className="flex gap-2">
             {type && <input type="hidden" name="type" value={type} />}
             {industry && <input type="hidden" name="industry" value={industry} />}
             {monthParam && <input type="hidden" name="month" value={monthParam} />}
-            <input
+            <input data-part="form-input"
               name="q"
               type="search"
               defaultValue={q}
@@ -111,13 +111,13 @@ export default async function EventsPage(props: PageProps<"/event">) {
               // 16px on phones so iOS doesn't zoom the page on focus (#33)
               className="tap w-full min-w-0 rounded border border-line bg-white px-4 py-2 text-base sm:text-sm"
             />
-            <button className="tap shrink-0 rounded bg-ink px-4 py-2 text-sm text-white">Search</button>
+            <button data-part="button-primary" className="tap shrink-0 rounded bg-ink px-4 py-2 text-sm text-white">Search</button>
           </form>
           {/* `tap`: 44px tall on touch screens only, so desktop looks the same (#33) */}
-          <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
-            <Link href={qs({ type: undefined, upcoming_page: undefined })} className={`tap rounded-full border px-3 py-1 ${!type ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All</Link>
+          <div data-part="filter-pills" className="mt-3 flex flex-wrap gap-1.5 text-xs">
+            <Link data-part="filter-pill" href={qs({ type: undefined, upcoming_page: undefined })} className={`tap rounded-full border px-3 py-1 ${!type ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All</Link>
             {EVENT_TYPES.map((t) => (
-              <Link key={t} href={qs({ type: t, upcoming_page: undefined })} className={`tap rounded-full border px-3 py-1 ${type === t ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+              <Link data-part="filter-pill" key={t} href={qs({ type: t, upcoming_page: undefined })} className={`tap rounded-full border px-3 py-1 ${type === t ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
                 {EVENT_TYPE_LABELS[t]}
               </Link>
             ))}
@@ -126,36 +126,36 @@ export default async function EventsPage(props: PageProps<"/event">) {
               calendar and the map, where the type pills only touch the list.
               Both page families reset — a filtered page 3 is nonsense. */}
           {showIndustries && (
-            <nav aria-label="Filter by industry" className="mt-2 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
-              <Link href={qs({ industry: undefined, upcoming_page: undefined, past_page: undefined })} className={`tap shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+            <nav data-part="filter-pills" aria-label="Filter by industry" className="mt-2 flex min-w-0 gap-1.5 overflow-x-auto pb-1 text-xs">
+              <Link data-part="filter-pill" href={qs({ industry: undefined, upcoming_page: undefined, past_page: undefined })} className={`tap shrink-0 rounded-full border px-3 py-1 ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
               {inds.map((i) => (
-                <Link key={i.slug} href={qs({ industry: i.slug, upcoming_page: undefined, past_page: undefined })} className={`tap shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+                <Link data-part="filter-pill" key={i.slug} href={qs({ industry: i.slug, upcoming_page: undefined, past_page: undefined })} className={`tap shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
                   {i.name}
                 </Link>
               ))}
             </nav>
           )}
 
-          <div className="mt-5 space-y-4">
+          <div data-part="card-grid" className="mt-5 space-y-4">
             {events.slice(0, 3).map((e) => <EventCard key={e.slug} event={e} />)}
           </div>
           {events.length === 0 && (
-            <p className="mt-4 text-graphite">
+            <p data-part="empty-state" className="mt-4 text-graphite">
               {type || q || industry ? <>No upcoming events match. <Link href={qs({ type: undefined, q: undefined, industry: undefined, upcoming_page: undefined, past_page: undefined })} className="underline">Clear filters</Link></> : "No upcoming events."}
             </p>
           )}
           {/* Unconditional: the slot is booked inventory, so it must not vanish just
               because the listing is short. Only the split below is count-dependent. */}
-          <div className="my-6"><AdSlot slotKey="events_mid" adverts={slots.get("events_mid") ?? []} showPlaceholders={showPlaceholders} path="/event" /></div>
+          <div data-part="ad-slot-wrap" className="my-6"><AdSlot slotKey="events_mid" adverts={slots.get("events_mid") ?? []} showPlaceholders={showPlaceholders} path="/event" /></div>
           {events.length > 3 && (
-            <div className="space-y-4">
+            <div data-part="card-grid" className="space-y-4">
               {events.slice(3).map((e) => <EventCard key={e.slug} event={e} />)}
             </div>
           )}
           <Pagination page={upcomingPage} pages={upcomingPages} hrefFor={qsUpcoming} />
         </div>
 
-        <aside className="shrink-0 lg:w-96">
+        <aside data-part="event-map-aside" className="shrink-0 lg:w-96">
           {/* Renders nothing until at least one upcoming event has geocoded
               coords. Ignores the list's type/search filters and its paging, but
               does honour the industry — see the fetch note above. */}
@@ -167,8 +167,8 @@ export default async function EventsPage(props: PageProps<"/event">) {
           the 384px map only had ~700px to work with at lg, which cramped the day
           cells and truncated most chips. Full container width instead — the
           component is fluid by design (see its own note on having no min-width). */}
-      <section id="calendar" className="mt-8 scroll-mt-4">
-        <h2 className="text-lg font-bold text-ink">Calendar</h2>
+      <section data-part="events-calendar-section" id="calendar" className="mt-8 scroll-mt-4">
+        <h2 data-part="section-title" className="text-lg font-bold text-ink">Calendar</h2>
         <div className="mt-3">
           <EventsCalendar month={month} events={monthEvents} hrefForMonth={hrefForMonth} />
         </div>
@@ -179,17 +179,17 @@ export default async function EventsPage(props: PageProps<"/event">) {
           the morning after its date. A compact list, not cards: this is an
           archive people arrive at from a search result, not a browse surface. */}
       {past.length > 0 && (
-        <section className="mt-12">
-          <h2 className="text-lg font-bold text-ink">Past events</h2>
+        <section data-part="event-past" className="mt-12">
+          <h2 data-part="section-title" className="text-lg font-bold text-ink">Past events</h2>
           {/* Two fixed columns from sm, stacked below it: a wrapping flex row put
               short titles beside the date and long ones under it (#33). */}
-          <ul className="mt-3 divide-y divide-line rounded-lg bg-white shadow-sm">
+          <ul data-part="panel" className="mt-3 divide-y divide-line rounded-lg bg-white shadow-sm">
             {past.map((e) => (
               <li key={e.slug} className="grid gap-0.5 px-5 py-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-baseline sm:gap-x-3">
-                <span className="text-xs uppercase tracking-wide text-graphite">{fmt(e.starts_on)}</span>
+                <span data-part="card-meta" className="text-xs uppercase tracking-wide text-graphite">{fmt(e.starts_on)}</span>
                 <div className="min-w-0">
-                  <Link href={`/event/${e.slug}`} className="font-medium break-words hover:text-graphite">{e.title}</Link>
-                  {e.location && <p className="text-sm text-graphite break-words">{e.location}</p>}
+                  <Link data-part="card-title" href={`/event/${e.slug}`} className="font-medium break-words hover:text-graphite">{e.title}</Link>
+                  {e.location && <p data-part="card-meta" className="text-sm text-graphite break-words">{e.location}</p>}
                 </div>
               </li>
             ))}

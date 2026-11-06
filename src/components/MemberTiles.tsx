@@ -33,16 +33,17 @@ export function MemberTiles({ members, layout = "sidebar", label }: {
         ? "grid-cols-1 sm:grid-cols-2"
         : "grid-cols-1";
   return (
-    <aside aria-label={heading} className="rounded-lg border-2 border-brand bg-brand/5 p-4">
-      <p className="text-xs font-bold uppercase tracking-widest text-graphite">{heading}</p>
-      <ul className={`mt-3 grid gap-3 ${grid}`}>
+    <aside aria-label={heading} data-part="story-members" className="rounded-lg border-2 border-brand bg-brand/5 p-4">
+      <p data-part="section-title" className="text-xs font-bold uppercase tracking-widest text-graphite">{heading}</p>
+      <ul data-part="card-grid" className={`mt-3 grid gap-3 ${grid}`}>
         {members.map((m) => (
           <li key={m.slug}>
             <Link
               href={`/member/${m.slug}`}
+              data-part="story-member-tile"
               className="group flex h-full flex-col overflow-hidden rounded-md border border-line bg-white transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
-              <span className="flex h-28 items-center justify-center p-3">
+              <span data-part="card-image" className="flex h-28 items-center justify-center p-3">
                 {m.logoUrl ? (
                   // alt="" — the member's name follows as text, and is the link's name
                   <Image src={m.logoUrl} alt="" width={240} height={96} className="max-h-full w-auto object-contain" unoptimized />
@@ -51,8 +52,8 @@ export function MemberTiles({ members, layout = "sidebar", label }: {
                 )}
               </span>
               <span className="border-t border-line px-3 py-2.5">
-                <span className="block font-bold leading-snug text-ink group-hover:underline">{m.name}</span>
-                <span className="mt-0.5 block text-[11px] font-bold uppercase tracking-wider text-brand-text">
+                <span data-part="card-title" className="block font-bold leading-snug text-ink group-hover:underline">{m.name}</span>
+                <span data-part="card-cta" className="mt-0.5 block text-[11px] font-bold uppercase tracking-wider text-brand-text">
                   Click for more member info →
                 </span>
               </span>
