@@ -22,21 +22,26 @@ export function userAgent(): string {
   return `SMI-story-sources/1.0 (+${siteUrl()})`;
 }
 
-export async function fetchText(url: string, accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"): Promise<Fetched> {
+/**
+ * `stop` cancels the request from outside, as a source check's hard stop does
+ * (lib/sources/check runSourceWatch). A cancelled request comes back like a
+ * failed one, with the error "stopped".
+ */
+export async function fetchText(url: string, accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", stop?: AbortSignal): Promise<Fetched> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": userAgent(), Accept: accept },
       redirect: "follow",
-      signal: controller.signal,
+      signal: stop ? AbortSignal.any([controller.signal, stop]) : controller.signal,
       cache: "no-store",
     });
     const body = (await res.text()).slice(0, MAX_BODY_CHARS);
     return { ok: res.ok, status: res.status, body, finalUrl: res.url || url };
   } catch (e) {
     const err = e as Error & { cause?: { code?: string } };
-    const error = err.name === "AbortError" ? "timed out" : err.cause?.code ?? err.message;
+    const error = stop?.aborted ? "stopped" : err.name === "AbortError" ? "timed out" : err.cause?.code ?? err.message;
     return { ok: false, status: 0, body: "", finalUrl: url, error };
   } finally {
     clearTimeout(timer);

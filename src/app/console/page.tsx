@@ -9,8 +9,16 @@ import { londonAt, londonDayStart } from "@/lib/london-time";
 import { inboxKindLabel } from "@/lib/console-notification-links";
 import { OverviewCalendar, type OverviewItem } from "./OverviewCalendar";
 import { markInboxRead } from "./actions";
+import { SourceCheckPanel } from "@/components/console/SourceCheckPanel";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { readSourceCheckRun } from "@/lib/sources/run";
 
 export const dynamic = "force-dynamic";
+// "Check sources now" runs a source check inside the click: up to 55s of
+// checking (lib/sources/check runSourceWatch) plus the page render after it,
+// which came to 58s in dev. A page's maxDuration is also its server actions'
+// limit, so this matches Story sources' 120s rather than cutting it close.
+export const maxDuration = 120;
 
 export default async function CommandCentre(props: PageProps<"/console">) {
   const db = serviceDb();
@@ -67,6 +75,8 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     paidInvoices,
     unpaidInvoices,
     payingMembers,
+    crawlerOn,
+    sourceCheck,
   ] = await Promise.all([
     // Count-only reads go through mustList (the head:true ones keep their
     // `.count`); row reads go through must and come back as plain arrays. The
@@ -131,6 +141,8 @@ export default async function CommandCentre(props: PageProps<"/console">) {
     // A comped member is active but pays nothing until comped_until has passed
     // (lib/membership applyPaymentResult "comped"), so isn't membership revenue.
     mustList(db.from("members").select("*", { count: "exact", head: true }).eq("status", "active").or(`comped_until.is.null,comped_until.lt.${today}`), "console/overview paying members"),
+    isFeatureEnabled("story_crawler"),
+    readSourceCheckRun(),
   ]);
 
   const live = liveBookings ?? [];
@@ -383,6 +395,16 @@ export default async function CommandCentre(props: PageProps<"/console">) {
             ))}
           </ul>
         </Card>
+
+        <SourceCheckPanel
+          className="mt-6"
+          run={sourceCheck}
+          crawlerOn={crawlerOn}
+          returnTo="/console"
+          flash={typeof sp.sourcecheck === "string" ? sp.sourcecheck : undefined}
+          flashRun={typeof sp.checkrun === "string" ? sp.checkrun : undefined}
+          nowMs={now}
+        />
 
         {pendingRevisions?.length ? (
           <Card id="approvals" className="mt-6">

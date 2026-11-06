@@ -99,3 +99,23 @@ _Avoid_: audit log (that is a separate record of member account changes)
 **Design variant**:
 One of the two layouts the public site can be shown in, grid (the default) or forge. Both use the same colours, type and components and differ only in how pages are arranged. "Theme" is an accepted synonym, used when talking with the client.
 _Avoid_: skin, template, version
+
+## Story discovery
+
+**Story source**:
+A company's news page that SMI watches for new articles that could become stories.
+_Avoid_: target, feed (a feed is only one way a source is read)
+
+**Source check**:
+Reading the story sources that are due for new articles. Each source is read at most about once a day, whether the check was started by the schedule or by an admin.
+_Avoid_: scrape, crawl, scan
+
+**Suggestion**:
+A new article that a source check found, waiting for an admin to start a story from it or dismiss it.
+_Avoid_: lead (that is a member's enquiry), hit, find
+
+## Console
+
+**Command Centre**:
+The console's home page: revenue, counts and "Needs You Today".
+_Avoid_: command center, dashboard (that is the member area)

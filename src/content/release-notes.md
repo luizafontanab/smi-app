@@ -10,6 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-05 — Check story sources now
+- Command Centre and Story sources have a "Check sources now" button. It looks for new articles straight away instead of waiting for the daily check, and new ones appear as suggestions on Story sources as usual.
+- One click checks up to about a minute's worth of the sources that are due, then says how many it checked, how many new suggestions it found, how many couldn't be read and how many are still due. Click again to carry on with the rest.
+- Each source is still checked no more than about once a day, so a source checked in the last 20 hours is skipped; when nothing is due, the button says when the next ones are.
+- Only one check runs at a time. If one is already going, from the button or the daily schedule, the button says so and waits.
+- Both pages show when the last check ran and whether you or the schedule started it. The button works only while the Story crawler is on in Features.
+
 ## 2026-11-05 — The stacked logo on phones
 - On phones the top bar now shows the stacked Sheet Metal Industries logo, the same one as in the footer, in the site's brand orange. This applies across the site, the member area and the login pages. Tablets and computers keep the wide logo.
 
