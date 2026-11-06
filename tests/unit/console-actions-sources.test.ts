@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addSource, checkSourcesNow, deleteSource, dismissSuggestion, recheckSource, startStoryFromSuggestion, syncSourcesFromBigin, updateSourceUrl,
+  addSource, checkSourcesNow, deleteSource, dismissSuggestion, recheckSource, startStoryFromSuggestion, updateSourceUrl,
 } from "@/app/console/sources/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence } from "../stubs/supabase";
@@ -18,12 +18,10 @@ const { requireConsole, logError } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/log", () => ({ logError }));
-const { isFeatureEnabled, syncCompanies } = vi.hoisted(() => ({
+const { isFeatureEnabled } = vi.hoisted(() => ({
   isFeatureEnabled: vi.fn(async () => true),
-  syncCompanies: vi.fn(),
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
-vi.mock("@/lib/crm-companies/sync", () => ({ syncCompanies }));
 const { runSourceCheck } = vi.hoisted(() => ({ runSourceCheck: vi.fn() }));
 vi.mock("@/lib/sources/run", () => ({ runSourceCheck, NOT_STARTED: "SourceCheckNotStarted" }));
 const DRAFT = {
@@ -43,7 +41,6 @@ afterEach(() => {
   resetDbServerMocks();
   logError.mockReset();
   isFeatureEnabled.mockReset().mockResolvedValue(true);
-  syncCompanies.mockReset();
   runSourceCheck.mockReset();
   prepareDraft.mockReset().mockResolvedValue(DRAFT);
   uploadImage.mockReset().mockResolvedValue("stories/cover.jpg");
@@ -304,30 +301,6 @@ describe("startStoryFromSuggestion", () => {
   it("says so when the suggestion has gone", async () => {
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ source_items: () => queryBuilder(dbOk(null)) }) })));
     await expect(startStoryFromSuggestion(form({ id: "gone" }))).rejects.toThrow(/NEXT_REDIRECT:\/console\/sources\?error=/);
-  });
-});
-
-describe("syncSourcesFromBigin", () => {
-  it("refuses while the story crawler is off", async () => {
-    isFeatureEnabled.mockResolvedValue(false);
-    await expect(syncSourcesFromBigin()).rejects.toThrow(encodeURIComponent("The story crawler is off"));
-    expect(syncCompanies).not.toHaveBeenCalled();
-  });
-
-  it("says so when Bigin isn't connected", async () => {
-    syncCompanies.mockResolvedValue(null);
-    await expect(syncSourcesFromBigin()).rejects.toThrow(encodeURIComponent("Bigin isn't connected"));
-  });
-
-  it("runs the sync and reports back", async () => {
-    syncCompanies.mockResolvedValue({ added: 1 });
-    await expect(syncSourcesFromBigin()).rejects.toThrow("NEXT_REDIRECT:/console/sources?view=sources&bigin=synced");
-  });
-
-  it("a failed sync is logged and reported, not thrown to the error page", async () => {
-    syncCompanies.mockRejectedValue(new Error("db down"));
-    await expect(syncSourcesFromBigin()).rejects.toThrow(encodeURIComponent("The Bigin sync failed part-way"));
-    expect(logError).toHaveBeenCalled();
   });
 });
 

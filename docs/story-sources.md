@@ -87,8 +87,8 @@ imported spreadsheet. When it's blank, the company's **Website** stands in
 (5 Nov 2026, migration `20261105000001`): the source is marked
 `bigin_from_website` and labelled "from website" on the console. A homepage
 still reads well, because the checker tries the site's feed, WordPress API and
-sitemap before the page's own links. The daily `source_bigin_sync` job (and "Sync from Bigin
-now" on `/console/sources` → Sources, or "Sync companies" on `/console/crm`) runs the
+sitemap before the page's own links. The daily `source_bigin_sync` job (and "Sync companies"
+on `/console/crm`) runs the
 **company sync** (6 Nov 2026, issue #50, `src/lib/crm-companies/sync.ts`). It first stores
 every CRM company Bigin returns in `crm_companies`, address or not (shown in CRM's
 Companies box), then derives sources from them exactly as before. For each company it:
@@ -102,13 +102,20 @@ Companies box), then derives sources from them exactly as before. For each compa
   part-way), or after a read that found no URLs at all while some are linked
   (a renamed field looks exactly like that);
 - skips a URL that isn't an address, or that a second company also lists, and
-  lists it on the console to be fixed in Bigin. A News Page URL always beats
+  lists it in CRM's Companies box to be fixed in Bigin. A News Page URL always beats
   another company's Website for the same address;
 - uses no Website at all in a read where no company has a News Page URL. That
   is what a misnamed field looks like, and falling back would swap every news
-  page for a homepage. The console shows a warning instead, and nothing changes;
+  page for a homepage. CRM's Companies box shows a warning instead, and nothing changes;
 - when a company that was using its Website gets a News Page URL, the Website
   source is unlinked (and paused if `bigin_only`) and the news page added;
+- when a company is deleted in Bigin (missing from a complete read), keeps it
+  in `crm_companies` marked `deleted_in_bigin_at` (6 Nov 2026, issue #52) —
+  hidden in CRM's Companies box except under its "Deleted in Bigin" filter —
+  and unlinks its source, pausing it if `bigin_only`, as for a cleared URL.
+  If the company comes back, the mark is cleared and its source re-linked.
+  Nothing is ever deleted, on either side. A partial read, or a read that
+  found no companies at all, marks nothing deleted;
 - matches each linked source to one member: through a contact linked to both
   the company and the member, otherwise through the member's website domain.
   If more than one member matches, no one is tagged. "Start story" on that
@@ -135,6 +142,16 @@ this from a check that changes nothing (an update with no records in it),
 run on every company sync and stored in `settings.crm_companies_write`, and
 from any push refused with `OAUTH_SCOPE_MISMATCH`. The Website is never edited
 in the console. A source can still be paused on Story sources.
+
+**Where it shows (6 Nov 2026, issue #51, ADR 0002).** Story Sources keeps only
+what's about *reading* a source. The Bigin panel (the last run's summary, the
+skipped or clashing addresses to fix in Bigin, and the misnamed-field warning)
+is in CRM's Companies box (`/console/crm#companies`); Story Sources has a
+one-line pointer there instead, and no Bigin sync button of its own ("Sync
+companies" does it). The two pages link both ways: a Bigin-linked source's
+"Bigin · company" badge opens that company on CRM (`?cid=<Bigin id>`), and a
+company with a source links to it on Story Sources (`?company=<Bigin id>`).
+The "From Bigin" filter and badges on Story Sources stay.
 
 Both jobs sit behind the **Story crawler** flag in `/console/features`. The
 flag is off by default, and while it's off nothing is checked or synced. The

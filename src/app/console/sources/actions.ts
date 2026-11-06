@@ -8,7 +8,6 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { logError } from "@/lib/log";
 import { removeMedia, uploadImage } from "@/lib/media";
 import { isMemberLinkable } from "@/lib/member-visibility";
-import { syncCompanies } from "@/lib/crm-companies/sync";
 import { prepareDraft } from "@/lib/sources/draft";
 import { NOT_STARTED, runSourceCheck, type SourceCheckOutcome } from "@/lib/sources/run";
 import { normalizeSourceUrl } from "@/lib/sources/extract";
@@ -232,28 +231,6 @@ export async function startStoryFromSuggestion(formData: FormData) {
   if (notes.length) query.set("notice", notes.join("\n"));
   const qs = query.toString();
   redirect(`/console/stories/${story.id}${qs ? `?${qs}` : ""}`);
-}
-
-/**
- * "Sync from Bigin now": the daily source_bigin_sync (the company sync,
- * lib/crm-companies/sync), on demand. Respects the Story crawler flag like
- * the job does; CRM's "Sync companies" is the one that works with it off.
- */
-export async function syncSourcesFromBigin() {
-  await requireConsole();
-  if (!(await isFeatureEnabled("story_crawler"))) {
-    redirect(back(`view=sources&error=${encodeURIComponent("The story crawler is off — turn it on in Features first.")}`));
-  }
-  let run: Awaited<ReturnType<typeof syncCompanies>>;
-  try {
-    run = await syncCompanies();
-  } catch (e) {
-    logError({ source: "job", area: "action:syncSourcesFromBigin", error: e });
-    redirect(back(`view=sources&error=${encodeURIComponent("The Bigin sync failed part-way — please try again.")}`));
-  }
-  if (!run) redirect(back(`view=sources&error=${encodeURIComponent("Bigin isn't connected, so there's nothing to sync.")}`));
-  revalidatePath(PAGE);
-  redirect(back("view=sources&bigin=synced"));
 }
 
 /** Where "Check sources now" may send the admin back to: the pages that show the button. */

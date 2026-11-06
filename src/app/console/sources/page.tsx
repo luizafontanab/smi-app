@@ -4,14 +4,13 @@ import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { getCrmSync } from "@/lib/adapters/crm";
 import { isFeatureEnabled } from "@/lib/feature-flags";
-import { readBiginSourcesRun } from "@/lib/sources/bigin";
 import { readSourceCheckRun } from "@/lib/sources/run";
 import { SourceCheckPanel } from "@/components/console/SourceCheckPanel";
 import { Pagination } from "@/components/Pagination";
 import { SubmitButton } from "@/components/SubmitButton";
 import { lastPage, pagedList } from "../paged-list";
 import {
-  addSource, deleteSource, dismissSuggestion, recheckSource, setSourceActive, startStoryFromSuggestion, syncSourcesFromBigin, updateSourceUrl,
+  addSource, deleteSource, dismissSuggestion, recheckSource, setSourceActive, startStoryFromSuggestion, updateSourceUrl,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -44,9 +43,11 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
   const view = sp.view === "sources" ? "sources" : "suggested";
   const page = Math.max(1, Number(sp.page) || 1);
   const access = ACCESS_FILTERS.find((a) => a === sp.access) ?? "all";
+  // ?company=<Bigin id>: one company's source, the target of a CRM Companies link (#51).
+  const company = typeof sp.company === "string" && sp.company ? sp.company : undefined;
   const db = serviceDb();
 
-  const [suggestions, drafted, sources, statusRows, crawlerOn, biginRun, sourceCheck] = await Promise.all([
+  const [suggestions, drafted, sources, statusRows, crawlerOn, sourceCheck] = await Promise.all([
     view === "suggested"
       ? pagedList(
           (from, to) => db.from("source_items")
@@ -66,6 +67,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
       ? pagedList((from, to) => {
           let q = db.from("content_sources")
             .select("id, url, domain, label, active, method, method_url, access, last_checked_at, last_item_at, failure_count, last_error, bigin_account_id, bigin_account_name, bigin_from_website, member:members(name, slug)", { count: "exact" });
+          if (company) q = q.eq("bigin_account_id", company);
           if (access === "paused") q = q.eq("active", false);
           else if (access === "bigin") q = q.not("bigin_account_id", "is", null);
           else if (access !== "all") q = q.eq("access", access).eq("active", true);
@@ -74,7 +76,6 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
       : Promise.resolve(null),
     must(db.from("content_sources").select("access, active, bigin_account_id"), "console/sources counts"),
     isFeatureEnabled("story_crawler"),
-    view === "sources" ? readBiginSourcesRun() : Promise.resolve(null),
     readSourceCheckRun(),
   ]);
   // eslint-disable-next-line react-hooks/purity -- server component, per-request render is the point
@@ -112,7 +113,6 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
       {sp.added && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Source added — it will be read on the next check.</p>}
       {sp.queued && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Queued — the next check works out how to read it again.</p>}
       {sp.removed && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Source removed.</p>}
-      {sp.bigin === "synced" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Synced from Bigin.</p>}
 
       <SourceCheckPanel
         className="mt-4"
@@ -208,42 +208,18 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
             <SubmitButton className="rounded bg-ink px-4 py-2 text-white" pendingLabel="Adding…">Add source</SubmitButton>
           </form>
 
-          <section aria-labelledby="bigin-sync" className="mt-4 rounded-xl bg-white p-4 text-sm shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <h2 id="bigin-sync" className="font-bold text-ink">From Bigin</h2>
-              <p className="flex-1 text-graphite">
-                {!biginConnected
-                  ? "Bigin isn't connected, so only the imported list is used."
-                  : biginRun
-                    ? `Last synced ${day(biginRun.at)}: ${biginRun.companies} companies with an address${biginRun.fromWebsite ? ` (${biginRun.fromWebsite} using their Website)` : ""} — ${biginRun.added} added, ${biginRun.linked} linked, ${biginRun.paused} paused${biginRun.complete ? "" : " (Bigin stopped part-way; nothing was paused)"}.`
-                    : "Not synced yet — it runs once a day while the story crawler is on."}
-              </p>
-              {biginConnected && (
-                <form action={syncSourcesFromBigin}>
-                  <SubmitButton className="rounded border px-3 py-1.5 text-sm" disabled={!crawlerOn} pendingLabel="Syncing…">Sync from Bigin now</SubmitButton>
-                </form>
-              )}
-            </div>
-            {biginRun?.websiteFallbackWithheld && (
-              <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-xs text-danger">
-                No Bigin company came back with a News Page URL, so nothing was added from Websites either. Either the
-                field is empty everywhere, or its name in Bigin isn&apos;t the one the app expects (News_Page_URL) — ask
-                for it to be checked. Nothing already on the list was changed.
-              </p>
-            )}
-            {biginRun && biginRun.skipped.length > 0 && (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-xs text-danger">{biginRun.skipped.length} Bigin address{biginRun.skipped.length === 1 ? "" : "es"} skipped — fix in Bigin</summary>
-                <ul className="mt-1 space-y-0.5 text-xs text-graphite">
-                  {biginRun.skipped.map((x) => (
-                    <li key={`${x.company}-${x.url}`}>
-                      {x.company}: <span className="break-all">{x.url}</span> — {x.reason === "clash" ? "another company already lists this page" : "not a web address"}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </section>
+          {/* The Bigin sources panel moved to CRM's Companies box (#51, ADR 0002): CRM shows where an address comes from. */}
+          <p className="mt-4 text-sm text-graphite">
+            {biginConnected
+              ? "Bigin companies' News Page URLs (or Websites) and what was skipped or clashed are on "
+              : "Bigin isn't connected, so only the imported list is used. Its companies will be on "}
+            <Link href="/console/crm#companies" className="text-ink underline">CRM → Companies</Link>.
+          </p>
+          {company && (
+            <p className="mt-2 text-xs text-graphite">
+              Showing one Bigin company&apos;s source, from CRM. <Link href="/console/sources?view=sources" className="underline hover:text-ink">Show all sources</Link>
+            </p>
+          )}
 
           <nav aria-label="Filter sources" className="mt-4 flex flex-wrap gap-2 text-xs">
             {ACCESS_FILTERS.map((a) => (
@@ -272,7 +248,12 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                     </span>
                     {s.method && <span className="text-xs text-graphite">via {METHOD_LABEL[s.method] ?? s.method}</span>}
                     {s.bigin_account_id && (
-                      <span className="rounded bg-shade px-1.5 py-0.5 text-xs text-ink">Bigin{s.bigin_account_name ? ` · ${s.bigin_account_name}` : ""}</span>
+                      <Link
+                        href={`/console/crm?cid=${encodeURIComponent(s.bigin_account_id)}#companies`}
+                        className="rounded bg-shade px-1.5 py-0.5 text-xs text-ink hover:underline"
+                      >
+                        Bigin{s.bigin_account_name ? ` · ${s.bigin_account_name}` : ""}
+                      </Link>
                     )}
                     {s.bigin_account_id && s.bigin_from_website && (
                       <span className="rounded border border-shade px-1.5 py-0.5 text-xs text-graphite">from website</span>
@@ -290,8 +271,14 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                       {s.bigin_account_id ? (
                         <p className="text-xs text-graphite">
                           {s.bigin_from_website
-                            ? "The address is the company's Website in Bigin, used because its News Page URL is blank — fill in the News Page URL there to replace it."
-                            : "The address comes from Bigin — change or clear it there."}
+                            ? "The address is the company's Website in Bigin, used because its News Page URL is blank — give the company a News Page URL to replace it."
+                            : "The address is the company's News Page URL from Bigin — change or clear it on the company."}{" "}
+                          <Link
+                            href={`/console/crm?cid=${encodeURIComponent(s.bigin_account_id)}&company=${encodeURIComponent(s.bigin_account_id)}#companies`}
+                            className="underline hover:text-ink"
+                          >
+                            Edit the company on CRM
+                          </Link>.
                         </p>
                       ) : (
                         <form action={updateSourceUrl} className="flex flex-wrap items-end gap-2">

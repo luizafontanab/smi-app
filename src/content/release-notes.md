@@ -17,6 +17,18 @@
 - The Website is shown but can only be changed in Bigin.
 - Until the Bigin connection is given permission to change companies, the field is greyed out with "edit in Bigin for now".
 
+## 2026-11-06 — Bigin's story sources move to the CRM page
+- The "From Bigin" panel has moved from Story sources to the Companies box on the CRM page. It still shows when Bigin last updated the story sources, any Bigin addresses to fix (not a web address, or listed by two companies), and the warning when no company has a News Page URL.
+- Story sources now has a one-line link to the CRM page in its place, and no "Sync from Bigin now" button: "Sync companies" on the CRM page does the same job.
+- On Story sources, the "Bigin · company" label on a source now opens that company on the CRM page. On the CRM page, a company with a story source has an "On Story Sources" link that opens just that source.
+- The "From Bigin" filter and labels on Story sources stay as they were.
+
+## 2026-11-06 — Companies deleted in Bigin
+- A company deleted in Bigin is no longer just dropped from view. The Companies box on the CRM page keeps it, marked "Deleted in Bigin" with the date it was found missing, and hides it unless you pick the new "Deleted in Bigin" filter.
+- Its story source stops being linked to the company. If the source came only from Bigin it is paused; if it is also on the imported spreadsheet list, it keeps running.
+- If the company reappears in Bigin, the next sync brings it back into the list and clears the mark.
+- A sync where Bigin stops part-way never marks a company deleted. Nothing is ever deleted, here or in Bigin.
+
 ## 2026-11-06 — Companies on the CRM page
 - The CRM page has a new Companies box under Contacts. It lists every company in Bigin, members and non-members, including companies with no web address at all.
 - Each company shows its Website, its News Page URL, which of the two the story crawler watches ("News Page URL", "Website stand-in" or "none"), how many contacts are linked to it, and the member its stories are tagged with.

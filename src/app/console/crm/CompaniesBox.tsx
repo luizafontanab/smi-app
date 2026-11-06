@@ -3,7 +3,9 @@ import { Pagination } from "@/components/Pagination";
 import { SubmitButton } from "@/components/SubmitButton";
 import type { CompanySyncRun } from "@/lib/crm-companies/sync";
 import { COMPANY_FILTERS, COMPANY_FILTER_LABEL, type AddressInUse, type CompanyDetail, type CompanyFilter, type CompanyListRow } from "@/lib/crm-companies/list";
+import type { BiginSourcesRun } from "@/lib/sources/bigin";
 import { saveCompanyNewsPage, syncCompaniesNow } from "./actions";
+import { BiginSourcesPanel } from "./BiginSourcesPanel";
 
 /**
  * CRM's Companies box (issue #50): a mirror of every CRM company in Bigin,
@@ -16,10 +18,15 @@ import { saveCompanyNewsPage, syncCompaniesNow } from "./actions";
  * (`canEditCompanies` false), the field is disabled with "edit in Bigin for
  * now".
  *
- * Later tickets add to it: the Bigin sources panel moved from Story sources
- * (#51), the deleted-in-Bigin filter (#52), a detail editor above the table
- * for the member override (#53), every Bigin field (#54) and the News Page URL
- * (#55), and "covered by imported list" (#56).
+ * The Bigin sources panel moved here from Story Sources (#51); each company
+ * links to its source there, and a Bigin-linked source links back with
+ * `?cid=<bigin id>`, which narrows the list to that company.
+ *
+ * Later tickets add to it: the member override (#53) and every Bigin field
+ * (#54) in the editor above the table, and "covered by imported list" (#56).
+ *
+ * A company deleted in Bigin (#52) stays, marked, under its own filter; the
+ * other filters hide it.
  */
 
 const IN_USE_LABEL: Record<AddressInUse, string> = { news_page: "News Page URL", website: "Website stand-in", none: "none" };
@@ -32,6 +39,8 @@ export function describeCompanyRun(run: CompanySyncRun): string {
   const parts = [plural(run.read, "company", "companies") + " read"];
   if (run.added) parts.push(`${run.added} new`);
   if (run.updated) parts.push(`${run.updated} changed`);
+  if (run.deleted) parts.push(`${run.deleted} deleted in Bigin`);
+  if (run.restored) parts.push(`${run.restored} back in Bigin`);
   const s = run.sources;
   if (!s) parts.push("story sources not updated (story crawler off)");
   else {
@@ -41,17 +50,21 @@ export function describeCompanyRun(run: CompanySyncRun): string {
     ].filter(Boolean);
     parts.push(`story sources: ${changed.length ? changed.join(", ") : "no change"}`);
   }
-  return parts.join(" · ") + (run.complete ? "" : ". Bigin stopped part-way, so nothing was removed or paused.");
+  return parts.join(" · ") + (run.complete ? "" : ". Bigin stopped part-way, so nothing was marked deleted, unlinked or paused.");
 }
 
 export function CompaniesBox({
-  live, list, q, filter, run, flash, error, href, keep, selected, canEditCompanies,
+  live, list, q, filter, only, run, sourcesRun, flash, error, href, keep, selected, canEditCompanies,
 }: {
   live: boolean;
   list: { rows: CompanyListRow[]; count: number; page: number; pages: number } | null;
   q: string;
   filter: CompanyFilter;
+  /** the Bigin id the list is narrowed to (`?cid=`), from a Story Sources link */
+  only: string | undefined;
   run: CompanySyncRun | null;
+  /** the last time Bigin's addresses updated the story sources */
+  sourcesRun: BiginSourcesRun | null;
   flash: string | undefined;
   error: string | undefined;
   /** a /console/crm link keeping the contacts box's state, ending #companies */
@@ -100,6 +113,11 @@ export function CompaniesBox({
           <p className="mt-1 text-xs text-graphite">
             Open a company to edit its News Page URL. Change any other detail in Bigin, then sync.
           </p>
+          {only && (
+            <p className="mt-2 text-xs text-graphite">
+              Showing one company, from Story Sources. <Link href={href({ cid: undefined, cpage: undefined })} className="underline hover:text-ink">Show all companies</Link>
+            </p>
+          )}
 
           {selected && <CompanyEditor company={selected} canEdit={canEditCompanies} closeHref={href({ company: undefined })} />}
 
@@ -108,7 +126,7 @@ export function CompaniesBox({
               {COMPANY_FILTERS.map((f) => (
                 <Link
                   key={f}
-                  href={href({ cfilter: f === "all" ? undefined : f, cpage: undefined })}
+                  href={href({ cfilter: f === "all" ? undefined : f, cpage: undefined, cid: undefined })}
                   aria-current={f === filter ? "page" : undefined}
                   className={`rounded px-2.5 py-1 text-xs ${f === filter ? "bg-ink text-white" : "border text-graphite hover:text-ink"}`}
                 >
@@ -131,7 +149,7 @@ export function CompaniesBox({
                 <thead>
                   <tr className="text-left text-xs uppercase text-graphite">
                     <th scope="col" className="py-1">Company</th><th scope="col">Website</th><th scope="col">News Page URL</th>
-                    <th scope="col">In use</th><th scope="col">Contacts</th><th scope="col">Member</th>
+                    <th scope="col">In use</th><th scope="col">Contacts</th><th scope="col">Member</th><th scope="col">Story source</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -141,6 +159,7 @@ export function CompaniesBox({
                         <Link href={href({ company: c.biginId })} aria-current={selected?.biginId === c.biginId ? "true" : undefined} className="text-ink underline-offset-2 hover:underline">
                           {c.name || <span className="text-graphite">(no name)</span>}
                         </Link>
+                        {c.deletedInBiginAt && <span className="block text-xs text-danger">Deleted in Bigin {fmt(c.deletedInBiginAt)}</span>}
                       </td>
                       <td className="max-w-48 break-all text-xs text-graphite">{c.website ?? "—"}</td>
                       <td className="max-w-48 break-all text-xs text-graphite">
@@ -150,10 +169,15 @@ export function CompaniesBox({
                       <td className={`text-xs ${c.inUse === "none" ? "text-danger" : c.inUse === "website" ? "text-graphite" : "text-success"}`}>{IN_USE_LABEL[c.inUse]}</td>
                       <td className="text-xs text-graphite">{c.contacts}</td>
                       <td className="text-xs text-graphite">{c.member?.name ?? "—"}</td>
+                      <td className="text-xs">
+                        {c.sourceId
+                          ? <Link href={`/console/sources?view=sources&company=${encodeURIComponent(c.biginId)}`} className="text-graphite underline hover:text-ink">On Story Sources</Link>
+                          : <span className="text-graphite">—</span>}
+                      </td>
                     </tr>
                   ))}
                   {list.rows.length === 0 && (
-                    <tr><td colSpan={6} className="py-2 text-sm text-graphite">{run || q || filter !== "all" ? "No companies match." : "No companies stored yet."}</td></tr>
+                    <tr><td colSpan={7} className="py-2 text-sm text-graphite">{run || q || filter !== "all" || only ? "No companies match." : "No companies stored yet."}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -162,6 +186,7 @@ export function CompaniesBox({
           <Pagination page={list.page} pages={list.pages} hrefFor={(p) => href({ cpage: p })} />
         </>
       )}
+      <BiginSourcesPanel live={live && !!list} run={sourcesRun} />
     </section>
   );
 }

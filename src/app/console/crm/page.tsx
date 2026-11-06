@@ -17,6 +17,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { parseCompanyFilter, readCompany, readCompanyList } from "@/lib/crm-companies/list";
 import { readCompanyWriteAccess } from "@/lib/crm-companies/news-page";
 import { readCompanySyncRun } from "@/lib/crm-companies/sync";
+import { readBiginSourcesRun } from "@/lib/sources/bigin";
 import { CompaniesBox } from "./CompaniesBox";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,9 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   const cq = typeof sp.cq === "string" ? sp.cq : "";
   const cfilter = parseCompanyFilter(sp.cfilter);
   const requestedCompanyPage = Math.max(1, Number(sp.cpage) || 1);
+  // ?cid=<Bigin id>: one company, the target of a Bigin-linked source's link on Story Sources.
+  const cid = typeof sp.cid === "string" && sp.cid ? sp.cid : undefined;
+  // ?company=<Bigin id>: the company open in the box's editor (#55).
   const companyId = typeof sp.company === "string" && sp.company ? sp.company : null;
 
   // Rebuilt per attempt: pagedList re-runs it as the last page when ?page= is
@@ -49,7 +53,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   };
 
   const crm = getCrmSync();
-  const [members, { data: contacts, count, page }, editing, imported, lastRun, companies, companyRun, selectedCompany, companyWrite] = await Promise.all([
+  const [members, { data: contacts, count, page }, editing, imported, lastRun, companies, companyRun, sourcesRun, selectedCompany, companyWrite] = await Promise.all([
     must(db.from("members").select("id, name").order("name"), "console/crm members"),
     pagedList(contactsQuery, requestedPage, PAGE_SIZE, "console/crm contacts"),
     // ?contact= is raw user input against a uuid column — a junk value would
@@ -61,8 +65,9 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
     crm.live ? firstImportDone() : Promise.resolve(false),
     readLastRun(),
     // Not connected → the box says so rather than listing a stale or empty copy.
-    crm.live ? readCompanyList(db, { q: cq, filter: cfilter, page: requestedCompanyPage, size: PAGE_SIZE }) : Promise.resolve(null),
+    crm.live ? readCompanyList(db, { q: cq, filter: cfilter, page: requestedCompanyPage, size: PAGE_SIZE, biginId: cid }) : Promise.resolve(null),
     crm.live ? readCompanySyncRun() : Promise.resolve(null),
+    crm.live ? readBiginSourcesRun() : Promise.resolve(null),
     crm.live && companyId ? readCompany(db, companyId) : Promise.resolve(null),
     crm.live ? readCompanyWriteAccess() : Promise.resolve(null),
   ]);
@@ -72,7 +77,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
 
   // Each box's links keep the other box's search, filter and page.
   const companyState = {
-    cq, cfilter: cfilter === "all" ? undefined : cfilter, cpage: companies && companies.page > 1 ? companies.page : undefined,
+    cid, cq, cfilter: cfilter === "all" ? undefined : cfilter, cpage: companies && companies.page > 1 ? companies.page : undefined,
     company: selectedCompany?.biginId,
   };
   const link = (merged: Record<string, string | number | undefined>, hash = "") => {
@@ -218,7 +223,9 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
         list={companies && { ...companies, pages: Math.max(1, Math.ceil(companies.count / PAGE_SIZE)) }}
         q={cq}
         filter={cfilter}
+        only={cid}
         run={companyRun}
+        sourcesRun={sourcesRun}
         flash={typeof sp.companies === "string" ? sp.companies : undefined}
         error={typeof sp.companies_error === "string" ? sp.companies_error : undefined}
         href={companyHref}
