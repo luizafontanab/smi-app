@@ -10,8 +10,11 @@ import { ilikeTerm } from "../queries";
  * use, how many of the app's contacts are linked to it, and the member its
  * story source is matched to.
  *
+ * The member shown is the admin's override when there is one (#53), else
+ * the member the company's source is matched to.
+ *
  * Later tickets hook in here: the deleted-in-Bigin filter and default (#52),
- * the member override shown beside the match (#53), and the "covered by
+ * and the "covered by
  * imported list" state and filter (#56) — a display state worked out at read
  * time, so it belongs in this module, not the sync.
  */
@@ -40,8 +43,10 @@ export type CompanyListRow = {
   lastSyncedAt: string;
   /** contacts here (not in Bigin) whose Bigin company is this one */
   contacts: number;
-  /** the member the company's story source is matched to, if any */
+  /** the admin's member override, else the member the company's story source is matched to */
   member: { id: string; name: string } | null;
+  /** `member` was chosen by hand in CRM (#53), not matched automatically */
+  memberChosen: boolean;
 };
 
 type Db = ReturnType<typeof serviceDb>;
@@ -54,7 +59,7 @@ export async function readCompanyList(
   // Rebuilt per attempt: pagedList re-runs it as the last page when ?cpage= is past the end.
   const build = (from: number, to: number) => {
     let query = db.from("crm_companies")
-      .select("id, bigin_id, name, website, news_page_url, last_synced_at", { count: "exact" })
+      .select("id, bigin_id, name, website, news_page_url, last_synced_at, override:members!crm_companies_member_override_id_fkey(id, name)", { count: "exact" })
       .order("name")
       .order("bigin_id");
     if (term) query = query.or(`name.ilike.%${term}%,website.ilike.%${term}%,news_page_url.ilike.%${term}%`);
@@ -91,7 +96,27 @@ export async function readCompanyList(
       inUse: addressInUse(c),
       lastSyncedAt: c.last_synced_at,
       contacts: contactCount.get(c.bigin_id) ?? 0,
-      member: memberOf.get(c.bigin_id) ?? null,
+      member: c.override ?? memberOf.get(c.bigin_id) ?? null,
+      memberChosen: !!c.override,
     })),
   };
+}
+
+/** One company for the Companies box's editor (`?company=`): its member, and whether it was chosen by hand. */
+export type CompanyMemberDetail = Pick<CompanyListRow, "id" | "biginId" | "name" | "member" | "memberChosen">;
+
+export async function readCompanyMember(db: Db, id: string): Promise<CompanyMemberDetail | null> {
+  const { data: c, error } = await db.from("crm_companies")
+    .select("id, bigin_id, name, override:members!crm_companies_member_override_id_fkey(id, name)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(`console/crm company: ${error.message}`);
+  if (!c) return null;
+  let member = c.override;
+  if (!member) {
+    const { data: source, error: e } = await db.from("content_sources").select("member:members(id, name)").eq("bigin_account_id", c.bigin_id).maybeSingle();
+    if (e) throw new Error(`console/crm company source: ${e.message}`);
+    member = source?.member ?? null;
+  }
+  return { id: c.id, biginId: c.bigin_id, name: c.name, member, memberChosen: !!c.override };
 }

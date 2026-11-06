@@ -11,7 +11,8 @@
  * Other synthetic operational data (analytics, contacts, CRM companies) is
  * still NOT seeded — run seed.ts instead when demoing those consoles. CRM
  * companies (crm_companies) come from Bigin through the company sync
- * (src/lib/crm-companies/sync.ts), never from the WordPress extract.
+ * (src/lib/crm-companies/sync.ts), never from the WordPress extract — and
+ * their member override (#53) is set by hand in CRM, so it isn't seeded.
  *
  * Expects a fresh DB (supabase db reset). Defaults to local; seeding a hosted
  * project needs --remote (see `pnpm seed:prod`).

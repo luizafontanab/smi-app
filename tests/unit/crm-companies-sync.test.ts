@@ -29,10 +29,13 @@ type Tables = "crm_companies" | "content_sources" | "contacts" | "members" | "se
  * answers by call number, as the source sync reads it several times:
  * 1 linked rows, 2 rows by URL, then writes, then the linked rows for members.
  */
-function fakeDb({ local = [], sources = () => dbOk([]), members = [] }: {
+function fakeDb({ local = [], sources = () => dbOk([]), members = [], contacts = [], overrides = [] }: {
   local?: { bigin_id: string; name: string; website: string | null; news_page_url: string | null }[];
   sources?: (n: number) => DbResult;
   members?: { id: string; website: string | null }[];
+  contacts?: { bigin_company_id: string; member_id: string }[];
+  /** member overrides the admin has set (#53), as crm_companies answers after the first read */
+  overrides?: { bigin_id: string; member_override_id: string }[];
 } = {}) {
   const made: Partial<Record<Tables, Builder[]>> = {};
   let companyCalls = 0;
@@ -40,9 +43,9 @@ function fakeDb({ local = [], sources = () => dbOk([]), members = [] }: {
   const track = (t: Tables, b: Builder) => ((made[t] ??= []).push(b), b);
   vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
     from: fromByTable({
-      crm_companies: () => track("crm_companies", queryBuilder(companyCalls++ === 0 ? dbOk(local) : dbOk(null))),
+      crm_companies: () => track("crm_companies", queryBuilder<unknown>(companyCalls++ === 0 ? dbOk(local) : dbOk(overrides))),
       content_sources: () => track("content_sources", queryBuilder(sources(++sourceCalls))),
-      contacts: () => track("contacts", queryBuilder(dbOk([]))),
+      contacts: () => track("contacts", queryBuilder(dbOk(contacts))),
       members: () => track("members", queryBuilder(dbOk(members))),
       settings: () => track("settings", queryBuilder(dbOk(null))),
     }),
@@ -171,5 +174,67 @@ describe("syncCompanies", () => {
     expect(t.made.content_sources).toBeUndefined();
     expect(run?.sources).toBeNull();
     expect(t.callsOf("settings", "upsert").map((s) => s.key)).toEqual(["crm_companies_last"]);
+  });
+
+  describe("member override (#53)", () => {
+    // 1 linked, 2 by URL, 3 linked rows for members (nothing to add or link), then the member update
+    const linkedAcme = [{ id: "s1", url: "https://acme.test/news", bigin_account_id: "1", bigin_account_name: "Acme", bigin_only: true, bigin_from_website: false }];
+    const sourcesFor = (memberId: string | null) => (n: number) =>
+      n === 1 || n === 2 ? dbOk(linkedAcme) : n === 3 ? dbOk([{ id: "s1", domain: "acme.test", bigin_account_id: "1", member_id: memberId }]) : dbOk([]);
+    const acme = () => crm({ complete: true, companies: [rec("1", "https://acme.test/news", null, "Acme")] });
+    const memberWrites = (t: ReturnType<typeof fakeDb>) => t.callsOf("content_sources", "update").filter((u) => "member_id" in u).map((u) => u.member_id);
+
+    it("wins over an ambiguous automatic match", async () => {
+      // two members on acme.test: the automatic match is nobody
+      const t = fakeDb({
+        local: [{ bigin_id: "1", name: "Acme", website: null, news_page_url: "https://acme.test/news" }],
+        sources: sourcesFor(null),
+        members: [{ id: "m-a", website: "acme.test" }, { id: "m-b", website: "https://acme.test" }],
+        overrides: [{ bigin_id: "1", member_override_id: "m-chosen" }],
+      });
+      const run = await syncCompanies({ crm: acme(), now: NOW });
+      expect(memberWrites(t)).toEqual(["m-chosen"]);
+      expect(run?.sources).toMatchObject({ membersSet: 1 });
+    });
+
+    it("wins over a different automatic match", async () => {
+      const t = fakeDb({
+        local: [{ bigin_id: "1", name: "Acme", website: null, news_page_url: "https://acme.test/news" }],
+        sources: sourcesFor(null),
+        members: [{ id: "m-auto", website: "acme.test" }],
+        contacts: [{ bigin_company_id: "1", member_id: "m-auto" }],
+        overrides: [{ bigin_id: "1", member_override_id: "m-chosen" }],
+      });
+      await syncCompanies({ crm: acme(), now: NOW });
+      expect(memberWrites(t)).toEqual(["m-chosen"]);
+    });
+
+    it("survives the sync: a source already on the chosen member is left alone, and the override is never written over", async () => {
+      const t = fakeDb({
+        local: [{ bigin_id: "1", name: "Acme", website: null, news_page_url: "https://acme.test/news" }],
+        sources: sourcesFor("m-chosen"),
+        members: [{ id: "m-auto", website: "acme.test" }],
+        overrides: [{ bigin_id: "1", member_override_id: "m-chosen" }],
+      });
+      const run = await syncCompanies({ crm: acme(), now: NOW });
+      expect(memberWrites(t)).toEqual([]);
+      expect(run?.sources).toMatchObject({ membersSet: 0 });
+      const companyWrites = [...t.callsOf("crm_companies", "upsert").flat(), ...t.callsOf("crm_companies", "update")];
+      expect(companyWrites.some((w) => "member_override_id" in w)).toBe(false);
+    });
+
+    it("survives a company changing in Bigin: the rewrite of its row leaves the override out", async () => {
+      const t = fakeDb({
+        local: [{ bigin_id: "1", name: "Acme Old", website: null, news_page_url: "https://acme.test/news" }],
+        sources: sourcesFor(null),
+        members: [{ id: "m-auto", website: "acme.test" }],
+        overrides: [{ bigin_id: "1", member_override_id: "m-chosen" }],
+      });
+      await syncCompanies({ crm: acme(), now: NOW });
+      const written = t.callsOf("crm_companies", "upsert").flat();
+      expect(written.map((w) => w.bigin_id)).toEqual(["1"]);
+      expect(written[0]).not.toHaveProperty("member_override_id");
+      expect(memberWrites(t)).toEqual(["m-chosen"]);
+    });
   });
 });
