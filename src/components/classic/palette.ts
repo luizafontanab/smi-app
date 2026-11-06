@@ -51,4 +51,19 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   { label: "focus ring on the canvas", fg: c["--classic-blue"], bg: c["--classic-canvas"], min: NON_TEXT },
   { label: "focus ring on a stripe", fg: c["--classic-blue"], bg: c["--classic-stripe"], min: NON_TEXT },
   { label: "focus ring on the black chrome", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: NON_TEXT },
+  // #72 footer. Back to Top strip: ink on white, hovering blue, blue ring.
+  { label: "footer Back to Top: ink on white", fg: c["--smi-ink"], bg: c["--classic-panel"], min: TEXT },
+  { label: "footer Back to Top hover: blue on white", fg: c["--classic-blue"], bg: c["--classic-panel"], min: TEXT },
+  // The orange band: ink text; a blue button that hovers to ink, never to
+  // orange on orange (decisions 6 Nov, 6); an ink focus ring, since the
+  // chrome's orange ring would vanish on the band (decisions 6 Nov, 11).
+  { label: "footer band text: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: TEXT },
+  { label: "footer band button: white on blue", fg: c["--classic-button-text"], bg: c["--classic-blue"], min: TEXT },
+  { label: "footer band button hover: white on ink", fg: c["--classic-button-text"], bg: c["--smi-ink"], min: TEXT },
+  { label: "footer band button edge: blue on orange", fg: c["--classic-blue"], bg: c["--smi-brand"], min: NON_TEXT },
+  { label: "footer band button hover edge: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: NON_TEXT },
+  { label: "footer band focus ring: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: NON_TEXT },
+  // The black stack: white text, links hovering orange.
+  { label: "footer text: white on black", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
+  { label: "footer link hover: orange on black", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: TEXT },
 ];
