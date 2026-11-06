@@ -63,16 +63,24 @@
  */
 import type { ComponentType } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { GridSiteFooter } from "@/components/GridSiteFooter";
 import { GridHome } from "@/app/(public)/home.grid";
 import { StoryPageView } from "@/components/story/StoryPageView";
 import { IndustryPageView } from "@/components/industry/IndustryPageView";
 import { NewsletterIssueView as CurrentNewsletterIssueView } from "@/components/newsletter/NewsletterIssueView";
-import { JoinPageView } from "@/components/join/JoinPageView";
+// Classic's pieces. Each starts as a pass-through to the Current component
+// above (which stays imported for the props types), and a later Classic
+// ticket replaces it.
+import { ClassicHeader } from "@/components/classic/ClassicHeader";
+import { ClassicFooter } from "@/components/classic/ClassicFooter";
+import { ClassicHomeView } from "@/components/classic/ClassicHomeView";
+import { ClassicStoryView } from "@/components/classic/ClassicStoryView";
+import { ClassicIndustryView } from "@/components/classic/ClassicIndustryView";
+import { ClassicNewsletterIssueView } from "@/components/classic/ClassicNewsletterIssueView";
+import { ClassicJoinView } from "@/components/classic/ClassicJoinView";
 
 // ── Option stylesheet ─────────────────────────────────────────────────────
-// Current has none. `classic` imports its stylesheet on the next line, e.g.
-//   import "./classic/classic.css";
+// Current has none. `classic` imports its stylesheet on the next line.
+import "./classic/classic.css";
 // The public layout imports this module, and so do the surfaces outside it
 // (login, reset, reset/new, unsubscribe, the root 404), so the sheet reaches
 // every public page. Not the root layout: that would put every public client
@@ -82,16 +90,16 @@ import { JoinPageView } from "@/components/join/JoinPageView";
 type PropsOf<C> = C extends ComponentType<infer P> ? P : never;
 
 /** Site header (public layout). */
-export const Header: ComponentType<PropsOf<typeof SiteHeader>> = SiteHeader;
+export const Header: ComponentType<PropsOf<typeof SiteHeader>> = ClassicHeader;
 /** Site footer (public layout). Reads the path itself if it needs it; the layout passes nothing. */
-export const Footer: ComponentType = GridSiteFooter;
+export const Footer: ComponentType = ClassicFooter;
 /** Home view (`/`). */
-export const HomeView: ComponentType<PropsOf<typeof GridHome>> = GridHome;
+export const HomeView: ComponentType<PropsOf<typeof GridHome>> = ClassicHomeView;
 /** Story page body: the published story (`/news/[slug]`) and the story preview (`/preview/story/[id]`). */
-export const StoryView: ComponentType<PropsOf<typeof StoryPageView>> = StoryPageView;
+export const StoryView: ComponentType<PropsOf<typeof StoryPageView>> = ClassicStoryView;
 /** Industry page body (`/industry/[slug]`). */
-export const IndustryView: ComponentType<PropsOf<typeof IndustryPageView>> = IndustryPageView;
+export const IndustryView: ComponentType<PropsOf<typeof IndustryPageView>> = ClassicIndustryView;
 /** Newsletter issue page body (`/newsletters/[slug]`). */
-export const NewsletterIssueView: ComponentType<PropsOf<typeof CurrentNewsletterIssueView>> = CurrentNewsletterIssueView;
+export const NewsletterIssueView: ComponentType<PropsOf<typeof CurrentNewsletterIssueView>> = ClassicNewsletterIssueView;
 /** Join page (`/join`). */
-export const JoinView: ComponentType = JoinPageView;
+export const JoinView: ComponentType = ClassicJoinView;

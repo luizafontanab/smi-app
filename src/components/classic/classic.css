@@ -1,0 +1,195 @@
+/*
+ * Classic — the second design option (GLOSSARY "Design option"; spec #68).
+ *
+ * Imported only by src/components/design-option.ts, never by globals.css, so
+ * it exists only in builds of the `classic` branch.
+ *
+ * Rules for every section below:
+ *   - Every selector starts from [data-site="public"], so nothing here reaches
+ *     /console or /dashboard.
+ *   - Select data-site, data-part and plain elements only. Never a class:
+ *     Tailwind utilities change freely. tests/unit/classic/selectors.test.ts
+ *     enforces this, and checks each data-part still exists in src.
+ *   - No @layer. Unlayered CSS outranks Tailwind's layered utilities, which is
+ *     how these rules win over the classes on Current's markup. The flip side:
+ *     a rule here beats `hidden` and every other utility on the element it
+ *     hits, so don't set `display` on a part that a utility shows and hides.
+ *   - Orange is always var(--smi-brand), never a literal, so a sponsor
+ *     takeover's inline value still wins.
+ *   - Ink on orange, never white. Keep focus rings visible. Motion only under
+ *     prefers-reduced-motion: no-preference.
+ *   - Colours are declared once, in the variables block. The hexes match
+ *     src/components/classic/palette.ts, which the contrast test checks.
+ *
+ * One marked section per ticket, so tickets built in parallel merge cleanly.
+ * Write only between your section's opening line and its `end` line: the
+ * unchanged marker lines between sections keep git from seeing two tickets'
+ * additions as touching.
+ */
+
+/* ── #70 Base: variables ─────────────────────────────────────────────────── */
+
+[data-site="public"] {
+  /* Current's variables, overridden for the public site only. */
+  --smi-brand: #ff8200;
+  --smi-ink: #111418;
+  --smi-chrome: var(--classic-chrome);
+  /* Secondary text everywhere reads in Classic's meta grey. */
+  --smi-graphite: var(--classic-meta);
+  /* League Spartan for all text. The face is already loaded by next/font in
+     the root layout, which puts --font-league-spartan on <html>. */
+  --smi-font-sans: var(--font-league-spartan), sans-serif;
+
+  /* Classic's own. */
+  --classic-canvas: #e2e2e2;
+  --classic-stripe: #dbdbdb;
+  --classic-panel: #ffffff;
+  --classic-chrome: #000000;
+  --classic-blue: #3100ff;
+  --classic-blue-hover: #1d0099;
+  --classic-button-text: #ffffff;
+  /* #606060, not #666: #666 on the canvas is 4.43:1 and fails AA. */
+  --classic-meta: #606060;
+  --classic-radius: 5px;
+  --classic-shadow: 0 5px 25px rgb(0 0 0 / 0.05);
+  /* The live site's diagonal chevrons, #dbdbdb, drawn behind the top 900px. */
+  --classic-stripes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 900' preserveAspectRatio='none'%3E%3Cpath fill='%23dbdbdb' d='M0 0h260L760 450 260 900H0l500-450z M520 0h180l500 450-500 450H520l500-450z'/%3E%3C/svg%3E");
+}
+
+/* ── #70 Base: rules ─────────────────────────────────────────────────────── */
+
+/* Canvas. The body sets its font through a variable it resolves on itself, so
+   the family has to be set again here for the override above to take. */
+[data-site="public"] {
+  background-color: var(--classic-canvas);
+  color: var(--smi-ink);
+  font-family: var(--smi-font-sans);
+}
+
+/* Chevron stripes: behind the page content in the public layout, and behind
+   the whole page on login, reset, unsubscribe and the root 404. */
+[data-site="public"] [data-part="site-main"],
+[data-site="public"][data-part="auth-page"],
+[data-site="public"][data-part="not-found"] {
+  background-image: var(--classic-stripes);
+  background-repeat: no-repeat;
+  background-position: top center;
+  background-size: 100% 900px;
+}
+
+/* Panels. */
+[data-site="public"] [data-part="panel"],
+[data-site="public"] [data-part="auth-panel"] {
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+
+/* Headings: League Spartan, weight 400. */
+[data-site="public"] :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-league-spartan), sans-serif;
+  font-weight: 400;
+}
+
+/* Text links: electric blue, darker blue on hover (orange text would fail
+   contrast on every light surface). */
+[data-site="public"] [data-part="rich-text"] a,
+[data-site="public"] [data-part="story-body"] a,
+[data-site="public"] [data-part="see-all"],
+[data-site="public"] [data-part="back-link"],
+[data-site="public"] [data-part="back-link"] a {
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="rich-text"] a:hover,
+[data-site="public"] [data-part="story-body"] a:hover,
+[data-site="public"] [data-part="see-all"]:hover,
+[data-site="public"] [data-part="back-link"]:hover,
+[data-site="public"] [data-part="back-link"] a:hover {
+  color: var(--classic-blue-hover);
+}
+
+/* Primary buttons: blue with white text, hovering to orange with ink text. */
+[data-site="public"] [data-part="button-primary"],
+[data-site="public"] [data-part="form-submit"] {
+  background-color: var(--classic-blue);
+  color: var(--classic-button-text);
+  border-color: transparent;
+  border-radius: var(--classic-radius);
+  text-decoration: none;
+}
+[data-site="public"] [data-part="button-primary"]:hover:not(:disabled),
+[data-site="public"] [data-part="form-submit"]:hover:not(:disabled) {
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+}
+
+/* Focus rings. globals.css draws them in orange, which is under 3:1 on the
+   canvas and on white; blue clears it on every light surface. On the black
+   chrome blue fails, so orange stays there. */
+[data-site="public"] :focus-visible {
+  outline: 2px solid var(--classic-blue);
+  outline-offset: 2px;
+}
+[data-site="public"] :is([data-part="site-header"], [data-part="site-footer"], [data-part="not-found-header"]) :focus-visible {
+  outline-color: var(--smi-brand);
+}
+
+/* Motion: hover colour changes ease in only for people who haven't asked for
+   reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-site="public"] [data-part="button-primary"],
+  [data-site="public"] [data-part="form-submit"],
+  [data-site="public"] [data-part="rich-text"] a,
+  [data-site="public"] [data-part="story-body"] a,
+  [data-site="public"] [data-part="see-all"],
+  [data-site="public"] [data-part="back-link"],
+  [data-site="public"] [data-part="back-link"] a {
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+}
+
+/* ── end #70 ── */
+
+/* ── #71 Header ──────────────────────────────────────────────────────────── */
+
+/* ── end #71 ── */
+
+/* ── #72 Footer ──────────────────────────────────────────────────────────── */
+
+/* ── end #72 ── */
+
+/* ── #73 Home ────────────────────────────────────────────────────────────── */
+
+/* ── end #73 ── */
+
+/* ── #74 Story ───────────────────────────────────────────────────────────── */
+
+/* ── end #74 ── */
+
+/* ── #75 Cards ───────────────────────────────────────────────────────────── */
+
+/* ── end #75 ── */
+
+/* ── #76 Industry ────────────────────────────────────────────────────────── */
+
+/* ── end #76 ── */
+
+/* ── #77 Newsletter issue ────────────────────────────────────────────────── */
+
+/* ── end #77 ── */
+
+/* ── #78 Join ────────────────────────────────────────────────────────────── */
+
+/* ── end #78 ── */
+
+/* ── #79 List pages ──────────────────────────────────────────────────────── */
+
+/* ── end #79 ── */
+
+/* ── #80 Detail and plain pages ──────────────────────────────────────────── */
+
+/* ── end #80 ── */
+
+/* ── #81 Edge surfaces and shared pieces ─────────────────────────────────── */
+
+/* ── end #81 ── */
