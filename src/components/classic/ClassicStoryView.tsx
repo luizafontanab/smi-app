@@ -22,7 +22,8 @@ import { adSlotKeys, isAnchor, type Block } from "@/lib/blocks/schema";
  * The layout still decides the order. It is cut in two after its last anchor
  * (story_header / story_hero / story_body): everything up to there goes in the
  * panel, the rest follows it. The layout's back_link block is drawn above the
- * panel in Classic's "‹" form instead of where it sits, so there is only one.
+ * panel in Classic's "‹" form instead of where it sits, so there is only one;
+ * a layout without one still gets "‹ Back to News" there.
  *
  * Advert positions are dealt by index across the WHOLE layout (adSlotKeys), so
  * the cut must not renumber them. The panel's half is a prefix of the layout
@@ -59,7 +60,7 @@ export function ClassicStoryView({ story, categories, cover, members, socialPost
   });
 
   const blocks = data.layout.blocks;
-  const back = blocks.find((b) => b.type === "back_link")?.props as { label: string; href: string } | undefined;
+  const back = (blocks.find((b) => b.type === "back_link")?.props as { label: string; href: string } | undefined) ?? BACK_TO_NEWS;
   let lastAnchor = -1;
   blocks.forEach((b, i) => {
     if (isAnchor("story", b.type)) lastAnchor = i;
@@ -103,13 +104,14 @@ export function ClassicStoryView({ story, categories, cover, members, socialPost
 
   return (
     <>
-      {back && (
-        <div data-part="back-link">
-          <Link href={back.href} className="tap">‹ {back.label}</Link>
-        </div>
-      )}
+      <div data-part="back-link">
+        <Link href={back.href} className="tap">‹ {back.label}</Link>
+      </div>
       <div data-part="story-panel">{renderBlocks(inPanel, "panel")}</div>
       {tail}
     </>
   );
 }
+
+/** Classic's story page always starts with a back link; this one when the layout has no back_link block. */
+const BACK_TO_NEWS = { label: "Back to News", href: "/news" };

@@ -10,7 +10,9 @@ import {
   GhEventCard, GhLogoBand, GhNewsletterCard, GhNewsletterPanel, GhPublicationPanel, GhStatsBand,
 } from "@/components/grid-home/cards";
 import { Band } from "@/components/grid-home/ui";
-import { belowFoldSequence, phoneSequence, type BelowFoldPiece } from "@/app/(public)/home.grid";
+import {
+  belowFoldSequence, HOME_AD_WRAPPER, HOME_TOP_STORIES, phoneCap, phoneSequence, uniqueFeaturedMembers, type BelowFoldPiece,
+} from "@/app/(public)/home.grid";
 import { excluding, type HomeData } from "@/app/(public)/home.data";
 
 /**
@@ -45,7 +47,7 @@ export function ClassicHomeView({
   // Current (GAPS A9.3). Disjoint, so nothing repeats and nothing is skipped,
   // and the page shows exactly Current's stories.
   const newsroom = stories.slice(0, NEWSROOM_SIZE);
-  const moreNews = weaveMemberNews({ carousel: stories.slice(NEWSROOM_SIZE, CURRENT_TOP_STORIES), alsoInFold: newsroom, memberNews });
+  const moreNews = weaveMemberNews({ carousel: stories.slice(NEWSROOM_SIZE, HOME_TOP_STORIES), alsoInFold: newsroom, memberNews });
   const placedStoryIds = new Set([...newsroom, ...moreNews].map((s) => s.id));
   const railNews = excluding(memberNews, placedStoryIds);
   const machine = featuredMachine?.machine;
@@ -53,11 +55,8 @@ export function ClassicHomeView({
   const upcomingEvents = events.filter((e) => e.slug !== featuredEvent?.slug).slice(0, 3);
   const issues = newsletters.filter((i) => i.web_slug);
 
-  // Sold placements, deduplicated on slug; also drops placements with no member
-  // (the same one-liner as GridHome and the member directory).
-  const featured = [...new Map(
-    featuredMembers.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : [])),
-  ).values()];
+  // Sold placements, each member once, as on GridHome and the member directory.
+  const featured = uniqueFeaturedMembers(featuredMembers);
 
   const sectionContent: Record<HomeSectionId, ReactNode> = {
     videos: (
@@ -211,18 +210,3 @@ function DiscHead({ title, href, seeAll, id }: { title: string; href?: string; s
 
 /** The Newsroom's ranked tiles, #1–#4. */
 const NEWSROOM_SIZE = 4;
-
-/**
- * How far down `stories` Current's GridHome reaches: its two fold highlights
- * plus its eight-tile More News carousel (`rest.slice(0, 8)` in home.grid.tsx,
- * which exports no constant for it). Classic stops at the same story, so the
- * two options show the same stories; tests/unit/classic/home-view.test.tsx
- * compares them and fails if GridHome's count changes.
- */
-const CURRENT_TOP_STORIES = 2 + 8;
-
-/** Third and later cards of a row drop below sm, as on Current (#33 C9). */
-const phoneCap = (i: number) => (i >= 2 ? "max-sm:hidden" : undefined);
-
-/** Banner width on a phone, as on Current: capped and centred; uncapped from md. */
-const HOME_AD_WRAPPER = "mx-auto w-full max-w-[300px] md:max-w-none";

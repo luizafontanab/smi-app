@@ -67,9 +67,8 @@ import { GridHome } from "@/app/(public)/home.grid";
 import { StoryPageView } from "@/components/story/StoryPageView";
 import { IndustryPageView } from "@/components/industry/IndustryPageView";
 import { NewsletterIssueView as CurrentNewsletterIssueView } from "@/components/newsletter/NewsletterIssueView";
-// Classic's pieces. Each starts as a pass-through to the Current component
-// above (which stays imported for the props types), and a later Classic
-// ticket replaces it.
+// Classic's own pieces, one per hook point (#71–#78). The Current components
+// above stay imported only for the props types each piece must accept.
 import { ClassicHeader } from "@/components/classic/ClassicHeader";
 import { ClassicFooter } from "@/components/classic/ClassicFooter";
 import { ClassicHomeView } from "@/components/classic/ClassicHomeView";

@@ -178,7 +178,7 @@
   padding-inline: max(var(--classic-header-gutter), calc((100% - var(--classic-header-width)) / 2 + var(--classic-header-gutter)));
   border-top: 4px solid var(--smi-brand);
   background-color: var(--classic-topbar);
-  color: #ffffff;
+  color: var(--classic-panel);
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
@@ -198,7 +198,7 @@
 [data-site="public"] [data-part="site-topbar-socials"] a {
   display: inline-flex;
   align-items: center;
-  color: #ffffff;
+  color: var(--classic-panel);
   opacity: 0.75;
 }
 [data-site="public"] [data-part="site-topbar-socials"] a:hover {
@@ -213,7 +213,7 @@
 }
 /* White text, underlined on hover: orange text on #555 is only 3:1. */
 [data-site="public"] [data-part="site-topbar-links"] a {
-  color: #ffffff;
+  color: var(--classic-panel);
   text-decoration: none;
 }
 [data-site="public"] [data-part="site-topbar-links"] a:hover {
@@ -223,7 +223,7 @@
 /* The base's blue ring fails on #555 and orange only just reaches 3:1, so the
    top bar's ring is white. */
 [data-site="public"] [data-part="site-topbar"] :focus-visible {
-  outline-color: #ffffff;
+  outline-color: var(--classic-panel);
 }
 /* 44px touch targets on coarse pointers (the icons are 20px). */
 @media (pointer: coarse) {
@@ -250,7 +250,7 @@
   top: 0;
   z-index: 40;
   background-color: var(--classic-chrome);
-  color: #ffffff;
+  color: var(--classic-panel);
 }
 [data-site="public"] [data-part="site-header-bar"] {
   display: flex;
@@ -315,12 +315,12 @@
   text-decoration: none;
 }
 [data-site="public"] [data-part="site-menu"] [data-part="site-nav-link"]:hover {
-  color: #ffffff;
+  color: var(--classic-panel);
 }
 /* The current section: white, with the orange underline. */
 [data-site="public"] [data-part="site-menu"] [data-part="site-nav-link"][aria-current] {
   border-bottom-color: var(--smi-brand);
-  color: #ffffff;
+  color: var(--classic-panel);
 }
 
 /* Search and the signed-out login icon, from 40rem; below that the drawer
@@ -342,7 +342,7 @@
 }
 [data-site="public"] [data-part="site-search"]:hover,
 [data-site="public"] [data-part="site-login"]:hover {
-  color: #ffffff;
+  color: var(--classic-panel);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1150,12 +1150,18 @@
   line-height: 1.6;
 }
 
-/* The numbered list, in the email's order. The numbers are drawn by the
-   markup (#1…#n, stories and videos only), so the list's own markers go. */
+/* The issue's entries, in the email's order: runs of numbered items, each an
+   <ol>, with adverts and the heading between them. The numbers are drawn by
+   the markup (#1…#n, stories and videos only), so the lists' own markers go. */
 [data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-items"] {
   display: grid;
   gap: 2rem;
   margin: 2.5rem 0 0;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-run"] {
+  display: grid;
+  gap: 2rem;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -2181,3 +2187,65 @@
 }
 
 /* ── end #81 ── */
+
+/* ── #68 review: sponsor takeover ─────────────────────────────────────────── */
+
+/* During a takeover --smi-brand is the sponsor's hex, and the public wrapper
+   carries data-takeover (decisions 6 Nov, 16). The console only checks that
+   hex against white, so ink on it is unchecked: every place Classic puts ink
+   text on var(--smi-brand) switches to white on ink, like the footer band
+   button. Decorative emoji discs keep the sponsor colour: they hold no text.
+   tests/unit/classic/takeover.test.ts fails on an ink-on-orange rule without
+   an override here. */
+[data-site="public"][data-takeover] [data-part="button-primary"]:hover:not(:disabled),
+[data-site="public"][data-takeover] [data-part="form-submit"]:hover:not(:disabled),
+[data-site="public"][data-takeover] [data-part="story-card"]:hover [data-part="card-image"]::after,
+[data-site="public"][data-takeover] :is([data-part="event-page"], [data-part="video-page"]) [data-part="share-button"]:hover,
+[data-site="public"][data-takeover] [data-part="featured-member-card"] > [data-part="card-badge"],
+[data-site="public"][data-takeover] [data-part="featured-member-card"]:not(:has(> [data-part="card-badge"]))::before,
+[data-site="public"][data-takeover] [data-part="event-page"] [data-part="event-meta"] [data-part="card-badge"],
+[data-site="public"][data-takeover] [data-part="home-page"] [data-part="home-newsroom-rank"],
+[data-site="public"][data-takeover] [data-part="newsletter-issue"] [data-part="newsletter-item-number"],
+[data-site="public"][data-takeover] [data-part="join-page"] [data-part="join-step-number"],
+[data-site="public"][data-takeover] [data-part="site-footer-join"],
+[data-site="public"][data-takeover] [data-part="skip-link"] {
+  background-color: var(--smi-ink);
+  color: var(--classic-button-text);
+}
+
+/* The footer band is ink now, so its button's ink hover and its ink focus
+   ring would vanish into it: the button hovers to white with ink text, and
+   the ring goes white. The skip link's ink ring goes white too, on its ink
+   fill over the black header. */
+[data-site="public"][data-takeover] [data-part="site-footer-join-button"]:hover {
+  background-color: var(--classic-panel);
+  color: var(--smi-ink);
+}
+[data-site="public"][data-takeover] [data-part="site-footer-join"] :focus-visible,
+[data-site="public"][data-takeover] [data-part="skip-link"]:focus-visible {
+  outline-color: var(--classic-panel);
+}
+
+/* Industry Topics: the select and its blue Go button share a row, the button
+   level with the select (decisions 6 Nov, 18). The pair takes the room the
+   Topics label had; the label grows inside it. */
+[data-site="public"] [data-part="industry-page"] [data-part="industry-topics-picker"] {
+  display: flex;
+  flex: 1 1 18rem;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: 36rem;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-topics-picker"] [data-part="industry-filter"] {
+  flex: 1 1 auto;
+  max-width: none;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-topics-picker"] [data-part="button-primary"] {
+  min-height: 3.25rem;
+  padding-inline: 1.5rem;
+  font: inherit;
+  font-size: 1.125rem;
+  cursor: pointer;
+}
+
+/* ── end #68 review ── */

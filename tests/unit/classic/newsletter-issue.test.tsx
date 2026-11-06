@@ -46,11 +46,10 @@ const fullExtras: NewsletterIssueExtras = {
 
 const noExtras = { events: [], directory: [] } as NewsletterIssueExtras;
 
-/** The issue's list entries in order, each read as its visible text. */
+/** The issue's run of entries in block order, each read as its visible text: list items, adverts and the heading. */
 function entries() {
-  return within(screen.getByRole("list", { name: "In this issue" }))
-    .getAllByRole("listitem")
-    .map((li) => li.textContent ?? "");
+  const run = screen.getByRole("group", { name: "In this issue" });
+  return [...run.children].flatMap((child) => (child.tagName === "OL" ? [...child.children] : [child])).map((el) => el.textContent ?? "");
 }
 
 describe("Classic newsletter issue", () => {
@@ -72,6 +71,18 @@ describe("Classic newsletter issue", () => {
     expect(list[5]).not.toMatch(/#\d/);
     expect(list[6]).toMatch(/^#4\s*Story 3/);
     expect(list[7]).toMatch(/^#5\s*Story 4/);
+  });
+
+  // A screen reader counts list items, so only the numbered entries are list
+  // items: each run of them is its own <ol>, starting at its first number, and
+  // the adverts and the heading sit between the runs (#68 review).
+  it("lists only the numbered entries, in runs that start at their own number", () => {
+    render(<ClassicNewsletterIssueView issue={fullIssue} extras={noExtras} />);
+
+    const lists = within(screen.getByRole("group", { name: "In this issue" })).getAllByRole("list");
+    expect(lists.map((ol) => ol.getAttribute("start") ?? "1")).toEqual(["1", "2", "4"]);
+    const items = lists.flatMap((ol) => within(ol).getAllByRole("listitem"));
+    expect(items.map((li) => li.textContent?.match(/^#\d+/)?.[0])).toEqual(["#1", "#2", "#3", "#4", "#5"]);
   });
 
   it("keeps Current's advert handling: a sponsored story stays a story, a banner stays a banner, both routed through /visit", () => {
