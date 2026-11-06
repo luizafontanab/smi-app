@@ -364,6 +364,128 @@
 
 /* ── #75 Cards ───────────────────────────────────────────────────────────── */
 
+/* The shared cards (StoryCard, VideoCard, EventCard, MemberTile,
+   FeaturedMemberCard, plus /search's and /member's inline member cards), one
+   look wherever they appear. Generic parts (card-title, card-meta…) are only
+   ever reached from inside a card root, because page lists reuse those names.
+   tests/unit/classic/cards.test.ts pins both. */
+
+/* White, 5px radius, the panel shadow. */
+[data-site="public"] :is([data-part="story-card"], [data-part="video-card"], [data-part="event-card"], [data-part="member-tile"], [data-part="featured-member-card"], [data-part="search-member-card"]) {
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+/* Search's member card drew a pale orange outline; Classic's cards have none. */
+[data-site="public"] [data-part="search-member-card"] {
+  border-color: transparent;
+}
+
+/* Uppercase titles in ink, regular weight; the title underlines on hover. */
+[data-site="public"] :is([data-part="story-card"], [data-part="video-card"], [data-part="event-card"], [data-part="member-tile"], [data-part="featured-member-card"], [data-part="search-member-card"]) [data-part="card-title"] {
+  color: var(--smi-ink);
+  font-weight: 400;
+  text-transform: uppercase;
+}
+[data-site="public"] :is([data-part="story-card"], [data-part="video-card"], [data-part="member-tile"], [data-part="featured-member-card"], [data-part="search-member-card"]):hover [data-part="card-title"],
+[data-site="public"] [data-part="event-card"] [data-part="card-title"] a:hover {
+  text-decoration: underline;
+}
+
+/* Meta (date, member, industry, location) in Classic's meta grey, uppercase. */
+[data-site="public"] :is([data-part="story-card"], [data-part="video-card"], [data-part="event-card"], [data-part="member-tile"], [data-part="featured-member-card"], [data-part="search-member-card"]) [data-part="card-meta"] {
+  color: var(--classic-meta);
+  text-transform: uppercase;
+}
+
+/* Image corners match the card's. */
+[data-site="public"] :is([data-part="story-card"], [data-part="member-tile"], [data-part="featured-member-card"], [data-part="search-member-card"]) [data-part="card-image"] {
+  border-radius: var(--classic-radius);
+}
+
+/* Story cards: the live site's 40px blue arrow chip, flush to the image's
+   bottom-right corner with only its top-left rounded. The card-image box is
+   already relative and clips its overflow. Decorative: the alt text after the
+   slash is empty, so the chip is not read out as part of the link's name. */
+[data-site="public"] [data-part="story-card"] [data-part="card-image"]::after {
+  content: "›" / "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-top-left-radius: var(--classic-radius);
+  background-color: var(--classic-blue);
+  color: var(--classic-button-text);
+  font-size: 1.75rem;
+  line-height: 1;
+}
+/* Hover: orange with ink, like the primary buttons. */
+[data-site="public"] [data-part="story-card"]:hover [data-part="card-image"]::after {
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+}
+
+/* Video cards: the play glyph sits on a centred white disc. The span is
+   already absolute over the image; z-index makes it a stacking context so the
+   disc (z-index -1) paints behind the glyph but above the thumbnail. */
+[data-site="public"] [data-part="video-card"] [data-part="card-play"] {
+  z-index: 1;
+  color: var(--smi-ink);
+  filter: none;
+  font-size: 1.25rem;
+  padding-left: 0.15em;
+}
+[data-site="public"] [data-part="video-card"] [data-part="card-play"]::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: -1;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background-color: var(--classic-panel);
+  transform: translate(-50%, -50%);
+}
+
+/* Featured member: a 2px orange border and an orange "Featured member" tab
+   flush in the top-left corner, ink text. FeaturedMemberCard brings its own
+   tab (card-badge); /member's inline featured strip has none, so it gets one
+   drawn in. */
+[data-site="public"] [data-part="featured-member-card"] {
+  position: relative;
+  border: 2px solid var(--smi-brand);
+}
+[data-site="public"] [data-part="featured-member-card"] > [data-part="card-badge"],
+[data-site="public"] [data-part="featured-member-card"]:not(:has(> [data-part="card-badge"]))::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0 0 var(--classic-radius) 0;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+[data-site="public"] [data-part="featured-member-card"]:not(:has(> [data-part="card-badge"]))::before {
+  content: "Featured member";
+}
+[data-site="public"] [data-part="featured-member-card"]:not(:has(> [data-part="card-badge"])) {
+  padding-top: 1.75rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-site="public"] [data-part="story-card"] [data-part="card-image"]::after {
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+}
+
 /* ── end #75 ── */
 
 /* ── #76 Industry ────────────────────────────────────────────────────────── */
