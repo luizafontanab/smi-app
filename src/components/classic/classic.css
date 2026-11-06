@@ -856,6 +856,189 @@
 
 /* ── #78 Join ────────────────────────────────────────────────────────────── */
 
+/* Classic's /join, "Hybrid" (ClassicJoinView). Everything is scoped to its
+   wrapper, [data-part="join-page"]. The hexes match palette.ts. */
+[data-site="public"] [data-part="join-page"] {
+  /* PLACEHOLDER banner backdrop: there is no photo yet (docs/HUMAN-TODO.md
+     7.5). This is the gradient's lightest stop. The white title is checked
+     against it in palette.ts. */
+  --classic-join-banner: #2b3440;
+  /* The live site's red icon disc. It holds an emoji, never text. */
+  --classic-red: #e3141e;
+  padding-bottom: 3rem;
+}
+
+/* The banner: full width, the title in white at its foot. PLACEHOLDER: a
+   gradient that only darkens from --classic-join-banner, standing in for the
+   live site's photo. When a real photo replaces it, keep a dark overlay behind
+   the title so white still passes AA. Never a borrowed story cover. */
+[data-site="public"] [data-part="join-page"] [data-part="join-banner"] {
+  display: flex;
+  align-items: flex-end;
+  min-height: 220px;
+  background-color: var(--classic-join-banner);
+  background-image: linear-gradient(160deg, var(--classic-join-banner) 0%, var(--classic-chrome) 100%);
+  color: var(--classic-panel);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-banner-inner"] {
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  padding: 2rem 1rem 2.5rem;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-banner"] [data-part="page-title"] {
+  margin: 0;
+  font-size: clamp(2.5rem, 2rem + 2vw, 3.25rem);
+  line-height: 1.1;
+  color: var(--classic-panel);
+}
+
+[data-site="public"] [data-part="join-page"] [data-part="join-body"] {
+  max-width: 64rem;
+  margin-inline: auto;
+  padding: 2.5rem 1rem 0;
+}
+
+/* Price beside How joining works, in one white panel. Stacked on phones. */
+[data-site="public"] [data-part="join-page"] [data-part="join-price-panel"] {
+  display: grid;
+  gap: 2rem;
+  padding: 1.5rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-price"] {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-price-amount"] {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 3.5rem;
+  line-height: 1;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="page-intro"] {
+  margin: 0.75rem 0 0;
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="join-page"] [data-part="button-primary"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-stripe-note"] {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] {
+  padding-top: 1.5rem;
+  border-top: 2px solid var(--classic-canvas);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] [data-part="section-title"] {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] ol {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] li {
+  display: flex;
+  gap: 1rem;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] b {
+  font-weight: 400;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-step-detail"] {
+  color: var(--classic-meta);
+}
+/* Ink on orange. */
+[data-site="public"] [data-part="join-page"] [data-part="join-step-number"] {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+}
+@media (min-width: 768px) {
+  [data-site="public"] [data-part="join-page"] [data-part="join-price-panel"] {
+    grid-template-columns: 1fr 1.3fr;
+    align-items: center;
+    padding: 2rem;
+  }
+  [data-site="public"] [data-part="join-page"] [data-part="join-steps"] {
+    padding: 0 0 0 2rem;
+    border-top: 0;
+    border-left: 2px solid var(--classic-canvas);
+  }
+}
+
+/* The four benefits: white panels, each with a coloured disc. The discs run
+   orange, red, blue, orange, as on the live page. They hold an emoji only
+   (aria-hidden), so no text sits on red or blue. */
+[data-site="public"] [data-part="join-page"] [data-part="join-benefits"] {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+@media (min-width: 640px) {
+  [data-site="public"] [data-part="join-page"] [data-part="join-benefits"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"] {
+  display: flex;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit-disc"] {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  font-size: 1.25rem;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"]:nth-child(2) [data-part="join-benefit-disc"] {
+  background-color: var(--classic-red);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"]:nth-child(3) [data-part="join-benefit-disc"] {
+  background-color: var(--classic-blue);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"] [data-part="card-title"] {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"] [data-part="card-excerpt"] {
+  margin: 0.5rem 0 0;
+  color: var(--smi-ink);
+}
+
 /* ── end #78 ── */
 
 /* ── #79 List pages ──────────────────────────────────────────────────────── */
