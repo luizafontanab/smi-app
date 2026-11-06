@@ -718,6 +718,92 @@
 
 /* ── #74 Story ───────────────────────────────────────────────────────────── */
 
+/* Markup: src/components/classic/ClassicStoryView.tsx, which serves both
+   /news/[slug] and /preview/story/[id]. "‹ Back to News", then one narrow
+   white panel (header, hero, body, share row, member tiles), then the
+   layout's after-article blocks at the route's own width. */
+
+[data-site="public"] [data-part="story-page"] > [data-part="back-link"] {
+  max-width: 56rem;
+  margin: 1.5rem auto 0;
+  font-size: 1rem;
+}
+
+/* The panel: narrower than the route's container from lg, centred. */
+[data-site="public"] [data-part="story-panel"] {
+  max-width: 56rem;
+  margin: 1rem auto 1.5rem;
+  padding: 1rem 1rem 2rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+@media (min-width: 48rem) {
+  [data-site="public"] [data-part="story-panel"] {
+    padding: 1.5rem 3rem 3rem;
+  }
+}
+
+/* Uppercase headline, regular weight, in ink. */
+[data-site="public"] [data-part="story-panel"] [data-part="page-title"] {
+  color: var(--smi-ink);
+  font-size: clamp(2rem, 1.2rem + 2.7vw, 3.25rem);
+  font-weight: 400;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+/* Category pills: the live site's topic lozenge, but in Classic's meta grey on
+   its tint (its white on #b4b4b4 is about 2:1). */
+[data-site="public"] [data-part="story-panel"] [data-part="story-category"] {
+  border-radius: var(--classic-radius);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+[data-site="public"] [data-part="story-panel"] [data-part="story-cover"] {
+  border-radius: var(--classic-radius);
+}
+
+/* Body text 20px / 1.6. The 68ch measure from globals.css still applies. */
+[data-site="public"] [data-part="story-panel"] [data-part="story-article"],
+[data-site="public"] [data-part="story-panel"] [data-part="story-article"] [data-part="story-body"] {
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+
+/* The source-member line that closes a story (decisions 6 Nov, 12): Classic's
+   link blue instead of Current's brown-orange, at a lighter weight. The
+   attribute is lib/company-link's, set at render time. */
+[data-site="public"] [data-part="story-page"] [data-part="story-body"] p[data-company-link] {
+  font-weight: 500;
+}
+[data-site="public"] [data-part="story-page"] [data-part="story-body"] p[data-company-link] a {
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="story-page"] [data-part="story-body"] p[data-company-link] a:hover {
+  color: var(--classic-blue-hover);
+}
+
+/* Member tiles under the article: one narrower column, centred. */
+[data-site="public"] [data-part="story-panel"] [data-part="story-members"] {
+  max-width: 36rem;
+  margin-inline: auto;
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] [data-part="story-panel"] [data-part="story-members"] [data-part="card-grid"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+[data-site="public"] [data-part="story-panel"] [data-part="story-member-tile"] {
+  border-radius: var(--classic-radius);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-site="public"] [data-part="story-page"] [data-part="story-body"] p[data-company-link] a {
+    transition: color 150ms ease;
+  }
+}
+
 /* ── end #74 ── */
 
 /* ── #75 Cards ───────────────────────────────────────────────────────────── */
@@ -1000,6 +1086,247 @@
 /* ── end #76 ── */
 
 /* ── #77 Newsletter issue ────────────────────────────────────────────────── */
+
+/* Markup: src/components/classic/ClassicNewsletterIssueView.tsx, the "Article
+   shape". Every rule starts from the page root, because the generic parts
+   (panel, card-title, section-title…) are reused on other pages. */
+
+[data-site="public"] [data-part="newsletter-issue"] {
+  max-width: 56rem;
+  margin-inline: auto;
+  padding: 1.5rem 1rem 3rem;
+}
+[data-site="public"] [data-part="newsletter-issue"] > [data-part="back-link"] {
+  display: inline-block;
+  text-decoration: none;
+}
+[data-site="public"] [data-part="newsletter-issue"] > [data-part="back-link"]:hover {
+  text-decoration: underline;
+}
+
+/* One narrow white panel (the base gives it colour, radius and shadow). */
+[data-site="public"] [data-part="newsletter-issue"] > [data-part="panel"] {
+  margin-top: 1rem;
+  padding: 1.25rem;
+}
+@media (min-width: 48rem) {
+  [data-site="public"] [data-part="newsletter-issue"] > [data-part="panel"] {
+    padding: 3rem;
+  }
+}
+
+/* Issue line, uppercase title, sponsor, standfirst. */
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-issue-line"] {
+  margin: 0;
+  color: var(--classic-meta);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="page-title"] {
+  margin: 0.5rem 0 0;
+  color: var(--smi-ink);
+  font-size: clamp(2rem, 1.2rem + 2.7vw, 3.25rem);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-sponsor"] {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+  color: var(--classic-meta);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-sponsor"] img {
+  display: block;
+  width: auto;
+  height: 2rem;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="page-intro"] {
+  margin: 1.5rem 0 0;
+  color: var(--smi-ink);
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+
+/* The numbered list, in the email's order. The numbers are drawn by the
+   markup (#1…#n, stories and videos only), so the list's own markers go. */
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-items"] {
+  display: grid;
+  gap: 2rem;
+  margin: 2.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-item"] {
+  position: relative;
+}
+/* The email's "Sheeting Hot News" heading, after the lead: an orange rule
+   above, no disc. */
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-items-heading"] {
+  padding-top: 1.5rem;
+  border-top: 4px solid var(--smi-brand);
+}
+/* Orange badge, ink text, over the image's top-left corner. */
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-item-number"] {
+  position: absolute;
+  top: -0.5rem;
+  left: -0.5rem;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  padding-inline: 0.25rem;
+  border-radius: var(--classic-radius);
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+/* Each item: image left, copy right; stacked on phones. */
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"] {
+  display: grid;
+  gap: 1.25rem;
+  color: var(--smi-ink);
+  text-decoration: none;
+}
+@media (min-width: 40rem) {
+  [data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"] {
+    grid-template-columns: 35% 1fr;
+  }
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"] [data-part="card-image"] {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  border-radius: var(--classic-radius);
+  background-color: var(--classic-canvas);
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"] [data-part="card-image"] img {
+  object-fit: cover;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"] [data-part="card-meta"] {
+  margin: 0;
+  color: var(--classic-meta);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"] [data-part="card-title"] {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"]:hover [data-part="card-title"] {
+  text-decoration: underline;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"] [data-part="card-excerpt"] {
+  margin: 0.5rem 0 0;
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"] [data-part="card-cta"] {
+  margin: 0.5rem 0 0;
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-card"]:hover [data-part="card-cta"] {
+  color: var(--classic-blue-hover);
+}
+
+/* Adverts keep their place in the list, unnumbered. The sponsored story is a
+   story on the canvas grey, under its "Sponsored" label; a banner is its
+   artwork under the same label. */
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-sponsored-story"] {
+  padding: 1rem;
+  border-radius: var(--classic-radius);
+  background-color: var(--classic-canvas);
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-ad"] [data-part="ad-label"] {
+  margin: 0 0 0.25rem;
+  color: var(--classic-meta);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-ad"] a {
+  display: block;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-ad"] img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--classic-radius);
+}
+
+/* Events diary and supplier directory: disc-headed sections under a rule. */
+[data-site="public"] [data-part="newsletter-issue"] :is([data-part="newsletter-diary"], [data-part="newsletter-directory"]) {
+  margin-top: 3rem;
+  padding-top: 2.5rem;
+  border-top: 2px solid var(--classic-canvas);
+}
+[data-site="public"] [data-part="newsletter-issue"] :is([data-part="newsletter-diary"], [data-part="newsletter-directory"]) + :is([data-part="newsletter-diary"], [data-part="newsletter-directory"]) {
+  margin-top: 2.5rem;
+  padding-top: 0;
+  border-top: 0;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="section-title"] {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0;
+  color: var(--smi-ink);
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="section-disc"] {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background-color: var(--smi-brand);
+  font-size: 1.5rem;
+}
+[data-site="public"] [data-part="newsletter-issue"] :is([data-part="newsletter-diary"], [data-part="newsletter-directory"]) ul {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-diary"] li {
+  padding-block: 0.75rem;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-diary"] li + li {
+  border-top: 1px solid var(--classic-canvas);
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-diary"] [data-part="card-meta"] {
+  margin: 0;
+  color: var(--classic-meta);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-directory"] ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+[data-site="public"] [data-part="newsletter-issue"] :is([data-part="newsletter-diary"], [data-part="newsletter-directory"]) a {
+  color: var(--classic-blue);
+  font-size: 1.125rem;
+  text-decoration: none;
+}
+[data-site="public"] [data-part="newsletter-issue"] :is([data-part="newsletter-diary"], [data-part="newsletter-directory"]) a:hover {
+  color: var(--classic-blue-hover);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-site="public"] [data-part="newsletter-issue"] [data-part="card-cta"],
+  [data-site="public"] [data-part="newsletter-issue"] :is([data-part="newsletter-diary"], [data-part="newsletter-directory"]) a {
+    transition: color 150ms ease;
+  }
+}
 
 /* ── end #77 ── */
 

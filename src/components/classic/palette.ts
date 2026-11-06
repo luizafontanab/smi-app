@@ -75,4 +75,10 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   { label: "menu link on the black chrome", fg: c["--classic-nav-link"], bg: c["--classic-chrome"], min: TEXT },
   { label: "current menu link on the black chrome", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
   { label: "current-section underline on the black chrome", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: NON_TEXT },
+  // #77 newsletter issue: the #n badge, and the sponsored story on the canvas grey.
+  { label: "newsletter item number: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: TEXT },
+  { label: "newsletter sponsored story title: ink on the canvas", fg: c["--smi-ink"], bg: c["--classic-canvas"], min: TEXT },
+  { label: "newsletter sponsored story label and copy: meta on the canvas", fg: c["--classic-meta"], bg: c["--classic-canvas"], min: TEXT },
+  { label: "newsletter sponsored story link: blue on the canvas", fg: c["--classic-blue"], bg: c["--classic-canvas"], min: TEXT },
+  { label: "newsletter sponsored story link hover: blue on the canvas", fg: c["--classic-blue-hover"], bg: c["--classic-canvas"], min: TEXT },
 ];
