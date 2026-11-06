@@ -22,6 +22,9 @@ export const CLASSIC_COLOURS = {
   "--classic-button-text": "#ffffff",
   // #606060, not the spec's #666: #666 on the canvas is 4.43:1 (decisions 6 Nov, 1).
   "--classic-meta": "#606060",
+  // #71 header: the grey top bar, and the flat menu's resting link colour.
+  "--classic-topbar": "#555555",
+  "--classic-nav-link": "#b4b4b4",
 } as const;
 
 const c = CLASSIC_COLOURS;
@@ -51,4 +54,25 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   { label: "focus ring on the canvas", fg: c["--classic-blue"], bg: c["--classic-canvas"], min: NON_TEXT },
   { label: "focus ring on a stripe", fg: c["--classic-blue"], bg: c["--classic-stripe"], min: NON_TEXT },
   { label: "focus ring on the black chrome", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: NON_TEXT },
+  // #72 footer. Back to Top strip: ink on white, hovering blue, blue ring.
+  { label: "footer Back to Top: ink on white", fg: c["--smi-ink"], bg: c["--classic-panel"], min: TEXT },
+  { label: "footer Back to Top hover: blue on white", fg: c["--classic-blue"], bg: c["--classic-panel"], min: TEXT },
+  // The orange band: ink text; a blue button that hovers to ink, never to
+  // orange on orange (decisions 6 Nov, 6); an ink focus ring, since the
+  // chrome's orange ring would vanish on the band (decisions 6 Nov, 11).
+  { label: "footer band text: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: TEXT },
+  { label: "footer band button: white on blue", fg: c["--classic-button-text"], bg: c["--classic-blue"], min: TEXT },
+  { label: "footer band button hover: white on ink", fg: c["--classic-button-text"], bg: c["--smi-ink"], min: TEXT },
+  { label: "footer band button edge: blue on orange", fg: c["--classic-blue"], bg: c["--smi-brand"], min: NON_TEXT },
+  { label: "footer band button hover edge: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: NON_TEXT },
+  { label: "footer band focus ring: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: NON_TEXT },
+  // The black stack: white text, links hovering orange.
+  { label: "footer text: white on black", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
+  { label: "footer link hover: orange on black", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: TEXT },
+  // #71 header. White is written as the panel colour (#fff).
+  { label: "top bar text", fg: c["--classic-panel"], bg: c["--classic-topbar"], min: TEXT },
+  { label: "focus ring on the top bar", fg: c["--classic-panel"], bg: c["--classic-topbar"], min: NON_TEXT },
+  { label: "menu link on the black chrome", fg: c["--classic-nav-link"], bg: c["--classic-chrome"], min: TEXT },
+  { label: "current menu link on the black chrome", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
+  { label: "current-section underline on the black chrome", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: NON_TEXT },
 ];
