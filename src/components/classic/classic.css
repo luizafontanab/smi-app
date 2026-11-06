@@ -74,7 +74,8 @@
   background-image: var(--classic-stripes);
   background-repeat: no-repeat;
   background-position: top center;
-  background-size: 100% 900px;
+  /* At least the window's height, so full-screen pages (login, the 404) show no hard edge. */
+  background-size: 100% max(900px, 100svh);
 }
 
 /* Panels. */
