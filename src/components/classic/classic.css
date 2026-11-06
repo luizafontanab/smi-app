@@ -156,6 +156,162 @@
 
 /* ── #72 Footer ──────────────────────────────────────────────────────────── */
 
+/* ClassicFooter's own markup carries no utility classes: everything it looks
+   like is here. Three bands inside the one <footer>: Back to Top (white), the
+   join band (orange, hidden on /join and /join/account by the component), and
+   the black centred stack. */
+
+/* Back to Top strip: ink on white, hovering blue. */
+[data-site="public"] [data-part="site-footer-back-to-top"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 1rem;
+  background-color: var(--classic-panel);
+  color: var(--smi-ink);
+  font-size: 1rem;
+  text-decoration: none;
+}
+[data-site="public"] [data-part="site-footer-back-to-top"]:hover {
+  color: var(--classic-blue);
+}
+/* White strip: the chrome's orange ring (#70) is under 3:1 on white. */
+[data-site="public"] [data-part="site-footer-back-to-top"]:focus-visible {
+  outline-color: var(--classic-blue);
+  outline-offset: -4px;
+}
+
+/* "Become a Member." band: ink on orange, never white. */
+[data-site="public"] [data-part="site-footer-join"] {
+  padding: 4rem 1rem;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+  text-align: center;
+}
+[data-site="public"] [data-part="site-footer-join-title"] {
+  font-size: 2.25rem;
+  line-height: 1.1;
+}
+@media (min-width: 40rem) {
+  [data-site="public"] [data-part="site-footer-join-title"] {
+    font-size: 3rem;
+  }
+}
+[data-site="public"] [data-part="site-footer-join-intro"] {
+  max-width: 36rem;
+  margin: 0.75rem auto 0;
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+/* Blue with white text. Hover goes to ink, not the base button's orange, which
+   would vanish on the orange band (decisions 6 Nov, 6). */
+[data-site="public"] [data-part="site-footer-join-button"] {
+  display: inline-block;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--classic-radius);
+  background-color: var(--classic-blue);
+  color: var(--classic-button-text);
+  font-size: 1.125rem;
+  text-decoration: none;
+}
+[data-site="public"] [data-part="site-footer-join-button"]:hover {
+  background-color: var(--smi-ink);
+  color: var(--classic-button-text);
+}
+/* The chrome's orange ring would be invisible on the orange band
+   (decisions 6 Nov, 11): ink instead. */
+[data-site="public"] [data-part="site-footer-join"] :focus-visible {
+  outline-color: var(--smi-ink);
+}
+
+/* The black centred stack: white text, 15px, links hovering orange. */
+[data-site="public"] [data-part="site-footer-main"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.5rem;
+  padding: 5.625rem 1rem;
+  background-color: var(--classic-chrome);
+  color: var(--classic-panel);
+  font-size: 0.9375rem;
+  text-align: center;
+}
+[data-site="public"] [data-part="site-footer-logo"] {
+  width: auto;
+  height: 4rem;
+}
+[data-site="public"] [data-part="site-footer-signup"] {
+  width: 100%;
+  max-width: 28rem;
+}
+[data-site="public"] [data-part="site-footer-heading"] {
+  color: var(--smi-brand);
+  font-size: 1.875rem;
+  line-height: 1.2;
+}
+[data-site="public"] [data-part="site-footer-blurb"] {
+  margin: 0.5rem 0 1rem;
+  line-height: 1.5;
+}
+/* The live site's Subscribe button sits flush against the field. */
+[data-site="public"] [data-part="site-footer-signup"] [data-part="newsletter-signup"] {
+  gap: 0;
+  text-align: left;
+}
+[data-site="public"] [data-part="site-footer-signup"] [data-part="form-input"] {
+  border-radius: var(--classic-radius) 0 0 var(--classic-radius);
+}
+[data-site="public"] [data-part="site-footer-signup"] [data-part="button-primary"] {
+  border-radius: 0 var(--classic-radius) var(--classic-radius) 0;
+}
+[data-site="public"] [data-part="site-footer-signup"] [data-part="form-notice"] {
+  margin-top: 0.5rem;
+}
+[data-site="public"] [data-part="site-footer-socials"],
+[data-site="public"] [data-part="site-footer-links"] ul {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+[data-site="public"] [data-part="site-footer-socials"] {
+  gap: 1.25rem;
+}
+[data-site="public"] [data-part="site-footer-socials"] a {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+}
+[data-site="public"] [data-part="site-footer-links"] ul {
+  gap: 0.5rem 1.5rem;
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+[data-site="public"] [data-part="site-footer-main"] a,
+[data-site="public"] [data-part="site-footer-links"] button {
+  color: var(--classic-panel);
+  text-decoration: none;
+}
+[data-site="public"] [data-part="site-footer-main"] a:hover,
+[data-site="public"] [data-part="site-footer-links"] button:hover {
+  color: var(--smi-brand);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-site="public"] [data-part="site-footer-back-to-top"],
+  [data-site="public"] [data-part="site-footer-join-button"],
+  [data-site="public"] [data-part="site-footer-main"] a,
+  [data-site="public"] [data-part="site-footer-links"] button {
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+}
+
 /* ── end #72 ── */
 
 /* ── #73 Home ────────────────────────────────────────────────────────────── */
