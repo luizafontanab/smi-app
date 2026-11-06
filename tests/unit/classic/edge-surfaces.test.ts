@@ -109,7 +109,7 @@ describe("Classic edge surfaces (#81)", () => {
     it("is set inline on the element that carries data-site=\"public\"", () => {
       const layout = read("src/app/(public)/layout.tsx");
       expect(layout).toMatch(/"--smi-brand":\s*takeover\.hex/);
-      expect(layout).toMatch(/<div data-site="public" style=\{style\}/);
+      expect(layout).toMatch(/<div data-site="public"[^>]*\sstyle=\{style\}/);
     });
 
     it("is overridden in classic.css only on that wrapper, never on a descendant", () => {
