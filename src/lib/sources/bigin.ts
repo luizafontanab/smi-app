@@ -8,7 +8,9 @@ import { normalizeSourceUrl } from "./extract";
 /**
  * Story sources from Bigin (Luiza, 27 Oct 2026; migration
  * 20261027000004_content_sources_bigin). Each Bigin company's News Page URL
- * is a story source alongside the imported spreadsheet list:
+ * — or, when that's blank, its Website (5 Nov 2026; migration
+ * 20261105000001, `bigin_from_website`) — is a story source alongside the
+ * imported spreadsheet list:
  *
  *  · a URL already on the list (spreadsheet or console) is linked to the
  *    company — never duplicated, never paused by this sync;
@@ -32,8 +34,12 @@ export const BIGIN_SOURCES_LAST_KEY = "bigin_sources_last";
 export type BiginSourcesRun = {
   at: string;
   complete: boolean;
-  /** companies with a News Page URL */
+  /** companies with a usable address: a News Page URL, or a Website standing in for one */
   companies: number;
+  /** of `companies`, those using their Website (absent on runs before 5 Nov 2026) */
+  fromWebsite?: number;
+  /** no company had a News Page URL, so Websites weren't used either — likely a misnamed field */
+  websiteFallbackWithheld?: boolean;
   added: number;
   linked: number;
   unlinked: number;
@@ -44,18 +50,18 @@ export type BiginSourcesRun = {
   membersSet: number;
 };
 
-export type LinkedRow = Pick<Tables<"content_sources">, "id" | "url" | "bigin_account_id" | "bigin_account_name" | "bigin_only">;
+export type LinkedRow = Pick<Tables<"content_sources">, "id" | "url" | "bigin_account_id" | "bigin_account_name" | "bigin_only" | "bigin_from_website">;
 export type UrlRow = Pick<Tables<"content_sources">, "id" | "url" | "bigin_account_id" | "bigin_only">;
 
 export type SourcePlan = {
   /** new rows, bigin_only */
-  insert: { url: string; domain: string; label: string; accountId: string; accountName: string }[];
+  insert: { url: string; domain: string; label: string; accountId: string; accountName: string; fromWebsite: boolean }[];
   /**
    * Existing rows to link (or whose company name changed). `reactivate`: a
    * bigin_only row Bigin lists again after it was dropped (and so paused) —
    * a fresh link from Bigin, so it runs again.
    */
-  link: { id: string; accountId: string; accountName: string; reactivate: boolean }[];
+  link: { id: string; accountId: string; accountName: string; reactivate: boolean; fromWebsite: boolean }[];
   /**
    * Rows losing their Bigin link, run before `link`; `pause` when the row was
    * bigin_only and no other company takes it over this run (a hand-over is in
@@ -84,10 +90,13 @@ export function planBiginSources(
     plan.unlink.push({ id: row.id, pause: row.bigin_only });
   };
 
-  // Normalise first; the first company to list a URL keeps it.
-  const wanted = new Map<string, { url: string; domain: string; name: string }>();
+  // Normalise first; the first company to list a URL keeps it — and a News
+  // Page URL comes before any Website, so a company's chosen news page beats
+  // another company's homepage fallback to the same address.
+  const wanted = new Map<string, { url: string; domain: string; name: string; fromWebsite: boolean }>();
   const urlOwner = new Map<string, string>();
-  for (const c of read.companies) {
+  const ordered = [...read.companies.filter((c) => !c.fromWebsite), ...read.companies.filter((c) => c.fromWebsite)];
+  for (const c of ordered) {
     const parsed = normalizeSourceUrl(c.url);
     if (!parsed) {
       plan.skipped.push({ accountId: c.id, name: c.name, url: c.url, reason: "invalid_url" });
@@ -99,7 +108,7 @@ export function planBiginSources(
       continue;
     }
     urlOwner.set(parsed.url, c.id);
-    wanted.set(c.id, { ...parsed, name: c.name });
+    wanted.set(c.id, { ...parsed, name: c.name, fromWebsite: c.fromWebsite });
   }
 
   // Releases first, so a URL one company dropped can be picked up by another
@@ -121,13 +130,15 @@ export function planBiginSources(
   for (const [accountId, w] of wanted) {
     const current = linkedByAccount.get(accountId);
     if (current && current.url === w.url) {
-      if ((current.bigin_account_name ?? "") !== w.name) plan.link.push({ id: current.id, accountId, accountName: w.name, reactivate: false });
+      if ((current.bigin_account_name ?? "") !== w.name || current.bigin_from_website !== w.fromWebsite) {
+        plan.link.push({ id: current.id, accountId, accountName: w.name, reactivate: false, fromWebsite: w.fromWebsite });
+      }
       continue;
     }
 
     const target = rowByUrl.get(w.url);
     if (!target) {
-      plan.insert.push({ url: w.url, domain: w.domain, label: w.name || w.domain, accountId, accountName: w.name });
+      plan.insert.push({ url: w.url, domain: w.domain, label: w.name || w.domain, accountId, accountName: w.name, fromWebsite: w.fromWebsite });
       continue;
     }
     const holder = target.bigin_account_id;
@@ -136,7 +147,7 @@ export function planBiginSources(
       plan.skipped.push({ accountId, name: w.name, url: w.url, reason: "clash" });
       continue;
     }
-    plan.link.push({ id: target.id, accountId, accountName: w.name, reactivate: target.bigin_only && !holder });
+    plan.link.push({ id: target.id, accountId, accountName: w.name, reactivate: target.bigin_only && !holder, fromWebsite: w.fromWebsite });
   }
 
   // A row released above and re-linked to another company is a hand-over: it
@@ -204,7 +215,7 @@ export async function syncBiginSources({ crm = getCrmSync(), now = () => new Dat
   const fail = (what: string, error: { message: string }) => { throw new Error(`source_bigin_sync: ${what}: ${error.message}`); };
 
   const { data: linked, error: linkedError } = await db.from("content_sources")
-    .select("id, url, bigin_account_id, bigin_account_name, bigin_only")
+    .select("id, url, bigin_account_id, bigin_account_name, bigin_only, bigin_from_website")
     .not("bigin_account_id", "is", null);
   if (linkedError) fail("reading linked sources", linkedError);
 
@@ -223,20 +234,23 @@ export async function syncBiginSources({ crm = getCrmSync(), now = () => new Dat
   // Unlink before linking: a hand-over between companies frees the unique index first.
   for (const u of plan.unlink) {
     const { error } = await db.from("content_sources").update({
-      bigin_account_id: null, bigin_account_name: null, updated_at: stamp, ...(u.pause ? { active: false } : {}),
+      bigin_account_id: null, bigin_account_name: null, bigin_from_website: false, updated_at: stamp, ...(u.pause ? { active: false } : {}),
     }).eq("id", u.id);
     if (error) fail(`unlinking source ${u.id}`, error);
   }
   for (const l of plan.link) {
     const { error } = await db.from("content_sources")
-      .update({ bigin_account_id: l.accountId, bigin_account_name: l.accountName || null, updated_at: stamp, ...(l.reactivate ? { active: true } : {}) })
+      .update({
+        bigin_account_id: l.accountId, bigin_account_name: l.accountName || null, bigin_from_website: l.fromWebsite,
+        updated_at: stamp, ...(l.reactivate ? { active: true } : {}),
+      })
       .eq("id", l.id);
     if (error) fail(`linking source ${l.id}`, error);
   }
   for (const i of plan.insert) {
     const { data, error } = await db.from("content_sources").insert({
       url: i.url, domain: i.domain, label: i.label, active: true, bigin_only: true,
-      bigin_account_id: i.accountId, bigin_account_name: i.accountName || null,
+      bigin_account_id: i.accountId, bigin_account_name: i.accountName || null, bigin_from_website: i.fromWebsite,
     }).select("id");
     // 23505: added by hand (or another run) since this one read the list — next run links it.
     if (error && error.code !== "23505") fail(`adding ${i.url}`, error);
@@ -249,6 +263,8 @@ export async function syncBiginSources({ crm = getCrmSync(), now = () => new Dat
     at: stamp,
     complete: read.complete,
     companies: read.companies.length,
+    fromWebsite: read.companies.filter((c) => c.fromWebsite).length,
+    ...(read.websiteFallbackWithheld ? { websiteFallbackWithheld: true } : {}),
     added,
     linked: plan.link.length,
     // a hand-over is unlinked then linked in the same run — not a loss

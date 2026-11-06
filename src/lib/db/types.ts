@@ -927,6 +927,7 @@ export type Database = {
           active: boolean
           bigin_account_id: string | null
           bigin_account_name: string | null
+          bigin_from_website: boolean
           bigin_only: boolean
           created_at: string
           domain: string
@@ -948,6 +949,7 @@ export type Database = {
           active?: boolean
           bigin_account_id?: string | null
           bigin_account_name?: string | null
+          bigin_from_website?: boolean
           bigin_only?: boolean
           created_at?: string
           domain: string
@@ -969,6 +971,7 @@ export type Database = {
           active?: boolean
           bigin_account_id?: string | null
           bigin_account_name?: string | null
+          bigin_from_website?: boolean
           bigin_only?: boolean
           created_at?: string
           domain?: string

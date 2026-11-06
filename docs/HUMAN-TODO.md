@@ -61,25 +61,18 @@ Each service is independent; do them in any order.
 
 ### CRM — Bigin
 
-- [ ] **1.13 — Create the SMI-owned Bigin account** and an OAuth client in the
-      Zoho API Console. Note its data centre: the code defaults to EU
-      (`accounts.zoho.eu` / `www.zohoapis.eu`); Canada's accounts host is
-      `accounts.zohocloud.ca`.
-- [ ] **1.14 — Generate a refresh token.** In the Zoho API Console, use a Self
-      Client → Generate Code → portal **Bigin**, then exchange the code within
-      its 3–10 minutes. Scopes:
-      `ZohoBigin.modules.contacts.ALL,ZohoBigin.modules.accounts.READ,ZohoSearch.securesearch.READ,ZohoBigin.notifications.ALL`
-- [ ] **1.15 — Set the Production variables:** `BIGIN_CLIENT_ID`,
-      `BIGIN_CLIENT_SECRET`, `BIGIN_REFRESH_TOKEN`, `BIGIN_WEBHOOK_TOKEN` (any
-      random string ≤ 50 characters), plus `BIGIN_ACCOUNTS_BASE` /
-      `BIGIN_API_BASE` if the account isn't in the EU.
-- [ ] **1.15a — Confirm the API name of the Companies field "News Page URL".**
-      In Bigin: Settings → Developer Space → APIs → API Names → Companies. The
-      story crawler assumes `News_Page_URL` (`NEWS_PAGE_FIELD` in
-      `src/lib/adapters/crm.ts`). If it's different, change that one constant.
-      With a wrong name, no Bigin sources arrive, because every company reads
-      as having no URL. Nothing already added is paused, though: a read with no
-      URLs at all is treated as suspect. The scope is already in 1.14's list.
+- [ ] **1.15a — After the first Bigin sync, check the "From Bigin" box on
+      `/console/sources`.** The story crawler reads the Companies field "News
+      Page URL" as `News_Page_URL` (`NEWS_PAGE_FIELD` in
+      `src/lib/adapters/crm.ts`), and falls back to the company's Website when
+      it's blank. Bigin shows no API names in its settings (checked 5 Nov), so
+      the name can only be confirmed by a sync. If the box shows the red "No
+      Bigin company came back with a News Page URL" warning, the name is
+      probably wrong: nothing is added or paused, and the real name has to be
+      found through Bigin's field API, which needs a settings-read scope added
+      to the token. Otherwise, read the count "using their Website": every one
+      is a homepage checked daily, so expect more suggestions than from news
+      pages alone (3.7 covers the first-week review).
 
 ### Social — Buffer
 
@@ -168,7 +161,10 @@ whatever is set here. Endpoints and token lifetimes: `docs/social-reach.md`.
 **Done (28 Oct):** 1.1 Resend account confirmed SMI-owned · 1.2 sending domain
 `sheetmetalindustries.com` verified · 1.4 `EMAIL_REPLY_TO` set · 1.8 SMI Stripe
 account and £40/month Price created, `STRIPE_PRICE_ID` set. Staging-only items
-1.3, 1.11, 1.12 and 1.19 moved to §7.
+1.3, 1.11, 1.12 and 1.19 moved to §7. **Done (5 Nov):** 1.13–1.15 Bigin
+connected to SMI's real account: Self Client, refresh token with the four
+scopes, and the `BIGIN_*` variables in Vercel Production only (never Preview:
+Bigin has no test mode).
 
 ---
 
@@ -177,8 +173,11 @@ account and £40/month Price created, `STRIPE_PRICE_ID` set. Staging-only items
 `supabase db push` applies every pending migration in one go; you can't push
 just one. Deploy the `staging` code at the same moment: old code against the new
 schema breaks member profiles, the directory and the CRM page. Pending, as far
-as this repo knows: `20261105000002` (issue #43: the `social_channel_posts`
-table, and every story and video already Live marked "Don't post"). Everything through `20261027000004` was pushed to
+as this repo knows: `20261105000001` (one additive column, for the Bigin
+Website fallback), `20261105000002` (issue #43: the `social_channel_posts`
+table, and every story and video already Live marked "Don't post") and
+`20261105000003` (issue #43: the function behind "waiting for confirmation"
+in Needs You Today). Everything through `20261027000004` was pushed to
 `bvyxeujhecxulzwvpxfr` on 28 Oct, without the backup or pre-checks below;
 `20261028000001` and `20261029000001` followed on 4 Nov.
 Confirm with `supabase migration list --linked`. From `20261020000005` on, nothing sends

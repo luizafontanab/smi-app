@@ -704,14 +704,14 @@ describe("listCompanyNewsPages (story sources from Bigin)", () => {
     const result = await (await freshCrm()).getCrmSync().listCompanyNewsPages();
 
     expect(calls(fetchSpy)).toEqual([
-      `GET ${API}/Accounts?fields=Account_Name,News_Page_URL&per_page=200&page=1`,
-      `GET ${API}/Accounts?fields=Account_Name,News_Page_URL&per_page=200&page=2`,
+      `GET ${API}/Accounts?fields=Account_Name,News_Page_URL,Website&per_page=200&page=1`,
+      `GET ${API}/Accounts?fields=Account_Name,News_Page_URL,Website&per_page=200&page=2`,
     ]);
     expect(result).toEqual({
       complete: true,
       companies: [
-        { id: "1", name: "Acme", url: "https://acme.test/news" },
-        { id: "4", name: "Brightsteel", url: "brightsteel.test/blog" },
+        { id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false },
+        { id: "4", name: "Brightsteel", url: "brightsteel.test/blog", fromWebsite: false },
       ],
     });
   });
@@ -740,7 +740,60 @@ describe("listCompanyNewsPages (story sources from Bigin)", () => {
     });
     expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
       complete: false,
-      companies: [{ id: "1", name: "Acme", url: "https://acme.test/news" }],
+      companies: [{ id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false }],
+    });
+  });
+
+  describe("Website fallback (5 Nov 2026)", () => {
+    it("uses the Website when News Page URL is blank, and marks it", async () => {
+      liveEnv();
+      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`)
+        ? accounts([
+            { id: "1", Account_Name: "Acme", News_Page_URL: "https://acme.test/news", Website: "https://acme.test" },
+            { id: "2", Account_Name: "Bright", News_Page_URL: null, Website: " https://bright.test " },
+            { id: "3", Account_Name: "Nothing", News_Page_URL: "", Website: null },
+          ])
+        : undefined);
+      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
+        complete: true,
+        companies: [
+          { id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false },
+          { id: "2", name: "Bright", url: "https://bright.test", fromWebsite: true },
+        ],
+      });
+    });
+
+    it("withholds every Website when no company has a News Page URL — most likely a misnamed field", async () => {
+      liveEnv();
+      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`)
+        ? accounts([
+            { id: "1", Account_Name: "Acme", Website: "https://acme.test" },
+            { id: "2", Account_Name: "Bright", Website: "https://bright.test" },
+          ])
+        : undefined);
+      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
+        complete: true, companies: [], websiteFallbackWithheld: true,
+      });
+    });
+
+    it("withholds them on a partial read too", async () => {
+      liveEnv();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      fetchRoutes((url) => {
+        if (!url.startsWith(`${API}/Accounts?`)) return undefined;
+        return url.includes("page=1")
+          ? accounts([{ id: "1", Account_Name: "Acme", News_Page_URL: null, Website: "https://acme.test" }], { more_records: true })
+          : json({ code: "LIMIT_REACHED", message: "out of credits" }, 429);
+      });
+      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
+        complete: false, companies: [], websiteFallbackWithheld: true,
+      });
+    });
+
+    it("an org with no addresses at all is just empty, not a warning", async () => {
+      liveEnv();
+      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`) ? accounts([{ id: "1", Account_Name: "Acme" }]) : undefined);
+      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({ complete: true, companies: [] });
     });
   });
 });
