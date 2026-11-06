@@ -120,9 +120,17 @@ An admin's decision that a story or video gets no social post, either on one soc
 
 ## Site design
 
+**Public site**:
+Everything a visitor or member sees outside the console and the member dashboard: the content pages, joining, signing in, password reset, unsubscribing and the "page not found" pages. Emails, share images and the payment page are not part of it.
+_Avoid_: front end, website (when the console is excluded)
+
 **Design variant**:
 One of the two layouts the public site can be shown in, grid (the default) or forge. Both use the same colours, type and components and differ only in how pages are arranged. "Theme" is an accepted synonym, used when talking with the client.
 _Avoid_: skin, template, version
+
+**Design option**:
+One of the two complete looks of the public site offered to the client to choose between: **Current** (the grid layout as built) and **Classic** (restyled after SMI's existing website). Unlike design variants, the two options differ in colours, type and components as well as arrangement, and each is shown on its own site rather than switched between.
+_Avoid_: theme (that is the retired switcher), variant
 
 ## Story discovery
 
