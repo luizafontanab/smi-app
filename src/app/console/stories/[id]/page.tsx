@@ -21,12 +21,12 @@ import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Badge } from "@/components/console/ui";
 import { STORY_STATUS_LABELS, isMemberDraft, parseStoryListFilters, storyListHref } from "@/lib/story-board";
-import { SocialPostFields } from "@/components/console/SocialPostFields";
+import { SocialConfirmForm, SocialPostFields } from "@/components/console/SocialPostFields";
 import { CountedInput } from "@/components/console/CountedInput";
 import { STORY_SUMMARY_WORDS } from "@/lib/newsletter-layout";
 import { latestSocialJob, readSocialCaps } from "@/lib/social-push";
-import { getSocialPublisher, isSocialLive } from "@/lib/adapters/social";
-import { loadSocialPanel } from "@/lib/social-post";
+import { cachedChannelNetworks, isSocialLive } from "@/lib/adapters/social";
+import { loadSocialPanel, storySocialItem } from "@/lib/social-post";
 import { socialNotes, socialSummary } from "@/lib/social-confirm";
 import { formatLondon, londonInputValue } from "@/lib/london-time";
 
@@ -52,7 +52,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const [story, cats, allMembers, inds, socialCaps, socialJob] = await Promise.all([
     isNew
       ? Promise.resolve(null)
-      : must(db.from("stories").select("*, summary:story_summary, member:members!stories_member_id_fkey(name, logo_path, slug, status, archived_at, industry_id), categories:story_categories(category:categories(slug, name))").eq("id", id).maybeSingle(), "console/stories editor"),
+      : must(db.from("stories").select("*, summary:story_summary, member:members!stories_member_id_fkey(name, logo_path, slug, status, archived_at, industry_id, social), categories:story_categories(category:categories(slug, name))").eq("id", id).maybeSingle(), "console/stories editor"),
     must(db.from("categories").select("id, name").order("name"), "console/stories categories"),
     // Every member, filtered below: the pickers offer the ones with a public
     // page, plus anyone this story already names whatever their state — a
@@ -101,9 +101,13 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const storedPosts = (story?.social_posts && typeof story.social_posts === "object" && !Array.isArray(story.social_posts)
     ? story.social_posts
     : {}) as Partial<Record<string, string>>;
-  // Issue #43: each channel's preview, confirmation and status.
+  // Issue #43: each channel's preview, confirmation and status, built from the rows already read above.
   const socialPanel = story
-    ? await loadSocialPanel(db, { story_id: id }, { networks: () => getSocialPublisher().channelNetworks(), delayMinutes: socialCaps.delay_minutes })
+    ? await loadSocialPanel(db, { story_id: id }, {
+      networks: () => cachedChannelNetworks(),
+      delayMinutes: socialCaps.delay_minutes,
+      item: storySocialItem(story, tagged),
+    })
     : null;
   const socialStatus = socialPanel ? socialSummary(socialPanel.channels.map((c) => c.state)) : undefined;
   const socialNoteLines = story ? socialNotes({ live: isSocialLive(), job: socialJob }) : [];
@@ -139,11 +143,6 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
       )}
       {typeof sp.saved === "string" && <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
       {typeof sp.error === "string" && <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-sm text-danger">{sp.error}</p>}
-      {typeof sp.confirmed === "string" && (
-        <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">
-          Social post confirmed for {sp.confirmed === "1" ? "1 channel" : `${Number(sp.confirmed) || 0} channels`}.
-        </p>
-      )}
       {typeof sp.notice === "string" && (
         <div role="status" className="mt-2 rounded bg-shade p-2 text-sm text-ink">
           <p className="font-medium">Draft pre-loaded from the article. Still to do:</p>
@@ -229,7 +228,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           caps={socialCaps}
           panel={socialPanel}
           notes={socialNoteLines}
-          confirmAction={confirmStorySocial}
+          confirmable={!!story}
+          confirmed={typeof sp.confirmed === "string" ? sp.confirmed : undefined}
         />
         {/* Jas 13/10 item 8: the story page links readers to SMI's own post of
             the story rather than offering share buttons. Filled from Buffer once
@@ -264,6 +264,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
         </fieldset>
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
+      {story && <SocialConfirmForm action={confirmStorySocial} id={id} />}
 
       {!isNew && story && (
         <>

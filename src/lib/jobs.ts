@@ -3,12 +3,12 @@ import type { Json } from "./db/types";
 import { notifyConsole } from "./notify-admin";
 import { siteUrl } from "./site-url";
 import { londonAt } from "./london-time";
-import { fillStoryPostLinks, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
+import { fillStoryPostLinks, queueSocialPush, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
 import type { SentPost } from "./adapters/social";
 import { planSocialPush, waitingSummary } from "./social-confirm";
 import {
-  clearConfirmations, connectedChannelIds, loadSocialItem, markChannelPosted, postedTodayByChannel, readChannelRecords,
-  socialWaiting, type SocialTarget,
+  claimChannelPost, clearConfirmations, connectedChannelIds, loadSocialItem, postedTodayByChannel, readChannelRecords,
+  recordBufferPostId, releaseChannelPost, socialWaiting, type SocialTarget,
 } from "./social-post";
 import { graceUntilFrom } from "./grace-period";
 import { publishDue } from "./content-lifecycle";
@@ -298,9 +298,9 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         item: { socialAt: item.social_at, publishedAt: item.published_at, skip: item.social_skip },
         delayMinutes: caps.delay_minutes,
         perDay: caps.per_day,
-        channels: channelPosts(item.post, channelIds, networks).map((p) => ({
-          post: { channelId: p.channelId, text: p.text, imagePath: p.imagePath },
-          record: records.get(p.channelId) ?? null,
+        channels: channelPosts(item.post, channelIds, networks).map(({ post }) => ({
+          post,
+          record: records.get(post.channelId) ?? null,
         })),
         postedToday: await postedTodayByChannel(db, channelIds),
       });
@@ -308,18 +308,23 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       if (plan.unconfirm.length) await clearConfirmations(db, target, plan.unconfirm);
 
       // Every due channel is attempted: one bad channel must not stop the
-      // others. Each is stamped the moment Buffer takes it — Buffer has no
-      // idempotency key, so the stamp is what stops a retry posting it twice.
-      // Stamped only for a real post: the logging stub must not make the editor say "posted".
+      // others. Each is claimed (posted_at stamped, atomically) just before
+      // it goes to Buffer, and the claim handed back if Buffer refuses it:
+      // Buffer has no idempotency key, so the claim is what stops a second run
+      // — or a retry — posting it twice. Only for a real post: the logging
+      // stub must not make the editor say "posted".
+      const live = isSocialLive();
       const sent: SentPost[] = [];
-      const failures: string[] = [];
+      const failed: { channelId: string; error: string }[] = [];
       for (const post of plan.send) {
+        if (live && !(await claimChannelPost(db, target, post))) continue;
         try {
           const accepted = await publisher.publishChannel(post);
-          if (isSocialLive()) await markChannelPosted(db, target, post.channelId, accepted?.id ?? null);
+          if (live && accepted?.id) await recordBufferPostId(db, target, post.channelId, accepted.id);
           if (accepted) sent.push(accepted);
         } catch (e) {
-          failures.push(e instanceof Error ? e.message : String(e));
+          if (live) await releaseChannelPost(db, target, post.channelId);
+          failed.push({ channelId: post.channelId, error: e instanceof Error ? e.message : String(e) });
         }
       }
 
@@ -333,17 +338,21 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
             new Date(Date.now() + SOCIAL_LINK_BACKOFF[0] * 60_000));
         }
       }
-      // The job's own retry covers everything still owed, including channels not yet due.
-      if (failures.length) throw new Error(`[social] Buffer publish failed for ${failures.length} of ${plan.send.length} channel(s) — ${failures.join("; ")}`);
 
-      // Run again for the next channel: one whose time is still to come, or
-      // one over its daily limit — spaced across tomorrow, not stacked on one slot.
-      let next = plan.nextAt;
-      if (plan.overCap.length) {
-        const slot = await nextOverflowSlot(db, caps.delay_minutes);
-        if (!next || slot < next) next = slot;
+      // Run again for the next channel, re-read from the database so a save or
+      // Confirm made while this ran is included and leaves one job, not two:
+      // a channel whose time is still to come, or one over its daily limit —
+      // spaced across tomorrow, not stacked on one slot. Queued before a
+      // failure is thrown, so channels that didn't fail aren't left without a
+      // job when this one's retries run out; the failed ones are this job's
+      // own retry.
+      const overflow = plan.overCap.length ? await nextOverflowSlot(db, caps.delay_minutes) : null;
+      // With the stub nothing is stamped, so what it just "sent" is held too, or it would run again at once.
+      const hold = [...plan.overCap, ...failed.map((f) => f.channelId), ...(live ? [] : plan.send.map((p) => p.channelId))];
+      await queueSocialPush(db, target, enqueue, caps, { hold, also: overflow });
+      if (failed.length) {
+        throw new Error(`[social] Buffer publish failed for ${failed.length} of ${plan.send.length} channel(s) — ${failed.map((f) => f.error).join("; ")}`);
       }
-      if (next) await enqueue("social_push", payload, next);
       break;
     }
     case "social_links": {

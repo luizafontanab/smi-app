@@ -8,7 +8,7 @@ import { requireConsole } from "@/lib/auth";
 import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
 import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
-import { CONFIRM_MESSAGES, confirmSocialPost } from "@/lib/social-push";
+import { CONFIRM_MESSAGES, confirmSocialPost, seenFromForm } from "@/lib/social-push";
 import { parseLondonInput } from "@/lib/london-time";
 import type { SocialChannels } from "@/lib/social-channels";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
@@ -222,9 +222,11 @@ export async function setStoryStatus(formData: FormData) {
 /**
  * The editor's Confirm / Confirm all under "Social post": snapshots what each
  * channel would receive from the saved item (lib/social-push
- * confirmSocialPost) and queues the post. The buttons sit in the editor's
- * form and are disabled while it has unsaved changes; the form's other fields
- * are ignored here either way. Not exported: "use server".
+ * confirmSocialPost) and queues the post, refusing if it is no longer what
+ * the page showed. The buttons submit their own small form (SocialConfirmForm),
+ * not the editor's, and are disabled while the editor has unsaved changes. A
+ * failure comes back as ?error=, like every other path here. Not exported:
+ * "use server".
  */
 async function confirmSocial(kind: "story" | "video", formData: FormData) {
   const user = await requireConsole();
@@ -234,13 +236,20 @@ async function confirmSocial(kind: "story" | "video", formData: FormData) {
   if (!UUID_RE.test(id)) redirect(`${list}?error=${encodeURIComponent(CONFIRM_MESSAGES.notFound)}`);
   const editor = `${list}/${id}`;
   if (!which) redirect(`${editor}?error=${encodeURIComponent(CONFIRM_MESSAGES.nothingWaiting)}#social`);
-  const { getSocialPublisher } = await import("@/lib/adapters/social");
-  const res = await confirmSocialPost(
-    serviceDb(),
-    kind === "story" ? { story_id: id } : { video_id: id },
-    { only: which === "all" ? "all" : [which], userId: user.userId },
-    { networks: () => getSocialPublisher().channelNetworks(), enqueue },
-  );
+  const { cachedChannelNetworks } = await import("@/lib/adapters/social");
+  let res: Awaited<ReturnType<typeof confirmSocialPost>>;
+  try {
+    res = await confirmSocialPost(
+      serviceDb(),
+      kind === "story" ? { story_id: id } : { video_id: id },
+      { only: which === "all" ? "all" : [which], userId: user.userId, seen: seenFromForm(formData) },
+      // the same remembered answer the editor's preview was built from
+      { networks: () => cachedChannelNetworks(), enqueue },
+    );
+  } catch (e) {
+    logError({ source: "server", area: "console:confirm-social", error: e, context: { kind, id } });
+    res = { ok: false, error: "Confirming didn't save, so nothing was confirmed. Try again." };
+  }
   revalidatePath(editor);
   revalidatePath("/console");
   if (!res.ok) redirect(`${editor}?error=${encodeURIComponent(res.error)}#social`);

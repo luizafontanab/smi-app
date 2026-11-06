@@ -6,15 +6,20 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
  * SAVED item, so while the editor's form has unsaved changes the button is
  * off and says "Save first" — otherwise an admin would confirm text other
  * than what they're looking at. Same input/change signal as
- * UnsavedChangesGuard. Submits the editor's own form to `action`.
+ * UnsavedChangesGuard, watched on the editor form it sits in.
+ *
+ * It submits `form` (SocialConfirmForm, outside the editor form), not the
+ * editor: as a submit button of the editor form it would be the one Enter
+ * presses, ahead of Save.
  */
 export function SocialConfirmButton({
-  action,
+  form,
   value,
   disabled = false,
   children,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  /** The id of the SocialConfirmForm. */
+  form: string;
   /** A channel id, or "all". */
   value: string;
   /** Off for another reason, already explained next to it (Buffer couldn't be reached). */
@@ -45,8 +50,7 @@ export function SocialConfirmButton({
       <button
         ref={ref}
         type="submit"
-        formAction={action}
-        formNoValidate
+        form={form}
         name="confirm_channel"
         value={value}
         disabled={dirty || disabled}

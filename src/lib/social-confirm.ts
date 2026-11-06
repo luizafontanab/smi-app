@@ -13,6 +13,21 @@
 
 import { formatLondonShort } from "./london-time";
 
+/**
+ * The editor's Confirm sends each channel's fingerprint as it was shown, in a
+ * field named this plus the channel id (social-post postFingerprint).
+ */
+export const SEEN_FIELD = "social_seen:";
+
+/** Each channel's fingerprint as the editor showed it, from the Confirm form. */
+export function seenFromForm(formData: FormData): Record<string, string> {
+  const seen: Record<string, string> = {};
+  for (const [name, value] of formData.entries()) {
+    if (name.startsWith(SEEN_FIELD) && typeof value === "string") seen[name.slice(SEEN_FIELD.length)] = value;
+  }
+  return seen;
+}
+
 /** What one channel would receive. */
 export type ChannelPost = { channelId: string; text: string; imagePath: string | null };
 

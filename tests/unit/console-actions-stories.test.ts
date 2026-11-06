@@ -12,6 +12,8 @@ import type { CurrentUser } from "@/lib/auth";
 import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
 import { LIFECYCLE_MESSAGES } from "@/lib/content-lifecycle";
 import { CONFIRM_MESSAGES } from "@/lib/social-push";
+import { channelPosts } from "@/lib/adapters/social";
+import { postFingerprint, storySocialItem } from "@/lib/social-post";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
@@ -905,7 +907,8 @@ describe("per-story social posts", () => {
     await expect(saveStory(form({ id: "s1", title: "T", social_at: "2099-01-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(jobs.delete).toHaveBeenCalled();
-    expect(jobs.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "social_push", payload: { story_id: "s1" }, due_at: "2099-01-01T10:00:00.000Z" }));
+    // through the real job queue, as Confirm does, so a due post runs at once in development too
+    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, new Date("2099-01-01T10:00:00.000Z"));
   });
 
   it("saving queues no post for a Live story nobody confirmed", async () => {
@@ -920,6 +923,7 @@ describe("per-story social posts", () => {
     await expect(saveStory(form({ id: "s1", title: "T", social_at: "" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(jobs.insert).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalledWith("social_push", expect.anything(), expect.anything());
   });
 
   it("saving stores each listed channel's Don't post box, ticked or not", async () => {
@@ -979,18 +983,25 @@ describe("confirmStorySocial", () => {
     id: ID, title: "Acme wins award", slug: "acme-wins-award", cover_path: null, member_id: null, status: "draft",
     social_at: null, social_text: null, social_skip: false, published_at: null, summary: "Acme took the top prize.", member: null,
   };
+  /** The fingerprints the editor showed for this story: no Buffer here, so every channel gets the one fallback text. */
+  type Story = Omit<typeof story, "social_text"> & { social_text: string | null };
+  const seen = (s: Story = story) => Object.fromEntries(
+    channelPosts(storySocialItem(s, []).post, ["li", "x"], { kind: "unknown" })
+      .map(({ post }) => [`social_seen:${post.channelId}`, postFingerprint(post)]),
+  );
+  const confirmDb = (rows: ReturnType<typeof queryBuilder>, s: Story = story) => db({
+    stories: () => queryBuilder(dbOk(s)),
+    story_members: () => queryBuilder(dbOk([])),
+    settings: () => queryBuilder(dbOk({ value: { channelIds: ["li", "x"] } })),
+    social_channel_posts: () => rows,
+    jobs: () => queryBuilder(dbOk(null)),
+  });
 
   it("confirms every waiting channel as the signed-in admin and comes back to the editor", async () => {
     const rows = queryBuilder(dbOk([]));
-    db({
-      stories: () => queryBuilder(dbOk(story)),
-      story_members: () => queryBuilder(dbOk([])),
-      settings: () => queryBuilder(dbOk({ value: { channelIds: ["li", "x"] } })),
-      social_channel_posts: () => rows,
-      jobs: () => queryBuilder(dbOk(null)),
-    });
+    confirmDb(rows);
 
-    await expect(confirmStorySocial(form({ id: ID, confirm_channel: "all", title: "edited but unsaved" })))
+    await expect(confirmStorySocial(form({ id: ID, confirm_channel: "all", title: "edited but unsaved", ...seen() })))
       .rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?confirmed=2#social`);
 
     const [upserted] = (rows.upsert as ReturnType<typeof vi.fn>).mock.calls[0] as unknown as [{ channel_id: string; confirmed_by: string; confirmed_text: string }[]];
@@ -999,6 +1010,23 @@ describe("confirmStorySocial", () => {
     // the saved story, not the form
     expect(upserted[0].confirmed_text).toMatch(/^Acme took the top prize\./);
     expect(revalidatePath).toHaveBeenCalledWith("/console");
+  });
+
+  it("refuses, with nothing stored, when the story changed after the editor loaded", async () => {
+    const rows = queryBuilder(dbOk([]));
+    // the page was built before another admin saved a new lead-in
+    confirmDb(rows, { ...story, social_text: "Another admin's lead-in." });
+
+    await expect(confirmStorySocial(form({ id: ID, confirm_channel: "x", ...seen() })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?error=${encodeURIComponent(CONFIRM_MESSAGES.changed)}#social`);
+    expect(rows.upsert).not.toHaveBeenCalled();
+  });
+
+  it("comes back to the editor with a message, not an error page, when saving the confirmation fails", async () => {
+    confirmDb(queryBuilder(dbError("connection lost")));
+
+    await expect(confirmStorySocial(form({ id: ID, confirm_channel: "all", ...seen() })))
+      .rejects.toThrow(new RegExp(`^NEXT_REDIRECT:/console/stories/${ID}\\?error=.*#social$`));
   });
 
   it("says so when there are no channels to confirm", async () => {

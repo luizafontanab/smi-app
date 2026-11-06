@@ -49,6 +49,7 @@ function deps(owner: UploadOwner): IntakeDeps {
     geocode: geocodeAddress,
     notify: notifyConsoleOnUse,
     log: (area, error, context) => logError({ source: "server", area, error, context }),
+    enqueue,
   };
 }
 

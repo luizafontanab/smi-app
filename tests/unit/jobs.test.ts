@@ -358,8 +358,10 @@ describe("runJob kinds", () => {
 
   /**
    * One social_push run for story s1 (or video v1). social_channel_posts is
-   * read for the channel rows, then for today's posted count, then written:
-   * `writes` collects the clears and the posted stamps.
+   * read for the channel rows, then for today's posted count; every call after
+   * that lands on `writes` — the clears, each channel's claim (which sees
+   * `claimed`, by default the rows, so it wins), the hand-back, the Buffer id,
+   * and the closing re-read that queues the next run (which sees the rows).
    */
   function socialRun(o: {
     payload?: Record<string, unknown>;
@@ -371,10 +373,11 @@ describe("runJob kinds", () => {
     caps?: Record<string, unknown>;
     members?: unknown[];
     jobs?: ReturnType<typeof queryBuilder>[];
+    claimed?: unknown[];
   } = {}) {
     const j = job("social_push", { payload: o.payload ?? { story_id: "s1" } });
     const tail = queryBuilder(dbOk(null));
-    const writes = queryBuilder(dbOk(null));
+    const writes = queryBuilder(dbOk(o.claimed ?? o.rows ?? []));
     const stories = queryBuilder(dbOk(liveStory(o.story)));
     const reads = [queryBuilder(dbOk(o.rows ?? [])), queryBuilder(dbOk(o.postedToday ?? []))];
     let n = 0;
@@ -410,6 +413,43 @@ describe("runJob kinds", () => {
         expect(writes.eq).toHaveBeenCalledWith("channel_id", "li");
       }
     }
+  });
+
+  it("social_push — claims each channel before sending it, so two runs can't both post it", async () => {
+    socialLive.mockReturnValue(true);
+    const { j, writes } = socialRun({ rows: [confirmedRow("li", STORY_TEXT())] });
+
+    await runJobById(j.id);
+
+    // stamped only while still unstamped, still confirmed with this text, and not Don't post — then sent
+    const [claim] = callsOf(writes.update)[0] as [{ posted_at: string }];
+    expect(claim.posted_at).toEqual(expect.any(String));
+    expect(writes.is).toHaveBeenCalledWith("posted_at", null);
+    expect(writes.eq).toHaveBeenCalledWith("confirmed_text", STORY_TEXT());
+    expect(publishChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it("social_push — doesn't send a channel another run claimed first", async () => {
+    socialLive.mockReturnValue(true);
+    const { j } = socialRun({ rows: [confirmedRow("li", STORY_TEXT())], claimed: [] });
+
+    await runJobById(j.id);
+
+    expect(publishChannel).not.toHaveBeenCalled();
+  });
+
+  it("social_push — when it ends, queues the next run afresh, replacing a push queued while it ran", async () => {
+    const later = new Date(Date.now() + 3 * 3_600_000).toISOString();
+    const { j, tail } = socialRun({
+      channels: ["li", "x"],
+      rows: [confirmedRow("li", STORY_TEXT()), confirmedRow("x", STORY_TEXT(), { confirmed_at: later })],
+    });
+
+    await runJobById(j.id);
+
+    expect(tail.delete).toHaveBeenCalled(); // any pending duplicate for s1 is dropped
+    const pushes = callsOf(tail.insert).map(([r]) => r as { kind: string; due_at: string }).filter((r) => r.kind === "social_push");
+    expect(pushes).toEqual([expect.objectContaining({ due_at: later })]); // one job, for x
   });
 
   it("social_push — posts the confirmed channel while another still waits for confirmation", async () => {
@@ -697,8 +737,10 @@ describe("runJob kinds", () => {
     await runJobById(j.id);
 
     expect(sentTo()).toEqual(["li", "x"]);
-    // li is stamped at once, and its link still collected; the job fails, so it retries
-    expect(writes.update).toHaveBeenCalledWith(expect.objectContaining({ posted_at: expect.any(String), buffer_post_id: "p1" }));
+    // li is claimed before sending and keeps its Buffer id; x's claim is handed back; the job fails, so it retries
+    expect(writes.update).toHaveBeenCalledWith(expect.objectContaining({ posted_at: expect.any(String) }));
+    expect(writes.update).toHaveBeenCalledWith(expect.objectContaining({ buffer_post_id: "p1" }));
+    expect(writes.update).toHaveBeenCalledWith(expect.objectContaining({ posted_at: null }));
     expect(stories.update).toHaveBeenCalledWith({ social_posts: { linkedin: LI } });
     expect(tail.update).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", last_error: expect.stringContaining("too long") }));
 
@@ -710,6 +752,22 @@ describe("runJob kinds", () => {
     });
     await runJobById(retry.j.id);
     expect(sentTo()).toEqual(["x"]);
+  });
+
+  it("social_push — a failing channel doesn't strand one confirmed for later: its run is queued before the job fails", async () => {
+    socialLive.mockReturnValue(true);
+    publishChannel.mockRejectedValueOnce(new Error("[social] Buffer publish failed for channel li — down"));
+    const later = new Date(Date.now() + 3 * 3_600_000).toISOString();
+    const { j, tail } = socialRun({
+      channels: ["li", "x"],
+      rows: [confirmedRow("li", STORY_TEXT()), confirmedRow("x", STORY_TEXT(), { confirmed_at: later })],
+    });
+
+    await runJobById(j.id);
+
+    // x's run at its own time, not li's retry (that is this job's own)
+    expect(callsOf(tail.insert)).toContainEqual([expect.objectContaining({ kind: "social_push", due_at: later })]);
+    expect(tail.update).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", last_error: expect.stringContaining("down") }));
   });
 
   it("social_push (story) — never overwrites a link someone pasted", async () => {
@@ -896,14 +954,13 @@ describe("runJob kinds", () => {
 
   it("admin_digest — lists each Live item whose post time passed with a channel still unconfirmed, once, with its link", async () => {
     const j = job("admin_digest");
-    const past = new Date(Date.now() - 5 * 3_600_000).toISOString();
+    // the database works out which items are waiting (social_waiting_items)
+    const rpc = vi.fn(async (fn: unknown) => fn === "social_waiting_items"
+      ? dbOk([{ kind: "story", id: "s1", title: "Acme wins award", waiting: 1 }])
+      : dbOk(null));
     dbFor([queryBuilder(dbOk(j)), queryBuilder(dbOk([{ id: j.id }])), queryBuilder(dbOk(null))], {
-      // the review count, then the Live list the social check reads
-      stories: sequence<unknown>(dbOk(null, 0), dbOk([
-        { id: "s1", title: "Acme wins award", social_at: null, published_at: past },
-        { id: "s2", title: "Not yet due", social_at: new Date(Date.now() + 3_600_000).toISOString(), published_at: past },
-      ])),
-      videos: sequence<unknown>(dbOk(null, 0), dbOk([])),
+      stories: () => queryBuilder(dbOk(null, 0)),
+      videos: () => queryBuilder(dbOk(null, 0)),
       events: () => queryBuilder(dbOk(null, 0)),
       featured_machines: () => queryBuilder(dbOk(null, 0)),
       member_revisions: () => queryBuilder(dbOk(null, 0)),
@@ -911,18 +968,13 @@ describe("runJob kinds", () => {
       visibility_requests: () => queryBuilder(dbOk(null, 0)),
       members: () => queryBuilder(dbOk(null, 0)),
       settings: () => queryBuilder(dbOk({ value: { channelIds: ["li", "x", "fb"], delay_minutes: 30 } })),
-      // li confirmed, fb marked Don't post: only x is waiting
-      social_channel_posts: () => queryBuilder(dbOk([
-        { story_id: "s1", video_id: null, channel_id: "li", skip: false, confirmed_at: past, posted_at: null },
-        { story_id: "s1", video_id: null, channel_id: "fb", skip: true, confirmed_at: null, posted_at: null },
-      ])),
-    });
+    }, rpc);
 
     await runJobById(j.id);
 
+    expect(rpc).toHaveBeenCalledWith("social_waiting_items", expect.objectContaining({ p_channel_ids: ["li", "x", "fb"], p_delay_minutes: 30 }));
     const text = String((send.mock.calls[0] as unknown as [{ text: string }])?.[0]?.text);
     expect(text).toContain(`“Acme wins award”: 1 of 3 channels needs confirming — ${siteUrl()}/console/stories/s1#social`);
-    expect(text).not.toContain("Not yet due");
   });
 
   it("admin_digest — skips silently when ADMIN_EMAIL isn't configured", async () => {

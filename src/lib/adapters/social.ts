@@ -198,10 +198,10 @@ export function channelText(post: SocialPost, service: string | null): string {
  * A network not known — nothing to look up, or the lookup failed — gets the
  * one X-fitted text every channel falls back to.
  */
-export function channelPosts(post: SocialPost, channelIds: string[], networks: ChannelNetworks): (ChannelPost & { network: string | null })[] {
+export function channelPosts(post: SocialPost, channelIds: string[], networks: ChannelNetworks): { post: ChannelPost; network: string | null }[] {
   return channelIds.map((channelId) => {
     const network = networks.kind === "known" ? networks.services.get(channelId) ?? null : null;
-    return { channelId, network, text: channelText(post, network), imagePath: post.imagePath };
+    return { post: { channelId, text: channelText(post, network), imagePath: post.imagePath }, network };
   });
 }
 
@@ -394,4 +394,27 @@ export function isSocialLive(): boolean {
 export function getSocialPublisher(): SocialPublisher {
   const token = process.env.BUFFER_ACCESS_TOKEN;
   return token ? new BufferPublisher(token) : new LoggingSocialStub();
+}
+
+const NETWORKS_TTL_MS = 5 * 60_000;
+let networksCache: { at: number; value: ChannelNetworks } | null = null;
+
+/**
+ * Which network each channel is, remembered for a few minutes, for the
+ * editor and its Confirm: they ask on every load, and a slow Buffer would
+ * otherwise slow every editor page. Confirm uses the same answer the preview
+ * was built from. A failed lookup is never remembered. The social_push job
+ * asks Buffer directly: what it posts is compared with the confirmed
+ * snapshot, so a stale answer here can only hold a post back, never change it.
+ */
+export async function cachedChannelNetworks(now = Date.now()): Promise<ChannelNetworks> {
+  if (networksCache && now - networksCache.at < NETWORKS_TTL_MS) return networksCache.value;
+  const value = await getSocialPublisher().channelNetworks();
+  networksCache = value.kind === "failed" ? null : { at: now, value };
+  return value;
+}
+
+/** For tests. */
+export function clearChannelNetworksCache() {
+  networksCache = null;
 }

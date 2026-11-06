@@ -176,8 +176,8 @@ schema breaks member profiles, the directory and the CRM page. Pending, as far
 as this repo knows: `20261105000001` (one additive column, for the Bigin
 Website fallback), `20261105000002` (issue #43: the `social_channel_posts`
 table, and every story and video already Live marked "Don't post") and
-`20261105000003` (issue #43: the function behind "waiting for confirmation"
-in Needs You Today). Everything through `20261027000004` was pushed to
+`20261105000003`–`04` (issue #43: the function behind "waiting for
+confirmation" in Needs You Today, and its permissions). Everything through `20261027000004` was pushed to
 `bvyxeujhecxulzwvpxfr` on 28 Oct, without the backup or pre-checks below;
 `20261028000001` and `20261029000001` followed on 4 Nov.
 Confirm with `supabase migration list --linked`. From `20261020000005` on, nothing sends

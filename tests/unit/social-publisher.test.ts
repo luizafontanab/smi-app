@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  channelLabel, channelPosts, channelText, fitTagsToX, getSocialPublisher, isSocialLive, MAX_EXTRA_TAGGED_MEMBERS, X_MAX_LENGTH, xLength,
+  cachedChannelNetworks, channelLabel, channelPosts, channelText, clearChannelNetworksCache, fitTagsToX, getSocialPublisher, isSocialLive, MAX_EXTRA_TAGGED_MEMBERS, X_MAX_LENGTH, xLength,
   type SocialPost,
 } from "@/lib/adapters/social";
 import { serviceDb } from "@/lib/db/server";
@@ -310,12 +310,12 @@ describe("channel networks and each channel's post", () => {
   it("gives each channel only its own network's tags, with the image", () => {
     const known = { kind: "known" as const, services: new Map([["li-1", "linkedin"], ["x-1", "twitter"]]) };
     const [li, x] = channelPosts(post({ text: "Hello", imagePath: "c.jpg", tagHandles: { linkedin: "acme-ltd", x: "acme" } }), ["li-1", "x-1"], known);
-    expect(li).toEqual({ channelId: "li-1", network: "linkedin", text: "Hello\n\nlinkedin:acme-ltd", imagePath: "c.jpg" });
-    expect(x).toEqual({ channelId: "x-1", network: "twitter", text: "Hello\n\nx:@acme", imagePath: "c.jpg" });
+    expect(li).toEqual({ network: "linkedin", post: { channelId: "li-1", text: "Hello\n\nlinkedin:acme-ltd", imagePath: "c.jpg" } });
+    expect(x).toEqual({ network: "twitter", post: { channelId: "x-1", text: "Hello\n\nx:@acme", imagePath: "c.jpg" } });
   });
 
   it("keeps an X post within 280 with five members tagged, dropping the co-featured ones first", () => {
-    const [{ text }] = channelPosts(fivemembers, ["x-1"], { kind: "known", services: new Map([["x-1", "twitter"]]) });
+    const [{ post: { text } }] = channelPosts(fivemembers, ["x-1"], { kind: "known", services: new Map([["x-1", "twitter"]]) });
     expect(xLength(text)).toBeLessThanOrEqual(X_MAX_LENGTH);
     expect(text).toContain("x:@acmeengineering");
     expect(text).not.toContain("linkedin:");
@@ -325,9 +325,9 @@ describe("channel networks and each channel's post", () => {
   it("fits one text to X's limit for every channel when the network isn't known", () => {
     for (const networks of [{ kind: "unknown" as const }, { kind: "failed" as const }]) {
       const [a, b] = channelPosts(fivemembers, ["a", "b"], networks);
-      expect(a.text).toBe(b.text);
+      expect(a.post.text).toBe(b.post.text);
       expect(a.network).toBeNull();
-      expect(xLength(a.text)).toBeLessThanOrEqual(X_MAX_LENGTH);
+      expect(xLength(a.post.text)).toBeLessThanOrEqual(X_MAX_LENGTH);
     }
   });
 
@@ -346,5 +346,34 @@ describe("xLength / fitTagsToX", () => {
   it("adds tags while they fit and stops at the first that doesn't", () => {
     const body = "y".repeat(260); // +2+6 = 268 fits; +1+18 would be 287
     expect(fitTagsToX(body, ["x:@one", "x:@twotwotwotwotwo", "x:@3"])).toBe(`${body}\n\nx:@one`);
+  });
+});
+
+describe("cachedChannelNetworks", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetDbServerMocks();
+    vi.restoreAllMocks();
+    clearChannelNetworksCache();
+  });
+
+  it("asks Buffer once for a few minutes, then again; a failed answer is never kept", async () => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    withSettings({ channelIds: ["li"], organizationId: "org-1" });
+    const ok = () => new Response(JSON.stringify({ data: { channels: [{ id: "li", service: "linkedin" }] } }));
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("down", { status: 503 }))
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok());
+    const t = Date.now();
+
+    expect((await cachedChannelNetworks(t)).kind).toBe("failed");
+    expect((await cachedChannelNetworks(t)).kind).toBe("known"); // the failure wasn't kept
+    expect((await cachedChannelNetworks(t + 60_000)).kind).toBe("known");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    await cachedChannelNetworks(t + 6 * 60_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 });

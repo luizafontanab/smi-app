@@ -1,5 +1,4 @@
 import type { serviceDb } from "./db/server";
-import type { Json } from "./db/types";
 import type { ChannelNetworks, SentPost } from "./adapters/social";
 import type { JobKind } from "./jobs";
 import { storyPostUrl, type StoryPostChannel } from "./social";
@@ -7,6 +6,7 @@ import { parseLondonInput } from "./london-time";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "./social-caps";
 import { SOCIAL_LEAD_MAX } from "./social-text";
 import { channelDueAt } from "./social-confirm";
+export { seenFromForm } from "./social-confirm";
 import { confirmChannels, connectedChannelIds, loadSocialItem, targetOf, type SocialTarget } from "./social-post";
 
 export { SOCIAL_LEAD_MAX, composeSocialText, trimLead } from "./social-text";
@@ -31,7 +31,8 @@ type Enqueue = (kind: JobKind, payload?: Record<string, unknown>, dueAt?: Date) 
  * confirmed, so saving a story that went Live years ago never posts it.
  *
  * `enqueue` is passed in, as with enqueueStoryLive: jobs.ts imports this
- * module, so importing jobs.ts back would be a cycle.
+ * module, so importing jobs.ts back would be a cycle. Every caller passes the
+ * real one, so a due job runs at once in development whichever path queued it.
  */
 
 /** The global settings, falling back to the defaults for anything not yet edited. */
@@ -79,8 +80,8 @@ export function channelSkipsFromForm(formData: FormData): { shown: string[]; ski
   return { shown, skipped };
 }
 
-/** The earliest moment a confirmed channel of this item is due, or null when none will post. */
-async function earliestChannelDue(db: Db, t: SocialTarget, caps?: SocialCaps): Promise<Date | null> {
+/** The earliest moment a confirmed channel of this item is due, leaving out `hold`; null when none will post. */
+async function earliestChannelDue(db: Db, t: SocialTarget, caps: SocialCaps | undefined, hold: string[]): Promise<Date | null> {
   const { table, key, id } = targetOf(t);
   const { data: row } = await db.from(table).select("status, social_at, social_skip, published_at").eq("id", id).maybeSingle();
   if (!row || row.status !== "published" || row.social_skip) return null;
@@ -91,7 +92,7 @@ async function earliestChannelDue(db: Db, t: SocialTarget, caps?: SocialCaps): P
   ]);
   let due: Date | null = null;
   for (const r of records ?? []) {
-    if (!channels.includes(r.channel_id) || r.skip || r.posted_at) continue;
+    if (!channels.includes(r.channel_id) || hold.includes(r.channel_id) || r.skip || r.posted_at) continue;
     const at = channelDueAt({ socialAt: row.social_at, publishedAt: row.published_at, confirmedAt: r.confirmed_at, delayMinutes: delay_minutes });
     if (at && (!due || at < due)) due = at;
   }
@@ -102,25 +103,28 @@ async function earliestChannelDue(db: Db, t: SocialTarget, caps?: SocialCaps): P
  * Bring the item's pending push in line with its channels: replaced by one
  * at the earliest confirmed channel's time (never in the past), or dropped
  * when no confirmed channel is left to post. Returns when it will run.
+ *
+ * The social_push job calls it too when it finishes, so a save or Confirm
+ * made while it was running never leaves a second job behind. From there,
+ * `hold` leaves out channels the job knows can't go now (over the daily
+ * limit, or failed and covered by its own retry), and `also` is another time
+ * to run at if earlier (the overflow slot).
  */
-export async function queueSocialPush(db: Db, t: SocialTarget, enqueue: Enqueue, caps?: SocialCaps): Promise<Date | null> {
+export async function queueSocialPush(
+  db: Db,
+  t: SocialTarget,
+  enqueue: Enqueue,
+  caps?: SocialCaps,
+  o: { hold?: string[]; also?: Date | null } = {},
+): Promise<Date | null> {
   const { key, id } = targetOf(t);
-  const due = await earliestChannelDue(db, t, caps);
+  let due = await earliestChannelDue(db, t, caps, o.hold ?? []);
+  if (o.also && (!due || o.also < due)) due = o.also;
   await cancelSocialPush(db, t);
   if (!due) return null;
   const at = due.getTime() > Date.now() ? due : new Date();
   await enqueue("social_push", { [key]: id }, at);
   return at;
-}
-
-/**
- * After the editor is saved: the same, for the save path, which has no job
- * queue of its own. Only a channel an admin confirmed can be queued here.
- */
-export async function rescheduleSocialPush(db: Db, t: SocialTarget): Promise<Date | null> {
-  return queueSocialPush(db, t, async (kind, payload, dueAt) => {
-    await db.from("jobs").insert({ kind, payload: (payload ?? {}) as Json, due_at: (dueAt ?? new Date()).toISOString() });
-  });
 }
 
 /** The item left "published": drop its pending push, so the editor doesn't show a post that won't happen. */
@@ -134,19 +138,22 @@ export const CONFIRM_MESSAGES = {
   noChannels: "No social channels are connected, so there is nothing to confirm.",
   lookupFailed: "Buffer couldn't say which network each channel is just now, so nothing was confirmed. Try again in a minute.",
   nothingWaiting: "Nothing was waiting for confirmation.",
+  changed: "The post changed after this page loaded, so nothing was confirmed. Check the preview below and confirm again.",
 } as const;
 
 /**
  * An admin confirms one channel, or every channel still waiting ("all"):
  * what each would receive is built from the saved item — never from the
- * form — and stored as the snapshot. Then the push is queued, so confirming a
- * Live item that has never been posted shares it (an explicit act, unlike a
- * plain save). Works in any status; it never posts before the item is Live.
+ * form — and stored as the snapshot, but only if it is what the admin's page
+ * showed (`seen`, each channel's postFingerprint); otherwise nothing is
+ * confirmed. Then the push is queued, so confirming a Live item that has
+ * never been posted shares it (an explicit act, unlike a plain save). Works
+ * in any status; it never posts before the item is Live.
  */
 export async function confirmSocialPost(
   db: Db,
   t: SocialTarget,
-  o: { only: string[] | "all"; userId: string },
+  o: { only: string[] | "all"; userId: string; seen: Record<string, string> },
   deps: { networks: () => Promise<ChannelNetworks>; enqueue: Enqueue },
 ): Promise<{ ok: true; confirmed: string[] } | { ok: false; error: string }> {
   const [item, channelIds] = await Promise.all([loadSocialItem(db, t), connectedChannelIds(db)]);
@@ -158,8 +165,9 @@ export async function confirmSocialPost(
   if (networks.kind === "failed") return { ok: false, error: CONFIRM_MESSAGES.lookupFailed };
   if (item.social_skip) return { ok: false, error: CONFIRM_MESSAGES.nothingWaiting };
   const { channelPosts } = await import("./adapters/social");
-  const posts = channelPosts(item.post, channelIds, networks).map(({ channelId, text, imagePath }) => ({ channelId, text, imagePath }));
-  const confirmed = await confirmChannels(db, t, { posts, only: o.only, userId: o.userId });
+  const posts = channelPosts(item.post, channelIds, networks).map((c) => c.post);
+  const { confirmed, stale } = await confirmChannels(db, t, { posts, only: o.only, userId: o.userId, seen: o.seen });
+  if (stale.length) return { ok: false, error: CONFIRM_MESSAGES.changed };
   if (!confirmed.length) return { ok: false, error: CONFIRM_MESSAGES.nothingWaiting };
   await queueSocialPush(db, t, deps.enqueue);
   return { ok: true, confirmed };

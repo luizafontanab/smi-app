@@ -24,7 +24,8 @@ import { MEMBER_CHANGED_ERROR, memberCanEdit } from "@/lib/member-content";
 import { resolveCoordinates, type Geocoder } from "@/lib/member-geocode";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { keepUntouchedPosts, parseStoryPosts } from "@/lib/social";
-import { channelSkipsFromForm, rescheduleSocialPush, socialFieldsFromForm } from "@/lib/social-push";
+import { channelSkipsFromForm, queueSocialPush, socialFieldsFromForm } from "@/lib/social-push";
+import type { JobKind } from "@/lib/jobs";
 import { saveChannelSkips } from "@/lib/social-post";
 import { isMemberDraft } from "@/lib/story-board";
 import { replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
@@ -65,6 +66,8 @@ export type IntakeDeps = {
   notify: (n: SubmittedNotice) => Promise<void>;
   /** Record a failure the caller isn't told about because the save itself landed. Must not throw. */
   log: (area: string, error: unknown, context?: Record<string, unknown>) => void;
+  /** The job queue (lib/jobs enqueue): a save can move or queue the item's social post. */
+  enqueue: (kind: JobKind, payload?: Record<string, unknown>, dueAt?: Date) => Promise<void>;
 };
 
 export type IntakeMember = { userId: string; memberId: string };
@@ -493,7 +496,7 @@ export async function save(d: IntakeDeps, kind: IntakeKind, id: string | null, f
       const target = kind === "story" ? { story_id: id } : { video_id: id };
       const skips = channelSkipsFromForm(form);
       if (skips) await saveChannelSkips(d.db, target, skips);
-      await rescheduleSocialPush(d.db, target);
+      await queueSocialPush(d.db, target, d.enqueue);
     }
   } else {
     const { data, error } = await tableOf(d, kind).insert({

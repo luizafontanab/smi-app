@@ -3199,6 +3199,19 @@ export type Database = {
         Args: { p_from: string; p_site_host?: string; p_to: string }
         Returns: Json
       }
+      social_waiting_items: {
+        Args: {
+          p_channel_ids: string[]
+          p_delay_minutes: number
+          p_now?: string
+        }
+        Returns: {
+          id: string
+          kind: string
+          title: string
+          waiting: number
+        }[]
+      }
       staged_uploads_older_than: {
         Args: { p_before: string; p_limit?: number }
         Returns: string[]

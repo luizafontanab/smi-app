@@ -2,8 +2,25 @@ import { londonInputValue } from "@/lib/london-time";
 import { mediaUrl } from "@/lib/db/server";
 import type { SocialCaps } from "@/lib/social-caps";
 import type { SocialPanel } from "@/lib/social-post";
+import { SEEN_FIELD, socialSummary } from "@/lib/social-confirm";
 import { SOCIAL_LEAD_MAX, trimLead } from "@/lib/social-text";
 import { SocialConfirmButton } from "./SocialConfirmButton";
+
+/** The id of the editor's SocialConfirmForm, which the Confirm buttons submit. */
+export const SOCIAL_CONFIRM_FORM = "social-confirm";
+
+/**
+ * The small form Confirm submits: the item's id, plus what each channel
+ * showed (SocialPostFields puts those inputs in it with `form=`). Render it
+ * outside the editor's form — forms can't nest.
+ */
+export function SocialConfirmForm({ action, id }: { action: (formData: FormData) => Promise<void>; id: string }) {
+  return (
+    <form id={SOCIAL_CONFIRM_FORM} action={action} hidden>
+      <input type="hidden" name="id" value={id} />
+    </form>
+  );
+}
 
 /**
  * The "Social post" fieldset in the story and video editors (Area 3 of Jas's
@@ -13,9 +30,10 @@ import { SocialConfirmButton } from "./SocialConfirmButton";
  * Confirm. Nothing goes out on a channel until it is confirmed.
  *
  * Sits inside the editor's main form, so the one Save button and the
- * unsaved-changes guard cover it; Confirm submits the same form to its own
- * action, which reads the saved item, not the form. Parsed by
- * socialFieldsFromForm and channelSkipsFromForm.
+ * unsaved-changes guard cover it. Confirm submits SocialConfirmForm instead,
+ * with each channel's fingerprint as shown; its action reads the saved item,
+ * not the form, and refuses if the post no longer matches what was shown.
+ * Parsed by socialFieldsFromForm and channelSkipsFromForm.
  */
 export function SocialPostFields({
   item,
@@ -24,7 +42,8 @@ export function SocialPostFields({
   caps,
   panel,
   notes = [],
-  confirmAction,
+  confirmable = false,
+  confirmed,
 }: {
   item: { social_text: string | null; social_at: string | null; social_skip: boolean } | null;
   /** What the lead-in follows when left alone: the story summary or video description. */
@@ -35,14 +54,26 @@ export function SocialPostFields({
   panel?: SocialPanel | null;
   /** Lines about the post as a whole: Buffer not connected here, a failed attempt. */
   notes?: string[];
-  confirmAction?: (formData: FormData) => Promise<void>;
+  /** The page renders a SocialConfirmForm, so the Confirm buttons have somewhere to go. */
+  confirmable?: boolean;
+  /** `?confirmed=` after a Confirm: how many channels it confirmed. */
+  confirmed?: string;
 }) {
   const prefill = trimLead(fallback);
   const waiting = panel?.channels.filter((c) => c.state === "waiting") ?? [];
   const lookupFailed = panel?.networks === "failed";
+  const canConfirm = confirmable && !!panel;
   return (
     <fieldset id="social">
       <legend className="text-sm font-medium">Social post</legend>
+      {panel && panel.channels.length > 0 && (
+        <p className="mt-0.5 text-xs text-ink">{socialSummary(panel.channels.map((c) => c.state))}</p>
+      )}
+      {confirmed !== undefined && (
+        <p role="status" className="mt-2 rounded bg-success/10 p-2 text-sm text-success">
+          Social post confirmed for {confirmed === "1" ? "1 channel" : `${Number(confirmed) || 0} channels`}.
+        </p>
+      )}
       <div className="mt-2">
         <label htmlFor="social_text" className="text-xs font-medium">Lead-in</label>
         <input type="hidden" name="social_text_default" value={prefill} />
@@ -109,6 +140,9 @@ export function SocialPostFields({
                 return (
                   <li key={c.post.channelId} className="rounded border border-black/10 p-3" data-channel={c.post.channelId}>
                     <input type="hidden" name="social_channel" value={c.post.channelId} />
+                    {canConfirm && (
+                      <input type="hidden" form={SOCIAL_CONFIRM_FORM} name={`${SEEN_FIELD}${c.post.channelId}`} value={c.fingerprint} />
+                    )}
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <span className="text-sm font-medium text-ink">{c.label}</span>
                       <span className="text-xs text-graphite" role="status">{panel.lines[i]}</span>
@@ -133,8 +167,8 @@ export function SocialPostFields({
                           />
                           Don&apos;t post on {c.label}
                         </label>
-                        {c.state === "waiting" && confirmAction && (
-                          <SocialConfirmButton action={confirmAction} value={c.post.channelId} disabled={lookupFailed}>
+                        {c.state === "waiting" && canConfirm && (
+                          <SocialConfirmButton form={SOCIAL_CONFIRM_FORM} value={c.post.channelId} disabled={lookupFailed}>
                             Confirm {c.label}
                           </SocialConfirmButton>
                         )}
@@ -144,9 +178,9 @@ export function SocialPostFields({
                 );
               })}
             </ul>
-            {waiting.length > 0 && confirmAction && (
+            {waiting.length > 0 && canConfirm && (
               <div className="mt-2">
-                <SocialConfirmButton action={confirmAction} value="all" disabled={lookupFailed}>
+                <SocialConfirmButton form={SOCIAL_CONFIRM_FORM} value="all" disabled={lookupFailed}>
                   Confirm all ({waiting.length})
                 </SocialConfirmButton>
               </div>

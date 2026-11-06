@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { serviceDb } from "./db/server";
 import type { ChannelNetworks, SocialPost } from "./adapters/social";
 import { excerptFromHtml } from "./sanitize";
@@ -7,7 +8,7 @@ import { readSocialChannels } from "./social-channels";
 import { siteUrl } from "./site-url";
 import { taggedMembers } from "./story-members";
 import { composeSocialText } from "./social-text";
-import { channelState, channelStatusLines, postTimeOf, type ChannelPost, type ChannelRecord, type ChannelView } from "./social-confirm";
+import { channelState, channelStatusLines, type ChannelPost, type ChannelRecord, type ChannelView } from "./social-confirm";
 import { logError } from "./log";
 
 /**
@@ -45,43 +46,49 @@ export type SocialItem = {
   post: SocialPost;
 };
 
-export async function loadSocialItem(db: Db, t: SocialTarget): Promise<SocialItem | null> {
-  if ("video_id" in t) {
-    const { data: video } = await db
-      .from("videos")
-      .select("id, title, slug, description, thumbnail_path, status, social_at, social_text, social_skip, published_at, member:members(name, social, status, archived_at)")
-      .eq("id", t.video_id)
-      .maybeSingle();
-    if (!video) return null;
-    return {
-      status: video.status,
-      title: video.title,
-      social_at: video.social_at,
-      social_skip: video.social_skip,
-      published_at: video.published_at,
-      post: {
-        text: composeSocialText(video.social_text || excerptFromHtml(video.description) || video.title, `${siteUrl()}/video/${video.slug}`),
-        imagePath: video.thumbnail_path,
-        // Same rule as a story's tags below: no tag for a member without a public page.
-        tagHandles: (isMemberLinkable(video.member) ? video.member.social ?? {} : {}) as Record<string, string>,
-      },
-    };
-  }
-  const { data: story } = await db
-    .from("stories")
-    // FK named: story_members makes a bare `members` embed ambiguous here.
-    .select("id, title, slug, cover_path, member_id, status, social_at, social_text, social_skip, published_at, summary:story_summary, member:members!stories_member_id_fkey(name, social, status, archived_at)")
-    .eq("id", t.story_id)
-    .maybeSingle();
-  if (!story) return null;
-  // Every other member the story features is tagged too (Jas 13/10 item
-  // 12). Same rule for the primary and the extras: only a member with a
-  // public page (isMemberLinkable — not archived, active or grace) is
-  // tagged. ask-jas 14 (archived members in social posts) is still open;
-  // until Jas answers, the safe default is not to put a company that has
-  // left — or been archived — into a public post. Applies alike to both.
-  const extras = (await taggedMembers(db, story.id, story.member_id))
-    .filter((m) => m.id !== story.member_id && isMemberLinkable(m));
+type LinkableMember = { social: unknown; status: string; archived_at: string | null } | null;
+
+/** A video row as social posting reads it. The editor builds it from the row it already has. */
+export type SocialVideoRow = {
+  title: string; slug: string; description: string | null; thumbnail_path: string | null; status: string;
+  social_at: string | null; social_text: string | null; social_skip: boolean; published_at: string | null;
+  member: LinkableMember;
+};
+
+export function videoSocialItem(video: SocialVideoRow): SocialItem {
+  return {
+    status: video.status,
+    title: video.title,
+    social_at: video.social_at,
+    social_skip: video.social_skip,
+    published_at: video.published_at,
+    post: {
+      text: composeSocialText(video.social_text || excerptFromHtml(video.description) || video.title, `${siteUrl()}/video/${video.slug}`),
+      imagePath: video.thumbnail_path,
+      // Same rule as a story's tags below: no tag for a member without a public page.
+      tagHandles: (video.member && isMemberLinkable(video.member) ? video.member.social ?? {} : {}) as Record<string, string>,
+    },
+  };
+}
+
+/** A story row as social posting reads it. `summary` is the story_summary column. */
+export type SocialStoryRow = {
+  id: string; title: string; slug: string; cover_path: string | null; member_id: string | null; status: string;
+  social_at: string | null; social_text: string | null; social_skip: boolean; published_at: string | null;
+  summary: string | null; member: LinkableMember;
+};
+
+/**
+ * `tagged` is every member the story features (lib/story-members
+ * taggedMembers). Every other member is tagged too (Jas 13/10 item 12). Same
+ * rule for the primary and the extras: only a member with a public page
+ * (isMemberLinkable — not archived, active or grace) is tagged. ask-jas 14
+ * (archived members in social posts) is still open; until Jas answers, the
+ * safe default is not to put a company that has left — or been archived —
+ * into a public post. Applies alike to both.
+ */
+export function storySocialItem(story: SocialStoryRow, tagged: { id: string; social: unknown; status: string; archived_at: string | null }[]): SocialItem {
+  const extras = tagged.filter((m) => m.id !== story.member_id && isMemberLinkable(m));
   return {
     status: story.status,
     title: story.title,
@@ -93,10 +100,39 @@ export async function loadSocialItem(db: Db, t: SocialTarget): Promise<SocialIte
       text: composeSocialText(story.social_text || story.summary || story.title, `${siteUrl()}/news/${story.slug}`),
       imagePath: story.cover_path,
       // @-tag from the CRM-stored handle — never hand-typed
-      tagHandles: (isMemberLinkable(story.member) ? story.member.social ?? {} : {}) as Record<string, string>,
+      tagHandles: (story.member && isMemberLinkable(story.member) ? story.member.social ?? {} : {}) as Record<string, string>,
       extraTagHandles: extras.map((m) => (m.social ?? {}) as Record<string, string>),
     },
   };
+}
+
+export async function loadSocialItem(db: Db, t: SocialTarget): Promise<SocialItem | null> {
+  if ("video_id" in t) {
+    const { data: video } = await db
+      .from("videos")
+      .select("id, title, slug, description, thumbnail_path, status, social_at, social_text, social_skip, published_at, member:members(name, social, status, archived_at)")
+      .eq("id", t.video_id)
+      .maybeSingle();
+    return video ? videoSocialItem(video) : null;
+  }
+  const { data: story } = await db
+    .from("stories")
+    // FK named: story_members makes a bare `members` embed ambiguous here.
+    .select("id, title, slug, cover_path, member_id, status, social_at, social_text, social_skip, published_at, summary:story_summary, member:members!stories_member_id_fkey(name, social, status, archived_at)")
+    .eq("id", t.story_id)
+    .maybeSingle();
+  if (!story) return null;
+  return storySocialItem(story, await taggedMembers(db, story.id, story.member_id));
+}
+
+/**
+ * A short fingerprint of what a channel would receive. The editor sends the
+ * one it showed with Confirm, so a post that changed after the page loaded —
+ * another admin's save, a member's new handle — is refused, not confirmed
+ * unseen.
+ */
+export function postFingerprint(p: Pick<ChannelPost, "text" | "imagePath">): string {
+  return createHash("sha256").update(JSON.stringify([p.text, p.imagePath ?? null])).digest("hex").slice(0, 32);
 }
 
 /** The Buffer channels posts go to, from settings `social_channels`. */
@@ -128,20 +164,25 @@ export async function readChannelRecords(db: Db, t: SocialTarget): Promise<Map<s
 /**
  * Confirm what these channels would receive now, from the saved item: the
  * snapshot the post is compared with just before it goes out. A channel
- * already posted or marked Don't post is left alone. Returns the channels
- * confirmed.
+ * already posted or marked Don't post is left alone. `seen` is each channel's
+ * postFingerprint as the admin's page showed it: if any channel to be
+ * confirmed would now receive something else (or wasn't shown at all),
+ * nothing is confirmed and those channels come back as `stale`.
  */
 export async function confirmChannels(
   db: Db,
   t: SocialTarget,
-  o: { posts: ChannelPost[]; only: string[] | "all"; userId: string },
-): Promise<string[]> {
+  o: { posts: ChannelPost[]; only: string[] | "all"; userId: string; seen: Record<string, string> },
+): Promise<{ confirmed: string[]; stale: string[] }> {
   const { key } = targetOf(t);
   const records = await readChannelRecords(db, t);
   const now = new Date().toISOString();
-  const rows = o.posts
+  const chosen = o.posts
     .filter((p) => o.only === "all" || o.only.includes(p.channelId))
-    .filter((p) => channelState({ post: p, record: records.get(p.channelId) ?? null }, false) === "waiting")
+    .filter((p) => channelState({ post: p, record: records.get(p.channelId) ?? null }, false) === "waiting");
+  const stale = chosen.filter((p) => o.seen[p.channelId] !== postFingerprint(p)).map((p) => p.channelId);
+  if (stale.length) return { confirmed: [], stale };
+  const rows = chosen
     .map((p) => ({
       ...ownerOf(t),
       channel_id: p.channelId,
@@ -151,10 +192,10 @@ export async function confirmChannels(
       confirmed_at: now,
       updated_at: now,
     }));
-  if (!rows.length) return [];
+  if (!rows.length) return { confirmed: [], stale: [] };
   const { error } = await db.from("social_channel_posts").upsert(rows, { onConflict: `${key},channel_id` });
   if (error) throw new Error(`[social] confirming failed: ${error.message}`);
-  return rows.map((r) => r.channel_id);
+  return { confirmed: rows.map((r) => r.channel_id), stale: [] };
 }
 
 /** The post changed since it was confirmed: the channel waits for confirmation again. */
@@ -170,20 +211,56 @@ export async function clearConfirmations(db: Db, t: SocialTarget, channelIds: st
 }
 
 /**
- * Buffer took this channel's post. Stamped at once, so a retry of the job
- * never posts it twice. A failed stamp is logged rather than thrown: throwing
- * would fail the job and its retry would post the channel a second time.
+ * Claim one channel just before it is sent to Buffer: posted_at is stamped
+ * only if it is still empty, the channel is still confirmed with exactly this
+ * text, and not marked Don't post — one atomic update. False means another
+ * run took it first, or it changed since the plan; it is not sent.
+ *
+ * Stamping before sending, not after, is what stops a double post. Buffer has
+ * no idempotency key, so a stamp that failed after a post went out would let
+ * a later run post it again; this way a failure can only ever leave a channel
+ * not posted. A failed claim throws, so nothing is sent.
  */
-export async function markChannelPosted(db: Db, t: SocialTarget, channelId: string, bufferPostId: string | null): Promise<void> {
+export async function claimChannelPost(db: Db, t: SocialTarget, post: ChannelPost): Promise<boolean> {
   const { key, id } = targetOf(t);
   const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("social_channel_posts")
+    .update({ posted_at: now, updated_at: now })
+    .eq(key, id)
+    .eq("channel_id", post.channelId)
+    .is("posted_at", null)
+    .eq("skip", false)
+    .eq("confirmed_text", post.text)
+    .select("channel_id");
+  if (error) throw new Error(`[social] couldn't claim ${post.channelId} before posting: ${error.message}`);
+  return !!data?.length;
+}
+
+/** Buffer refused the post: hand the claim back, so a retry can send it. */
+export async function releaseChannelPost(db: Db, t: SocialTarget, channelId: string): Promise<void> {
+  const { key, id } = targetOf(t);
   const { error } = await db
     .from("social_channel_posts")
-    .update({ posted_at: now, buffer_post_id: bufferPostId, updated_at: now })
+    .update({ posted_at: null, updated_at: new Date().toISOString() })
     .eq(key, id)
     .eq("channel_id", channelId);
   if (error) {
-    logError({ source: "db", area: "job:social_push", error: `posted on ${channelId} but not recorded: ${error.message}`, context: { [key]: id, channel_id: channelId } });
+    // Shows as posted though it wasn't: never a double post, but someone needs to know.
+    logError({ source: "db", area: "job:social_push", error: `${channelId} wasn't posted but is marked posted: ${error.message}`, context: { [key]: id, channel_id: channelId } });
+  }
+}
+
+/** Buffer took it: keep its post id. Losing this only loses the id, so a failure is logged, not thrown. */
+export async function recordBufferPostId(db: Db, t: SocialTarget, channelId: string, bufferPostId: string): Promise<void> {
+  const { key, id } = targetOf(t);
+  const { error } = await db
+    .from("social_channel_posts")
+    .update({ buffer_post_id: bufferPostId, updated_at: new Date().toISOString() })
+    .eq(key, id)
+    .eq("channel_id", channelId);
+  if (error) {
+    logError({ source: "db", area: "job:social_push", error: `posted on ${channelId}, Buffer post id not recorded: ${error.message}`, context: { [key]: id, channel_id: channelId } });
   }
 }
 
@@ -217,16 +294,18 @@ export async function postedTodayByChannel(db: Db, channelIds: string[]): Promis
 export type SocialPanel = {
   /** "failed": Buffer couldn't say which network each channel is, so nothing can be confirmed just now. */
   networks: ChannelNetworks["kind"];
-  channels: (ChannelView & { network: string | null; state: ReturnType<typeof channelState> })[];
+  /** `fingerprint` goes back with Confirm (postFingerprint). */
+  channels: (ChannelView & { network: string | null; state: ReturnType<typeof channelState>; fingerprint: string })[];
   lines: string[];
 };
 
+/** `item` is the editor's own row, built with storySocialItem / videoSocialItem, so the page doesn't read it twice. */
 export async function loadSocialPanel(
   db: Db,
   t: SocialTarget,
-  deps: { networks: () => Promise<ChannelNetworks>; delayMinutes: number; now?: Date },
+  deps: { networks: () => Promise<ChannelNetworks>; delayMinutes: number; now?: Date; item?: SocialItem },
 ): Promise<SocialPanel | null> {
-  const [item, channelIds] = await Promise.all([loadSocialItem(db, t), connectedChannelIds(db)]);
+  const [item, channelIds] = await Promise.all([deps.item ?? loadSocialItem(db, t), connectedChannelIds(db)]);
   if (!item) return null;
   if (!channelIds.length) return { networks: "unknown", channels: [], lines: [] };
   const [records, networks, { channelPosts, channelLabel }] = await Promise.all([
@@ -234,16 +313,16 @@ export async function loadSocialPanel(
     deps.networks(),
     import("./adapters/social"),
   ]);
-  const channels = channelPosts(item.post, channelIds, networks).map((p) => {
-    const record = records.get(p.channelId) ?? null;
-    const post = { channelId: p.channelId, text: p.text, imagePath: p.imagePath };
+  const channels = channelPosts(item.post, channelIds, networks).map(({ post, network }) => {
+    const record = records.get(post.channelId) ?? null;
     return {
-      label: channelLabel(p.channelId, p.network),
-      network: p.network,
+      label: channelLabel(post.channelId, network),
+      network,
       post,
       record,
       confirmedBy: record?.confirmedBy ?? null,
       state: channelState({ post, record }, item.social_skip),
+      fingerprint: postFingerprint(post),
     };
   });
   const lines = channelStatusLines({
@@ -264,32 +343,27 @@ export type WaitingItem = { kind: "story" | "video"; id: string; title: string; 
  * confirmation. Read from the stored rows only — a confirmation that no
  * longer matches is cleared by the social_push job once it is due, and
  * counts from then on.
+ *
+ * Worked out in the database (social_waiting_items, migration
+ * 20261105000003), which returns only the items with a channel waiting: the
+ * result stays as small as the list on screen however many items are Live.
+ * A failed read is logged and lists nothing, never everything as waiting.
  */
 export async function socialWaiting(db: Db, o: { delayMinutes: number; now?: Date }): Promise<WaitingItem[]> {
   const channelIds = await connectedChannelIds(db);
   if (!channelIds.length) return [];
-  const now = (o.now ?? new Date()).getTime();
-  const out: WaitingItem[] = [];
-  for (const [kind, table, key] of [["story", "stories", "story_id"], ["video", "videos", "video_id"]] as const) {
-    const { data: items } = await db
-      .from(table)
-      .select("id, title, social_at, published_at")
-      .eq("status", "published")
-      .eq("social_skip", false);
-    const due = (items ?? []).filter((r) =>
-      r.published_at && postTimeOf({ socialAt: r.social_at, publishedAt: r.published_at, delayMinutes: o.delayMinutes }) <= now);
-    if (!due.length) continue;
-    const { data: rows } = await db
-      .from("social_channel_posts")
-      .select("story_id, video_id, channel_id, skip, confirmed_at, posted_at")
-      .in(key, due.map((r) => r.id));
-    const settled = new Set(
-      (rows ?? []).filter((r) => r.skip || r.posted_at || r.confirmed_at).map((r) => `${r[key]}:${r.channel_id}`),
-    );
-    for (const r of due) {
-      const waiting = channelIds.filter((c) => !settled.has(`${r.id}:${c}`)).length;
-      if (waiting) out.push({ kind, id: r.id, title: r.title, waiting, total: channelIds.length, href: `/console/${table}/${r.id}#social` });
-    }
+  const { data, error } = await db.rpc("social_waiting_items", {
+    p_channel_ids: channelIds,
+    p_delay_minutes: o.delayMinutes,
+    p_now: (o.now ?? new Date()).toISOString(),
+  });
+  if (error) {
+    logError({ source: "db", area: "social:waiting", error: `social_waiting_items failed: ${error.message}` });
+    return [];
   }
-  return out;
+  return (data ?? []).map((r) => {
+    const kind = r.kind === "video" ? "video" : "story";
+    const table = kind === "video" ? "videos" : "stories";
+    return { kind, id: r.id, title: r.title, waiting: r.waiting, total: channelIds.length, href: `/console/${table}/${r.id}#social` };
+  });
 }
