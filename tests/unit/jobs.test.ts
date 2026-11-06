@@ -46,13 +46,13 @@ vi.mock("@/lib/adapters/newsletter", () => ({
 // raises the right KIND, about the right thing.
 const { notifyConsole } = vi.hoisted(() => ({ notifyConsole: vi.fn(async () => {}) }));
 vi.mock("@/lib/notify-admin", () => ({ ADMIN_EMAIL: "jas@sheetmetalindustries.com", notifyConsole }));
-const { storyCrawlerOn, runSourceWatch, syncBiginSources } = vi.hoisted(() => ({
+const { storyCrawlerOn, runSourceCheck, syncBiginSources } = vi.hoisted(() => ({
   storyCrawlerOn: vi.fn(async () => true),
-  runSourceWatch: vi.fn(async () => ({})),
+  runSourceCheck: vi.fn(async () => ({ status: "done" })),
   syncBiginSources: vi.fn(async () => null),
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: storyCrawlerOn }));
-vi.mock("@/lib/sources/check", () => ({ runSourceWatch }));
+vi.mock("@/lib/sources/run", () => ({ runSourceCheck }));
 vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
 const { refreshSocialFollowers } = vi.hoisted(() => ({
   refreshSocialFollowers: vi.fn(async (): Promise<{ instagramProblem: string | null }> => ({ instagramProblem: null })),
@@ -293,12 +293,12 @@ describe("runJob kinds", () => {
   describe("story crawler jobs follow the Story crawler flag", () => {
     afterEach(() => {
       storyCrawlerOn.mockReset().mockResolvedValue(true);
-      runSourceWatch.mockClear();
+      runSourceCheck.mockClear();
       syncBiginSources.mockClear();
     });
 
     it.each([
-      ["source_watch", runSourceWatch],
+      ["source_watch", runSourceCheck],
       ["source_bigin_sync", syncBiginSources],
     ] as const)("%s runs while the flag is on", async (kind, fn) => {
       const j = job(kind);
@@ -309,7 +309,7 @@ describe("runJob kinds", () => {
     });
 
     it.each([
-      ["source_watch", runSourceWatch],
+      ["source_watch", runSourceCheck],
       ["source_bigin_sync", syncBiginSources],
     ] as const)("%s does nothing while it's off, and still completes", async (kind, fn) => {
       storyCrawlerOn.mockResolvedValue(false);
@@ -319,6 +319,29 @@ describe("runJob kinds", () => {
       await runJobById(j.id);
       expect(fn).not.toHaveBeenCalled();
       expect(callsOf(tail.update)).toContainEqual([expect.objectContaining({ status: "done" })]);
+    });
+
+    it("source_watch comes back once the lock is free when another check holds it, instead of losing its turn", async () => {
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      const retryAt = new Date("2026-11-05T10:44:30Z");
+      runSourceCheck.mockResolvedValueOnce({ status: "busy", run: null, retryAt } as never);
+      const j = job("source_watch");
+      const [select, claim, tail] = happyPath(j);
+      dbFor([select, claim, tail]);
+
+      await runJobById(j.id);
+
+      expect(callsOf(tail.insert)).toContainEqual([{ kind: "source_watch", payload: { after_busy: j.id }, due_at: retryAt.toISOString() }]);
+      // a skip isn't a failure: the job itself completes
+      expect(callsOf(tail.update)).toContainEqual([expect.objectContaining({ status: "done" })]);
+    });
+
+    it("source_watch queues nothing extra when its check ran", async () => {
+      const j = job("source_watch");
+      const [select, claim, tail] = happyPath(j);
+      dbFor([select, claim, tail]);
+      await runJobById(j.id);
+      expect(callsOf(tail.insert)).toEqual([]);
     });
   });
 

@@ -19,6 +19,16 @@
 - A live story with a channel still waiting after its post time shows in Needs You Today and in the morning email, e.g. "1 of 3 channels needs confirming", with a link to the editor. The editor shows a line per channel saying who confirmed it and when, when it posts, or when it was posted.
 - The daily limit in the Story Engine now counts per channel: "3 a day" means up to 3 on each channel.
 
+## 2026-11-05 — Check story sources now
+- Command Centre and Story sources have a "Check sources now" button. It looks for new articles straight away instead of waiting for the daily check, and new ones appear as suggestions on Story sources as usual.
+- One click checks up to about a minute's worth of the sources that are due, then says how many it checked, how many new suggestions it found, how many couldn't be read and how many are still due. Click again to carry on with the rest.
+- Each source is still checked no more than about once a day, so a source checked in the last 20 hours is skipped; when nothing is due, the button says when the next ones are.
+- Only one check runs at a time. If one is already going, from the button or the daily schedule, the button says so and waits.
+- Both pages show when the last check ran and whether you or the schedule started it. The button works only while the Story crawler is on in Features.
+
+## 2026-11-05 — The stacked logo on phones
+- On phones the top bar now shows the stacked Sheet Metal Industries logo, the same one as in the footer, in the site's brand orange. This applies across the site, the member area and the login pages. Tablets and computers keep the wide logo.
+
 ## 2026-11-05 — Story sources use a company's website when Bigin has no news page
 - On Story sources, a Bigin company with no News Page URL now uses its Website instead, so far more Bigin companies are checked for new articles each day.
 - These sources say "from website" next to the Bigin label. Fill in the company's News Page URL in Bigin and the next sync swaps the homepage for that page.
