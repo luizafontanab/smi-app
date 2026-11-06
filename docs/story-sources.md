@@ -81,7 +81,8 @@ filters rather than hiding them.
 
 ## Sources from Bigin (27 Oct 2026)
 
-Each Bigin company's **News Page URL** (Companies module, field API name in
+Each Bigin company's **News Page URL** (Companies module, the field labelled
+"News Page URL" in Bigin's field list since #54, else the API name in
 `NEWS_PAGE_FIELD`, `src/lib/adapters/crm.ts`) is a second source list next to the
 imported spreadsheet. When it's blank, the company's **Website** stands in
 (5 Nov 2026, migration `20261105000001`): the source is marked

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { syncCompanies } from "@/lib/crm-companies/sync";
-import type { CrmCompanies, CrmCompanyRecord, CrmSync } from "@/lib/adapters/crm";
+import type { CompanyFieldList, CrmCompanies, CrmCompanyRecord, CrmSync } from "@/lib/adapters/crm";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -30,7 +30,7 @@ type Tables = "crm_companies" | "content_sources" | "contacts" | "members" | "se
  * 1 linked rows, 2 rows by URL, then writes, then the linked rows for members.
  */
 function fakeDb({ local = [], sources = () => dbOk([]), members = [], contacts = [], overrides = [] }: {
-  local?: { bigin_id: string; name: string; website: string | null; news_page_url: string | null; deleted_in_bigin_at?: string | null }[];
+  local?: { bigin_id: string; name: string; website: string | null; news_page_url: string | null; deleted_in_bigin_at?: string | null; fields?: unknown }[];
   sources?: (n: number) => DbResult;
   members?: { id: string; website: string | null }[];
   contacts?: { bigin_company_id: string; member_id: string }[];
@@ -72,9 +72,9 @@ describe("syncCompanies", () => {
 
     const stamp = "2026-11-06T03:00:00.000Z";
     expect(t.callsOf("crm_companies", "upsert").flat()).toEqual([
-      { bigin_id: "1", name: "Acme", website: "https://acme.test", news_page_url: "https://acme.test/news", deleted_in_bigin_at: null, last_synced_at: stamp, updated_at: stamp },
-      { bigin_id: "2", name: "Co 2", website: "https://bright.test", news_page_url: null, deleted_in_bigin_at: null, last_synced_at: stamp, updated_at: stamp },
-      { bigin_id: "3", name: "Nowhere Ltd", website: null, news_page_url: null, deleted_in_bigin_at: null, last_synced_at: stamp, updated_at: stamp },
+      { bigin_id: "1", name: "Acme", website: "https://acme.test", news_page_url: "https://acme.test/news", deleted_in_bigin_at: null, fields: { id: "1", Account_Name: "Acme" }, last_synced_at: stamp, updated_at: stamp },
+      { bigin_id: "2", name: "Co 2", website: "https://bright.test", news_page_url: null, deleted_in_bigin_at: null, fields: { id: "2", Account_Name: "Co 2" }, last_synced_at: stamp, updated_at: stamp },
+      { bigin_id: "3", name: "Nowhere Ltd", website: null, news_page_url: null, deleted_in_bigin_at: null, fields: { id: "3", Account_Name: "Nowhere Ltd" }, last_synced_at: stamp, updated_at: stamp },
     ]);
     expect(run).toMatchObject({ at: stamp, complete: true, read: 3, added: 3, updated: 0 });
     const saved = t.callsOf("settings", "upsert");
@@ -351,5 +351,66 @@ describe("syncCompanies", () => {
       expect(t.callsOf("content_sources", "update")).toContainEqual(expect.objectContaining({ bigin_account_id: "1", active: true }));
       expect(memberWrites(t)).toEqual(["m-chosen"]);
     });
+  });
+});
+
+describe("syncCompanies — every Bigin field (#54)", () => {
+  const everyField = (over: Partial<CompanyFieldList> = {}): CompanyFieldList => ({
+    read: "bigin",
+    fields: [{ apiName: "Account_Name", label: "Company Name" }, { apiName: "Phone", label: "Phone" }, { apiName: "Machine_Brands", label: "Machine Brands" }],
+    allFields: true,
+    newsPageField: "News_Page",
+    newsPageFieldFound: true,
+    ...over,
+  });
+  const full = (id: string, extra: Record<string, unknown>): CrmCompanyRecord =>
+    ({ id, name: `Co ${id}`, newsPageUrl: null, website: null, fields: { id, Account_Name: `Co ${id}`, ...extra } });
+  const stored = (id: string, fields: unknown) => ({ bigin_id: id, name: `Co ${id}`, website: null, news_page_url: null, fields });
+
+  it("stores the whole record, and rewrites a company when only a custom field changed", async () => {
+    const t = fakeDb({ local: [
+      stored("1", { id: "1", Account_Name: "Co 1", Phone: "111", Machine_Brands: "Trumpf" }),
+      // jsonb hands keys back in its own order: not a change
+      stored("2", { Machine_Brands: null, Phone: "222", Account_Name: "Co 2", id: "2" }),
+    ] });
+    const run = await syncCompanies({
+      crm: crm({ complete: true, fieldList: everyField(), companies: [
+        full("1", { Phone: "111", Machine_Brands: "Trumpf, Amada" }),
+        full("2", { Phone: "222", Machine_Brands: null }),
+      ] }),
+      now: NOW,
+    });
+
+    expect(t.callsOf("crm_companies", "upsert").flat()).toEqual([
+      expect.objectContaining({ bigin_id: "1", fields: { id: "1", Account_Name: "Co 1", Phone: "111", Machine_Brands: "Trumpf, Amada" } }),
+    ]);
+    expect(run).toMatchObject({ updated: 1, fieldList: { read: "bigin", allFields: true, newsPageField: "News_Page", newsPageFieldFound: true } });
+  });
+
+  it("keeps Bigin's labels beside the run, for the detail view", async () => {
+    const t = fakeDb();
+    await syncCompanies({ crm: crm({ complete: true, fieldList: everyField(), companies: [full("1", {})] }), now: NOW });
+    expect(t.callsOf("settings", "upsert")).toContainEqual({
+      key: "crm_company_fields",
+      value: { at: "2026-11-06T03:00:00.000Z", newsPageField: "News_Page", fields: everyField().fields },
+    });
+  });
+
+  it("when the field list was refused, a stored full copy is left alone and new companies get what was read", async () => {
+    const t = fakeDb({ local: [stored("1", { id: "1", Account_Name: "Co 1", Phone: "111" })] });
+    const refused: CompanyFieldList = { read: "refused", fields: [], allFields: false, newsPageField: "News_Page_URL", newsPageFieldFound: false };
+    const run = await syncCompanies({
+      crm: crm({ complete: true, fieldList: refused, companies: [{ ...full("1", {}), name: "Renamed" }, full("2", {})] }),
+      now: NOW,
+    });
+
+    const written = t.callsOf("crm_companies", "upsert").flat();
+    expect(written.find((r) => r.bigin_id === "1")).not.toHaveProperty("fields");
+    expect(written.find((r) => r.bigin_id === "1")).toMatchObject({ name: "Renamed" });
+    expect(written.find((r) => r.bigin_id === "2")).toMatchObject({ fields: { id: "2", Account_Name: "Co 2" } });
+    // two upserts, so PostgREST never fills a missing `fields` with its default
+    expect(t.callsOf("crm_companies", "upsert").every((batch: Record<string, unknown>[]) => new Set(batch.map((r) => "fields" in r)).size === 1)).toBe(true);
+    expect(t.callsOf("settings", "upsert").map((x) => x.key)).not.toContain("crm_company_fields");
+    expect(run?.fieldList).toMatchObject({ read: "refused" });
   });
 });

@@ -77,7 +77,7 @@ const box = (props: Partial<Parameters<typeof CompaniesBox>[0]>) =>
     <CompaniesBox
       live list={{ rows: [], count: 0, page: 1, pages: 1 }} q="" filter="all" only={undefined} run={null} sourcesRun={null}
       flash={undefined} error={undefined} href={(over) => `/console/crm?${new URLSearchParams(Object.entries(over).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}#companies`} keep={{}}
-      editing={null} members={[]}
+      open={null} members={[]}
       {...props}
     />,
   );
@@ -106,17 +106,35 @@ describe("CRM Companies box", () => {
     expect(screen.getByRole("link", { name: "Show all companies" })).toHaveAttribute("href", "/console/crm?#companies");
   });
 
-  it("keeps the member override's Edit link and editor beside the Story Sources link (#51 + #53)", () => {
+  it("opens one company panel from the company's name, beside the Story Sources link (#51 + #53 + #54)", () => {
     const acme = company({ sourceId: "src-1", member: { id: "m1", name: "Jo" }, memberChosen: true });
     box({
       only: "9100000000001",
       list: { rows: [acme], count: 1, page: 1, pages: 1 },
-      editing: { id: acme.id, biginId: acme.biginId, name: acme.name, member: acme.member, memberChosen: true },
+      open: {
+        id: acme.id, biginId: acme.biginId, name: acme.name, lastSyncedAt: acme.lastSyncedAt, member: acme.member, memberChosen: true,
+        rows: [{ apiName: "Phone", label: "Phone", value: "0161 000" }, { apiName: "Machine_Brands", label: "Machine Brands", value: null }],
+      },
       members: [{ id: "m1", name: "Jo" }],
     });
     const row = screen.getByRole("link", { name: "On Story Sources" }).closest("tr")!;
-    expect(within(row).getByRole("link", { name: "Edit Acme" })).toHaveAttribute("href", "/console/crm?company=u1#companies");
+    // one link to the company per row: its name
+    const toCompany = within(row).getAllByRole("link").filter((l) => l.getAttribute("href")?.includes("company=u1"));
+    expect(toCompany).toHaveLength(1);
+    expect(toCompany[0]).toHaveAccessibleName("Acme");
+    expect(toCompany[0]).toHaveAttribute("aria-current", "true");
     expect(row).toHaveTextContent("chosen by hand");
-    expect(screen.getByText("Editing Acme")).toBeInTheDocument();
+
+    const panel = screen.getByRole("region", { name: "Acme" });
+    expect(within(panel).getByRole("combobox", { name: "Member" })).toHaveValue("m1");
+    expect(within(panel).getByRole("button", { name: "Use automatic match" })).toBeInTheDocument();
+    expect(within(panel).getByText("Phone").nextElementSibling).toHaveTextContent("0161 000");
+    expect(within(panel).getByText("Machine Brands").nextElementSibling).toHaveTextContent("—");
+    expect(within(panel).getByRole("link", { name: "Close" })).toHaveAttribute("href", "/console/crm?#companies");
+  });
+
+  it("opens no panel when no company is selected", () => {
+    box({ list: { rows: [company({})], count: 1, page: 1, pages: 1 } });
+    expect(screen.queryByRole("combobox", { name: "Member" })).toBeNull();
   });
 });

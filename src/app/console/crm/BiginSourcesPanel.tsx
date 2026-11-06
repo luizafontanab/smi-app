@@ -24,8 +24,9 @@ export function BiginSourcesPanel({ live, run }: { live: boolean; run: BiginSour
       {live && run?.websiteFallbackWithheld && (
         <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-xs text-danger">
           No Bigin company came back with a News Page URL, so nothing was added from Websites either. Either the
-          field is empty everywhere, or its name in Bigin isn&apos;t the one the app expects (News_Page_URL) — ask
-          for it to be checked. Nothing already on the list was changed.
+          field is empty everywhere, or the app can&apos;t find it: it looks for the field labelled &ldquo;News Page
+          URL&rdquo; (News_Page_URL while Bigin&apos;s field list can&apos;t be read) — ask for it to be checked.
+          Nothing already on the list was changed.
         </p>
       )}
       {live && run && run.skipped.length > 0 && (

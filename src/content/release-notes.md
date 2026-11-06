@@ -10,8 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — Every Bigin field for a company
+- In the Companies box on the CRM page, click a company's name to see every field Bigin holds for it, your own custom fields included, under the same labels as in Bigin.
+- The app now finds the "News Page URL" field by its label in Bigin, so the story crawler reads the right field even if Bigin named it differently behind the scenes.
+- Until the Bigin connection is given permission to read Bigin's field list, only the name, Website and News Page URL are kept, and the box says so. Nothing else changes in the meantime.
+
 ## 2026-11-06 — Choose a company's member by hand
-- In the CRM Companies box, click Edit on a company to choose its member yourself. Story drafts from that company's news page are then tagged with the member you chose.
+- In the CRM Companies box, click a company's name to open it, and choose its member yourself. Story drafts from that company's news page are then tagged with the member you chose.
 - Your choice takes the place of the automatic match (a linked contact, or the member's website), including when that match found more than one member and tagged nobody. It is kept through every Bigin sync.
 - Each company shows whether its member was "chosen by hand" or "matched automatically". "Use automatic match" clears your choice and goes back to the automatic match straight away.
 - The choice stays in the app only: Bigin has no member field, so nothing is sent to Bigin.
