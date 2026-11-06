@@ -152,6 +152,208 @@
 
 /* ── #71 Header ──────────────────────────────────────────────────────────── */
 
+/* Markup: src/components/classic/ClassicHeader.tsx and ClassicMenu.tsx.
+   Breakpoints: 27.5rem (440px) shows the top bar; 40rem (Tailwind's sm, where
+   Wordmark swaps the stacked logo for the wide one) shows search and the login
+   icon in the bar; 80rem (Tailwind's xl, where MobileNav's trigger is told to
+   hide) shows the flat menu. Keep the last one in step with the trigger's
+   `xl:hidden!` in ClassicHeader.tsx. */
+
+[data-site="public"] {
+  --classic-topbar: #555555;
+  --classic-nav-link: #b4b4b4;
+  /* The live bar is 92px tall; the content lines up at 1440px wide. */
+  --classic-header-width: 90rem;
+  --classic-header-gutter: 1.5rem;
+}
+
+/* Grey top bar: socials, then Policies · About · Contact, at the right. It
+   scrolls away; only the black bar below is sticky. */
+[data-site="public"] [data-part="site-topbar"] {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding-block: 0.625rem;
+  padding-inline: max(var(--classic-header-gutter), calc((100% - var(--classic-header-width)) / 2 + var(--classic-header-gutter)));
+  border-top: 4px solid var(--smi-brand);
+  background-color: var(--classic-topbar);
+  color: #ffffff;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+@media (min-width: 27.5rem) {
+  [data-site="public"] [data-part="site-topbar"] {
+    display: flex;
+  }
+}
+[data-site="public"] [data-part="site-topbar-socials"] {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-site="public"] [data-part="site-topbar-socials"] a {
+  display: inline-flex;
+  align-items: center;
+  color: #ffffff;
+  opacity: 0.75;
+}
+[data-site="public"] [data-part="site-topbar-socials"] a:hover {
+  opacity: 1;
+}
+[data-site="public"] [data-part="site-topbar-links"] {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-left: 1rem;
+  border-left: 1px solid rgb(255 255 255 / 0.3);
+}
+/* White text, underlined on hover: orange text on #555 is only 3:1. */
+[data-site="public"] [data-part="site-topbar-links"] a {
+  color: #ffffff;
+  text-decoration: none;
+}
+[data-site="public"] [data-part="site-topbar-links"] a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* The base's blue ring fails on #555 and orange only just reaches 3:1, so the
+   top bar's ring is white. */
+[data-site="public"] [data-part="site-topbar"] :focus-visible {
+  outline-color: #ffffff;
+}
+/* 44px touch targets on coarse pointers (the icons are 20px). */
+@media (pointer: coarse) {
+  [data-site="public"] [data-part="site-topbar-socials"] a,
+  [data-site="public"] [data-part="site-topbar-links"] a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+  [data-site="public"] [data-part="site-topbar"] {
+    padding-block: 0;
+  }
+  [data-site="public"] [data-part="site-topbar-socials"],
+  [data-site="public"] [data-part="site-topbar-links"] {
+    gap: 0;
+  }
+}
+
+/* Black sticky bar. */
+[data-site="public"] [data-part="site-header"] {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background-color: var(--classic-chrome);
+  color: #ffffff;
+}
+[data-site="public"] [data-part="site-header-bar"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  max-width: var(--classic-header-width);
+  margin-inline: auto;
+  padding: 0.5rem 1rem;
+}
+@media (min-width: 40rem) {
+  [data-site="public"] [data-part="site-header-bar"] {
+    min-height: 5.75rem;
+    padding: 0 var(--classic-header-gutter);
+  }
+}
+[data-site="public"] [data-part="site-logo"] {
+  flex-shrink: 0;
+}
+[data-site="public"] [data-part="site-nav"] {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* The flat menu: nine items, from 80rem. Between 80rem and 90rem the mark
+   steps down from Wordmark's 64px to 48px and the menu tightens, so the row
+   fits beside it. */
+[data-site="public"] [data-part="site-menu"] {
+  display: none;
+  align-items: center;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 1rem;
+}
+@media (min-width: 80rem) {
+  [data-site="public"] [data-part="site-menu"] {
+    display: flex;
+  }
+  [data-site="public"] [data-part="site-logo"] img {
+    height: 3rem;
+  }
+}
+@media (min-width: 90rem) {
+  [data-site="public"] [data-part="site-menu"] {
+    gap: 1.25rem;
+    font-size: 1.0625rem;
+  }
+  [data-site="public"] [data-part="site-logo"] img {
+    height: 4rem;
+  }
+}
+[data-site="public"] [data-part="site-menu"] [data-part="site-nav-link"] {
+  display: inline-block;
+  padding-block: 0.25rem;
+  border-bottom: 2px solid transparent;
+  color: var(--classic-nav-link);
+  text-decoration: none;
+}
+[data-site="public"] [data-part="site-menu"] [data-part="site-nav-link"]:hover {
+  color: #ffffff;
+}
+/* The current section: white, with the orange underline. */
+[data-site="public"] [data-part="site-menu"] [data-part="site-nav-link"][aria-current] {
+  border-bottom-color: var(--smi-brand);
+  color: #ffffff;
+}
+
+/* Search and the signed-out login icon, from 40rem; below that the drawer
+   carries both. */
+[data-site="public"] [data-part="site-search"],
+[data-site="public"] [data-part="site-login"] {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6875rem;
+  border-radius: 4px;
+  color: var(--classic-nav-link);
+}
+@media (min-width: 40rem) {
+  [data-site="public"] [data-part="site-search"],
+  [data-site="public"] [data-part="site-login"] {
+    display: inline-flex;
+  }
+}
+[data-site="public"] [data-part="site-search"]:hover,
+[data-site="public"] [data-part="site-login"]:hover {
+  color: #ffffff;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-site="public"] [data-part="site-topbar-socials"] a,
+  [data-site="public"] [data-part="site-menu"] [data-part="site-nav-link"],
+  [data-site="public"] [data-part="site-search"],
+  [data-site="public"] [data-part="site-login"] {
+    transition: color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+  }
+}
+
 /* ── end #71 ── */
 
 /* ── #72 Footer ──────────────────────────────────────────────────────────── */
