@@ -70,7 +70,7 @@ describe("BiginSourcesPanel", () => {
 
 const company = (over: Partial<CompanyListRow>): CompanyListRow => ({
   id: "u1", biginId: "9100000000001", name: "Acme", website: null, newsPageUrl: "https://acme.test/news", inUse: "news_page",
-  lastSyncedAt: "2026-11-06T03:00:00Z", contacts: 0, member: null, sourceId: null, ...over,
+  lastSyncedAt: "2026-11-06T03:00:00Z", deletedInBiginAt: null, contacts: 0, member: null, sourceId: null, ...over,
 });
 const box = (props: Partial<Parameters<typeof CompaniesBox>[0]>) =>
   render(
