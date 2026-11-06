@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressInUse, parseCompanyFilter, readCompanyList } from "@/lib/crm-companies/list";
+import { addressInUse, parseCompanyFilter, readCompany, readCompanyList } from "@/lib/crm-companies/list";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 
 /* The Companies box's read model (issue #50): what each row shows. */
@@ -27,7 +27,7 @@ describe("readCompanyList", () => {
       from: fromByTable({
         crm_companies: () => queryBuilder(dbOk([
           { id: "u1", bigin_id: "1", name: "Acme", website: "https://acme.test", news_page_url: "https://acme.test/news", last_synced_at: "2026-11-06T03:00:00Z" },
-          { id: "u2", bigin_id: "2", name: "Nowhere Ltd", website: null, news_page_url: null, last_synced_at: "2026-11-06T03:00:00Z" },
+          { id: "u2", bigin_id: "2", name: "Nowhere Ltd", website: null, news_page_url: null, last_synced_at: "2026-11-06T03:00:00Z", news_page_pending_at: "2026-11-06T09:00:00Z" },
         ], 2)),
         contacts: () => queryBuilder(dbOk([{ bigin_company_id: "1" }, { bigin_company_id: "1" }])),
         content_sources: () => queryBuilder(dbOk([{ bigin_account_id: "1", member: { id: "m1", name: "Acme Fabrication" } }])),
@@ -37,9 +37,25 @@ describe("readCompanyList", () => {
     const list = await readCompanyList(db, {});
 
     expect(list.count).toBe(2);
-    expect(list.rows.map(({ name, inUse, contacts, member }) => ({ name, inUse, contacts, member }))).toEqual([
-      { name: "Acme", inUse: "news_page", contacts: 2, member: { id: "m1", name: "Acme Fabrication" } },
-      { name: "Nowhere Ltd", inUse: "none", contacts: 0, member: null },
+    expect(list.rows.map(({ name, inUse, contacts, member, pushPending }) => ({ name, inUse, contacts, member, pushPending }))).toEqual([
+      { name: "Acme", inUse: "news_page", contacts: 2, member: { id: "m1", name: "Acme Fabrication" }, pushPending: false },
+      { name: "Nowhere Ltd", inUse: "none", contacts: 0, member: null, pushPending: true },
     ]);
+  });
+});
+
+describe("readCompany (the editor above the table, issue #55)", () => {
+  const dbWith = (row: Record<string, unknown> | null) =>
+    asDb(mockDb({ from: fromByTable({ crm_companies: () => queryBuilder(dbOk(row)) }) }));
+
+  it("reads the chosen company, with whether its News Page URL is still on its way to Bigin", async () => {
+    const company = await readCompany(dbWith({
+      bigin_id: "1", name: "Acme", website: "https://acme.test", news_page_url: "https://acme.test/press", news_page_pending_at: "2026-11-06T09:00:00Z",
+    }), "1");
+    expect(company).toEqual({ biginId: "1", name: "Acme", website: "https://acme.test", newsPageUrl: "https://acme.test/press", inUse: "news_page", pushPending: true });
+  });
+
+  it("is null for a company that isn't stored", async () => {
+    expect(await readCompany(dbWith(null), "nope")).toBeNull();
   });
 });

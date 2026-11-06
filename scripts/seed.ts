@@ -534,7 +534,11 @@ async function main() {
   const { data: linkedContacts } = await must("contacts (companies)", db.from("contacts")
     .select("bigin_company_id, bigin_company_name").not("bigin_company_id", "is", null));
   const seen = new Set<string>(["seed-bigin-company-1"]);
-  const crmCompanies: { bigin_id: string; name: string; website: string | null; news_page_url: string | null }[] = [{ bigin_id: "seed-bigin-company-1", name: "Example Fabrication Ltd", website: "https://example-fabrication.test", news_page_url: "https://example-fabrication.test/news/" }];
+  // The first company has a News Page URL edit not yet accepted by Bigin
+  // ("push pending" in CRM's Companies box, issue #55).
+  const crmCompanies: { bigin_id: string; name: string; website: string | null; news_page_url: string | null; news_page_pending_at?: string }[] = [
+    { bigin_id: "seed-bigin-company-1", name: "Example Fabrication Ltd", website: "https://example-fabrication.test", news_page_url: "https://example-fabrication.test/news/", news_page_pending_at: new Date().toISOString() },
+  ];
   for (const c of linkedContacts ?? []) {
     if (!c.bigin_company_id || seen.has(c.bigin_company_id)) continue;
     seen.add(c.bigin_company_id);

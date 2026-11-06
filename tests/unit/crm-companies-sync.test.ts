@@ -30,7 +30,7 @@ type Tables = "crm_companies" | "content_sources" | "contacts" | "members" | "se
  * 1 linked rows, 2 rows by URL, then writes, then the linked rows for members.
  */
 function fakeDb({ local = [], sources = () => dbOk([]), members = [] }: {
-  local?: { bigin_id: string; name: string; website: string | null; news_page_url: string | null }[];
+  local?: { bigin_id: string; name: string; website: string | null; news_page_url: string | null; news_page_pending_at?: string | null }[];
   sources?: (n: number) => DbResult;
   members?: { id: string; website: string | null }[];
 } = {}) {
@@ -40,7 +40,7 @@ function fakeDb({ local = [], sources = () => dbOk([]), members = [] }: {
   const track = (t: Tables, b: Builder) => ((made[t] ??= []).push(b), b);
   vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
     from: fromByTable({
-      crm_companies: () => track("crm_companies", queryBuilder(companyCalls++ === 0 ? dbOk(local) : dbOk(null))),
+      crm_companies: () => track("crm_companies", queryBuilder(companyCalls++ === 0 ? dbOk(local.map((r) => ({ news_page_pending_at: null, ...r }))) : dbOk(null))),
       content_sources: () => track("content_sources", queryBuilder(sources(++sourceCalls))),
       contacts: () => track("contacts", queryBuilder(dbOk([]))),
       members: () => track("members", queryBuilder(dbOk(members))),
@@ -171,5 +171,39 @@ describe("syncCompanies", () => {
     expect(t.made.content_sources).toBeUndefined();
     expect(run?.sources).toBeNull();
     expect(t.callsOf("settings", "upsert").map((s) => s.key)).toEqual(["crm_companies_last"]);
+  });
+
+  describe("a News Page URL edit not yet in Bigin (push pending, issue #55)", () => {
+    const pending = { bigin_id: "1", name: "Acme", website: "https://acme.test", news_page_url: "https://acme.test/press", news_page_pending_at: "2026-11-06T02:00:00Z" };
+
+    it("keeps the local News Page URL over Bigin's stale copy, and derives the source from it", async () => {
+      const t = fakeDb({ local: [pending], sources: (n) => n === 3 ? dbOk([{ id: "new-1" }]) : dbOk([]) });
+      await syncCompanies({ crm: crm({ complete: true, companies: [rec("1", "https://acme.test/news", "https://acme.test", "Acme")] }), now: NOW });
+
+      expect(t.callsOf("crm_companies", "upsert").flat()).toEqual([]);
+      expect(t.callsOf("crm_companies", "update")).toEqual([{ last_synced_at: "2026-11-06T03:00:00.000Z" }]);
+      expect(t.callsOf("content_sources", "insert")).toEqual([expect.objectContaining({ url: "https://acme.test/press", bigin_account_id: "1" })]);
+    });
+
+    it("still takes a new name or Website from Bigin, without touching the pending address", async () => {
+      const t = fakeDb({ local: [pending] });
+      await syncCompanies({ crm: crm({ complete: true, companies: [rec("1", "https://acme.test/news", "https://acme.co.uk", "Acme Group")] }), now: NOW, deriveSources: false });
+
+      expect(t.callsOf("crm_companies", "upsert").flat()).toEqual([]);
+      const updates = t.callsOf("crm_companies", "update");
+      expect(updates).toEqual([{ name: "Acme Group", website: "https://acme.co.uk", last_synced_at: "2026-11-06T03:00:00.000Z", updated_at: "2026-11-06T03:00:00.000Z" }]);
+    });
+
+    it("a pending clear falls back to the Website, as Bigin's own blank does", async () => {
+      const t = fakeDb({
+        local: [{ ...pending, news_page_url: null }, { bigin_id: "2", name: "Bright", website: null, news_page_url: "https://bright.test/blog" }],
+        sources: (n) => n === 3 || n === 4 ? dbOk([{ id: `new-${n}` }]) : dbOk([]),
+      });
+      await syncCompanies({
+        crm: crm({ complete: true, companies: [rec("1", "https://acme.test/news", "https://acme.test", "Acme"), rec("2", "https://bright.test/blog", null, "Bright")] }),
+        now: NOW,
+      });
+      expect(t.callsOf("content_sources", "insert")).toContainEqual(expect.objectContaining({ url: "https://acme.test/", bigin_account_id: "1", bigin_from_website: true }));
+    });
   });
 });

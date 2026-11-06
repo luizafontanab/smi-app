@@ -54,6 +54,12 @@ const { storyCrawlerOn, runSourceCheck, syncCompanies } = vi.hoisted(() => ({
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled: storyCrawlerOn }));
 vi.mock("@/lib/sources/run", () => ({ runSourceCheck }));
 vi.mock("@/lib/crm-companies/sync", () => ({ syncCompanies }));
+const { pushCompanyNewsPage, retryPendingCompanyPushes, checkCompanyWriteAccess } = vi.hoisted(() => ({
+  pushCompanyNewsPage: vi.fn(async (): Promise<"pushed" | "pending" | "nothing"> => "pushed"),
+  retryPendingCompanyPushes: vi.fn(async () => ({ pushed: 0, failed: 0 })),
+  checkCompanyWriteAccess: vi.fn(async () => null),
+}));
+vi.mock("@/lib/crm-companies/news-page", () => ({ pushCompanyNewsPage, retryPendingCompanyPushes, checkCompanyWriteAccess }));
 const { refreshSocialFollowers } = vi.hoisted(() => ({
   refreshSocialFollowers: vi.fn(async (): Promise<{ instagramProblem: string | null }> => ({ instagramProblem: null })),
 }));
@@ -1482,6 +1488,44 @@ describe("runJob kinds", () => {
     dbFor(happyPath(job("crm_push", { payload: { contact_id: "c1", name_changed: true, re_opt_in: false } })));
     await runJobById("job1");
     expect(crmPush).toHaveBeenCalledWith("c1", { nameChanged: true, reOptIn: false });
+  });
+
+  describe("a company's News Page URL write-through (issue #55)", () => {
+    afterEach(() => {
+      pushCompanyNewsPage.mockReset().mockResolvedValue("pushed");
+      retryPendingCompanyPushes.mockClear();
+      checkCompanyWriteAccess.mockReset().mockResolvedValue(null);
+    });
+
+    it("crm_push retries a company's push, and fails so the queue retries it while Bigin still refuses", async () => {
+      crmPush.mockClear();
+      dbFor(happyPath(job("crm_push", { payload: { company_id: "91" } })));
+      await runJobById("job1");
+      expect(pushCompanyNewsPage).toHaveBeenCalledWith("91", { queueRetry: false });
+      expect(crmPush).not.toHaveBeenCalled();
+
+      pushCompanyNewsPage.mockResolvedValue("pending");
+      const j = job("crm_push", { id: "job2", payload: { company_id: "91" } });
+      const [select, claim, tail] = happyPath(j);
+      dbFor([select, claim, tail]);
+      await runJobById(j.id);
+      expect(tail.update).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", last_error: expect.stringContaining("company 91") }));
+    });
+
+    it("crm_sync also sweeps company pushes whose retry died", async () => {
+      dbFor(happyPath(job("crm_sync")));
+      await runJobById("job1");
+      expect(retryPendingCompanyPushes).toHaveBeenCalled();
+      expect(crmSync).toHaveBeenCalled();
+    });
+
+    it("the daily company sync re-checks whether the token may write companies, Story crawler on or off", async () => {
+      storyCrawlerOn.mockResolvedValue(false);
+      dbFor(happyPath(job("source_bigin_sync")));
+      await runJobById("job1");
+      expect(checkCompanyWriteAccess).toHaveBeenCalled();
+      storyCrawlerOn.mockReset().mockResolvedValue(true);
+    });
   });
 
   it("crm_sync and newsletter_sync delegate to their adapters", async () => {

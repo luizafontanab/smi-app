@@ -102,7 +102,7 @@ export function companyNewsPages(read: CrmCompanies): CompanyNewsPages {
  * company; `byUrl` the existing rows for the URLs Bigin lists (linked or not).
  */
 export function planBiginSources(
-  read: { complete: boolean; companies: CompanyNewsPage[] },
+  read: { complete: boolean; companies: CompanyNewsPage[]; cleared?: string[] },
   linked: readonly LinkedRow[],
   byUrl: readonly UrlRow[],
 ): SourcePlan {
@@ -146,6 +146,11 @@ export function planBiginSources(
   const trustAbsence = read.complete && (read.companies.length > 0 || linkedByAccount.size === 0);
   if (trustAbsence) {
     for (const row of linkedByAccount.values()) if (!wanted.has(row.bigin_account_id!)) unlink(row);
+  }
+  // A company known to have no address now (an admin cleared it), partial read or not.
+  for (const id of read.cleared ?? []) {
+    const row = linkedByAccount.get(id);
+    if (row && !wanted.has(id)) unlink(row);
   }
   // A company whose URL changed — that much a partial read does know.
   for (const [accountId, w] of wanted) {
@@ -235,9 +240,13 @@ function chunks<T>(items: readonly T[]): T[][] {
  * (lib/crm-companies/sync.ts) — the `source_bigin_sync` job, "Sync companies"
  * on CRM and "Sync from Bigin now" on Story sources. Throws on a database
  * error; the run's counts are saved to settings.bigin_sources_last for the
- * console.
+ * console — unless `record: false`, for a one-company update (a News Page
+ * URL edit, lib/crm-companies/news-page.ts) that isn't a sync run.
  */
-export async function applyBiginSources(read: CompanyNewsPages, { now = () => new Date() }: { now?: () => Date } = {}): Promise<BiginSourcesRun> {
+export async function applyBiginSources(
+  read: CompanyNewsPages,
+  { now = () => new Date(), record = true }: { now?: () => Date; record?: boolean } = {},
+): Promise<BiginSourcesRun> {
   const db = serviceDb();
   const fail = (what: string, error: { message: string }) => { throw new Error(`source_bigin_sync: ${what}: ${error.message}`); };
 
@@ -301,6 +310,7 @@ export async function applyBiginSources(read: CompanyNewsPages, { now = () => ne
     skipped: plan.skipped.slice(0, 50).map((x) => ({ company: x.name || x.accountId, url: x.url, reason: x.reason })),
     membersSet,
   };
+  if (!record) return run;
   const { error: saveError } = await db.from("settings").upsert({ key: BIGIN_SOURCES_LAST_KEY, value: run as unknown as Json });
   if (saveError) fail("saving the run", saveError);
   return run;

@@ -5,7 +5,7 @@ import { serviceDb } from "@/lib/db/server";
 import { DELETE as deleteContact, GET as getContact, PUT as putContact } from "@/app/api/mock/bigin/bigin/v2/Contacts/[id]/route";
 import { GET as listContacts, POST as createContact } from "@/app/api/mock/bigin/bigin/v2/Contacts/route";
 import { GET as searchContacts } from "@/app/api/mock/bigin/bigin/v2/Contacts/search/route";
-import { GET as listAccounts } from "@/app/api/mock/bigin/bigin/v2/Accounts/route";
+import { GET as listAccounts, PUT as updateAccounts } from "@/app/api/mock/bigin/bigin/v2/Accounts/route";
 import { org } from "@/app/api/mock/bigin/store";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -97,6 +97,31 @@ describe("GET /Accounts (story sources from Bigin)", () => {
   });
 });
 
+describe("PUT /Accounts (a company's News Page URL, issue #55)", () => {
+  const ACME = "9100000000001";
+
+  it("updates the named field and answers per record", async () => {
+    const res = await updateAccounts(req(`${API}/Accounts`, { method: "PUT", body: { data: [{ id: ACME, News_Page_URL: "https://acme.test/press" }], trigger: [] } }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).data[0]).toMatchObject({ code: "SUCCESS", details: { id: ACME }, status: "success" });
+    expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme.test/press");
+  });
+
+  it("refuses a token without the Companies update scope with OAUTH_SCOPE_MISMATCH", async () => {
+    org().scopes.delete("ZohoBigin.modules.accounts.UPDATE");
+    const res = await updateAccounts(req(`${API}/Accounts`, { method: "PUT", body: { data: [{ id: ACME, News_Page_URL: null }] } }));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "OAUTH_SCOPE_MISMATCH", status: "error" });
+    expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme-fabrication.test/news/");
+  });
+
+  it("an unknown company id is INVALID_DATA, per record", async () => {
+    const res = await updateAccounts(req(`${API}/Accounts`, { method: "PUT", body: { data: [{ id: "9100000000999", News_Page_URL: null }] } }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).data[0]).toMatchObject({ code: "INVALID_DATA" });
+  });
+});
+
 describe("a deleted record, as Bigin answers it", () => {
   beforeEach(() => {
     org().contacts.delete(PRIYA);
@@ -151,7 +176,7 @@ describe("the adapter against the mock", () => {
       const r = new NextRequest(url, init as ConstructorParameters<typeof NextRequest>[1]);
       const path = new URL(url).pathname.replace("/api/mock/bigin/bigin/v2", "");
       if (path === "/Contacts/search") return searchContacts(r);
-      if (path === "/Accounts") return listAccounts(r);
+      if (path === "/Accounts") return init?.method === "PUT" ? updateAccounts(r) : listAccounts(r);
       if (path === "/Contacts") return init?.method === "POST" ? createContact(r) : listContacts(r);
       const id = /^\/Contacts\/(\d+)$/.exec(path)?.[1];
       if (id) {
@@ -221,5 +246,42 @@ describe("the adapter against the mock", () => {
     ]);
     // every call carried the mock key — the guard let them all through
     expect(fetchSpy.mock.calls.filter(([u]) => !String(u).includes("/oauth/")).every(([, i]) => (i?.headers as Record<string, string>)[MOCK_KEY_HEADER])).toBe(true);
+  });
+
+  describe("writing a company's News Page URL", () => {
+    const ACME = "9100000000001";
+    async function adapter() {
+      vi.stubEnv("BIGIN_CLIENT_ID", "mock-id");
+      vi.stubEnv("BIGIN_CLIENT_SECRET", "mock-secret");
+      vi.stubEnv("BIGIN_REFRESH_TOKEN", "mock-refresh");
+      wireFetchToMock();
+      vi.resetModules(); // the adapter caches its token at module scope
+      return (await import("@/lib/adapters/crm")).getCrmSync();
+    }
+
+    it("writes the new address to Bigin, and a cleared one as empty", async () => {
+      const crm = await adapter();
+      await crm.updateCompanyNewsPage(ACME, "https://acme.test/press");
+      expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme.test/press");
+      await crm.updateCompanyNewsPage(ACME, null);
+      expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBeNull();
+    });
+
+    it("a refused write throws a scope refusal the caller can recognise", async () => {
+      org().scopes.delete("ZohoBigin.modules.accounts.UPDATE");
+      const crm = await adapter();
+      const { isScopeRefusal } = await import("@/lib/adapters/crm");
+      const err = await crm.updateCompanyNewsPage(ACME, "https://acme.test/press").catch((e: unknown) => e);
+      expect(isScopeRefusal(err)).toBe(true);
+      expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme-fabrication.test/news/");
+    });
+
+    it("checks whether the token may write companies without changing any", async () => {
+      const crm = await adapter();
+      expect(await crm.canWriteCompanies()).toBe(true);
+      org().scopes.delete("ZohoBigin.modules.accounts.UPDATE");
+      expect(await crm.canWriteCompanies()).toBe(false);
+      expect(org().accounts.map((a) => a.News_Page_URL)).toEqual(["https://acme-fabrication.test/news/", "https://brightsteel.test/blog", null, null]);
+    });
   });
 });

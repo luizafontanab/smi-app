@@ -115,9 +115,26 @@ Companies box), then derives sources from them exactly as before. For each compa
   source's suggestions makes a draft tagged with the member. Admin drafts
   aren't shown to the member.
 
-A Bigin-linked source's address is changed or cleared in Bigin, not in the
-console, because the next sync would undo a console edit. It can still be
-paused in the console.
+A Bigin-linked source's address isn't edited on Story sources. Since 6 Nov
+2026 (issue #55, `src/lib/crm-companies/news-page.ts`) the company's **News
+Page URL** is edited in CRM's Companies box instead (open the company), and
+written through to Bigin the way a contact edit is:
+
+- the edit is saved in `crm_companies` and marked pending
+  (`news_page_pending_at`), and the company's source moves to the new address
+  straight away (a cleared one falls back to the Website, or loses its source);
+- it is then pushed to Bigin (`PUT /Accounts`). A refused push stays pending,
+  is retried by a `crm_push` job, and the 15-minute `crm_sync` sweep picks up
+  any whose retry died;
+- while it's pending, the company sync keeps the local address over Bigin's
+  stale copy and derives the source from it.
+
+Editing needs a Bigin token with the Companies write scope. Until the token
+has it, the field is disabled with "edit in Bigin for now". The app learns
+this from a check that changes nothing (an update with no records in it),
+run on every company sync and stored in `settings.crm_companies_write`, and
+from any push refused with `OAUTH_SCOPE_MISMATCH`. The Website is never edited
+in the console. A source can still be paused on Story sources.
 
 Both jobs sit behind the **Story crawler** flag in `/console/features`. The
 flag is off by default, and while it's off nothing is checked or synced. The

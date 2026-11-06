@@ -2,13 +2,19 @@ import Link from "next/link";
 import { Pagination } from "@/components/Pagination";
 import { SubmitButton } from "@/components/SubmitButton";
 import type { CompanySyncRun } from "@/lib/crm-companies/sync";
-import { COMPANY_FILTERS, COMPANY_FILTER_LABEL, type AddressInUse, type CompanyFilter, type CompanyListRow } from "@/lib/crm-companies/list";
-import { syncCompaniesNow } from "./actions";
+import { COMPANY_FILTERS, COMPANY_FILTER_LABEL, type AddressInUse, type CompanyDetail, type CompanyFilter, type CompanyListRow } from "@/lib/crm-companies/list";
+import { saveCompanyNewsPage, syncCompaniesNow } from "./actions";
 
 /**
- * CRM's Companies box (issue #50): a read-only mirror of every CRM company in
- * Bigin, members and non-members, address or not. Its own "Sync companies"
- * button and last-synced line, separate from the contacts sync above.
+ * CRM's Companies box (issue #50): a mirror of every CRM company in Bigin,
+ * members and non-members, address or not. Its own "Sync companies" button
+ * and last-synced line, separate from the contacts sync above.
+ *
+ * Opening a company (`?company=`) shows the editor above the table, where its
+ * News Page URL is edited and written through to Bigin (#55). The Website is
+ * shown, never edited here. While the Bigin token can't write companies
+ * (`canEditCompanies` false), the field is disabled with "edit in Bigin for
+ * now".
  *
  * Later tickets add to it: the Bigin sources panel moved from Story sources
  * (#51), the deleted-in-Bigin filter (#52), a detail editor above the table
@@ -39,7 +45,7 @@ export function describeCompanyRun(run: CompanySyncRun): string {
 }
 
 export function CompaniesBox({
-  live, list, q, filter, run, flash, error, href, keep,
+  live, list, q, filter, run, flash, error, href, keep, selected, canEditCompanies,
 }: {
   live: boolean;
   list: { rows: CompanyListRow[]; count: number; page: number; pages: number } | null;
@@ -52,6 +58,10 @@ export function CompaniesBox({
   href: (over: Record<string, string | number | undefined>) => string;
   /** the contacts box's state, carried through this box's search form */
   keep: Record<string, string | undefined>;
+  /** the company open in the editor, if any */
+  selected: CompanyDetail | null;
+  /** whether the Bigin token may write companies (lib/crm-companies/news-page) */
+  canEditCompanies: boolean;
 }) {
   return (
     <section id="companies" aria-labelledby="companies-heading" className="mt-4 rounded-xl bg-white p-5 shadow-sm">
@@ -70,6 +80,12 @@ export function CompaniesBox({
           Companies synced from Bigin. Story sources weren&apos;t updated, because the story crawler is off.
         </p>
       )}
+      {flash === "news_page_saved" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">News Page URL saved, and Bigin has it.</p>}
+      {flash === "news_page_pending" && (
+        <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">
+          News Page URL saved. Bigin hasn&apos;t accepted it yet, so it shows as push pending and is retried automatically.
+        </p>
+      )}
       {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
 
       {!live || !list ? (
@@ -81,7 +97,11 @@ export function CompaniesBox({
           <p className="mt-1 text-xs text-graphite">
             {run ? <>Last synced {fmt(run.at)}: {describeCompanyRun(run)}</> : "Not synced yet. Sync companies to bring in every company from Bigin."}
           </p>
-          <p className="mt-1 text-xs text-graphite">Read-only here: change a company&apos;s details in Bigin, then sync.</p>
+          <p className="mt-1 text-xs text-graphite">
+            Open a company to edit its News Page URL. Change any other detail in Bigin, then sync.
+          </p>
+
+          {selected && <CompanyEditor company={selected} canEdit={canEditCompanies} closeHref={href({ company: undefined })} />}
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
             <nav aria-label="Filter companies" className="flex flex-wrap gap-1">
@@ -117,9 +137,16 @@ export function CompaniesBox({
                 <tbody>
                   {list.rows.map((c) => (
                     <tr key={c.id} className="border-t align-top">
-                      <td className="py-1.5">{c.name || <span className="text-graphite">(no name)</span>}</td>
+                      <td className="py-1.5">
+                        <Link href={href({ company: c.biginId })} aria-current={selected?.biginId === c.biginId ? "true" : undefined} className="text-ink underline-offset-2 hover:underline">
+                          {c.name || <span className="text-graphite">(no name)</span>}
+                        </Link>
+                      </td>
                       <td className="max-w-48 break-all text-xs text-graphite">{c.website ?? "—"}</td>
-                      <td className="max-w-48 break-all text-xs text-graphite">{c.newsPageUrl ?? "—"}</td>
+                      <td className="max-w-48 break-all text-xs text-graphite">
+                        {c.newsPageUrl ?? "—"}
+                        {c.pushPending && <span className="block whitespace-nowrap text-danger">push pending</span>}
+                      </td>
                       <td className={`text-xs ${c.inUse === "none" ? "text-danger" : c.inUse === "website" ? "text-graphite" : "text-success"}`}>{IN_USE_LABEL[c.inUse]}</td>
                       <td className="text-xs text-graphite">{c.contacts}</td>
                       <td className="text-xs text-graphite">{c.member?.name ?? "—"}</td>
@@ -136,5 +163,54 @@ export function CompaniesBox({
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * The one editor above the table. Only the News Page URL is editable; an
+ * empty field means the Website stands in. A save that hasn't reached Bigin
+ * shows as push pending until it does.
+ */
+function CompanyEditor({ company, canEdit, closeHref }: { company: CompanyDetail; canEdit: boolean; closeHref: string }) {
+  return (
+    <div className="mt-3 rounded-lg border p-4" aria-labelledby="company-editor-heading">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="company-editor-heading" className="font-semibold text-ink">{company.name || "(no name)"}</h3>
+        <Link href={closeHref} className="text-xs text-graphite hover:text-ink">Close</Link>
+      </div>
+      <p className="mt-1 text-sm text-graphite">
+        Website: {company.website ?? "none"} <span className="text-xs">(change it in Bigin)</span>
+      </p>
+      <form action={saveCompanyNewsPage} className="mt-3">
+        <input type="hidden" name="company" value={company.biginId} />
+        <label htmlFor="company-news-page" className="block text-sm font-medium text-ink">News Page URL</label>
+        <div className="mt-1 flex flex-wrap gap-2">
+          <input
+            id="company-news-page"
+            name="news_page_url"
+            inputMode="url"
+            defaultValue={company.newsPageUrl ?? ""}
+            placeholder={company.website ? `empty: ${company.website} is watched instead` : "https://example.com/news"}
+            disabled={!canEdit}
+            aria-describedby="company-news-page-help"
+            className="min-w-0 flex-1 rounded border px-3 py-1.5 text-sm disabled:bg-paper disabled:text-graphite"
+          />
+          <SubmitButton disabled={!canEdit} className="rounded bg-ink px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50" pendingLabel="Saving…">
+            Save
+          </SubmitButton>
+        </div>
+        <p id="company-news-page-help" className="mt-1 text-xs text-graphite">
+          {canEdit
+            ? "Saved here and in Bigin. Leave it empty to watch the company's Website instead."
+            : "Bigin doesn't let the app change companies yet, so edit in Bigin for now."}
+        </p>
+        {company.pushPending && (
+          <p className="mt-2 text-xs text-graphite">
+            <span className="text-danger">Push pending.</span>{" "}
+            Saved here, but Bigin hasn&apos;t accepted it yet. It&apos;s retried automatically, and a sync from Bigin won&apos;t undo it meanwhile.
+          </p>
+        )}
+      </form>
+    </div>
   );
 }

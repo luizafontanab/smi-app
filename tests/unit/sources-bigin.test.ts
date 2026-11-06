@@ -83,6 +83,18 @@ describe("planBiginSources", () => {
     expect(plan.unlink).toEqual([{ id: "s1", pause: true }]);
   });
 
+  it("a company an admin just cleared is unlinked even on a partial read; others it didn't see stay (issue #55)", () => {
+    const plan = planBiginSources(
+      { complete: false, companies: [], cleared: ["1"] },
+      [
+        linkedRow({ id: "s1", url: "https://a.test/news", bigin_account_id: "1", bigin_only: true }),
+        linkedRow({ id: "s2", url: "https://b.test/news", bigin_account_id: "2", bigin_only: true }),
+      ],
+      [],
+    );
+    expect(plan.unlink).toEqual([{ id: "s1", pause: true }]);
+  });
+
   it("two companies listing the same page: the first keeps it, the second is skipped", () => {
     const plan = planBiginSources(
       { complete: true, companies: [company("1", "https://shared.test/news", "First"), company("2", "shared.test/news", "Second")] },

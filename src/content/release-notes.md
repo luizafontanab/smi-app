@@ -10,6 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — Edit a company's News Page URL in CRM
+- In the Companies box on the CRM page, click a company's name to open it, and you can change its News Page URL there. The change is saved in Bigin too, so the next sync won't undo it.
+- The story crawler starts watching the new address straight away. Leave the field empty to watch the company's Website instead.
+- Until Bigin has accepted the change, the company shows "push pending". If Bigin can't be reached, the app keeps trying by itself.
+- The Website is shown but can only be changed in Bigin.
+- Until the Bigin connection is given permission to change companies, the field is greyed out with "edit in Bigin for now".
+
 ## 2026-11-06 — Companies on the CRM page
 - The CRM page has a new Companies box under Contacts. It lists every company in Bigin, members and non-members, including companies with no web address at all.
 - Each company shows its Website, its News Page URL, which of the two the story crawler watches ("News Page URL", "Website stand-in" or "none"), how many contacts are linked to it, and the member its stories are tagged with.

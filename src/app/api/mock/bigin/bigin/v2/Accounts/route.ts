@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { guard, org } from "../../../store";
+import { ACCOUNTS_UPDATE_SCOPE, guard, org, requireScope, success } from "../../../store";
 
 /** Fake Bigin `GET /bigin/v2/Accounts` — page/per_page paging, the named `fields` plus id. */
 export async function GET(request: NextRequest) {
@@ -20,4 +20,31 @@ export async function GET(request: NextRequest) {
     data,
     info: { count: data.length, page, per_page: perPage, more_records: page * perPage < all.length, next_page_token: null },
   });
+}
+
+/**
+ * Fake Bigin `PUT /bigin/v2/Accounts` — the bulk update form, the one Bigin's
+ * update-records docs give a sample of: `{ data: [{ id, ...fields }] }`,
+ * answered per record. Only News_Page_URL is applied (the one company field
+ * the app writes, issue #55). Needs the Companies update scope.
+ *
+ * An empty `data` is a validation error, not a scope one — which is how the
+ * adapter's canWriteCompanies() checks the scope without changing anything.
+ */
+export async function PUT(request: NextRequest) {
+  const denied = guard(request) ?? requireScope(ACCOUNTS_UPDATE_SCOPE);
+  if (denied) return denied;
+  const body = (await request.json().catch(() => ({}))) as { data?: Record<string, unknown>[] };
+  const items = body.data ?? [];
+  if (!items.length) {
+    return NextResponse.json({ code: "MANDATORY_NOT_FOUND", details: { api_name: "data" }, message: "required field not found", status: "error" }, { status: 400 });
+  }
+  const results = items.map((item) => {
+    const account = org().accounts.find((a) => a.id === item.id);
+    if (!account) return { code: "INVALID_DATA", details: { id: item.id }, message: "the id given seems to be invalid", status: "error" };
+    if ("News_Page_URL" in item) account.News_Page_URL = typeof item.News_Page_URL === "string" && item.News_Page_URL ? item.News_Page_URL : null;
+    return success(account.id, "record updated");
+  });
+  const failed = results.every((r) => r.code !== "SUCCESS");
+  return NextResponse.json({ data: results }, { status: failed ? 400 : 200 });
 }

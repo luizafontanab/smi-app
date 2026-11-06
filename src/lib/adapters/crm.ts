@@ -91,7 +91,17 @@ export type CompanyNewsPage = { id: string; name: string; url: string; fromWebsi
  * `websiteFallbackWithheld`: no company in the read had a News Page URL, so
  * no Website was used either (see companyNewsPages in lib/sources/bigin).
  */
-export type CompanyNewsPages = { complete: boolean; companies: CompanyNewsPage[]; websiteFallbackWithheld?: boolean };
+export type CompanyNewsPages = {
+  complete: boolean;
+  companies: CompanyNewsPage[];
+  websiteFallbackWithheld?: boolean;
+  /**
+   * Companies known to have no address now, even on a partial read: a News
+   * Page URL an admin just cleared, with no Website to fall back on (issue
+   * #55). Their source is unlinked as a complete read would.
+   */
+  cleared?: string[];
+};
 
 /**
  * One CRM company as Bigin returned it (issue #50). `website` and
@@ -135,6 +145,18 @@ export interface CrmSync {
   searchCompanies(q: string): Promise<BiginCompany[]>;
   /** The company sync (lib/crm-companies): every CRM company, with or without an address. Null when Bigin isn't connected. */
   listCompanies(): Promise<CrmCompanies | null>;
+  /**
+   * Write one company's News Page URL to Bigin (issue #55); null clears it.
+   * Throws a BiginApiError when Bigin refuses — isScopeRefusal() tells a
+   * token without the Companies write scope from anything else.
+   */
+  updateCompanyNewsPage(biginId: string, url: string | null): Promise<void>;
+  /**
+   * May this token write companies? Asked without changing any (see the
+   * Bigin implementation). True / false when Bigin's answer says so; null
+   * when it couldn't tell (Bigin down, out of credits, token refused).
+   */
+  canWriteCompanies(): Promise<boolean | null>;
   /** The `crm_sync` job: retry stuck pushes, pull, renew the webhook channel. */
   sync(opts?: { allowFirstImport?: boolean }): Promise<SyncResult>;
 }
@@ -362,6 +384,12 @@ class LocalMirrorCrmStub implements CrmSync {
   async listCompanies(): Promise<CrmCompanies | null> {
     return null;
   }
+  async updateCompanyNewsPage(biginId: string, url: string | null): Promise<void> {
+    console.log(`[crm] would set company ${biginId}'s News Page URL to ${url ?? "(blank)"} in Bigin`);
+  }
+  async canWriteCompanies(): Promise<boolean | null> {
+    return false;
+  }
   async sync(): Promise<SyncResult> {
     return EMPTY_RESULT;
   }
@@ -405,6 +433,18 @@ function recordResult(body: unknown): RecordResult | null {
  */
 const mayBeGoneRecord = (e: BiginApiError) =>
   e.status === 404 || (e.result?.code === "INVALID_DATA" && (e.result.details?.api_name ?? "id") === "id");
+/**
+ * Did Bigin refuse because the token isn't allowed to do this at all — the
+ * Companies write scope missing from the refresh token (HUMAN-TODO §7), or
+ * the token's user lacking the permission in Bigin? Read from the error
+ * `code`, never the HTTP status: Zoho sends OAUTH_SCOPE_MISMATCH as a 401,
+ * the same status as an expired or invalid token (notes: Bigin's docs give
+ * no status for it; Zoho CRM's give 401).
+ */
+export function isScopeRefusal(e: unknown): boolean {
+  return e instanceof BiginApiError && (e.result?.code === "OAUTH_SCOPE_MISMATCH" || e.result?.code === "NO_PERMISSION");
+}
+
 /** Same, for the Account_Name lookup: the company was deleted or merged in Bigin. */
 const mayBeGoneAccount = (e: BiginApiError) => e.result?.code === "INVALID_DATA" && e.result.details?.api_name === "Account_Name";
 
@@ -568,6 +608,42 @@ class BiginCrmSync implements CrmSync {
       else page++;
     }
     return { complete: false, companies };
+  }
+
+  /**
+   * The bulk update form, `PUT /Accounts` with the id in the record: the one
+   * Bigin's update-records docs give a sample of. `trigger: []` so the write
+   * fires no Bigin workflow. A blank address is sent as null, which clears
+   * the field (as Zoho's other APIs do; unverified on a live account,
+   * HUMAN-TODO 7.5). The field name is NEWS_PAGE_FIELD.
+   */
+  async updateCompanyNewsPage(biginId: string, url: string | null): Promise<void> {
+    const body = await this.request<WriteResponse>("/Accounts", {
+      method: "PUT",
+      body: { data: [{ id: biginId, [NEWS_PAGE_FIELD]: url?.trim() || null }], trigger: [] },
+    });
+    this.writtenId(body, "company update");
+  }
+
+  /**
+   * A scope check that changes nothing: an update with no records in it.
+   * Zoho checks the token's scope against the URL before it reads the body,
+   * so a token without the Companies write scope is refused with
+   * OAUTH_SCOPE_MISMATCH, and one with it gets a validation error about the
+   * empty `data` instead. That ordering is how Zoho's API gateway works on
+   * its other products; Bigin's docs don't state it, so it's unverified on a
+   * live account until HUMAN-TODO 7.5's first run.
+   */
+  async canWriteCompanies(): Promise<boolean | null> {
+    try {
+      await this.request<WriteResponse>("/Accounts", { method: "PUT", body: { data: [], trigger: [] } });
+      return true;
+    } catch (e) {
+      if (isScopeRefusal(e)) return false;
+      // An expired token, Bigin down or out of credits says nothing about the scope.
+      if (!(e instanceof BiginApiError) || e.status === 401 || e.status === 429 || e.status >= 500) return null;
+      return true; // refused for the empty body: the scope check was passed
+    }
   }
 
   /**

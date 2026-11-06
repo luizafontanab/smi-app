@@ -42,7 +42,25 @@ export type CompanyListRow = {
   contacts: number;
   /** the member the company's story source is matched to, if any */
   member: { id: string; name: string } | null;
+  /** a News Page URL edit made here that Bigin hasn't accepted yet (#55) */
+  pushPending: boolean;
 };
+
+/** The company open in the Companies box's editor (`?company=`). */
+export type CompanyDetail = Pick<CompanyListRow, "biginId" | "name" | "website" | "newsPageUrl" | "inUse" | "pushPending">;
+
+export async function readCompany(db: Db, biginId: string): Promise<CompanyDetail | null> {
+  const { data, error } = await db.from("crm_companies")
+    .select("bigin_id, name, website, news_page_url, news_page_pending_at")
+    .eq("bigin_id", biginId)
+    .maybeSingle();
+  if (error) throw new Error(`console/crm company ${biginId}: ${error.message}`);
+  if (!data) return null;
+  return {
+    biginId: data.bigin_id, name: data.name, website: data.website, newsPageUrl: data.news_page_url,
+    inUse: addressInUse(data), pushPending: !!data.news_page_pending_at,
+  };
+}
 
 type Db = ReturnType<typeof serviceDb>;
 
@@ -54,7 +72,7 @@ export async function readCompanyList(
   // Rebuilt per attempt: pagedList re-runs it as the last page when ?cpage= is past the end.
   const build = (from: number, to: number) => {
     let query = db.from("crm_companies")
-      .select("id, bigin_id, name, website, news_page_url, last_synced_at", { count: "exact" })
+      .select("id, bigin_id, name, website, news_page_url, last_synced_at, news_page_pending_at", { count: "exact" })
       .order("name")
       .order("bigin_id");
     if (term) query = query.or(`name.ilike.%${term}%,website.ilike.%${term}%,news_page_url.ilike.%${term}%`);
@@ -92,6 +110,7 @@ export async function readCompanyList(
       lastSyncedAt: c.last_synced_at,
       contacts: contactCount.get(c.bigin_id) ?? 0,
       member: memberOf.get(c.bigin_id) ?? null,
+      pushPending: !!c.news_page_pending_at,
     })),
   };
 }

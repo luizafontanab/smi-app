@@ -28,7 +28,15 @@ export type MockContact = {
 
 export type MockAccount = { id: string; Account_Name: string; News_Page_URL: string | null; Website: string | null };
 
-type Org = { contacts: Map<string, MockContact>; accounts: MockAccount[]; nextId: number };
+/**
+ * The scopes the mock's token was granted. Every scope the app asks for by
+ * default; a test (or someone poking a Preview) deletes one to see how the
+ * app copes with a token that lacks it — the state production is in until
+ * the Bigin token is regenerated with the new scopes (HUMAN-TODO §7).
+ */
+export const ACCOUNTS_UPDATE_SCOPE = "ZohoBigin.modules.accounts.UPDATE";
+
+type Org = { contacts: Map<string, MockContact>; accounts: MockAccount[]; nextId: number; scopes: Set<string> };
 
 const g = globalThis as typeof globalThis & { __biginMockOrg?: Org };
 
@@ -63,7 +71,7 @@ function seedOrg(): Org {
       Modified_Time: new Date(now - (i + 1) * 3_600_000).toISOString(),
     });
   });
-  return { contacts, accounts, nextId: 9200000000100 };
+  return { contacts, accounts, nextId: 9200000000100, scopes: new Set([ACCOUNTS_UPDATE_SCOPE]) };
 }
 
 export function org(): Org {
@@ -90,6 +98,21 @@ export function guard(request: Request): NextResponse | null {
   const given = request.headers.get(MOCK_KEY_HEADER) ?? "";
   if (!expected || given.length !== expected.length || !timingSafeEqual(Buffer.from(given), Buffer.from(expected))) return invalid;
   return null;
+}
+
+/**
+ * A call the token's scopes don't cover. Bigin's status-code docs list
+ * OAUTH_SCOPE_MISMATCH without an HTTP status; Zoho CRM's (same platform)
+ * give it as 401 with this top-level body. Unverified on a live Bigin
+ * account (HUMAN-TODO 7.5). It shares 401 with INVALID_TOKEN, so the adapter
+ * tells them apart by `code`.
+ */
+export function requireScope(scope: string): NextResponse | null {
+  if (org().scopes.has(scope)) return null;
+  return NextResponse.json(
+    { code: "OAUTH_SCOPE_MISMATCH", details: {}, message: "invalid oauth scope to access this URL", status: "error" },
+    { status: 401 },
+  );
 }
 
 /**

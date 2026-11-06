@@ -14,7 +14,8 @@ import { firstImportDone, getCrmSync, readLastRun, type LastRun } from "@/lib/ad
 import { addContact, previewBiginPull, runBiginSync, saveContact, searchBiginCompanies } from "../actions";
 import { firstImportPreviewFresh } from "./first-import";
 import { SubmitButton } from "@/components/SubmitButton";
-import { parseCompanyFilter, readCompanyList } from "@/lib/crm-companies/list";
+import { parseCompanyFilter, readCompany, readCompanyList } from "@/lib/crm-companies/list";
+import { readCompanyWriteAccess } from "@/lib/crm-companies/news-page";
 import { readCompanySyncRun } from "@/lib/crm-companies/sync";
 import { CompaniesBox } from "./CompaniesBox";
 
@@ -34,6 +35,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   const cq = typeof sp.cq === "string" ? sp.cq : "";
   const cfilter = parseCompanyFilter(sp.cfilter);
   const requestedCompanyPage = Math.max(1, Number(sp.cpage) || 1);
+  const companyId = typeof sp.company === "string" && sp.company ? sp.company : null;
 
   // Rebuilt per attempt: pagedList re-runs it as the last page when ?page= is
   // past the end, rather than letting PostgREST's 416 throw.
@@ -47,7 +49,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
   };
 
   const crm = getCrmSync();
-  const [members, { data: contacts, count, page }, editing, imported, lastRun, companies, companyRun] = await Promise.all([
+  const [members, { data: contacts, count, page }, editing, imported, lastRun, companies, companyRun, selectedCompany, companyWrite] = await Promise.all([
     must(db.from("members").select("id, name").order("name"), "console/crm members"),
     pagedList(contactsQuery, requestedPage, PAGE_SIZE, "console/crm contacts"),
     // ?contact= is raw user input against a uuid column — a junk value would
@@ -61,13 +63,18 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
     // Not connected → the box says so rather than listing a stale or empty copy.
     crm.live ? readCompanyList(db, { q: cq, filter: cfilter, page: requestedCompanyPage, size: PAGE_SIZE }) : Promise.resolve(null),
     crm.live ? readCompanySyncRun() : Promise.resolve(null),
+    crm.live && companyId ? readCompany(db, companyId) : Promise.resolve(null),
+    crm.live ? readCompanyWriteAccess() : Promise.resolve(null),
   ]);
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
   const activity = editing?.member_id ? await memberActivityTimeline(editing.member_id, 10) : [];
 
   // Each box's links keep the other box's search, filter and page.
-  const companyState = { cq, cfilter: cfilter === "all" ? undefined : cfilter, cpage: companies && companies.page > 1 ? companies.page : undefined };
+  const companyState = {
+    cq, cfilter: cfilter === "all" ? undefined : cfilter, cpage: companies && companies.page > 1 ? companies.page : undefined,
+    company: selectedCompany?.biginId,
+  };
   const link = (merged: Record<string, string | number | undefined>, hash = "") => {
     const params = new URLSearchParams();
     Object.entries(merged).forEach(([k, v]) => v !== undefined && v !== "" && params.set(k, String(v)));
@@ -216,6 +223,8 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
         error={typeof sp.companies_error === "string" ? sp.companies_error : undefined}
         href={companyHref}
         keep={{ q, page: page > 1 ? String(page) : undefined }}
+        selected={selectedCompany}
+        canEditCompanies={!!companyWrite?.allowed}
       />
     </div>
   );
