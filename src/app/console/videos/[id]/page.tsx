@@ -146,26 +146,26 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
                 {industryField}
                 <label htmlFor="approve_at" className="sr-only">Publish at (UK time)</label>
                 <input id="approve_at" type="datetime-local" name="scheduled_at" required defaultValue={londonInputValue(video.scheduled_at)} className="rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</button>
+                <SubmitButton pendingLabel="Approving…" className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</SubmitButton>
               </form>
               <form action={decideVideo} className="mt-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="approve" />
                 {industryField}
-                <button className="rounded border border-ink px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</button>
+                <SubmitButton pendingLabel="Publishing…" className="rounded border border-ink px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</SubmitButton>
               </form>
               {video.source === "member" ? (
                 <form action={decideVideo} className="mt-4 flex gap-2 border-t pt-3">
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="reject" />
                   <input name="reason" aria-label="Reason (sent to the member)" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                  <button className="shrink-0 rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Send back</button>
+                  <SubmitButton pendingLabel="Sending back…" className="shrink-0 rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Send back</SubmitButton>
                 </form>
               ) : (
                 <form action={decideVideo} className="mt-4 border-t pt-3">
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="reject" />
-                  <button className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Not yet — back to draft</button>
+                  <SubmitButton pendingLabel="Returning…" className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Not yet — back to draft</SubmitButton>
                   <p className="mt-1 text-xs text-graphite">Nobody is emailed. Edit it, then mark it ready to review again.</p>
                 </form>
               )}
@@ -180,8 +180,8 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
                 {industryField}
                 <label htmlFor="schedule_at" className="sr-only">Publish at (UK time)</label>
                 <input id="schedule_at" type="datetime-local" name="scheduled_at" defaultValue={londonInputValue(video.scheduled_at)} className="rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>
-                <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
+                <SubmitButton pendingLabel="Scheduling…" className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</SubmitButton>
+                <SubmitButton pendingLabel="Publishing…" name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</SubmitButton>
               </form>
               <p className="mt-2 text-xs text-graphite">
                 Times are UK time. The social post follows its own time, set under Social post above.
@@ -191,7 +191,7 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="status" value="awaiting_approval" />
                   <input type="hidden" name="return_to" value={`/console/videos/${id}`} />
-                  <button className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Mark ready to review</button>
+                  <SubmitButton pendingLabel="Marking…" className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Mark ready to review</SubmitButton>
                   <p className="mt-1 text-xs text-graphite">Optional. Puts it in Ready to review for a final check before it&apos;s scheduled.</p>
                 </form>
               )}
@@ -207,13 +207,13 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
                   <>
                     <p className="text-xs text-graphite">Pinned until {formatLondon(video.pinned_until!)}</p>
                     <input type="hidden" name="days" value="0" />
-                    <button className="rounded border px-3 py-1.5">Unpin</button>
+                    <SubmitButton pendingLabel="Unpinning…" className="rounded border px-3 py-1.5">Unpin</SubmitButton>
                   </>
                 ) : (
                   <>
                     <input type="number" name="days" defaultValue={2} min={1} max={30} className="w-16 rounded border px-2 py-1.5" />
                     <span className="text-xs text-graphite">days</span>
-                    <button className="rounded bg-ink px-3 py-1.5 text-white">Pin</button>
+                    <SubmitButton pendingLabel="Pinning…" className="rounded bg-ink px-3 py-1.5 text-white">Pin</SubmitButton>
                   </>
                 )}
               </form>
@@ -223,7 +223,7 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
               <form action={returnToDraft} className="mt-4 border-t pt-3">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="kind" value="video" />
-                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <SubmitButton pendingLabel="Returning…" className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</SubmitButton>
                 <p className="mt-1 text-xs text-graphite">Takes it off the site straight away. The member is not emailed.</p>
               </form>
             </div>

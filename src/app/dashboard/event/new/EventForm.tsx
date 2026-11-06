@@ -1,5 +1,6 @@
 "use client";
 
+import { SubmitButton } from "@/components/SubmitButton";
 import Link from "next/link";
 import { useState } from "react";
 import { RequiredMark } from "@/components/RequiredMark";
@@ -111,11 +112,11 @@ export function EventForm({ action, uploadImage, member, initial, withdrawAction
       )}
 
       <div className="flex items-center gap-3">
-        <button className="rounded bg-ink px-5 py-2.5 text-white">{initial ? "Save & resubmit" : "Submit for approval"}</button>
+        <SubmitButton pendingLabel={initial ? "Resubmitting…" : "Submitting…"} className="rounded bg-ink px-5 py-2.5 text-white">{initial ? "Save & resubmit" : "Submit for approval"}</SubmitButton>
         {initial && withdrawAction && (
-          <button type="submit" formAction={withdrawAction} className="text-sm text-graphite underline hover:text-danger">
+          <SubmitButton formAction={withdrawAction} pendingLabel="Withdrawing…" className="text-sm text-graphite underline hover:text-danger">
             Withdraw
-          </button>
+          </SubmitButton>
         )}
       </div>
     </form>

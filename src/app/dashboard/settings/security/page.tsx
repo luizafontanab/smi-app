@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import Link from "next/link";
 import { requireMemberView } from "@/lib/auth";
 import { changeLoginEmail, changePassword } from "../../actions";
@@ -44,7 +45,7 @@ export default async function SecuritySettingsPage(props: PageProps<"/dashboard/
           <label htmlFor="confirm" className="font-medium">Confirm new password<RequiredMark /></label>
           <input id="confirm" name="confirm" type="password" required minLength={PASSWORD_MIN_LENGTH} autoComplete="new-password" className="mt-1 w-full rounded border px-3 py-2 text-base sm:text-sm" />
         </div>
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Update password</button>
+        <SubmitButton pendingLabel="Updating…" className="rounded bg-ink px-5 py-2.5 text-white">Update password</SubmitButton>
       </form>
 
       {/* GAPS A4.12 — the login email, not the company page's contact email. */}
@@ -73,7 +74,7 @@ export default async function SecuritySettingsPage(props: PageProps<"/dashboard/
             <label htmlFor="email" className="font-medium">New login email<RequiredMark /></label>
             <input id="email" name="email" type="email" required autoComplete="email" className="mt-1 w-full rounded border px-3 py-2 text-base sm:text-sm" />
           </div>
-          <button className="self-start rounded bg-ink px-5 py-2.5 text-white sm:self-auto">Change email</button>
+          <SubmitButton pendingLabel="Changing…" className="self-start rounded bg-ink px-5 py-2.5 text-white sm:self-auto">Change email</SubmitButton>
         </form>
       </section>
     </div>

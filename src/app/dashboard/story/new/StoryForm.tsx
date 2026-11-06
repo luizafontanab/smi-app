@@ -114,20 +114,20 @@ export function StoryForm({ action, uploadImage, previewBody, categories, member
           </a>
         )}
         {initial && !isDraft && withdrawAction && (
-          <button type="submit" formAction={withdrawAction} className="text-sm text-graphite underline hover:text-danger">
+          <SubmitButton formAction={withdrawAction} pendingLabel="Withdrawing…" className="text-sm text-graphite underline hover:text-danger">
             Withdraw
-          </button>
+          </SubmitButton>
         )}
         {initial && isDraft && deleteDraftAction && (
-          <button
-            type="submit"
+          <SubmitButton
             formAction={deleteDraftAction}
             formNoValidate
             onClick={(e) => { if (!window.confirm("Delete this draft? This can't be undone.")) e.preventDefault(); }}
+            pendingLabel="Deleting…"
             className="text-sm text-graphite underline hover:text-danger"
           >
             Delete draft
-          </button>
+          </SubmitButton>
         )}
       </div>
       {canDraft && (

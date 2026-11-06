@@ -1,6 +1,7 @@
 "use client"; // error boundaries must be Client Components
 
 import { useEffect } from "react";
+import { RetryButton } from "@/components/RetryButton";
 import { reportClientError } from "@/lib/client-error-report";
 
 /**
@@ -33,8 +34,9 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
             The site hit an unexpected problem and couldn&apos;t finish loading. We&apos;re sorry —
             please try again in a moment.
           </p>
-          <button
-            onClick={() => retry()}
+          <RetryButton
+            retry={retry}
+            error={error}
             style={{
               marginTop: "2rem",
               padding: "0.6rem 1.2rem",
@@ -46,9 +48,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
               borderRadius: "0.25rem",
               cursor: "pointer",
             }}
-          >
-            Try again
-          </button>
+          />
           {error.digest && (
             <p style={{ marginTop: "2rem", fontSize: "0.75rem", color: "#5a6068" }}>
               Reference <code>{error.digest}</code>

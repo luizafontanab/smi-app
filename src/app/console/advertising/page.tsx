@@ -6,6 +6,7 @@ import { must } from "@/lib/db/must";
 import { AD_FORMAT_KEYS, DEFAULT_AD_FORMATS, type AdFormat } from "@/lib/advert-formats";
 import { saveAdvertFormats, saveMediaPack } from "../actions";
 import { UploadField } from "@/components/UploadField";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,7 @@ export default async function AdvertisingContentPage(props: PageProps<"/console/
           <div>
             <UploadField kind="pdf" name="pack" aria-label="Media pack PDF" accept="application/pdf" required className="text-sm" />
           </div>
-          <button className="rounded bg-ink px-4 py-2 text-white">Upload</button>
+          <SubmitButton className="rounded bg-ink px-4 py-2 text-white" pendingLabel="Uploading…">Upload</SubmitButton>
         </form>
       </section>
 
@@ -118,7 +119,7 @@ export default async function AdvertisingContentPage(props: PageProps<"/console/
               </div>
             );
           })}
-          <button className="rounded bg-ink px-4 py-2 text-sm text-white">Save format copy</button>
+          <SubmitButton className="rounded bg-ink px-4 py-2 text-sm text-white" pendingLabel="Saving…">Save format copy</SubmitButton>
         </form>
       </section>
     </div>

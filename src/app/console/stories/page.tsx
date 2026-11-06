@@ -10,6 +10,7 @@ import { CalendarView, monthGrid, parseMonth, type CalendarStory } from "./Calen
 import { StoryBoard } from "./StoryBoard";
 import { StoryList, type ListStory } from "./StoryList";
 import { parseStoryListFilters, parseStoryView, STORY_LIST_PAGE_SIZE, storyListHref } from "@/lib/story-board";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -119,7 +120,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
             Delay (minutes)
             <input type="number" name="delay_minutes" min={0} defaultValue={caps.delay_minutes} className="mt-1 w-24 rounded border px-2 py-1" />
           </label>
-          <button className="rounded bg-ink px-4 py-2 text-white">Save</button>
+          <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-4 py-2 text-white">Save</SubmitButton>
         </form>
 
         <h2 className="mt-5 text-sm font-bold text-ink">Buffer channels</h2>
@@ -151,7 +152,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
               className="mt-1 w-56 rounded border px-2 py-1"
             />
           </label>
-          <button className="rounded bg-ink px-4 py-2 text-white">Save</button>
+          <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-4 py-2 text-white">Save</SubmitButton>
         </form>
       </section>
     </div>

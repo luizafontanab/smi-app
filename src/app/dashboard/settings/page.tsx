@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { savePrefs } from "../actions";
@@ -34,7 +35,7 @@ export default async function SettingsPage(props: PageProps<"/dashboard/settings
             <option value="never">Never</option>
           </select>
         </div>
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+        <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white">Save</SubmitButton>
       </form>
     </div>
   );

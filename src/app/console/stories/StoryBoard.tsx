@@ -3,6 +3,7 @@
 import { formatLondon } from "@/lib/london-time";
 import Link from "next/link";
 import { startTransition, useState } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 import {
   closestCorners,
   DndContext,
@@ -188,7 +189,7 @@ function StoryCard({ story }: { story: BoardStory }) {
           <form action={decideStory}>
             <input type="hidden" name="id" value={story.id} />
             <input type="hidden" name="decision" value="approve" />
-            <button className="rounded bg-success px-2.5 py-1 text-xs text-white">Approve</button>
+            <SubmitButton pendingLabel="Approving…" className="rounded bg-success px-2.5 py-1 text-xs text-white">Approve</SubmitButton>
           </form>
           <Link href={`/console/stories/${story.id}`} className="rounded border px-2.5 py-1 text-xs">Review</Link>
         </div>
@@ -199,7 +200,7 @@ function StoryCard({ story }: { story: BoardStory }) {
           {isPinned ? (
             <>
               <input type="hidden" name="days" value="0" />
-              <button className="text-graphite hover:text-ink">Unpin</button>
+              <SubmitButton pendingLabel="Unpinning…" className="text-graphite hover:text-ink">Unpin</SubmitButton>
             </>
           ) : (
             <>
@@ -207,7 +208,7 @@ function StoryCard({ story }: { story: BoardStory }) {
               <span className="text-graphite">📌 Pin</span>
               <input type="number" name="days" required min={1} max={30} placeholder="–" aria-label="Days to pin" className="w-10 rounded border px-1 py-0.5" />
               <span className="text-graphite">days</span>
-              <button className="text-graphite hover:text-ink underline">Go</button>
+              <SubmitButton pendingLabel="Pinning…" className="text-graphite hover:text-ink underline">Go</SubmitButton>
             </>
           )}
         </form>

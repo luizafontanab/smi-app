@@ -4,6 +4,7 @@ import { must } from "@/lib/db/must";
 import { Card, SectionTitle } from "@/components/console/ui";
 import { savePromoCode, setPromoCodeActive } from "../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Promo codes" };
@@ -48,7 +49,7 @@ export default async function PromoCodesPage(props: PageProps<"/console/promo-co
             <input id="expires_at" name="expires_at" type="date" className="mt-1 w-full rounded border px-3 py-2" />
           </div>
           <div className="flex items-end sm:col-span-2">
-            <button className="rounded bg-ink px-5 py-2.5 text-sm text-white">Create code</button>
+            <SubmitButton className="rounded bg-ink px-5 py-2.5 text-sm text-white" pendingLabel="Creating…">Create code</SubmitButton>
           </div>
         </form>
       </Card>
@@ -74,7 +75,7 @@ export default async function PromoCodesPage(props: PageProps<"/console/promo-co
                   <form action={setPromoCodeActive}>
                     <input type="hidden" name="id" value={c.id} />
                     <input type="hidden" name="active" value={c.active ? "0" : "1"} />
-                    <button type="submit" className="text-xs text-graphite underline">{c.active ? "Deactivate" : "Reactivate"}</button>
+                    <SubmitButton className="text-xs text-graphite underline" pendingLabel={c.active ? "Deactivating…" : "Reactivating…"}>{c.active ? "Deactivate" : "Reactivate"}</SubmitButton>
                   </form>
                 </td>
               </tr>

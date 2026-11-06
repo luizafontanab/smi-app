@@ -6,6 +6,7 @@ import { requireDeveloper } from "@/lib/developer";
 import { UUID_RE } from "@/lib/validate";
 import { Badge, Card } from "@/components/console/ui";
 import { setErrorStatus } from "../../actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Error" };
@@ -53,7 +54,7 @@ export default async function ErrorDetailPage(props: PageProps<"/console/errors/
           <form key={a.status} action={setErrorStatus}>
             <input type="hidden" name="id" value={event.id} />
             <input type="hidden" name="status" value={a.status} />
-            <button className="rounded border bg-white px-3 py-1.5 text-sm hover:border-ink">{a.label}</button>
+            <SubmitButton className="rounded border bg-white px-3 py-1.5 text-sm hover:border-ink" pendingLabel="Working…">{a.label}</SubmitButton>
           </form>
         ))}
       </div>

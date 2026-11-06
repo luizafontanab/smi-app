@@ -1,4 +1,5 @@
 import { cancelPlacement } from "@/app/console/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 /**
  * "Cancel this booking" for a Featured Member or Featured Event slot, or a takeover, that hasn't
@@ -19,7 +20,7 @@ export function CancelPlacementForm({ id, noun, held }: { id: string; noun: stri
         <input type="checkbox" name="confirm" value="1" required />
         Yes, cancel this {noun}
       </label>
-      <button className="mt-3 rounded border border-danger/30 px-4 py-2 text-danger">Cancel {noun}</button>
+      <SubmitButton className="mt-3 rounded border border-danger/30 px-4 py-2 text-danger" pendingLabel="Cancelling…">Cancel {noun}</SubmitButton>
     </form>
   );
 }

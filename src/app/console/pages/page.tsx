@@ -114,7 +114,7 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
           <form action={clearMyVariantOverride} className="mt-3 rounded bg-graphite/10 p-2 text-sm">
             This browser is previewing <b>{VARIANT_LABEL[myOverride]}</b> through the design switcher, so it won&apos;t show
             the site-wide choice.{" "}
-            <button className="font-semibold underline">Show me what visitors see</button>
+            <SubmitButton className="font-semibold underline" pendingLabel="Clearing…">Show me what visitors see</SubmitButton>
           </form>
         )}
       </section>
@@ -144,8 +144,8 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
                     {locked && <span className="text-xs text-graphite">(paid placement — always shown)</span>}
                   </label>
                   <span className="flex gap-1">
-                    <button name="move" value={`${id}:up`} disabled={i === 0} aria-label={`Move ${HOME_SECTION_LABELS[id]} up`} className="rounded border px-2 py-0.5 disabled:opacity-30">↑</button>
-                    <button name="move" value={`${id}:down`} disabled={i === sections.order.length - 1} aria-label={`Move ${HOME_SECTION_LABELS[id]} down`} className="rounded border px-2 py-0.5 disabled:opacity-30">↓</button>
+                    <SubmitButton name="move" value={`${id}:up`} disabled={i === 0} aria-label={`Move ${HOME_SECTION_LABELS[id]} up`} className="rounded border px-2 py-0.5 disabled:opacity-30" pendingLabel="↑">↑</SubmitButton>
+                    <SubmitButton name="move" value={`${id}:down`} disabled={i === sections.order.length - 1} aria-label={`Move ${HOME_SECTION_LABELS[id]} down`} className="rounded border px-2 py-0.5 disabled:opacity-30" pendingLabel="↓">↓</SubmitButton>
                   </span>
                 </li>
               );
@@ -185,9 +185,9 @@ export default async function PageLayoutsPage(props: PageProps<"/console/pages">
       <form action={resetLayout} className="mt-3">
         <input type="hidden" name="page_type" value={type} />
         {entity && <input type="hidden" name="entity_id" value={entity} />}
-        <button className="text-sm text-graphite underline hover:text-danger">
+        <SubmitButton className="text-sm text-graphite underline hover:text-danger" pendingLabel={entity ? "Removing…" : "Resetting…"}>
           {entity ? "Remove this page's override (use the default)" : "Reset to the built-in default"}
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

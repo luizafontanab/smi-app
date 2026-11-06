@@ -5,6 +5,7 @@ import { serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
 import { deleteIndustry, saveIndustry } from "../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +85,7 @@ export default async function IndustryEditor(props: PageProps<"/console/industri
           />
           <p className="mt-1 text-xs text-graphite">Order in the industry strip. Lower shows first.</p>
         </div>
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+        <SubmitButton className="rounded bg-ink px-5 py-2.5 text-white" pendingLabel="Saving…">Save</SubmitButton>
       </form>
 
       {!isNew && (
@@ -100,7 +101,7 @@ export default async function IndustryEditor(props: PageProps<"/console/industri
             <input type="checkbox" name="confirm" value="1" required />
             Yes, delete this industry
           </label>
-          <button className="mt-3 rounded border border-danger/30 px-4 py-2 text-sm text-danger">Delete</button>
+          <SubmitButton className="mt-3 rounded border border-danger/30 px-4 py-2 text-sm text-danger" pendingLabel="Deleting…">Delete</SubmitButton>
         </form>
       )}
     </div>

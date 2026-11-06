@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { notFound } from "next/navigation";
 import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
@@ -56,10 +57,10 @@ export default async function EditMemberMachine(props: PageProps<"/dashboard/equ
         </div>
         <YoutubePreview name="video_url" required={false} label="Video of the machine running (YouTube link)" defaultValue={machine.video_url ?? ""} />
         <div className="flex items-center gap-3">
-          <button className="rounded bg-ink px-5 py-2.5 text-white">Save & resubmit</button>
-          <button type="submit" formAction={withdrawMachine} className="text-sm text-graphite underline hover:text-danger">
+          <SubmitButton pendingLabel="Resubmitting…" className="rounded bg-ink px-5 py-2.5 text-white">Save & resubmit</SubmitButton>
+          <SubmitButton formAction={withdrawMachine} pendingLabel="Withdrawing…" className="text-sm text-graphite underline hover:text-danger">
             Withdraw
-          </button>
+          </SubmitButton>
         </div>
       </form>
     </div>

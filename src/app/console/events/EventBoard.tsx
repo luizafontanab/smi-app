@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { startTransition, useState } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 import {
   closestCorners,
   DndContext,
@@ -175,7 +176,7 @@ function EventCard({ event }: { event: BoardEvent }) {
           <form action={decideEvent}>
             <input type="hidden" name="id" value={event.id} />
             <input type="hidden" name="decision" value="approve" />
-            <button className="rounded bg-success px-2.5 py-1 text-xs text-white">Approve</button>
+            <SubmitButton pendingLabel="Approving…" className="rounded bg-success px-2.5 py-1 text-xs text-white">Approve</SubmitButton>
           </form>
           <Link href={`/console/events/${event.id}`} className="rounded border px-2.5 py-1 text-xs">Review</Link>
         </div>

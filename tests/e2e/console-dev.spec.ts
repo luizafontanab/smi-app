@@ -139,6 +139,27 @@ test.describe("filing a report and working it on the board", () => {
     await expect(page.getByRole("link", { name: title, exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: quickTitle, exact: true })).toHaveCount(0);
   });
+
+  // #48: a button that starts work goes off on the first click, so a
+  // double-click (or an impatient second click) submits once, not twice.
+  test("double-clicking + Add creates one task, not two", async ({ page }) => {
+    const title = `E2E double click ${Date.now()}`;
+    await page.goto("/console/dev?view=list");
+    await page.getByRole("textbox", { name: "New task title" }).fill(title);
+    await page.getByRole("button", { name: "+ Add" }).dblclick();
+
+    await expect(page.getByRole("link", { name: title, exact: true }).first()).toBeVisible({ timeout: 20_000 });
+    // a second insert would land a beat later: reload so the count reads the database, not a half-rendered page
+    await page.goto("/console/dev?view=list");
+    await expect(page.getByRole("link", { name: title, exact: true })).toHaveCount(1);
+
+    // Clean up, as above.
+    await page.getByRole("link", { name: title, exact: true }).click();
+    await page.waitForURL(/\/console\/dev\/[0-9a-f-]{36}/, { timeout: 20_000 });
+    await page.locator('input[name="confirm"]').check();
+    await page.getByRole("button", { name: "Delete" }).click();
+    await page.waitForURL(/\/console\/dev\?.*deleted=1/, { timeout: 20_000 });
+  });
 });
 
 /**

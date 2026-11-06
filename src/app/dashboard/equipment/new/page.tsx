@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireMemberView } from "@/lib/auth";
 import { memberUploadImage, submitMachine } from "../../actions";
 import { RequiredMark } from "@/components/RequiredMark";
@@ -40,7 +41,7 @@ export default async function NewMemberMachine(props: PageProps<"/dashboard/equi
           </div>
         </div>
         <YoutubePreview name="video_url" required={false} label="Video of the machine running (YouTube link)" />
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Submit for approval</button>
+        <SubmitButton pendingLabel="Submitting…" className="rounded bg-ink px-5 py-2.5 text-white">Submit for approval</SubmitButton>
       </form>
     </div>
   );

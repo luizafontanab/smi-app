@@ -5,6 +5,7 @@ import { must } from "@/lib/db/must";
 import { Card, SectionTitle } from "@/components/console/ui";
 import { deleteResource, saveResource } from "../actions";
 import { UploadField } from "@/components/UploadField";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Member Resources" };
@@ -38,7 +39,7 @@ export default async function ConsoleResourcesPage(props: PageProps<"/console/re
             <p className="mt-1 text-xs text-graphite">PDF or image only — no SVG or zip.</p>
           </div>
           <div className="sm:col-span-2">
-            <button className="rounded bg-ink px-5 py-2.5 text-sm text-white">Add resource</button>
+            <SubmitButton className="rounded bg-ink px-5 py-2.5 text-sm text-white" pendingLabel="Adding…">Add resource</SubmitButton>
           </div>
         </form>
       </Card>
@@ -61,7 +62,7 @@ export default async function ConsoleResourcesPage(props: PageProps<"/console/re
                   <input type="checkbox" name="confirm" value="1" required />
                   confirm
                 </label>
-                <button className="text-xs text-danger underline">Delete</button>
+                <SubmitButton className="text-xs text-danger underline" pendingLabel="Deleting…">Delete</SubmitButton>
               </form>
             </div>
           );

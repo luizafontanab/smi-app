@@ -5,6 +5,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { mustList } from "@/lib/db/must";
 import { deleteMedia, renameMedia } from "../actions";
 import { CopyUrlButton } from "./CopyUrlButton";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Media Library" };
@@ -70,7 +71,7 @@ export default async function MediaLibraryPage(props: PageProps<"/console/media"
                   placeholder="Alt text"
                   className="w-full rounded border px-2 py-1 text-xs"
                 />
-                <button className="text-xs text-graphite underline hover:text-ink">Save</button>
+                <SubmitButton className="text-xs text-graphite underline hover:text-ink" pendingLabel="Saving…">Save</SubmitButton>
               </form>
 
               <div className="mt-2 flex items-center justify-between">
@@ -82,7 +83,7 @@ export default async function MediaLibraryPage(props: PageProps<"/console/media"
                     <input type="checkbox" name="confirm" value="1" required />
                     confirm
                   </label>
-                  <button className="text-xs text-danger hover:underline">Delete</button>
+                  <SubmitButton className="text-xs text-danger hover:underline" pendingLabel="Deleting…">Delete</SubmitButton>
                 </form>
               </div>
             </div>

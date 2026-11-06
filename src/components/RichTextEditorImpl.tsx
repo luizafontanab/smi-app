@@ -223,7 +223,9 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
     setUploadError(null);
     setProgress(null);
     setUploading((n) => n + 1);
-    beginUpload();
+    // only the editor's own form waits for it (the same form must end it)
+    const form = rootRef.current?.closest("form") ?? null;
+    beginUpload(form);
     try {
       // The bytes go straight to Storage (lib/direct-upload), past Vercel's
       // 4.5MB request cap; the action gets the staged path, checks the bytes
@@ -240,7 +242,7 @@ export function RichTextEditor({ name, initialHtml = "", uploadImage, allowAdBre
       setUploadError(uploadErrorMessage(e, "image"));
     } finally {
       setUploading((n) => n - 1);
-      endUpload();
+      endUpload(form);
     }
   };
   useEffect(() => {

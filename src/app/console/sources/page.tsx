@@ -166,7 +166,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                   <form action={dismissSuggestion}>
                     <input type="hidden" name="id" value={item.id} />
                     <input type="hidden" name="return" value={`page=${suggestions.page}`} />
-                    <button className="rounded border px-3 py-1.5 text-sm text-graphite hover:text-ink">Dismiss</button>
+                    <SubmitButton className="rounded border px-3 py-1.5 text-sm text-graphite hover:text-ink" pendingLabel="Dismissing…">Dismiss</SubmitButton>
                   </form>
                 </li>
               ))}
@@ -205,7 +205,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
               Name (optional)
               <input name="label" className="mt-1 rounded border px-2 py-1" />
             </label>
-            <button className="rounded bg-ink px-4 py-2 text-white">Add source</button>
+            <SubmitButton className="rounded bg-ink px-4 py-2 text-white" pendingLabel="Adding…">Add source</SubmitButton>
           </form>
 
           <section aria-labelledby="bigin-sync" className="mt-4 rounded-xl bg-white p-4 text-sm shadow-sm">
@@ -220,7 +220,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
               </p>
               {biginConnected && (
                 <form action={syncSourcesFromBigin}>
-                  <button className="rounded border px-3 py-1.5 text-sm" disabled={!crawlerOn}>Sync from Bigin now</button>
+                  <SubmitButton className="rounded border px-3 py-1.5 text-sm" disabled={!crawlerOn} pendingLabel="Syncing…">Sync from Bigin now</SubmitButton>
                 </form>
               )}
             </div>
@@ -300,19 +300,19 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                             Address
                             <input name="url" defaultValue={s.url} className="mt-1 w-80 rounded border px-2 py-1 text-sm" />
                           </label>
-                          <button className="rounded border px-3 py-1 text-xs">Change address</button>
+                          <SubmitButton className="rounded border px-3 py-1 text-xs" pendingLabel="Changing…">Change address</SubmitButton>
                         </form>
                       )}
                       <form action={recheckSource}>
                         <input type="hidden" name="id" value={s.id} />
                         <input type="hidden" name="return" value={returnTo} />
-                        <button className="rounded border px-3 py-1 text-xs">Re-check</button>
+                        <SubmitButton className="rounded border px-3 py-1 text-xs" pendingLabel="Checking…">Re-check</SubmitButton>
                       </form>
                       <form action={setSourceActive}>
                         <input type="hidden" name="id" value={s.id} />
                         <input type="hidden" name="active" value={s.active ? "0" : "1"} />
                         <input type="hidden" name="return" value={returnTo} />
-                        <button className="rounded border px-3 py-1 text-xs">{s.active ? "Pause" : "Resume"}</button>
+                        <SubmitButton className="rounded border px-3 py-1 text-xs" pendingLabel={s.active ? "Pausing…" : "Resuming…"}>{s.active ? "Pause" : "Resume"}</SubmitButton>
                       </form>
                       {!s.bigin_account_id && (
                         <form action={deleteSource} className="flex items-center gap-2">
@@ -320,7 +320,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                           <label className="flex items-center gap-1 text-xs">
                             <input type="checkbox" name="confirm" value="1" /> confirm
                           </label>
-                          <button className="rounded border border-danger px-3 py-1 text-xs text-danger">Remove</button>
+                          <SubmitButton className="rounded border border-danger px-3 py-1 text-xs text-danger" pendingLabel="Removing…">Remove</SubmitButton>
                         </form>
                       )}
                     </div>

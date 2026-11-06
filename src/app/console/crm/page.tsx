@@ -13,6 +13,7 @@ import { BiginCompanyPicker } from "@/components/console/BiginCompanyPicker";
 import { firstImportDone, getCrmSync, readLastRun, type LastRun } from "@/lib/adapters/crm";
 import { addContact, previewBiginPull, runBiginSync, saveContact, searchBiginCompanies } from "../actions";
 import { firstImportPreviewFresh } from "./first-import";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
@@ -89,7 +90,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
           <input id="crm-add-name" name="name" placeholder="name" className="rounded border px-3 py-1.5" />
           <label htmlFor="crm-add-company" className="sr-only">Company</label>
           <input id="crm-add-company" name="company" placeholder="company" className="rounded border px-3 py-1.5" />
-          <button className="rounded bg-ink px-4 py-1.5 text-white">Add (writes through to Bigin)</button>
+          <SubmitButton className="rounded bg-ink px-4 py-1.5 text-white" pendingLabel="Adding…">Add (writes through to Bigin)</SubmitButton>
         </form>
 
         {/* One editor above the table rather than one per row: a member <select>
@@ -137,7 +138,7 @@ export default async function CrmAdminPage(props: PageProps<"/console/crm">) {
               disabled={!crm.live}
             />
             <div className="flex items-center gap-3 sm:col-span-2">
-              <button className="rounded bg-ink px-4 py-1.5 text-white">Save contact</button>
+              <SubmitButton className="rounded bg-ink px-4 py-1.5 text-white" pendingLabel="Saving…">Save contact</SubmitButton>
               <Link href={qs({ page })} className="text-xs text-graphite hover:text-ink">Cancel</Link>
             </div>
           </form>
@@ -254,12 +255,12 @@ function BiginPanel({ live, imported, lastRun }: { live: boolean; imported: bool
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         <form action={previewBiginPull}>
-          <button className="rounded border px-4 py-1.5">{imported ? "Preview changes" : "Preview import"}</button>
+          <SubmitButton className="rounded border px-4 py-1.5" pendingLabel="Previewing…">{imported ? "Preview changes" : "Preview import"}</SubmitButton>
         </form>
         {/* runBiginSync enforces the same rule — this just doesn't offer what it would refuse. */}
         {(imported || firstImportPreviewFresh(lastRun)) && (
           <form action={runBiginSync}>
-            <button className="rounded bg-ink px-4 py-1.5 text-white">{imported ? "Sync with Bigin now" : "Run first import"}</button>
+            <SubmitButton className="rounded bg-ink px-4 py-1.5 text-white" pendingLabel={imported ? "Syncing…" : "Importing…"}>{imported ? "Sync with Bigin now" : "Run first import"}</SubmitButton>
           </form>
         )}
       </div>

@@ -157,7 +157,7 @@ export default async function DevTaskEditor(props: PageProps<"/console/dev/[id]"
           <label className="mt-3 flex items-center gap-2 text-sm">
             <input type="checkbox" name="confirm" value="1" /> Yes, delete this task permanently
           </label>
-          <button className="mt-3 rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Delete</button>
+          <SubmitButton className="mt-3 rounded border border-danger/30 px-3 py-1.5 text-sm text-danger" pendingLabel="Deleting…">Delete</SubmitButton>
         </form>
       )}
     </div>

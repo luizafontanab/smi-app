@@ -109,7 +109,7 @@ export default async function BundleDetail(props: PageProps<"/console/adverts/bu
             <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block w-full rounded border px-3 py-2" /></label>
             <label className="block">End<input type="date" name="ends_on" required className="mt-1 block w-full rounded border px-3 py-2" /></label>
           </div>
-          <button className="rounded bg-ink px-5 py-2.5 text-white">Book selected</button>
+          <SubmitButton className="rounded bg-ink px-5 py-2.5 text-white" pendingLabel="Booking…">Book selected</SubmitButton>
         </form>
       </section>
     </div>

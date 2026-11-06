@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import Link from "next/link";
 import type { ContentFilter, PendingSubmission, SubmissionKind, SubmissionStatus } from "@/lib/submissions";
 import {
@@ -111,7 +112,7 @@ export function SubmissionList({ items, flush = false, filter }: {
                     {withdraw && withdrawable && (
                       <form action={withdraw}>
                         <input type="hidden" name="id" value={s.id} />
-                        <button type="submit" className="tap px-1 text-graphite underline hover:text-danger">Withdraw</button>
+                        <SubmitButton pendingLabel="Withdrawing…" className="tap px-1 text-graphite underline hover:text-danger">Withdraw</SubmitButton>
                       </form>
                     )}
                   </>
@@ -137,7 +138,7 @@ export function SubmissionList({ items, flush = false, filter }: {
                     aria-label={`What needs changing on ${s.title}?`}
                     className="min-w-0 flex-1 rounded border px-3 py-1.5 text-base sm:text-sm"
                   />
-                  <button className="tap rounded bg-ink px-3 py-1.5 text-xs text-white">Send</button>
+                  <SubmitButton pendingLabel="Sending…" className="tap rounded bg-ink px-3 py-1.5 text-xs text-white">Send</SubmitButton>
                 </form>
                 <p className="mt-1 text-xs text-graphite">Goes to the SMI editor. Your page stays live in the meantime.</p>
               </details>

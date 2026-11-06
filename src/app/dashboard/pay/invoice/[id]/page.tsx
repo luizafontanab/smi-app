@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireMemberView } from "@/lib/auth";
@@ -112,7 +113,7 @@ export default async function PayInvoicePage(props: PageProps<"/dashboard/pay/in
               <p className="text-graphite">
                 Online payment is simulated in this environment — no card is charged. This settles the invoice the same way a real payment does.
               </p>
-              <button className="rounded bg-ink px-5 py-2.5 text-white">Pay {formatPounds(invoice.amount_pennies)} (simulated)</button>
+              <SubmitButton pendingLabel="Paying…" className="rounded bg-ink px-5 py-2.5 text-white">Pay {formatPounds(invoice.amount_pennies)} (simulated)</SubmitButton>
             </form>
           ) : (
             <p className="text-sm text-graphite">

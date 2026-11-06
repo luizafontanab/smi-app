@@ -7,6 +7,7 @@ import { MEMBER_STATUSES } from "@/lib/membership";
 import { ilikeTerm } from "@/lib/queries";
 import { Pagination } from "@/components/Pagination";
 import { setMemberStatus } from "../actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -154,7 +155,7 @@ export default async function MembersAdminPage(props: PageProps<"/console/member
                             <form action={setMemberStatus}>
                               <input type="hidden" name="id" value={m.id} />
                               <input type="hidden" name="status" value="active" />
-                              <button className="rounded bg-success px-2 py-0.5 text-xs text-white">Activate</button>
+                              <SubmitButton pendingLabel="Activating…" className="rounded bg-success px-2 py-0.5 text-xs text-white">Activate</SubmitButton>
                             </form>
                           )
                         )}

@@ -142,7 +142,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
               <form action={setMemberStatus}>
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="status" value="active" />
-                <button className="rounded bg-success px-3 py-1 text-xs font-semibold text-white">Activate</button>
+                <SubmitButton pendingLabel="Activating…" className="rounded bg-success px-3 py-1 text-xs font-semibold text-white">Activate</SubmitButton>
               </form>
             )
           )}
@@ -157,7 +157,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
           {/* Their real dashboard, read-only (fix-list 94) — a form, since it sets a cookie. */}
           <form action={startViewAs}>
             <input type="hidden" name="member_id" value={id} />
-            <button className="text-graphite underline">View as member</button>
+            <SubmitButton pendingLabel="Opening…" className="text-graphite underline">View as member</SubmitButton>
           </form>
         </span>
       </div>
@@ -191,13 +191,13 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
             <form action={decideRevision}>
               <input type="hidden" name="id" value={pendingRevision.id} />
               <input type="hidden" name="decision" value="approve" />
-              <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve &amp; apply</button>
+              <SubmitButton pendingLabel="Applying…" className="rounded bg-success px-4 py-2 text-sm text-white">Approve &amp; apply</SubmitButton>
             </form>
             <form action={decideRevision} className="flex flex-1 gap-2">
               <input type="hidden" name="id" value={pendingRevision.id} />
               <input type="hidden" name="decision" value="reject" />
               <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-              <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
+              <SubmitButton pendingLabel="Rejecting…" className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</SubmitButton>
             </form>
           </div>
         </Card>
@@ -296,13 +296,13 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
           <form action={recordMemberPayment}>
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="kind" value="paid" />
-            <button className="rounded bg-ink px-4 py-2 text-sm text-white">Record £40 payment</button>
+            <SubmitButton pendingLabel="Recording…" className="rounded bg-ink px-4 py-2 text-sm text-white">Record £40 payment</SubmitButton>
           </form>
           <form action={recordMemberPayment} className="flex items-center gap-2">
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="kind" value="comped" />
             <input type="number" name="months" defaultValue={12} min={1} max={60} className="w-20 rounded border px-3 py-1.5 text-sm" />
-            <button className="rounded border border-ink px-4 py-1.5 text-sm text-ink">Comp for months</button>
+            <SubmitButton pendingLabel="Comping…" className="rounded border border-ink px-4 py-1.5 text-sm text-ink">Comp for months</SubmitButton>
           </form>
         </div>
       </Card>

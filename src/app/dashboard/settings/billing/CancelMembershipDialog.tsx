@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 
 /**
  * Confirmation for the cancel-membership action, on the platform <dialog>
@@ -51,9 +52,9 @@ export function CancelMembershipDialog({ action, joinedAt }: {
               Keep my membership
             </button>
             <form action={action}>
-              <button className="rounded bg-danger px-4 py-2 text-sm font-semibold text-white hover:bg-danger/90">
+              <SubmitButton pendingLabel="Cancelling…" className="rounded bg-danger px-4 py-2 text-sm font-semibold text-white hover:bg-danger/90">
                 Cancel membership
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </div>

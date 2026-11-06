@@ -4,6 +4,7 @@ import type { SocialCaps } from "@/lib/social-caps";
 import type { SocialPanel } from "@/lib/social-post";
 import { SEEN_FIELD, socialSummary } from "@/lib/social-confirm";
 import { SOCIAL_LEAD_MAX, trimLead } from "@/lib/social-text";
+import { FormPendingSignal } from "@/components/FormPendingSignal";
 import { SocialConfirmButton } from "./SocialConfirmButton";
 
 /** The id of the editor's SocialConfirmForm, which the Confirm buttons submit. */
@@ -18,6 +19,8 @@ export function SocialConfirmForm({ action, id }: { action: (formData: FormData)
   return (
     <form id={SOCIAL_CONFIRM_FORM} action={action} hidden>
       <input type="hidden" name="id" value={id} />
+      {/* the Confirm buttons live in the editor's form: this tells them when a confirm is running (#48) */}
+      <FormPendingSignal />
     </form>
   );
 }

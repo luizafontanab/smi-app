@@ -70,7 +70,9 @@ export function useStagedUpload({ inputRef, name, kind, prepare, onFailed }: {
     const controller = new AbortController();
     abortRef.current = controller;
     setState({ status: "uploading", progress: null });
-    beginUpload();
+    // only this field's form waits for it (the same form must end it)
+    const form = inputRef.current?.closest("form") ?? null;
+    beginUpload(form);
     try {
       const { prepare } = callbacks.current;
       const ready = prepare ? await prepare(file) : file;
@@ -90,7 +92,7 @@ export function useStagedUpload({ inputRef, name, kind, prepare, onFailed }: {
       if (inputRef.current) inputRef.current.value = "";
       callbacks.current.onFailed?.();
     } finally {
-      endUpload();
+      endUpload(form);
     }
   }, [inputRef, kind]);
 

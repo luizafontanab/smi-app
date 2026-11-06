@@ -6,6 +6,7 @@ import { must } from "@/lib/db/must";
 import { consoleUploadImage, deleteContentPage, saveContentPage } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,7 @@ export default async function ContentPageEditor(props: PageProps<"/console/conte
           <p className="mt-1 text-xs text-graphite">Render each heading as an expandable section (used for Policies and FAQ).</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+          <SubmitButton className="rounded bg-ink px-5 py-2.5 text-white" pendingLabel="Saving…">Save</SubmitButton>
           {!isNew && (
             <>
               <Link href={`/pages/${page!.slug}`} className="text-sm text-graphite underline">View page →</Link>
@@ -76,7 +77,7 @@ export default async function ContentPageEditor(props: PageProps<"/console/conte
           <p className="mt-1 text-xs text-graphite">
             /pages/{page!.slug} will 404 afterwards. If it has inbound links, rename it instead — that leaves a redirect behind.
           </p>
-          <button className="mt-3 rounded border border-danger/30 px-4 py-2 text-sm text-danger">Delete</button>
+          <SubmitButton className="mt-3 rounded border border-danger/30 px-4 py-2 text-sm text-danger" pendingLabel="Deleting…">Delete</SubmitButton>
         </form>
       )}
     </div>

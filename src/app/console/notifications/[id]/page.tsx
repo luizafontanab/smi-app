@@ -77,7 +77,7 @@ export default async function NotificationPage(props: PageProps<"/console/notifi
             <input type="hidden" name="id" value={m.id} />
             <input type="hidden" name="read" value="0" />
             <input type="hidden" name="next" value="/console/notifications" />
-            <button className="text-sm text-graphite underline hover:text-ink">Mark unread</button>
+            <SubmitButton className="text-sm text-graphite underline hover:text-ink" pendingLabel="Marking…">Mark unread</SubmitButton>
           </form>
         </div>
       </div>

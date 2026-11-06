@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { RetryButton } from "@/components/RetryButton";
 import { reportClientError } from "@/lib/client-error-report";
 
 /**
@@ -28,12 +29,11 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
         temporary problem loading its content.
       </p>
       <div className="mt-8 flex flex-wrap justify-center gap-3">
-        <button
-          onClick={() => retry()}
+        <RetryButton
+          retry={retry}
+          error={error}
           className="rounded bg-ink px-4 py-2 font-semibold text-white hover:brightness-110"
-        >
-          Try again
-        </button>
+        />
         <Link href="/" className="rounded border border-ink px-4 py-2 font-semibold text-ink hover:bg-ink/5">
           Back to the homepage
         </Link>

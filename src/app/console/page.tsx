@@ -15,6 +15,7 @@ import { waitingSummary } from "@/lib/social-confirm";
 import { SourceCheckPanel } from "@/components/console/SourceCheckPanel";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { readSourceCheckRun } from "@/lib/sources/run";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 // "Check sources now" runs a source check inside the click: up to 55s of
@@ -362,7 +363,7 @@ export default async function CommandCentre(props: PageProps<"/console">) {
                 <div className="flex items-center justify-between">
                   <p><b>{m.name}</b> <span className="text-graphite">&lt;{m.email}&gt;</span> · <span className="text-xs uppercase text-brand-text">{inboxKindLabel(m.kind)}</span></p>
                   {/* z-10 keeps the button clickable above the row's stretched link */}
-                  <form action={markInboxRead} className="z-10"><input type="hidden" name="id" value={m.id} /><button className="relative text-xs text-graphite hover:text-ink">mark read</button></form>
+                  <form action={markInboxRead} className="z-10"><input type="hidden" name="id" value={m.id} /><SubmitButton className="relative text-xs text-graphite hover:text-ink" pendingLabel="marking…">mark read</SubmitButton></form>
                 </div>
                 {/* The whole row opens the message — full text and reply live there. */}
                 <Link href={`/console/notifications/${m.id}`} className="mt-1 block text-graphite after:absolute after:inset-0">

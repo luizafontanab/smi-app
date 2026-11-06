@@ -84,14 +84,14 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
                 <form action={decideMachine}>
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="approve" />
-                  <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
+                  <SubmitButton pendingLabel="Publishing…" className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</SubmitButton>
                 </form>
               </div>
               <form action={decideMachine} className="mt-3 flex gap-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="reject" />
                 <input name="reason" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
+                <SubmitButton pendingLabel="Rejecting…" className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</SubmitButton>
               </form>
             </div>
           )}
@@ -104,7 +104,7 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
                 <input type="date" name="starts_on" required className="rounded border px-3 py-1.5" />
                 <span className="text-graphite">→</span>
                 <input type="date" name="ends_on" required className="rounded border px-3 py-1.5" />
-                <button className="rounded bg-ink px-4 py-2 text-white">Book slot</button>
+                <SubmitButton pendingLabel="Booking…" className="rounded bg-ink px-4 py-2 text-white">Book slot</SubmitButton>
               </form>
               {/* Equipment had no route back from published either (fix list).
                   Note this does not cancel a booked placement — expire or
@@ -112,7 +112,7 @@ export default async function MachineEditor(props: PageProps<"/console/machines/
               <form action={returnToDraft} className="mt-4 border-t pt-3">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="kind" value="machine" />
-                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <SubmitButton pendingLabel="Returning…" className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</SubmitButton>
                 <p className="mt-1 text-xs text-graphite">Hides it from the public page. Any booked slot above stays as it is.</p>
               </form>
             </div>

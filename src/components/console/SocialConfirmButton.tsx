@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { FORM_PENDING_EVENT } from "@/components/FormPendingSignal";
 
 /**
  * A Confirm button under "Social post" (issue #43). Confirming snapshots the
@@ -29,6 +30,27 @@ export function SocialConfirmButton({
   const ref = useRef<HTMLButtonElement>(null);
   const hintId = useId();
   const [dirty, setDirty] = useState(false);
+  // #48: off from the first click until the confirm settles. `form` is another
+  // form, so its pending state arrives as FormPendingSignal's event, not useFormStatus.
+  const [pending, setPending] = useState(false);
+  const [pressed, setPressed] = useState(false);
+
+  useEffect(() => {
+    const target = ref.current?.form;
+    if (!target) return;
+    // off straight away, not a render later when the pending event arrives: no gap for a second click
+    const onSubmit = (e: SubmitEvent) => {
+      setPressed(e.submitter === ref.current);
+      setPending(true);
+    };
+    const onPending = (e: Event) => setPending((e as CustomEvent<boolean>).detail);
+    target.addEventListener("submit", onSubmit);
+    target.addEventListener(FORM_PENDING_EVENT, onPending);
+    return () => {
+      target.removeEventListener("submit", onSubmit);
+      target.removeEventListener(FORM_PENDING_EVENT, onPending);
+    };
+  }, []);
 
   useEffect(() => {
     const form = ref.current?.closest("form");
@@ -53,11 +75,12 @@ export function SocialConfirmButton({
         form={form}
         name="confirm_channel"
         value={value}
-        disabled={dirty || disabled}
+        disabled={dirty || disabled || pending}
+        aria-busy={(pending && pressed) || undefined}
         aria-describedby={dirty ? hintId : undefined}
         className="rounded border border-ink px-3 py-1 text-sm font-medium text-ink hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {children}
+        {pending && pressed ? "Confirming…" : children}
       </button>
       {dirty && <span id={hintId} className="text-xs text-graphite">Save first</span>}
     </span>

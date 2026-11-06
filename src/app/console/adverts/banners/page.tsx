@@ -81,7 +81,7 @@ export default async function BannersPage(props: PageProps<"/console/adverts/ban
             <label className="block">Spots we sell
               <input name="count" type="number" min={1} step={1} defaultValue={spots} required className="mt-1 block w-20 rounded border px-2 py-1.5 text-right" />
             </label>
-            <button className="rounded border px-3 py-1.5 text-graphite hover:text-ink">Save</button>
+            <SubmitButton className="rounded border px-3 py-1.5 text-graphite hover:text-ink" pendingLabel="Saving…">Save</SubmitButton>
           </form>
         </div>
         <p className="mt-1 text-xs text-graphite">Shown against bookings — it never blocks one.</p>

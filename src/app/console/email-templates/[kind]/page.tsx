@@ -13,6 +13,7 @@ import {
   type EmailTemplateMap,
 } from "@/lib/email/templates";
 import { resetEmailTemplate, saveEmailTemplate, sendTestEmail } from "../../actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +135,7 @@ export default async function EmailTemplateEditor(props: PageProps<"/console/ema
             </div>
           )}
 
-          <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+          <SubmitButton className="rounded bg-ink px-5 py-2.5 text-white" pendingLabel="Saving…">Save</SubmitButton>
         </form>
 
         <div className="space-y-4">
@@ -163,7 +164,7 @@ export default async function EmailTemplateEditor(props: PageProps<"/console/ema
             <p className="mt-1 text-xs text-graphite">
               Sends this email, as last saved, to {user.email}. It only ever goes to you.
             </p>
-            <button className="mt-3 rounded border px-4 py-2 text-sm text-ink">Send a test</button>
+            <SubmitButton className="mt-3 rounded border px-4 py-2 text-sm text-ink" pendingLabel="Sending…">Send a test</SubmitButton>
           </form>
         </div>
       </div>
@@ -202,7 +203,7 @@ export default async function EmailTemplateEditor(props: PageProps<"/console/ema
             <input type="checkbox" name="confirm" value="1" required />
             Yes, discard my changes to this email
           </label>
-          <button className="mt-3 rounded border border-danger/30 px-4 py-2 text-sm text-danger">Reset</button>
+          <SubmitButton className="mt-3 rounded border border-danger/30 px-4 py-2 text-sm text-danger" pendingLabel="Resetting…">Reset</SubmitButton>
         </form>
       )}
     </div>

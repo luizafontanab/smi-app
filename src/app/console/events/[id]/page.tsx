@@ -137,7 +137,7 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
                     <option key={to} value={to}>Published</option>
                   ))}
                 </select>
-                <button className="rounded bg-ink px-3 py-1.5 text-sm text-white">Update</button>
+                <SubmitButton pendingLabel="Updating…" className="rounded bg-ink px-3 py-1.5 text-sm text-white">Update</SubmitButton>
               </form>
             </div>
           )}
@@ -151,7 +151,7 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
                   <input type="hidden" name="decision" value="approve" />
                   {/* The Industry box as it stands, so what Jas sees is what goes Live. */}
                   <MirrorInput source="industry_id" name="industry_id" defaultValue={String(industryDefault)} />
-                  <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</button>
+                  <SubmitButton pendingLabel="Publishing…" className="rounded bg-success px-4 py-2 text-sm text-white">Approve & publish</SubmitButton>
                 </form>
               </div>
               {/* As stories and videos: a member is told why; the desk's own event just goes back to draft. */}
@@ -160,13 +160,13 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="reject" />
                   <input name="reason" aria-label="Reason (sent to the member)" placeholder="Reason (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-                  <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</button>
+                  <SubmitButton pendingLabel="Rejecting…" className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Reject</SubmitButton>
                 </form>
               ) : (
                 <form action={decideEvent} className="mt-3">
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="reject" />
-                  <button className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Not yet — back to draft</button>
+                  <SubmitButton pendingLabel="Returning…" className="rounded border border-black/15 px-3 py-1.5 text-sm text-ink">Not yet — back to draft</SubmitButton>
                   <p className="mt-1 text-xs text-graphite">Nobody is emailed.</p>
                 </form>
               )}
@@ -181,7 +181,7 @@ export default async function EventEditor(props: PageProps<"/console/events/[id]
               <form action={returnToDraft} className="mt-3">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="kind" value="event" />
-                <button className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <SubmitButton pendingLabel="Returning…" className="rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Return to draft</SubmitButton>
                 <p className="mt-1 text-xs text-graphite">The member is not emailed.</p>
               </form>
             </div>

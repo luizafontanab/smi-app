@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 
 /**
  * Typed confirmation for a permanent member delete, on the platform <dialog>
@@ -79,12 +80,13 @@ export function DeleteMemberDialog({ action, id, name, archived }: {
             <form action={action}>
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="confirm" value="1" />
-              <button
+              <SubmitButton
+                pendingLabel="Deleting…"
                 disabled={!matches}
                 className="rounded bg-danger px-4 py-2 text-sm font-semibold text-white hover:bg-danger/90 disabled:opacity-40"
               >
                 Delete permanently
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </div>

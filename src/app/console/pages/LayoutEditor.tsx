@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -76,9 +77,9 @@ export function LayoutEditor({ pageType, initial }: Props) {
 
       {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
       <input type="hidden" name="layout" value={JSON.stringify(layout)} />
-      <button disabled={error !== null} className="mt-4 rounded bg-ink px-5 py-2.5 text-white disabled:opacity-40">
+      <SubmitButton pendingLabel="Saving…" disabled={error !== null} className="mt-4 rounded bg-ink px-5 py-2.5 text-white disabled:opacity-40">
         Save layout
-      </button>
+      </SubmitButton>
     </div>
   );
 }

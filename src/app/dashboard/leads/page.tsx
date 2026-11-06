@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { redirect } from "next/navigation";
 import { requireMemberView } from "@/lib/auth";
 import { isFeatureEnabled } from "@/lib/feature-flags";
@@ -62,12 +63,12 @@ export default async function DashboardLeadsPage() {
                   <form action={unmarkProspect} className="flex items-center gap-2">
                     <span className="rounded bg-success/10 px-2 py-0.5 text-xs text-success">Following up</span>
                     <input type="hidden" name="id" value={markId} />
-                    <button className="tap rounded border px-3 py-1.5 text-xs hover:bg-graphite/10">Undo</button>
+                    <SubmitButton pendingLabel="Undoing…" className="tap rounded border px-3 py-1.5 text-xs hover:bg-graphite/10">Undo</SubmitButton>
                   </form>
                 ) : (
                   <form action={markProspectFollowUp}>
                     <input type="hidden" name="ref" value={p.ref} />
-                    <button className="tap rounded bg-ink px-3 py-1.5 text-xs text-white">Mark to follow up</button>
+                    <SubmitButton pendingLabel="Marking…" className="tap rounded bg-ink px-3 py-1.5 text-xs text-white">Mark to follow up</SubmitButton>
                   </form>
                 )}
               </li>

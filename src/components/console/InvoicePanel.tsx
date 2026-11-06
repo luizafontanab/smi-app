@@ -1,6 +1,7 @@
 import { holdsForPayment, openInvoiceFor, formatPounds } from "@/lib/advert-payments";
 import { markInvoicePaid, raiseItemInvoice } from "@/app/console/actions";
 import { Badge } from "./ui";
+import { SubmitButton } from "@/components/SubmitButton";
 
 /** What the page knows about the item that the invoice table doesn't: its price, and whether it's billable yet. */
 export type RaiseInvoice = { kind: "booking" | "bundle" | "placement"; id: string; pricePennies: number | null; billable: boolean };
@@ -29,7 +30,7 @@ export async function InvoicePanel({
       <input type="hidden" name="kind" value={raise.kind} />
       <input type="hidden" name="id" value={raise.id} />
       <input type="hidden" name="return_to" value={returnTo} />
-      <button className="rounded bg-ink px-3 py-1.5 text-white">Raise invoice</button>
+      <SubmitButton className="rounded bg-ink px-3 py-1.5 text-white" pendingLabel="Raising…">Raise invoice</SubmitButton>
       <span className="text-xs text-graphite">
         For {formatPounds(raise.pricePennies!)}.{" "}
         {holdsForPayment(raise.pricePennies)
@@ -70,7 +71,7 @@ export async function InvoicePanel({
             <input type="checkbox" name="confirm" value="1" required />
             The payment arrived outside Stripe (bank transfer, cheque)
           </label>
-          <button className="rounded border px-3 py-1.5 text-graphite hover:text-ink">Mark paid</button>
+          <SubmitButton className="rounded border px-3 py-1.5 text-graphite hover:text-ink" pendingLabel="Marking…">Mark paid</SubmitButton>
         </form>
       )}
       {raiseForm}

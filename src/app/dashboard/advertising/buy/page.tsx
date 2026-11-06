@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import { loadFeaturedMonths, type FeaturedMonth } from "@/lib/featured-availability";
@@ -43,7 +44,7 @@ export default async function AdvertisingBuyPage(props: PageProps<"/dashboard/ad
                   </label>
                   <input id={`buy-message-${p.key}`} name="message" className="mt-1 w-full rounded border px-3 py-2 text-base sm:py-1.5 sm:text-sm" />
                 </div>
-                <button className="tap justify-center rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Buy</button>
+                <SubmitButton pendingLabel="Buying…" className="tap justify-center rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Buy</SubmitButton>
               </div>
             </form>
           ))}

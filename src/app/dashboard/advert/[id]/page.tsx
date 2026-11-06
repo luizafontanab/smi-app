@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { bookingPhase } from "@/lib/adverts";
@@ -147,7 +148,7 @@ export default async function MemberAdvertPage(props: PageProps<"/dashboard/adve
             <input type="hidden" name="id" value={id} />
             <label className="block">Start<RequiredMark /><input type="date" name="starts_on" required min={today} className="mt-1 block rounded border px-3 py-2 text-base sm:text-sm" /></label>
             <label className="block">End<RequiredMark /><input type="date" name="ends_on" required min={today} className="mt-1 block rounded border px-3 py-2 text-base sm:text-sm" /></label>
-            <button className="rounded bg-ink px-4 py-2 text-white">Request</button>
+            <SubmitButton pendingLabel="Requesting…" className="rounded bg-ink px-4 py-2 text-white">Request</SubmitButton>
           </form>
         </section>
       )}

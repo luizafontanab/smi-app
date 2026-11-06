@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 
 /**
  * The price field and Approve button on a booking awaiting approval. The
@@ -38,7 +39,7 @@ export function ApproveBookingFields({ defaultPounds, pricedHolds, verb = "Appro
             className="mt-1 block w-44 rounded border px-3 py-1.5"
           />
         </label>
-        <button aria-describedby="approve-outcome" className="rounded bg-success px-4 py-2 text-sm text-white">{label}</button>
+        <SubmitButton pendingLabel={verb === "Book" ? "Booking…" : "Approving…"} aria-describedby="approve-outcome" className="rounded bg-success px-4 py-2 text-sm text-white">{label}</SubmitButton>
       </div>
       <p id="approve-outcome" className="mt-1 text-xs text-graphite">{outcome}</p>
     </>

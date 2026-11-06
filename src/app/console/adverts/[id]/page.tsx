@@ -13,6 +13,7 @@ import { ApproveBookingFields } from "@/components/console/ApproveBookingFields"
 import { holdsForPayment } from "@/lib/advert-payments";
 import { bookDraftRun, decideArtworkSwap, decideAdvertBooking, deleteDraftBooking, endBooking, proposeArtworkSwap, renewBooking, updateDraftDates } from "../../actions";
 import { UploadField } from "@/components/UploadField";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -117,14 +118,14 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
           <form action={decideArtworkSwap} className="mt-3">
             <input type="hidden" name="id" value={pendingSwap.id} />
             <input type="hidden" name="decision" value="approve" />
-            <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve swap</button>
+            <SubmitButton className="rounded bg-success px-4 py-2 text-sm text-white" pendingLabel="Approving…">Approve swap</SubmitButton>
           </form>
           <form action={decideArtworkSwap} className="mt-3 flex gap-2">
             <input type="hidden" name="id" value={pendingSwap.id} />
             <input type="hidden" name="decision" value="reject" />
             <label htmlFor="swap-reason" className="sr-only">Reason (sent to the member)</label>
             <input id="swap-reason" name="reason" placeholder="What needs changing? (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-            <button className="whitespace-nowrap rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Send back</button>
+            <SubmitButton className="whitespace-nowrap rounded border border-danger/30 px-3 py-1.5 text-sm text-danger" pendingLabel="Sending back…">Send back</SubmitButton>
           </form>
         </section>
       )}
@@ -153,7 +154,7 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
             <input type="hidden" name="decision" value="reject" />
             <label htmlFor="booking-reason" className="sr-only">Reason (sent to the member)</label>
             <input id="booking-reason" name="reason" placeholder="What needs changing? (sent to the member)" required className="w-full rounded border px-3 py-1.5 text-sm" />
-            <button className="whitespace-nowrap rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">Send back</button>
+            <SubmitButton className="whitespace-nowrap rounded border border-danger/30 px-3 py-1.5 text-sm text-danger" pendingLabel="Sending back…">Send back</SubmitButton>
           </form>
         </section>
       )}
@@ -169,14 +170,14 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
             <input type="hidden" name="id" value={id} />
             <label className="block">Start<input type="date" name="starts_on" required defaultValue={booking.starts_on} className="mt-1 block rounded border px-3 py-2" /></label>
             <label className="block">End<input type="date" name="ends_on" required defaultValue={booking.ends_on} className="mt-1 block rounded border px-3 py-2" /></label>
-            <button className="rounded border px-4 py-2">Change dates</button>
+            <SubmitButton className="rounded border px-4 py-2" pendingLabel="Changing…">Change dates</SubmitButton>
           </form>
           <form action={bookDraftRun} className="mt-3">
             <input type="hidden" name="id" value={id} />
             {booking.bundle_id ? (
               <>
                 <p className="text-sm text-graphite">Part of a bundle, so it has no price of its own: the bundle&apos;s invoice covers it, and it waits for that to be paid if it isn&apos;t yet.</p>
-                <button className="mt-2 rounded bg-success px-4 py-2 text-sm text-white">Book &amp; schedule</button>
+                <SubmitButton className="mt-2 rounded bg-success px-4 py-2 text-sm text-white" pendingLabel="Booking…">Book &amp; schedule</SubmitButton>
               </>
             ) : (
               <ApproveBookingFields
@@ -191,7 +192,7 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
             <label className="flex items-center gap-2 text-graphite">
               <input type="checkbox" name="confirm" value="1" required /> Delete this draft. It was never booked, so nothing else changes.
             </label>
-            <button className="rounded border border-danger/30 px-3 py-1.5 text-danger">Delete draft</button>
+            <SubmitButton className="rounded border border-danger/30 px-3 py-1.5 text-danger" pendingLabel="Deleting…">Delete draft</SubmitButton>
           </form>
         </section>
       )}
@@ -211,7 +212,7 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
               <label htmlFor="swap-mobile" className="text-xs font-medium">New mobile artwork</label>
               <UploadField id="swap-mobile" name="mobile" accept="image/jpeg,image/png,image/webp" required className="mt-1 w-full text-sm" />
             </div>
-            <button className="sm:col-span-2 rounded bg-ink px-4 py-2 text-sm text-white">Swap now</button>
+            <SubmitButton className="sm:col-span-2 rounded bg-ink px-4 py-2 text-sm text-white" pendingLabel="Swapping…">Swap now</SubmitButton>
           </form>
         </section>
       )}
@@ -224,7 +225,7 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
           <form action={endBooking} className="mt-3 flex gap-2">
             <input type="hidden" name="id" value={id} />
             <input name="note" placeholder="Reason (optional, internal)" className="w-full rounded border px-3 py-1.5 text-sm" />
-            <button className="whitespace-nowrap rounded border border-danger/30 px-3 py-1.5 text-sm text-danger">End run</button>
+            <SubmitButton className="whitespace-nowrap rounded border border-danger/30 px-3 py-1.5 text-sm text-danger" pendingLabel="Ending…">End run</SubmitButton>
           </form>
         </section>
       )}
@@ -237,7 +238,7 @@ export default async function BookingPage(props: PageProps<"/console/adverts/[id
             <input type="hidden" name="id" value={id} />
             <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block rounded border px-3 py-2" /></label>
             <label className="block">End<input type="date" name="ends_on" required className="mt-1 block rounded border px-3 py-2" /></label>
-            <button className="rounded bg-ink px-4 py-2 text-white">Create draft</button>
+            <SubmitButton className="rounded bg-ink px-4 py-2 text-white" pendingLabel="Creating…">Create draft</SubmitButton>
           </form>
         </section>
       )}

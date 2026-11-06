@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireMemberView } from "@/lib/auth";
 import { sendMemberMessage } from "../actions";
 import { RequiredMark } from "@/components/RequiredMark";
@@ -25,7 +26,7 @@ export default async function MemberHelpPage(props: PageProps<"/dashboard/help">
           <label htmlFor="help-message" className="text-sm font-medium">Message<RequiredMark /></label>
           <textarea id="help-message" name="message" required rows={6} className="mt-1 w-full rounded border px-3 py-2" />
         </div>
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Send</button>
+        <SubmitButton pendingLabel="Sending…" className="rounded bg-ink px-5 py-2.5 text-white">Send</SubmitButton>
       </form>
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { SubmitButton } from "@/components/SubmitButton";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { RequiredMark } from "@/components/RequiredMark";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
@@ -140,7 +141,7 @@ export function AdvertForm({ action, bookingId, defaults, submitLabel = "Submit 
         </p>
       </div>
 
-      <button className="rounded bg-ink px-5 py-2.5 text-white">{submitLabel}</button>
+      <SubmitButton pendingLabel={bookingId ? "Resubmitting…" : "Submitting…"} className="rounded bg-ink px-5 py-2.5 text-white">{submitLabel}</SubmitButton>
     </form>
   );
 }

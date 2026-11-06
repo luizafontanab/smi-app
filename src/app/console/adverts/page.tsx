@@ -8,6 +8,7 @@ import { AdPreviewToggle } from "@/components/console/AdPreviewToggle";
 import { Badge, Stat } from "@/components/console/ui";
 import { PHASE_LABELS } from "@/components/console/advert-formats";
 import { saveBooking } from "../actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -228,7 +229,7 @@ export default async function AdvertsPage(props: PageProps<"/console/adverts">) 
           <label className="block">Start<input type="date" name="starts_on" required className="mt-1 block rounded border px-3 py-2" /></label>
           <label className="block">End<input type="date" name="ends_on" required className="mt-1 block rounded border px-3 py-2" /></label>
           <label className="block grow">Notes<input name="notes" className="mt-1 block w-full rounded border px-3 py-2" placeholder="PO ref…" /></label>
-          <button className="rounded bg-ink px-4 py-2 text-white">Book</button>
+          <SubmitButton className="rounded bg-ink px-4 py-2 text-white" pendingLabel="Booking…">Book</SubmitButton>
         </form>
         <p className="mt-2 text-xs text-graphite">
           Booking it here approves it — it goes live on its start date. Artwork is swappable mid-run from{" "}

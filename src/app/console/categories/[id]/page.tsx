@@ -5,6 +5,7 @@ import { serviceDb } from "@/lib/db/server";
 import { must, mustList } from "@/lib/db/must";
 import { deleteCategory, saveCategory } from "../../actions";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export default async function CategoryEditor(props: PageProps<"/console/categori
           <input id="slug" name="slug" defaultValue={category?.slug ?? ""} placeholder="from the name" className="mt-1 w-full rounded border px-3 py-2" />
           <p className="mt-1 text-xs text-graphite">Leave blank to derive it from the name.</p>
         </div>
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+        <SubmitButton className="rounded bg-ink px-5 py-2.5 text-white" pendingLabel="Saving…">Save</SubmitButton>
       </form>
 
       {!isNew && (
@@ -66,7 +67,7 @@ export default async function CategoryEditor(props: PageProps<"/console/categori
             <input type="checkbox" name="confirm" value="1" required />
             Yes, delete this category
           </label>
-          <button className="mt-3 rounded border border-danger/30 px-4 py-2 text-sm text-danger">Delete</button>
+          <SubmitButton className="mt-3 rounded border border-danger/30 px-4 py-2 text-sm text-danger" pendingLabel="Deleting…">Delete</SubmitButton>
         </form>
       )}
     </div>

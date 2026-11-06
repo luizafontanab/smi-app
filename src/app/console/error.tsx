@@ -1,6 +1,7 @@
 "use client"; // error boundaries must be Client Components
 
 import { useEffect } from "react";
+import { RetryButton } from "@/components/RetryButton";
 import { reportClientError } from "@/lib/client-error-report";
 
 /**
@@ -21,12 +22,11 @@ export default function ConsoleError({ error, retry }: { error: Error & { digest
       <p className="mt-3 text-sm text-graphite">
         Nothing has been saved or lost — the page just couldn&apos;t finish loading its data.
       </p>
-      <button
-        onClick={() => retry()}
+      <RetryButton
+        retry={retry}
+        error={error}
         className="mt-6 rounded bg-ink px-4 py-2 text-sm font-semibold text-white hover:brightness-110"
-      >
-        Try again
-      </button>
+      />
       {error.digest && <p className="mt-6 text-xs text-graphite">Reference {error.digest}</p>}
     </div>
   );

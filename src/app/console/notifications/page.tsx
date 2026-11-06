@@ -10,6 +10,7 @@ import {
   type InboxPayload,
 } from "@/lib/console-notification-links";
 import { markAllInboxRead, markInboxRead } from "../actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Notifications" };
@@ -106,9 +107,9 @@ export default async function NotificationsPage(props: PageProps<"/console/notif
           <form action={markAllInboxRead}>
             {category && <input type="hidden" name="category" value={category} />}
             {kind && <input type="hidden" name="kind" value={kind} />}
-            <button type="submit" className="text-sm text-graphite underline hover:text-ink">
+            <SubmitButton className="text-sm text-graphite underline hover:text-ink" pendingLabel="Marking…">
               Mark all {scopeLabel && `${scopeLabel} `}as read ({unread})
-            </button>
+            </SubmitButton>
           </form>
         )}
       </div>
@@ -192,9 +193,9 @@ export default async function NotificationsPage(props: PageProps<"/console/notif
                   <form action={markInboxRead} className="z-10">
                     <input type="hidden" name="id" value={m.id} />
                     <input type="hidden" name="read" value={m.read ? "0" : "1"} />
-                    <button className="relative text-xs text-graphite underline hover:text-ink">
+                    <SubmitButton className="relative text-xs text-graphite underline hover:text-ink" pendingLabel="marking…">
                       {m.read ? "mark unread" : "mark read"}
-                    </button>
+                    </SubmitButton>
                   </form>
                 </div>
 
@@ -217,9 +218,9 @@ export default async function NotificationsPage(props: PageProps<"/console/notif
                           <input type="hidden" name="id" value={m.id} />
                           <input type="hidden" name="read" value="1" />
                           <input type="hidden" name="next" value={href} />
-                          <button className="text-xs font-semibold text-brand-text underline hover:text-ink">
+                          <SubmitButton className="text-xs font-semibold text-brand-text underline hover:text-ink" pendingLabel="Opening…">
                             Open it →
-                          </button>
+                          </SubmitButton>
                         </form>
                       ) : (
                         <span className="text-xs text-graphite">Nothing to open.</span>

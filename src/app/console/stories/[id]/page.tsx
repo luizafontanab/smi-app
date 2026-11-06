@@ -299,13 +299,13 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 {industryField}
                 <label htmlFor="approve_at" className="sr-only">Publish at (UK time)</label>
                 <input id="approve_at" type="datetime-local" name="scheduled_at" required defaultValue={londonInputValue(story.scheduled_at)} className="rounded border bg-white px-3 py-1.5 text-sm" />
-                <button className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</button>
+                <SubmitButton pendingLabel="Approving…" className="rounded bg-success px-4 py-2 text-sm text-white">Approve & schedule</SubmitButton>
               </form>
               <form action={decideStory} className="mt-2">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="decision" value="approve" />
                 {industryField}
-                <button className="rounded border border-ink bg-white px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</button>
+                <SubmitButton pendingLabel="Publishing…" className="rounded border border-ink bg-white px-3 py-1.5 text-sm text-ink">Approve & publish now (urgent)</SubmitButton>
               </form>
               <p className="mt-2 text-xs text-graphite">
                 Times are UK time. The social post follows its own time, set under Social post above. Pinning to the headline is a separate choice once it&apos;s live.
@@ -315,13 +315,13 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="reject" />
                   <input name="reason" aria-label="Reason (sent to the member)" placeholder="Reason (sent to the member)" required className="w-full rounded border bg-white px-3 py-1.5 text-sm" />
-                  <button className="shrink-0 rounded border border-danger/30 bg-white px-3 py-1.5 text-sm text-danger">Send back</button>
+                  <SubmitButton pendingLabel="Sending back…" className="shrink-0 rounded border border-danger/30 bg-white px-3 py-1.5 text-sm text-danger">Send back</SubmitButton>
                 </form>
               ) : (
                 <form action={decideStory} className="mt-4 border-t border-black/5 pt-3">
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="decision" value="reject" />
-                  <button className="rounded border border-black/15 bg-white px-3 py-1.5 text-sm text-ink">Not yet — back to draft</button>
+                  <SubmitButton pendingLabel="Returning…" className="rounded border border-black/15 bg-white px-3 py-1.5 text-sm text-ink">Not yet — back to draft</SubmitButton>
                   <p className="mt-1 text-xs text-graphite">Nobody is emailed. Edit it, then mark it ready to review again.</p>
                 </form>
               )}
@@ -336,8 +336,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 {industryField}
                 <label htmlFor="schedule_at" className="sr-only">Publish at (UK time)</label>
                 <input id="schedule_at" type="datetime-local" name="scheduled_at" defaultValue={londonInputValue(story.scheduled_at)} className="rounded border bg-white px-3 py-1.5 text-sm" />
-                <button className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</button>
-                <button name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</button>
+                <SubmitButton pendingLabel="Scheduling…" className="rounded bg-ink px-4 py-2 text-sm text-white">Schedule</SubmitButton>
+                <SubmitButton pendingLabel="Publishing…" name="mode" value="now" className="rounded bg-brand px-4 py-2 text-sm font-semibold text-ink">Publish now (urgent)</SubmitButton>
               </form>
               <p className="mt-2 text-xs text-graphite">
                 Times are UK time. The social post follows its own time, set under Social post above.
@@ -349,7 +349,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="status" value="awaiting_approval" />
                   <input type="hidden" name="return_to" value={`/console/stories/${id}`} />
-                  <button className="rounded border border-black/15 bg-white px-3 py-1.5 text-sm text-ink">Mark ready to review</button>
+                  <SubmitButton pendingLabel="Marking…" className="rounded border border-black/15 bg-white px-3 py-1.5 text-sm text-ink">Mark ready to review</SubmitButton>
                   <p className="mt-1 text-xs text-graphite">Optional. Puts it in Ready to review for a final check before it&apos;s scheduled.</p>
                 </form>
               )}
@@ -372,14 +372,14 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 {isPinned ? (
                   <>
                     <input type="hidden" name="days" value="0" />
-                    <button className="rounded border bg-white px-3 py-1.5">Unpin</button>
+                    <SubmitButton pendingLabel="Unpinning…" className="rounded border bg-white px-3 py-1.5">Unpin</SubmitButton>
                   </>
                 ) : (
                   <>
                     <label htmlFor="pin_days" className="sr-only">Days to pin</label>
                     <input id="pin_days" type="number" name="days" required min={1} max={30} placeholder="1–30" className="w-20 rounded border bg-white px-2 py-1.5" />
                     <span className="text-xs text-graphite">days</span>
-                    <button className="rounded border border-ink bg-white px-3 py-1.5 text-ink">Pin</button>
+                    <SubmitButton pendingLabel="Pinning…" className="rounded border border-ink bg-white px-3 py-1.5 text-ink">Pin</SubmitButton>
                   </>
                 )}
               </form>
@@ -394,7 +394,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <form action={returnToDraft} className="mt-3">
                 <input type="hidden" name="id" value={id} />
                 <input type="hidden" name="kind" value="story" />
-                <button className="rounded border border-danger/30 bg-white px-3 py-1.5 text-sm text-danger">Return to draft</button>
+                <SubmitButton pendingLabel="Returning…" className="rounded border border-danger/30 bg-white px-3 py-1.5 text-sm text-danger">Return to draft</SubmitButton>
                 <p className="mt-1 text-xs text-graphite">Takes it off the site straight away. The member is not emailed.</p>
               </form>
             </div>

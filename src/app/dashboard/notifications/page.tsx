@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireMemberView } from "@/lib/auth";
 import { serviceDb } from "@/lib/db/server";
 import Link from "next/link";
@@ -40,7 +41,7 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
         </h1>
         {Boolean(unread) && (
           <form action={markAllNotificationsRead}>
-            <button type="submit" className="tap text-sm text-graphite underline">Mark all as read</button>
+            <SubmitButton pendingLabel="Marking…" className="tap text-sm text-graphite underline">Mark all as read</SubmitButton>
           </form>
         )}
       </div>
@@ -66,7 +67,7 @@ export default async function NotificationsPage(props: PageProps<"/dashboard/not
             {!n.read_at && (
               <form action={markNotificationRead}>
                 <input type="hidden" name="id" value={n.id} />
-                <button type="submit" className="tap shrink-0 px-1 text-sm text-graphite underline hover:text-ink sm:text-xs">Mark read</button>
+                <SubmitButton pendingLabel="Marking…" className="tap shrink-0 px-1 text-sm text-graphite underline hover:text-ink sm:text-xs">Mark read</SubmitButton>
               </form>
             )}
           </div>

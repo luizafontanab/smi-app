@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireMemberView } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { CompanyPageForm } from "@/components/member/CompanyPageForm";
@@ -71,9 +72,9 @@ export default async function MemberProfilePage(props: PageProps<"/dashboard/pro
           <p className="text-xs text-graphite">
             {isDraft ? "Sent to Jas for review." : "Changes go live after a quick editorial check."}
           </p>
-          <button className="rounded bg-ink px-5 py-2.5 text-white">
+          <SubmitButton pendingLabel="Submitting…" className="rounded bg-ink px-5 py-2.5 text-white">
             {isDraft ? "Submit page for approval" : "Submit changes"}
-          </button>
+          </SubmitButton>
         </div>
       </form>
     </div>

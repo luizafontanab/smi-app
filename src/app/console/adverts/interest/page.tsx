@@ -4,6 +4,7 @@ import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { monthLabel, monthLast } from "@/lib/featured-availability";
 import { declineInterest, startAdvertFromInterest } from "../../actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -80,11 +81,11 @@ export default async function AdvertInterestPage(props: PageProps<"/console/adve
                 <span aria-hidden="true" className="text-xs text-graphite">£</span>
                 <label htmlFor={`interest-amount-${r.id}`} className="sr-only">Amount in pounds</label>
                 <input id={`interest-amount-${r.id}`} name="amount_pounds" type="number" step="0.01" min="0.30" max="999999.99" required placeholder="0.00" className="w-20 rounded border px-1.5 py-1 text-xs" />
-                <button className="rounded bg-ink px-3 py-1.5 text-xs text-white">Confirm &amp; invoice</button>
+                <SubmitButton className="rounded bg-ink px-3 py-1.5 text-xs text-white" pendingLabel="Confirming…">Confirm &amp; invoice</SubmitButton>
               </form>
               <form action={declineInterest}>
                 <input type="hidden" name="id" value={r.id} />
-                <button className="rounded border px-3 py-1.5 text-xs text-graphite">Decline</button>
+                <SubmitButton className="rounded border px-3 py-1.5 text-xs text-graphite" pendingLabel="Declining…">Decline</SubmitButton>
               </form>
             </div>
           </div>

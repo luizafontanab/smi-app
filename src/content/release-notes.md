@@ -10,6 +10,11 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — Buttons show they're working
+- Buttons that save, send, approve, publish, delete or pay now grey out as soon as you click them and say what they're doing, for example "Saving…" or "Publishing…", until the job is done. Clicking twice no longer does the job twice.
+- This applies everywhere in the console and the member area, including the Confirm buttons under "Social post" and "Try again" on the error pages.
+- If something goes wrong, the button comes back so you can try again.
+
 ## 2026-11-06 — The approved stacked logo
 - The stacked Sheet Metal Industries logo on phones, in the site footers and at the top of the newsletter is now the approved artwork, in the site's brand orange. It is sharper than before, and the "Cut, Shape, Form and Join" line is a little larger.
 - On white backgrounds (the member area, the login pages and the newsletter) its ".com" shows in black so it stays visible; on the dark bars it stays white, as designed.

@@ -17,6 +17,7 @@ import {
 } from "@/lib/dev-tasks";
 import { createDevTask } from "../actions";
 import { DevBoard } from "./DevBoard";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -151,7 +152,7 @@ function DevListView({ tasks, returnTo }: { tasks: DevTask[]; returnTo: string }
             </option>
           ))}
         </select>
-        <button className="rounded bg-ink px-4 py-1.5 text-white">+ Add</button>
+        <SubmitButton className="rounded bg-ink px-4 py-1.5 text-white" pendingLabel="Adding…">+ Add</SubmitButton>
       </form>
 
       {sorted.length === 0 ? (

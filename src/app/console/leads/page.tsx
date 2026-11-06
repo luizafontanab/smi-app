@@ -6,6 +6,7 @@ import { getLeadGenSource } from "@/lib/adapters/leadgen";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import Link from "next/link";
 import { markProspect } from "../actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -142,7 +143,7 @@ export default async function ConsoleLeadsPage(props: PageProps<"/console/leads"
                             <input type="hidden" name="ref" value={p.ref} />
                             <input type="hidden" name="action" value={a.value} />
                             <input type="hidden" name="q" value={q.toString()} />
-                            <button className="rounded border px-2 py-1 text-xs hover:bg-graphite/10">{a.label}</button>
+                            <SubmitButton className="rounded border px-2 py-1 text-xs hover:bg-graphite/10" pendingLabel="Working…">{a.label}</SubmitButton>
                           </form>
                         ))}
                       </div>

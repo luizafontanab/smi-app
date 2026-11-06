@@ -1,5 +1,6 @@
 "use client";
 
+import { SubmitButton } from "@/components/SubmitButton";
 import { useRef } from "react";
 import Link from "next/link";
 import type { CurrentUser } from "@/lib/auth";
@@ -131,7 +132,7 @@ export function MobileNav({ user, accountLinks = [], signOutAction, triggerClass
                 ))}
                 {signOutAction && (
                   <form action={signOutAction}>
-                    <button type="submit" className={`block w-full text-left ${row}`}>Sign out</button>
+                    <SubmitButton pendingLabel="Signing out…" className={`block w-full text-left ${row}`}>Sign out</SubmitButton>
                   </form>
                 )}
               </>

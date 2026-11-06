@@ -31,8 +31,8 @@ export function CookieConsent() {
           <Link href="/pages/policies" className="font-semibold underline underline-offset-2">Cookie policy</Link>
         </p>
         <div className="flex gap-2">
-          <button onClick={() => choose("essential")} className="tap rounded border px-3 py-1.5">Essential only</button>
-          <button onClick={() => choose("all")} className="tap rounded bg-ink px-3 py-1.5 text-white">Accept</button>
+          <button type="button" onClick={() => choose("essential")} className="tap rounded border px-3 py-1.5">Essential only</button>
+          <button type="button" onClick={() => choose("all")} className="tap rounded bg-ink px-3 py-1.5 text-white">Accept</button>
         </div>
       </div>
     </div>

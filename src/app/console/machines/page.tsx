@@ -4,6 +4,7 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { decideMachine } from "../actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Featured Machine" };
@@ -45,13 +46,13 @@ export default async function MachinesPage() {
                   <form action={decideMachine}>
                     <input type="hidden" name="id" value={m.id} />
                     <input type="hidden" name="decision" value="approve" />
-                    <button className="rounded bg-success px-3 py-1.5 text-white">Approve</button>
+                    <SubmitButton pendingLabel="Approving…" className="rounded bg-success px-3 py-1.5 text-white">Approve</SubmitButton>
                   </form>
                   <form action={decideMachine} className="flex gap-1">
                     <input type="hidden" name="id" value={m.id} />
                     <input type="hidden" name="decision" value="reject" />
                     <input name="reason" placeholder="Reason" aria-label={`Reason for rejecting ${m.name}`} required className="w-36 rounded border px-2 py-1" />
-                    <button className="rounded border border-danger/30 px-2 py-1 text-danger">Reject</button>
+                    <SubmitButton pendingLabel="Rejecting…" className="rounded border border-danger/30 px-2 py-1 text-danger">Reject</SubmitButton>
                   </form>
                 </div>
               </div>

@@ -9,6 +9,7 @@ import { saveAdvertArtwork } from "../../../actions";
 import { UploadField } from "@/components/UploadField";
 import { CountedInput } from "@/components/console/CountedInput";
 import { SPONSORED_STORY_MAX_WORDS } from "@/lib/newsletter-layout";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -110,7 +111,7 @@ export default async function AdvertArtworkEditor(props: PageProps<"/console/adv
         <p className="text-xs text-graphite">
           JPG/PNG/WebP, max 8MB. Editing leaves the existing image in place unless you choose a new one — and a swap applies to every run of this artwork.
         </p>
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Save</button>
+        <SubmitButton className="rounded bg-ink px-5 py-2.5 text-white" pendingLabel="Saving…">Save</SubmitButton>
       </form>
     </div>
   );

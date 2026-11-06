@@ -1,5 +1,6 @@
 "use client";
 
+import { SubmitButton } from "@/components/SubmitButton";
 import { useState } from "react";
 import { proposeOwnArtworkSwap } from "../actions";
 import { RequiredMark } from "@/components/RequiredMark";
@@ -38,7 +39,7 @@ export function ArtworkSwapForm({ advertId, bookingId }: { advertId: string; boo
           {mobileUrl && <img src={mobileUrl} alt="" className="mt-2 w-full max-w-[370px] rounded border" />}
         </div>
       </div>
-      <button className="rounded bg-ink px-4 py-2 text-white">Send for approval</button>
+      <SubmitButton pendingLabel="Sending…" className="rounded bg-ink px-4 py-2 text-white">Send for approval</SubmitButton>
       <p className="text-xs text-graphite">The current artwork keeps running until this is approved — the dates don&apos;t change either way.</p>
     </form>
   );

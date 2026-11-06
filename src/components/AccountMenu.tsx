@@ -1,4 +1,5 @@
 "use client";
+import { SubmitButton } from "@/components/SubmitButton";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { IconAccount } from "@/components/icons";
@@ -81,7 +82,7 @@ export function AccountMenu({ name, links, signOutAction, unread = 0 }: {
           </Link>
         ))}
         <form action={signOutAction}>
-          <button type="submit" className="block w-full px-4 py-2 text-left hover:bg-chrome-hover">Sign out</button>
+          <SubmitButton pendingLabel="Signing out…" className="block w-full px-4 py-2 text-left hover:bg-chrome-hover">Sign out</SubmitButton>
         </form>
       </div>
     </div>

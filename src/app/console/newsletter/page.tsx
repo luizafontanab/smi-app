@@ -8,6 +8,7 @@ import { createIssue, saveNewsletterFooter, scheduleIssue, sendIssue, unschedule
 import { DEFAULT_REASON_LINE, POSTAL_ADDRESS_MAX, readNewsletterFooter, REASON_LINE_MAX } from "@/lib/newsletter-footer";
 import { CalendarView, type CalendarIssue } from "./CalendarView";
 import { newsletterAudience } from "@/lib/newsletter-audience";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
             ))}
             {!videos?.length && <p className="text-xs text-graphite">No published videos yet.</p>}
           </div>
-          <button className="rounded bg-ink px-4 py-2 text-white">Create draft</button>
+          <SubmitButton pendingLabel="Creating…" className="rounded bg-ink px-4 py-2 text-white">Create draft</SubmitButton>
           <p className="text-xs text-graphite">Advert slots attach from the issue&apos;s own page once it&apos;s created — open a draft below to add ~2–3.</p>
         </form>
       </section>
@@ -143,7 +144,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
                           <form action={scheduleIssue} className="flex flex-wrap items-center gap-1.5">
                             <input type="hidden" name="id" value={i.id} />
                             <input type="datetime-local" name="scheduled_at" aria-label="Schedule send time (UK time)" required className="max-w-full rounded border px-1.5 py-1 text-xs" />
-                            <button className="rounded border px-2.5 py-1 text-xs">Schedule</button>
+                            <SubmitButton pendingLabel="Scheduling…" className="rounded border px-2.5 py-1 text-xs">Schedule</SubmitButton>
                           </form>
                         </div>
                       )}
@@ -152,7 +153,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
                           <SendNowForm id={i.id} label="Send now" />
                           <form action={unscheduleIssue}>
                             <input type="hidden" name="id" value={i.id} />
-                            <button className="rounded border px-2.5 py-1 text-xs text-graphite">Unschedule</button>
+                            <SubmitButton pendingLabel="Unscheduling…" className="rounded border px-2.5 py-1 text-xs text-graphite">Unschedule</SubmitButton>
                           </form>
                         </div>
                       )}
@@ -201,7 +202,7 @@ export default async function NewsletterPage(props: PageProps<"/console/newslett
             <textarea name="reason_line" rows={2} maxLength={REASON_LINE_MAX} defaultValue={footer.reason_line} className="mt-1 w-full rounded border px-3 py-2" />
             <span className="text-xs text-graphite">Left blank, it goes back to: &quot;{DEFAULT_REASON_LINE}&quot;</span>
           </label>
-          <button className="rounded bg-ink px-4 py-2 text-white">Save footer</button>
+          <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-4 py-2 text-white">Save footer</SubmitButton>
         </form>
       </section>
     </div>
@@ -217,7 +218,7 @@ function SendNowForm({ id, label }: { id: string; label: string }) {
         <input type="checkbox" name="confirm" value="1" required />
         confirm
       </label>
-      <button className="rounded bg-brand px-2.5 py-1 text-xs font-semibold text-ink">{label}</button>
+      <SubmitButton pendingLabel="Sending…" className="rounded bg-brand px-2.5 py-1 text-xs font-semibold text-ink">{label}</SubmitButton>
     </form>
   );
 }

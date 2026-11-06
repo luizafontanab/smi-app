@@ -1,3 +1,4 @@
+import { SubmitButton } from "@/components/SubmitButton";
 import { Suspense } from "react";
 import { stopViewAs } from "@/app/view-as/actions";
 import { ReadOnlyNotice } from "./ReadOnlyNotice";
@@ -17,9 +18,9 @@ export function ViewAsBanner({ memberName }: { memberName: string }) {
           Viewing as <strong className="font-semibold">{memberName}</strong> — read-only. Nothing you change here is saved.
         </p>
         <form action={stopViewAs}>
-          <button type="submit" className="tap rounded bg-ink px-3 py-1.5 font-semibold text-white hover:bg-chrome-hover">
+          <SubmitButton pendingLabel="Leaving…" className="tap rounded bg-ink px-3 py-1.5 font-semibold text-white hover:bg-chrome-hover">
             Back to console
-          </button>
+          </SubmitButton>
         </form>
       </div>
       <Suspense fallback={null}>

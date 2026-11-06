@@ -19,6 +19,7 @@ import { NEWSLETTER_SHELL_KIND } from "@/lib/email/defaults";
 import { loadEmailTemplates } from "@/lib/email/store";
 import { newsletterTemplateProblem } from "@/lib/email/templates";
 import { newsletterAudience } from "@/lib/newsletter-audience";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -183,7 +184,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
             />
             <textarea name="intro" defaultValue={issue.intro ?? ""} placeholder="Intro paragraph" aria-label="Intro paragraph" rows={2} className="w-full rounded border px-3 py-2" />
             <IssueItemsPicker initial={pickedItems} recent={recentItems} search={searchIssueContent} />
-            <button className="rounded bg-ink px-4 py-2 text-white">Save changes</button>
+            <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-4 py-2 text-white">Save changes</SubmitButton>
             {(issue.approved_at || issue.last_test_sent_at) && (
               <p className="text-xs text-graphite">
                 Saving withdraws the approval and the test-send record{issue.status === "scheduled" ? ", and unschedules the issue" : ""}. Your proof ticks stay.
@@ -239,7 +240,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
           {editable && (
             <form action={sendTestIssue} className="mt-2">
               <input type="hidden" name="id" value={id} />
-              <button className="rounded border px-3 py-1.5 text-xs">Send me a test</button>
+              <SubmitButton pendingLabel="Sending…" className="rounded border px-3 py-1.5 text-xs">Send me a test</SubmitButton>
             </form>
           )}
         </div>
@@ -267,7 +268,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
               </div>
             </fieldset>
           ))}
-          {editable && <button className="rounded border px-3 py-1.5 text-xs">Save checklist</button>}
+          {editable && <SubmitButton pendingLabel="Saving…" className="rounded border px-3 py-1.5 text-xs">Save checklist</SubmitButton>}
         </form>
 
         <div className="mt-4 border-t pt-3 text-sm">
@@ -279,19 +280,20 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
               {editable && (
                 <form action={withdrawApproval}>
                   <input type="hidden" name="id" value={id} />
-                  <button className="text-xs text-danger hover:underline">Withdraw approval</button>
+                  <SubmitButton pendingLabel="Withdrawing…" className="text-xs text-danger hover:underline">Withdraw approval</SubmitButton>
                 </form>
               )}
             </div>
           ) : editable ? (
             <form action={approveIssue}>
               <input type="hidden" name="id" value={id} />
-              <button
+              <SubmitButton
+                pendingLabel="Approving…"
                 disabled={missing.length > 0 || !issue.last_test_sent_at}
                 className="rounded bg-ink px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Approve to send
-              </button>
+              </SubmitButton>
               {(missing.length > 0 || !issue.last_test_sent_at) && (
                 <p className="mt-2 text-xs text-graphite">
                   Still needed: {[
@@ -323,7 +325,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
                 <input type="hidden" name="advert_id" value={a.advert_id} />
                 <label htmlFor={`after-${a.advert_id}`} className="text-graphite">After item</label>
                 <input id={`after-${a.advert_id}`} name="after_item" type="number" min={1} defaultValue={a.after_item ?? ""} placeholder="auto" className="w-16 rounded border px-2 py-0.5" />
-                <button className="rounded border px-2 py-0.5">Set</button>
+                <SubmitButton pendingLabel="Setting…" className="rounded border px-2 py-0.5">Set</SubmitButton>
               </form>
             ) : (
               <span className="text-xs text-graphite">{a.after_item ? `After item ${a.after_item}` : "Placed automatically"}</span>
@@ -332,7 +334,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
               <form action={detachNewsletterAd}>
                 <input type="hidden" name="issue_id" value={id} />
                 <input type="hidden" name="advert_id" value={a.advert_id} />
-                <button className="text-xs text-danger hover:underline">remove</button>
+                <SubmitButton pendingLabel="removing…" className="text-xs text-danger hover:underline">remove</SubmitButton>
               </form>
             )}
           </div>
@@ -348,7 +350,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
                 <form action={attachNewsletterAd}>
                   <input type="hidden" name="issue_id" value={id} />
                   <input type="hidden" name="advert_id" value={a.id} />
-                  <button className="rounded bg-ink px-3 py-1 text-xs text-white">Add</button>
+                  <SubmitButton pendingLabel="Adding…" className="rounded bg-ink px-3 py-1 text-xs text-white">Add</SubmitButton>
                 </form>
               </div>
             ))}
@@ -372,7 +374,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
               <form action={removeDirectoryMember}>
                 <input type="hidden" name="issue_id" value={id} />
                 <input type="hidden" name="member_id" value={d.member_id} />
-                <button className="text-xs text-danger hover:underline">remove</button>
+                <SubmitButton pendingLabel="removing…" className="text-xs text-danger hover:underline">remove</SubmitButton>
               </form>
             )}
           </div>
@@ -386,7 +388,7 @@ export default async function IssueDetail(props: PageProps<"/console/newsletter/
               <option value="">— choose a member —</option>
               {(directoryMembers ?? []).filter((m) => !listedIds.has(m.id)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
-            <button className="rounded bg-ink px-3 py-1 text-xs text-white">Add</button>
+            <SubmitButton pendingLabel="Adding…" className="rounded bg-ink px-3 py-1 text-xs text-white">Add</SubmitButton>
           </form>
         )}
       </section>
