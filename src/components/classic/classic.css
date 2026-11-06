@@ -522,6 +522,92 @@
 
 /* ── #74 Story ───────────────────────────────────────────────────────────── */
 
+/* Markup: src/components/classic/ClassicStoryView.tsx, which serves both
+   /news/[slug] and /preview/story/[id]. "‹ Back to News", then one narrow
+   white panel (header, hero, body, share row, member tiles), then the
+   layout's after-article blocks at the route's own width. */
+
+[data-site="public"] [data-part="story-page"] > [data-part="back-link"] {
+  max-width: 56rem;
+  margin: 1.5rem auto 0;
+  font-size: 1rem;
+}
+
+/* The panel: narrower than the route's container from lg, centred. */
+[data-site="public"] [data-part="story-panel"] {
+  max-width: 56rem;
+  margin: 1rem auto 1.5rem;
+  padding: 1rem 1rem 2rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+@media (min-width: 48rem) {
+  [data-site="public"] [data-part="story-panel"] {
+    padding: 1.5rem 3rem 3rem;
+  }
+}
+
+/* Uppercase headline, regular weight, in ink. */
+[data-site="public"] [data-part="story-panel"] [data-part="page-title"] {
+  color: var(--smi-ink);
+  font-size: clamp(2rem, 1.2rem + 2.7vw, 3.25rem);
+  font-weight: 400;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+/* Category pills: the live site's topic lozenge, but in Classic's meta grey on
+   its tint (its white on #b4b4b4 is about 2:1). */
+[data-site="public"] [data-part="story-panel"] [data-part="story-category"] {
+  border-radius: var(--classic-radius);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+[data-site="public"] [data-part="story-panel"] [data-part="story-cover"] {
+  border-radius: var(--classic-radius);
+}
+
+/* Body text 20px / 1.6. The 68ch measure from globals.css still applies. */
+[data-site="public"] [data-part="story-panel"] [data-part="story-article"],
+[data-site="public"] [data-part="story-panel"] [data-part="story-article"] [data-part="story-body"] {
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+
+/* The source-member line that closes a story (decisions 6 Nov, 12): Classic's
+   link blue instead of Current's brown-orange, at a lighter weight. The
+   attribute is lib/company-link's, set at render time. */
+[data-site="public"] [data-part="story-page"] [data-part="story-body"] p[data-company-link] {
+  font-weight: 500;
+}
+[data-site="public"] [data-part="story-page"] [data-part="story-body"] p[data-company-link] a {
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="story-page"] [data-part="story-body"] p[data-company-link] a:hover {
+  color: var(--classic-blue-hover);
+}
+
+/* Member tiles under the article: one narrower column, centred. */
+[data-site="public"] [data-part="story-panel"] [data-part="story-members"] {
+  max-width: 36rem;
+  margin-inline: auto;
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] [data-part="story-panel"] [data-part="story-members"] [data-part="card-grid"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+[data-site="public"] [data-part="story-panel"] [data-part="story-member-tile"] {
+  border-radius: var(--classic-radius);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-site="public"] [data-part="story-page"] [data-part="story-body"] p[data-company-link] a {
+    transition: color 150ms ease;
+  }
+}
+
 /* ── end #74 ── */
 
 /* ── #75 Cards ───────────────────────────────────────────────────────────── */
