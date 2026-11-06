@@ -9,15 +9,15 @@ vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 afterEach(() => resetDbServerMocks());
 
-const company = (id: string, url: string, name = `Co ${id}`) => ({ id, name, url });
+const company = (id: string, url: string, name = `Co ${id}`, fromWebsite = false) => ({ id, name, url, fromWebsite });
 const linkedRow = (over: Partial<LinkedRow> & { id: string; url: string; bigin_account_id: string }): LinkedRow =>
-  ({ bigin_account_name: `Co ${over.bigin_account_id}`, bigin_only: false, ...over });
+  ({ bigin_account_name: `Co ${over.bigin_account_id}`, bigin_only: false, bigin_from_website: false, ...over });
 const urlRow = (over: Partial<UrlRow> & { id: string; url: string }): UrlRow => ({ bigin_account_id: null, bigin_only: false, ...over });
 
 describe("planBiginSources", () => {
   it("adds a URL that isn't on the list yet, normalised and marked as the company's", () => {
     const plan = planBiginSources({ complete: true, companies: [company("1", "www.acme.test/news#latest", "Acme Ltd")] }, [], []);
-    expect(plan.insert).toEqual([{ url: "https://www.acme.test/news", domain: "acme.test", label: "Acme Ltd", accountId: "1", accountName: "Acme Ltd" }]);
+    expect(plan.insert).toEqual([{ url: "https://www.acme.test/news", domain: "acme.test", label: "Acme Ltd", accountId: "1", accountName: "Acme Ltd", fromWebsite: false }]);
     expect(plan.link).toEqual([]);
     expect(plan.unlink).toEqual([]);
   });
@@ -29,7 +29,7 @@ describe("planBiginSources", () => {
       [urlRow({ id: "s1", url: "https://acme.test/news" })],
     );
     expect(plan.insert).toEqual([]);
-    expect(plan.link).toEqual([{ id: "s1", accountId: "1", accountName: "Co 1", reactivate: false }]);
+    expect(plan.link).toEqual([{ id: "s1", accountId: "1", accountName: "Co 1", reactivate: false, fromWebsite: false }]);
   });
 
   it("leaves an unchanged link alone, but follows a company rename", () => {
@@ -37,7 +37,7 @@ describe("planBiginSources", () => {
     expect(planBiginSources({ complete: true, companies: [company("1", "https://acme.test/news", "Acme")] }, linked, linked))
       .toEqual({ insert: [], link: [], unlink: [], skipped: [] });
     expect(planBiginSources({ complete: true, companies: [company("1", "https://acme.test/news", "Acme Group")] }, linked, linked).link)
-      .toEqual([{ id: "s1", accountId: "1", accountName: "Acme Group", reactivate: false }]);
+      .toEqual([{ id: "s1", accountId: "1", accountName: "Acme Group", reactivate: false, fromWebsite: false }]);
   });
 
   it("a changed URL pauses the old Bigin-only row and adds the new one", () => {
@@ -121,7 +121,7 @@ describe("planBiginSources", () => {
     );
     // The unlink is kept (it frees the company before the link runs) but never pauses a handed-over row.
     expect(plan.unlink).toEqual([{ id: "s1", pause: false }]);
-    expect(plan.link).toEqual([{ id: "s1", accountId: "2", accountName: "Co 2", reactivate: false }]);
+    expect(plan.link).toEqual([{ id: "s1", accountId: "2", accountName: "Co 2", reactivate: false, fromWebsite: false }]);
     expect(plan.insert.map((i) => i.accountId)).toEqual(["1"]);
   });
 
@@ -135,8 +135,8 @@ describe("planBiginSources", () => {
     );
     expect(plan.unlink).toEqual([{ id: "a", pause: false }, { id: "b", pause: false }]);
     expect(plan.link).toEqual([
-      { id: "b", accountId: "1", accountName: "Co 1", reactivate: false },
-      { id: "a", accountId: "2", accountName: "Co 2", reactivate: false },
+      { id: "b", accountId: "1", accountName: "Co 1", reactivate: false, fromWebsite: false },
+      { id: "a", accountId: "2", accountName: "Co 2", reactivate: false, fromWebsite: false },
     ]);
     expect(plan.insert).toEqual([]);
     expect(plan.skipped).toEqual([]);
@@ -148,13 +148,57 @@ describe("planBiginSources", () => {
       [],
       [urlRow({ id: "s1", url: "https://acme.test/news", bigin_only: true })],
     );
-    expect(plan.link).toEqual([{ id: "s1", accountId: "1", accountName: "Co 1", reactivate: true }]);
+    expect(plan.link).toEqual([{ id: "s1", accountId: "1", accountName: "Co 1", reactivate: true, fromWebsite: false }]);
   });
 
   it("skips a URL that isn't a web address", () => {
     const plan = planBiginSources({ complete: true, companies: [company("1", "n/a")] }, [], []);
     expect(plan.insert).toEqual([]);
     expect(plan.skipped).toEqual([{ accountId: "1", name: "Co 1", url: "n/a", reason: "invalid_url" }]);
+  });
+
+  describe("Website fallback (5 Nov 2026)", () => {
+    it("adds a company's Website, marked as coming from it", () => {
+      const plan = planBiginSources({ complete: true, companies: [company("1", "https://acme.test", "Acme", true)] }, [], []);
+      expect(plan.insert).toEqual([{ url: "https://acme.test/", domain: "acme.test", label: "Acme", accountId: "1", accountName: "Acme", fromWebsite: true }]);
+    });
+
+    it("a News Page URL beats another company's Website fallback to the same address, whatever the order", () => {
+      const plan = planBiginSources(
+        { complete: true, companies: [company("1", "https://group.test/", "Subsidiary", true), company("2", "https://group.test/", "Group")] },
+        [],
+        [],
+      );
+      expect(plan.insert.map((i) => [i.accountId, i.fromWebsite])).toEqual([["2", false]]);
+      expect(plan.skipped).toEqual([{ accountId: "1", name: "Subsidiary", url: "https://group.test/", reason: "clash" }]);
+    });
+
+    it("filling in the News Page URL later pauses the Website row and adds the news page", () => {
+      const plan = planBiginSources(
+        { complete: true, companies: [company("1", "https://acme.test/news")] },
+        [linkedRow({ id: "s1", url: "https://acme.test/", bigin_account_id: "1", bigin_only: true, bigin_from_website: true })],
+        [],
+      );
+      expect(plan.unlink).toEqual([{ id: "s1", pause: true }]);
+      expect(plan.insert.map((i) => [i.url, i.fromWebsite])).toEqual([["https://acme.test/news", false]]);
+    });
+
+    it("the same address switching between News Page URL and Website only updates the mark", () => {
+      const linked = [linkedRow({ id: "s1", url: "https://acme.test/", bigin_account_id: "1", bigin_from_website: true })];
+      const plan = planBiginSources({ complete: true, companies: [company("1", "https://acme.test/")] }, linked, linked);
+      expect(plan.unlink).toEqual([]);
+      expect(plan.link).toEqual([{ id: "s1", accountId: "1", accountName: "Co 1", reactivate: false, fromWebsite: false }]);
+    });
+
+    it("links a Website already on the spreadsheet list, marked, without adding a row", () => {
+      const plan = planBiginSources(
+        { complete: true, companies: [company("1", "acme.test", "Co 1", true)] },
+        [],
+        [urlRow({ id: "s1", url: "https://acme.test/" })],
+      );
+      expect(plan.insert).toEqual([]);
+      expect(plan.link).toEqual([{ id: "s1", accountId: "1", accountName: "Co 1", reactivate: false, fromWebsite: true }]);
+    });
   });
 });
 
@@ -222,16 +266,95 @@ describe("syncBiginSources", () => {
     })));
 
     const run = await syncBiginSources({
-      crm: crm({ complete: true, companies: [{ id: "1", name: "Acme", url: "https://acme.test/news" }] }),
+      crm: crm({ complete: true, companies: [{ id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false }] }),
       now: () => new Date("2026-10-27T03:00:00Z"),
     });
 
-    expect(run).toEqual({ at: "2026-10-27T03:00:00.000Z", complete: true, companies: 1, added: 1, linked: 0, unlinked: 0, paused: 0, skipped: [], membersSet: 1 });
+    expect(run).toEqual({ at: "2026-10-27T03:00:00.000Z", complete: true, companies: 1, fromWebsite: 0, added: 1, linked: 0, unlinked: 0, paused: 0, skipped: [], membersSet: 1 });
     const inserted = vi.mocked(builders.content_sources[2].insert as (...a: unknown[]) => unknown).mock.calls[0][0];
     expect(inserted).toEqual(expect.objectContaining({ url: "https://acme.test/news", bigin_only: true, bigin_account_id: "1", active: true, label: "Acme" }));
     const memberUpdate = vi.mocked(builders.content_sources[4].update as (...a: unknown[]) => unknown).mock.calls[0][0];
     expect(memberUpdate).toEqual(expect.objectContaining({ member_id: "m-acme" }));
     const saved = vi.mocked(builders.settings[0].upsert as (...a: unknown[]) => unknown).mock.calls[0][0];
     expect(saved).toEqual(expect.objectContaining({ key: "bigin_sources_last" }));
+  });
+
+  it("marks a source added from a Website, and counts it in the run", async () => {
+    const builders: Record<string, ReturnType<typeof queryBuilder>[]> = {};
+    const track = (table: string, b: ReturnType<typeof queryBuilder>) => ((builders[table] ??= []).push(b), b);
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({
+        content_sources: () => track("content_sources", queryBuilder(dbOk([]))),
+        contacts: () => track("contacts", queryBuilder(dbOk([]))),
+        members: () => track("members", queryBuilder(dbOk([]))),
+        settings: () => track("settings", queryBuilder(dbOk(null))),
+      }),
+    })));
+
+    const run = await syncBiginSources({
+      crm: crm({ complete: true, companies: [company("1", "https://acme.test/news"), company("2", "https://bright.test", "Bright", true)] }),
+      now: () => new Date("2026-11-05T03:00:00Z"),
+    });
+
+    expect(run).toMatchObject({ companies: 2, fromWebsite: 1 });
+    expect(run).not.toHaveProperty("websiteFallbackWithheld");
+    const inserts = builders.content_sources
+      .flatMap((b) => vi.mocked(b.insert as (...a: unknown[]) => unknown).mock.calls.map((c) => c[0]));
+    expect(inserts).toEqual([
+      expect.objectContaining({ url: "https://acme.test/news", bigin_from_website: false }),
+      expect.objectContaining({ url: "https://bright.test/", bigin_from_website: true }),
+    ]);
+  });
+
+  it("an unlink clears the Website mark along with the company link", async () => {
+    const builders: Record<string, ReturnType<typeof queryBuilder>[]> = {};
+    let sourceReads = 0;
+    const track = (table: string, b: ReturnType<typeof queryBuilder>) => ((builders[table] ??= []).push(b), b);
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({
+        content_sources: () => {
+          sourceReads++;
+          if (sourceReads === 1) {
+            return track("content_sources", queryBuilder(dbOk([
+              { id: "s1", url: "https://acme.test/", bigin_account_id: "1", bigin_account_name: "Co 1", bigin_only: true, bigin_from_website: true },
+            ])));
+          }
+          return track("content_sources", queryBuilder(dbOk([])));
+        },
+        contacts: () => track("contacts", queryBuilder(dbOk([]))),
+        members: () => track("members", queryBuilder(dbOk([]))),
+        settings: () => track("settings", queryBuilder(dbOk(null))),
+      }),
+    })));
+
+    await syncBiginSources({ crm: crm({ complete: true, companies: [company("1", "https://acme.test/news")] }) });
+
+    const updates = builders.content_sources
+      .flatMap((b) => vi.mocked(b.update as (...a: unknown[]) => unknown).mock.calls.map((c) => c[0]));
+    expect(updates).toContainEqual(expect.objectContaining({ bigin_account_id: null, bigin_from_website: false, active: false }));
+  });
+
+  it("saves the warning when the Website fallback was withheld, and changes nothing", async () => {
+    const builders: Record<string, ReturnType<typeof queryBuilder>[]> = {};
+    const track = (table: string, b: ReturnType<typeof queryBuilder>) => ((builders[table] ??= []).push(b), b);
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+      from: fromByTable({
+        content_sources: () => track("content_sources", queryBuilder(dbOk([
+          { id: "s1", url: "https://a.test/news", bigin_account_id: "1", bigin_account_name: "Co 1", bigin_only: true, bigin_from_website: false },
+        ]))),
+        contacts: () => track("contacts", queryBuilder(dbOk([]))),
+        members: () => track("members", queryBuilder(dbOk([]))),
+        settings: () => track("settings", queryBuilder(dbOk(null))),
+      }),
+    })));
+
+    const run = await syncBiginSources({ crm: crm({ complete: true, companies: [], websiteFallbackWithheld: true }) });
+
+    expect(run).toMatchObject({ companies: 0, added: 0, linked: 0, unlinked: 0, paused: 0, websiteFallbackWithheld: true });
+    const writes = builders.content_sources.flatMap((b) => [
+      ...vi.mocked(b.insert as (...a: unknown[]) => unknown).mock.calls,
+      ...vi.mocked(b.update as (...a: unknown[]) => unknown).mock.calls.filter((c) => "bigin_account_id" in (c[0] as object)),
+    ]);
+    expect(writes).toEqual([]);
   });
 });

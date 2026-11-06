@@ -1,42 +1,60 @@
-import Image from "next/image";
+import { getImageProps } from "next/image";
 
 /**
- * The client's logo face, and only here — the supplied wide logo artwork
- * (public/logo-wide.svg, orange #ff8200 + white, so it needs a dark surface).
- * --smi-brand is matched to this artwork's orange, so mark and accent read as
- * one. Shared by the public header and the member area so the mark can't
- * drift (DESIGN.md); the footer uses the stacked lockup (logo-square.png)
- * instead. Deliberately not recoloured via --smi-brand:
- * official artwork stays as supplied, so it sits out sponsor-takeover
- * recolouring.
+ * Below Tailwind's `sm`: the phone layout, where the stacked lockup shows.
+ * The exact complement of `sm` (`width >= 40rem`), so no fractional width
+ * falls between the two and gets the wide mark at phone height.
+ */
+export const PHONE_MEDIA = "(width < 40rem)";
+
+/**
+ * The client's logo face, and only here — shared by the public header, the
+ * member area and the auth pages so the mark can't drift (DESIGN.md).
+ * Deliberately not recoloured via --smi-brand: official artwork stays as
+ * supplied, so it sits out sponsor-takeover recolouring.
  *
- * `tone="light"` swaps in logo-wide-ink.svg for the grid design's light
- * header. It is the same file with its single fill="#fff" path — the wordmark
- * text — set to --smi-ink; the orange is untouched, so the supplied brand
- * colour still ships exactly as delivered. Generated, not redrawn: regenerate
- * it from logo-wide.svg if the client ever supplies new artwork.
+ * Two supplied lockups, chosen by viewport with <picture> so each device
+ * downloads only the one it shows:
+ *
+ * - From `sm` up, the wide artwork (public/logo-wide.svg, orange #ff8200 +
+ *   white, so it needs a dark surface). `tone="light"` swaps in
+ *   logo-wide-ink.svg for a light header: the same file with its single
+ *   fill="#fff" path — the wordmark text — set to --smi-ink. Generated, not
+ *   redrawn: regenerate it from logo-wide.svg if the client supplies new
+ *   artwork.
+ * - On a phone, the stacked lockup (public/logo-stacked.png, the footer's
+ *   mark) — the client's preferred mobile logo. It is the supplied 500×500
+ *   "Deep orange" JPG with the canvas keyed out and its coral (#ff6b4b)
+ *   corrected to the brand #ff8200. All one orange, so it reads on both tones.
  */
 export function Wordmark({ tone = "dark" }: {
   /** The surface the mark sits on — "dark" is the near-black chrome header. */
   tone?: "dark" | "light";
 }) {
-  // Intrinsic ratio 1786.05 × 276.97 ≈ 6.45:1 — the mark is ~6.5× wider than
-  // tall, so the height classes step with the header's own breakpoints: full
-  // size only from xl (lg is where the header shows every nav link, and a
-  // 413px logo plus the full nav overflows a 1024px viewport), mid-size from
-  // sm, and compact (206px wide) below that. On a phone the header shows only
-  // this and the menu button, and its link is shrink-0, so the mark always
-  // renders at these sizes — never squeezed (#33). The tagline baked into the
-  // artwork is still small at phone size; a tagline-free phone lockup would
-  // need new artwork from the client (public/logo-stacked.png has the
-  // tagline too, smaller still).
+  const alt = "Sheet Metal Industries";
+  // Stacked lockup is 500 × 172 ≈ 2.9:1, shown 72px tall (≈209px wide, ~55%
+  // of a 390px phone) — matched to the live site's phone header. The headers
+  // keep their phone padding to 8px so the bar stays ~88px, as live; the
+  // artwork itself has no margin to trim.
+  const { props: { srcSet: phone } } = getImageProps({ alt, src: "/logo-stacked.png", width: 209, height: 72 });
+  // Wide artwork is 1786.05 × 276.97 ≈ 6.45:1. Full size only from xl (lg is
+  // where the header shows every nav link, and a 413px logo plus the full nav
+  // overflows a 1024px viewport). Every header gives the mark's link shrink-0,
+  // so it always renders at these sizes — never squeezed (#33).
+  // Eager: the mark is the first thing in every page's header, so it must not
+  // wait on lazy loading. `loading` sits on the <img>, so it covers the phone
+  // <source> too.
+  const { props: wide } = getImageProps({
+    alt,
+    src: tone === "light" ? "/logo-wide-ink.svg" : "/logo-wide.svg",
+    width: 413,
+    height: 64,
+    loading: "eager",
+  });
   return (
-    <Image
-      src={tone === "light" ? "/logo-wide-ink.svg" : "/logo-wide.svg"}
-      alt="Sheet Metal Industries"
-      width={413}
-      height={64}
-      className="h-8 w-auto sm:h-12 xl:h-16"
-    />
+    <picture>
+      <source media={PHONE_MEDIA} srcSet={phone} width={209} height={72} />
+      <img {...wide} alt={alt} className="h-18 w-auto sm:h-12 xl:h-16" />
+    </picture>
   );
 }

@@ -65,7 +65,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
     view === "sources"
       ? pagedList((from, to) => {
           let q = db.from("content_sources")
-            .select("id, url, domain, label, active, method, method_url, access, last_checked_at, last_item_at, failure_count, last_error, bigin_account_id, bigin_account_name, member:members(name, slug)", { count: "exact" });
+            .select("id, url, domain, label, active, method, method_url, access, last_checked_at, last_item_at, failure_count, last_error, bigin_account_id, bigin_account_name, bigin_from_website, member:members(name, slug)", { count: "exact" });
           if (access === "paused") q = q.eq("active", false);
           else if (access === "bigin") q = q.not("bigin_account_id", "is", null);
           else if (access !== "all") q = q.eq("access", access).eq("active", true);
@@ -97,7 +97,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
       <h1 className="text-2xl font-bold text-ink">Story sources</h1>
       <p className="mt-1 text-sm text-graphite">
         Company news pages checked once a day for articles that weren&apos;t there before — the imported list plus each
-        Bigin company&apos;s News Page URL. A suggestion only becomes a story when you start one, and that story goes
+        Bigin company&apos;s News Page URL (or its Website, when that&apos;s blank). A suggestion only becomes a story when you start one, and that story goes
         through approval like any other.
       </p>
 
@@ -215,7 +215,7 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                 {!biginConnected
                   ? "Bigin isn't connected, so only the imported list is used."
                   : biginRun
-                    ? `Last synced ${day(biginRun.at)}: ${biginRun.companies} companies with a News Page URL — ${biginRun.added} added, ${biginRun.linked} linked, ${biginRun.paused} paused${biginRun.complete ? "" : " (Bigin stopped part-way; nothing was paused)"}.`
+                    ? `Last synced ${day(biginRun.at)}: ${biginRun.companies} companies with an address${biginRun.fromWebsite ? ` (${biginRun.fromWebsite} using their Website)` : ""} — ${biginRun.added} added, ${biginRun.linked} linked, ${biginRun.paused} paused${biginRun.complete ? "" : " (Bigin stopped part-way; nothing was paused)"}.`
                     : "Not synced yet — it runs once a day while the story crawler is on."}
               </p>
               {biginConnected && (
@@ -224,9 +224,16 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                 </form>
               )}
             </div>
+            {biginRun?.websiteFallbackWithheld && (
+              <p role="alert" className="mt-2 rounded bg-danger/10 p-2 text-xs text-danger">
+                No Bigin company came back with a News Page URL, so nothing was added from Websites either. Either the
+                field is empty everywhere, or its name in Bigin isn&apos;t the one the app expects (News_Page_URL) — ask
+                for it to be checked. Nothing already on the list was changed.
+              </p>
+            )}
             {biginRun && biginRun.skipped.length > 0 && (
               <details className="mt-2">
-                <summary className="cursor-pointer text-xs text-danger">{biginRun.skipped.length} News Page URL{biginRun.skipped.length === 1 ? "" : "s"} skipped — fix in Bigin</summary>
+                <summary className="cursor-pointer text-xs text-danger">{biginRun.skipped.length} Bigin address{biginRun.skipped.length === 1 ? "" : "es"} skipped — fix in Bigin</summary>
                 <ul className="mt-1 space-y-0.5 text-xs text-graphite">
                   {biginRun.skipped.map((x) => (
                     <li key={`${x.company}-${x.url}`}>
@@ -267,6 +274,9 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                     {s.bigin_account_id && (
                       <span className="rounded bg-shade px-1.5 py-0.5 text-xs text-ink">Bigin{s.bigin_account_name ? ` · ${s.bigin_account_name}` : ""}</span>
                     )}
+                    {s.bigin_account_id && s.bigin_from_website && (
+                      <span className="rounded border border-shade px-1.5 py-0.5 text-xs text-graphite">from website</span>
+                    )}
                     {s.member && <span className="text-xs text-graphite">member: {s.member.name}</span>}
                     <span className="ml-auto text-xs text-graphite">
                       checked {day(s.last_checked_at)} · latest post {day(s.last_item_at)}
@@ -278,7 +288,11 @@ export default async function SourcesPage(props: PageProps<"/console/sources">) 
                     <summary className="cursor-pointer text-xs text-graphite hover:text-ink">Manage</summary>
                     <div className="mt-2 flex flex-wrap items-end gap-3">
                       {s.bigin_account_id ? (
-                        <p className="text-xs text-graphite">The address comes from Bigin — change or clear it there.</p>
+                        <p className="text-xs text-graphite">
+                          {s.bigin_from_website
+                            ? "The address is the company's Website in Bigin, used because its News Page URL is blank — fill in the News Page URL there to replace it."
+                            : "The address comes from Bigin — change or clear it there."}
+                        </p>
                       ) : (
                         <form action={updateSourceUrl} className="flex flex-wrap items-end gap-2">
                           <input type="hidden" name="id" value={s.id} />
