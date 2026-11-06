@@ -18,12 +18,12 @@ const { requireConsole, logError } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/log", () => ({ logError }));
-const { isFeatureEnabled, syncBiginSources } = vi.hoisted(() => ({
+const { isFeatureEnabled, syncCompanies } = vi.hoisted(() => ({
   isFeatureEnabled: vi.fn(async () => true),
-  syncBiginSources: vi.fn(),
+  syncCompanies: vi.fn(),
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
-vi.mock("@/lib/sources/bigin", () => ({ syncBiginSources }));
+vi.mock("@/lib/crm-companies/sync", () => ({ syncCompanies }));
 const { runSourceCheck } = vi.hoisted(() => ({ runSourceCheck: vi.fn() }));
 vi.mock("@/lib/sources/run", () => ({ runSourceCheck, NOT_STARTED: "SourceCheckNotStarted" }));
 const DRAFT = {
@@ -43,7 +43,7 @@ afterEach(() => {
   resetDbServerMocks();
   logError.mockReset();
   isFeatureEnabled.mockReset().mockResolvedValue(true);
-  syncBiginSources.mockReset();
+  syncCompanies.mockReset();
   runSourceCheck.mockReset();
   prepareDraft.mockReset().mockResolvedValue(DRAFT);
   uploadImage.mockReset().mockResolvedValue("stories/cover.jpg");
@@ -311,21 +311,21 @@ describe("syncSourcesFromBigin", () => {
   it("refuses while the story crawler is off", async () => {
     isFeatureEnabled.mockResolvedValue(false);
     await expect(syncSourcesFromBigin()).rejects.toThrow(encodeURIComponent("The story crawler is off"));
-    expect(syncBiginSources).not.toHaveBeenCalled();
+    expect(syncCompanies).not.toHaveBeenCalled();
   });
 
   it("says so when Bigin isn't connected", async () => {
-    syncBiginSources.mockResolvedValue(null);
+    syncCompanies.mockResolvedValue(null);
     await expect(syncSourcesFromBigin()).rejects.toThrow(encodeURIComponent("Bigin isn't connected"));
   });
 
   it("runs the sync and reports back", async () => {
-    syncBiginSources.mockResolvedValue({ added: 1 });
+    syncCompanies.mockResolvedValue({ added: 1 });
     await expect(syncSourcesFromBigin()).rejects.toThrow("NEXT_REDIRECT:/console/sources?view=sources&bigin=synced");
   });
 
   it("a failed sync is logged and reported, not thrown to the error page", async () => {
-    syncBiginSources.mockRejectedValue(new Error("db down"));
+    syncCompanies.mockRejectedValue(new Error("db down"));
     await expect(syncSourcesFromBigin()).rejects.toThrow(encodeURIComponent("The Bigin sync failed part-way"));
     expect(logError).toHaveBeenCalled();
   });

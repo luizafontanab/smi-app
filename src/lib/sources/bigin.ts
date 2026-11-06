@@ -1,4 +1,4 @@
-import { getCrmSync, type CompanyNewsPage, type CrmSync } from "../adapters/crm";
+import type { CompanyNewsPage, CompanyNewsPages, CrmCompanies } from "../adapters/crm";
 import { allRows } from "../db/all-rows";
 import { serviceDb } from "../db/server";
 import type { Json, Tables } from "../db/types";
@@ -25,8 +25,13 @@ import { normalizeSourceUrl } from "./extract";
  * both the company and a member, else by website domain — so "Start story"
  * on its suggestion opens a draft already tagged. Ambiguous → nobody.
  *
- * The decisions are pure functions (planBiginSources, matchMembers) so they
- * can be tested without a database; syncBiginSources only reads and writes.
+ * Since 6 Nov 2026 (issue #50) the entry point is the company sync
+ * (lib/crm-companies/sync.ts): it stores every CRM company first, then hands
+ * the companies to companyNewsPages and applyBiginSources here.
+ *
+ * The decisions are pure functions (companyNewsPages, planBiginSources,
+ * matchMembers) so they can be tested without a database; applyBiginSources
+ * only reads and writes.
  */
 
 export const BIGIN_SOURCES_LAST_KEY = "bigin_sources_last";
@@ -70,6 +75,27 @@ export type SourcePlan = {
   unlink: { id: string; pause: boolean }[];
   skipped: { accountId: string; name: string; url: string; reason: "invalid_url" | "clash" }[];
 };
+
+/**
+ * Each company's story-source address: its News Page URL, else its Website
+ * (`fromWebsite`); a company with neither has no source.
+ *
+ * The Website stands in only in a read where at least one company has a News
+ * Page URL. If none does, the field is most likely misnamed (NEWS_PAGE_FIELD
+ * is unconfirmed, HUMAN-TODO 1.15a), and falling back would quietly swap
+ * every news page already linked for a homepage. So that read gives no
+ * companies at all, flagged `websiteFallbackWithheld`, which the source sync
+ * treats as "nothing to change" (planBiginSources' trustAbsence).
+ */
+export function companyNewsPages(read: CrmCompanies): CompanyNewsPages {
+  const companies: CompanyNewsPage[] = [];
+  for (const c of read.companies) {
+    const url = c.newsPageUrl ?? c.website;
+    if (url) companies.push({ id: c.id, name: c.name, url, fromWebsite: !c.newsPageUrl });
+  }
+  if (companies.length === 0 || companies.some((c) => !c.fromWebsite)) return { complete: read.complete, companies };
+  return { complete: read.complete, companies: [], websiteFallbackWithheld: true };
+}
 
 /**
  * What the sync should do. `linked` is every row currently linked to a
@@ -204,13 +230,14 @@ function chunks<T>(items: readonly T[]): T[][] {
 }
 
 /**
- * The `source_bigin_sync` job and the console's "Sync from Bigin now".
- * Null when Bigin isn't connected. Throws on a database error; the run's
- * counts are saved to settings.bigin_sources_last for the console.
+ * Story sources from one read of Bigin's companies (already turned into
+ * addresses by companyNewsPages). Called by the company sync
+ * (lib/crm-companies/sync.ts) — the `source_bigin_sync` job, "Sync companies"
+ * on CRM and "Sync from Bigin now" on Story sources. Throws on a database
+ * error; the run's counts are saved to settings.bigin_sources_last for the
+ * console.
  */
-export async function syncBiginSources({ crm = getCrmSync(), now = () => new Date() }: { crm?: CrmSync; now?: () => Date } = {}): Promise<BiginSourcesRun | null> {
-  const read = await crm.listCompanyNewsPages();
-  if (!read) return null;
+export async function applyBiginSources(read: CompanyNewsPages, { now = () => new Date() }: { now?: () => Date } = {}): Promise<BiginSourcesRun> {
   const db = serviceDb();
   const fail = (what: string, error: { message: string }) => { throw new Error(`source_bigin_sync: ${what}: ${error.message}`); };
 

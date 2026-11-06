@@ -8,8 +8,10 @@
  * sent newsletter issues (--no-demo-rows skips them, --remote refuses them):
  * the extract has no newsletters at all and its real events have mostly gone
  * past, so without these two sections of the grid homepage render nothing.
- * Other synthetic operational data (analytics, contacts) is still NOT seeded —
- * run seed.ts instead when demoing those consoles.
+ * Other synthetic operational data (analytics, contacts, CRM companies) is
+ * still NOT seeded — run seed.ts instead when demoing those consoles. CRM
+ * companies (crm_companies) come from Bigin through the company sync
+ * (src/lib/crm-companies/sync.ts), never from the WordPress extract.
  *
  * Expects a fresh DB (supabase db reset). Defaults to local; seeding a hosted
  * project needs --remote (see `pnpm seed:prod`).

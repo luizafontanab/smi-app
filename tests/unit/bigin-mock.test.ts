@@ -151,6 +151,7 @@ describe("the adapter against the mock", () => {
       const r = new NextRequest(url, init as ConstructorParameters<typeof NextRequest>[1]);
       const path = new URL(url).pathname.replace("/api/mock/bigin/bigin/v2", "");
       if (path === "/Contacts/search") return searchContacts(r);
+      if (path === "/Accounts") return listAccounts(r);
       if (path === "/Contacts") return init?.method === "POST" ? createContact(r) : listContacts(r);
       const id = /^\/Contacts\/(\d+)$/.exec(path)?.[1];
       if (id) {
@@ -160,6 +161,25 @@ describe("the adapter against the mock", () => {
       throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
     });
   }
+
+  it("lists every company with the company sync's fields, the one with no address included", async () => {
+    vi.stubEnv("BIGIN_CLIENT_ID", "mock-id");
+    vi.stubEnv("BIGIN_CLIENT_SECRET", "mock-secret");
+    vi.stubEnv("BIGIN_REFRESH_TOKEN", "mock-refresh");
+    wireFetchToMock();
+
+    vi.resetModules(); // the adapter caches its token at module scope
+    const { getCrmSync } = await import("@/lib/adapters/crm");
+    const read = await getCrmSync().listCompanies();
+
+    expect(read?.complete).toBe(true);
+    expect(read?.companies.map((c) => ({ id: c.id, name: c.name, newsPageUrl: c.newsPageUrl, website: c.website }))).toEqual([
+      { id: "9100000000001", name: "Acme Fabrication Ltd", newsPageUrl: "https://acme-fabrication.test/news/", website: "https://acme-fabrication.test" },
+      { id: "9100000000002", name: "Brightsteel Engineering", newsPageUrl: "https://brightsteel.test/blog", website: null },
+      { id: "9100000000003", name: "Northern Laser Cutting", newsPageUrl: null, website: "https://northern-laser.test" },
+      { id: "9100000000004", name: "Fenland Tooling", newsPageUrl: null, website: null },
+    ]);
+  });
 
   it("repairs a link to a contact deleted in Bigin: unlinks, recreates, links the new record", async () => {
     vi.stubEnv("BIGIN_CLIENT_ID", "mock-id");

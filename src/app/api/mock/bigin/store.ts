@@ -34,11 +34,13 @@ const g = globalThis as typeof globalThis & { __biginMockOrg?: Org };
 
 function seedOrg(): Org {
   // News_Page_URL feeds the story crawler (src/lib/sources/bigin.ts), with
-  // Website as its fallback: one company has only a Website, as in a real org.
+  // Website as its fallback: one company has only a Website, and one has
+  // neither (shown as "no address" in CRM's Companies box), as in a real org.
   const accounts: MockAccount[] = [
     { id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/", Website: "https://acme-fabrication.test" },
     { id: "9100000000002", Account_Name: "Brightsteel Engineering", News_Page_URL: "https://brightsteel.test/blog", Website: null },
     { id: "9100000000003", Account_Name: "Northern Laser Cutting", News_Page_URL: null, Website: "https://northern-laser.test" },
+    { id: "9100000000004", Account_Name: "Fenland Tooling", News_Page_URL: null, Website: null },
   ];
   const contacts = new Map<string, MockContact>();
   const now = Date.now();

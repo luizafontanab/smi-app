@@ -10,6 +10,13 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — Companies on the CRM page
+- The CRM page has a new Companies box under Contacts. It lists every company in Bigin, members and non-members, including companies with no web address at all.
+- Each company shows its Website, its News Page URL, which of the two the story crawler watches ("News Page URL", "Website stand-in" or "none"), how many contacts are linked to it, and the member its stories are tagged with.
+- You can search by name, Website or News Page URL, page through 50 at a time, and filter to companies using their website or with no address.
+- The box has its own "Sync companies" button and "last synced" line, separate from the contacts sync. It works even when the story crawler is switched off; then it updates the company list only and leaves story sources alone.
+- The list is read-only for now: change a company's details in Bigin, then sync.
+
 ## 2026-11-06 — Buttons show they're working
 - Buttons that save, send, approve, publish, delete or pay now grey out as soon as you click them and say what they're doing, for example "Saving…" or "Publishing…", until the job is done. Clicking twice no longer does the job twice.
 - This applies everywhere in the console and the member area, including the Confirm buttons under "Social post" and "Try again" on the error pages.

@@ -998,6 +998,39 @@ export type Database = {
           },
         ]
       }
+      crm_companies: {
+        Row: {
+          bigin_id: string
+          created_at: string
+          id: string
+          last_synced_at: string
+          name: string
+          news_page_url: string | null
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          bigin_id: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string
+          name?: string
+          news_page_url?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          bigin_id?: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string
+          name?: string
+          news_page_url?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: []
+      }
       dev_tasks: {
         Row: {
           assignee: string | null

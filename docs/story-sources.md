@@ -88,7 +88,10 @@ imported spreadsheet. When it's blank, the company's **Website** stands in
 `bigin_from_website` and labelled "from website" on the console. A homepage
 still reads well, because the checker tries the site's feed, WordPress API and
 sitemap before the page's own links. The daily `source_bigin_sync` job (and "Sync from Bigin
-now" on `/console/sources` → Sources) reads every company and:
+now" on `/console/sources` → Sources, or "Sync companies" on `/console/crm`) runs the
+**company sync** (6 Nov 2026, issue #50, `src/lib/crm-companies/sync.ts`). It first stores
+every CRM company Bigin returns in `crm_companies`, address or not (shown in CRM's
+Companies box), then derives sources from them exactly as before. For each company it:
 
 - links a URL that's already on the list to the company, without adding a second row;
 - adds a new URL as a source marked `bigin_only`, named after the company;
@@ -117,7 +120,10 @@ console, because the next sync would undo a console edit. It can still be
 paused in the console.
 
 Both jobs sit behind the **Story crawler** flag in `/console/features`. The
-flag is off by default, and while it's off nothing is checked or synced.
+flag is off by default, and while it's off nothing is checked or synced. The
+one exception is "Sync companies" on CRM: it works with the flag off, so CRM
+can always mirror Bigin, but then it only stores the companies and leaves
+story sources untouched.
 
 ## "Start story" (28 Oct 2026)
 

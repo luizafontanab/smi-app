@@ -44,7 +44,7 @@ export type JobKind =
   | "log_retention"          // daily: error logs past 90 days; audit_events per purge_audit_events()
   | "upload_staging_sweep"   // hourly: removes direct uploads staged but never saved (lib/staged-upload)
   | "source_watch"           // hourly: checks the story sources due their daily read (lib/sources/check)
-  | "source_bigin_sync"      // daily: Bigin companies' News Page URLs → story sources (lib/sources/bigin)
+  | "source_bigin_sync"      // daily: the company sync — Bigin companies → crm_companies → story sources (lib/crm-companies/sync)
   | "social_followers";      // daily: Facebook/Instagram/YouTube follower counts for /console/social-reach (lib/adapters/social-followers)
 
 /**
@@ -560,11 +560,14 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       break;
     }
     case "source_bigin_sync": {
-      // Bigin companies' News Page URLs, merged into the source list. Bigin
-      // not connected is a skip, not a failure (syncBiginSources returns null).
+      // The company sync (issue #50): every Bigin company stored in
+      // crm_companies, then their News Page URLs merged into the source list.
+      // Kept behind the Story crawler flag and under its old name, so queued
+      // rows still run; "Sync companies" on CRM works with the flag off.
+      // Bigin not connected is a skip, not a failure (syncCompanies returns null).
       if (!(await storyCrawlerOn())) break;
-      const { syncBiginSources } = await import("./sources/bigin");
-      await syncBiginSources();
+      const { syncCompanies } = await import("./crm-companies/sync");
+      await syncCompanies();
       break;
     }
     case "social_followers": {

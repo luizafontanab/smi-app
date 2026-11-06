@@ -89,9 +89,24 @@ export type CompanyNewsPage = { id: string; name: string; url: string; fromWebsi
  * it got, but must not treat a company missing from the list as cleared.
  *
  * `websiteFallbackWithheld`: no company in the read had a News Page URL, so
- * no Website was used either (see listCompanyNewsPages).
+ * no Website was used either (see companyNewsPages in lib/sources/bigin).
  */
 export type CompanyNewsPages = { complete: boolean; companies: CompanyNewsPage[]; websiteFallbackWithheld?: boolean };
+
+/**
+ * One CRM company as Bigin returned it (issue #50). `website` and
+ * `newsPageUrl` are trimmed, blank → null. `fields` is the record exactly as
+ * Bigin sent it — today only the fields asked for (COMPANY_FIELDS); #54 asks
+ * for every field and keeps this as the detail view's copy.
+ */
+export type CrmCompanyRecord = { id: string; name: string; website: string | null; newsPageUrl: string | null; fields: Record<string, unknown> };
+
+/**
+ * Every CRM company Bigin returned, address or not. `complete` as for
+ * CompanyNewsPages: false means a company missing from the list may still
+ * exist in Bigin, so nothing may be cleared, unlinked or marked deleted.
+ */
+export type CrmCompanies = { complete: boolean; companies: CrmCompanyRecord[] };
 
 /**
  * The API name of the Companies field "News Page URL". Assumed from Bigin's
@@ -102,6 +117,8 @@ export type CompanyNewsPages = { complete: boolean; companies: CompanyNewsPage[]
 export const NEWS_PAGE_FIELD = "News_Page_URL";
 /** Bigin's standard Companies field, the fallback when News Page URL is empty (Luiza, 5 Nov 2026). */
 export const WEBSITE_FIELD = "Website";
+/** The Companies fields the company sync asks for. #54 replaces this with Bigin's field list. */
+export const COMPANY_FIELDS = ["Account_Name", NEWS_PAGE_FIELD, WEBSITE_FIELD] as const;
 
 export interface CrmSync {
   /** False for the local stub — the console uses it to say Bigin isn't connected. */
@@ -116,8 +133,8 @@ export interface CrmSync {
   unlink(ids: string[]): Promise<void>;
   /** Console picker: existing Bigin companies matching `q`. */
   searchCompanies(q: string): Promise<BiginCompany[]>;
-  /** Story sources: every company with a News Page URL. Null when Bigin isn't connected. */
-  listCompanyNewsPages(): Promise<CompanyNewsPages | null>;
+  /** The company sync (lib/crm-companies): every CRM company, with or without an address. Null when Bigin isn't connected. */
+  listCompanies(): Promise<CrmCompanies | null>;
   /** The `crm_sync` job: retry stuck pushes, pull, renew the webhook channel. */
   sync(opts?: { allowFirstImport?: boolean }): Promise<SyncResult>;
 }
@@ -342,7 +359,7 @@ class LocalMirrorCrmStub implements CrmSync {
   async searchCompanies(): Promise<BiginCompany[]> {
     return [];
   }
-  async listCompanyNewsPages(): Promise<CompanyNewsPages | null> {
+  async listCompanies(): Promise<CrmCompanies | null> {
     return null;
   }
   async sync(): Promise<SyncResult> {
@@ -515,51 +532,42 @@ class BiginCrmSync implements CrmSync {
   }
 
   /**
-   * A full read of Companies: the list API can't filter on a field being
-   * filled in, so every company is paged through and the blank ones dropped.
+   * A full read of Companies, every company whether it has an address or not
+   * (the company sync stores them all, then derives story sources from them).
    * A few thousand companies is a handful of calls a day. A refused call
    * part-way returns what was read with `complete: false` rather than
-   * throwing, so a Bigin hiccup never reads as "every URL was cleared".
-   *
-   * A blank News Page URL falls back to the company's Website — but only in
-   * a read where at least one company has a News Page URL. If none does, the
-   * field is most likely misnamed (NEWS_PAGE_FIELD is unconfirmed), and
-   * falling back would quietly swap every news page already linked for a
-   * homepage. So that read returns no companies at all, flagged
-   * `websiteFallbackWithheld`, which the sync treats as "nothing to change".
+   * throwing, so a Bigin hiccup never reads as "every company was deleted"
+   * or "every URL was cleared".
    */
-  async listCompanyNewsPages(): Promise<CompanyNewsPages> {
-    const companies: CompanyNewsPage[] = [];
-    const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-    const done = (complete: boolean): CompanyNewsPages => {
-      if (companies.length === 0 || companies.some((c) => !c.fromWebsite)) return { complete, companies };
-      return { complete, companies: [], websiteFallbackWithheld: true };
-    };
+  async listCompanies(): Promise<CrmCompanies> {
+    const companies: CrmCompanyRecord[] = [];
+    const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
     let page = 1;
     let pageToken: string | null = null;
     for (let i = 0; i < MAX_PAGES; i++) {
       const paging: string = pageToken ? `page_token=${encodeURIComponent(pageToken)}` : `page=${page}`;
       let body: ListResponse<Record<string, unknown>> | null;
       try {
-        body = await this.request<ListResponse<Record<string, unknown>>>(
-          `/Accounts?fields=Account_Name,${NEWS_PAGE_FIELD},${WEBSITE_FIELD}&per_page=200&${paging}`,
-        );
+        body = await this.request<ListResponse<Record<string, unknown>>>(`/Accounts?fields=${COMPANY_FIELDS.join(",")}&per_page=200&${paging}`);
       } catch (e) {
-        console.error("[crm] reading company news pages stopped part-way:", e);
-        return done(false);
+        console.error("[crm] reading companies stopped part-way:", e);
+        return { complete: false, companies };
       }
       for (const r of body?.data ?? []) {
-        const id = typeof r.id === "string" ? r.id : null;
-        const newsPage = text(r[NEWS_PAGE_FIELD]);
-        const url = newsPage || text(r[WEBSITE_FIELD]);
-        if (!id || !url) continue;
-        companies.push({ id, name: typeof r.Account_Name === "string" ? r.Account_Name : "", url, fromWebsite: !newsPage });
+        if (typeof r.id !== "string" || !r.id) continue;
+        companies.push({
+          id: r.id,
+          name: typeof r.Account_Name === "string" ? r.Account_Name : "",
+          website: text(r[WEBSITE_FIELD]),
+          newsPageUrl: text(r[NEWS_PAGE_FIELD]),
+          fields: r,
+        });
       }
-      if (!body?.info?.more_records) return done(true);
+      if (!body?.info?.more_records) return { complete: true, companies };
       if (body.info.next_page_token) pageToken = body.info.next_page_token;
       else page++;
     }
-    return done(false);
+    return { complete: false, companies };
   }
 
   /**

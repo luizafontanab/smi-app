@@ -526,6 +526,28 @@ async function main() {
     };
   })));
 
+  console.log("— CRM companies (Bigin mirror)");
+  // Every Bigin company the contacts above link to, plus the one the seeded
+  // story source is linked to, so CRM's Companies box shows linked-contact
+  // counts, a matched member, and each address state its filters pick out:
+  // a News Page URL, a Website standing in, and no address at all.
+  const { data: linkedContacts } = await must("contacts (companies)", db.from("contacts")
+    .select("bigin_company_id, bigin_company_name").not("bigin_company_id", "is", null));
+  const seen = new Set<string>(["seed-bigin-company-1"]);
+  const crmCompanies: { bigin_id: string; name: string; website: string | null; news_page_url: string | null }[] = [{ bigin_id: "seed-bigin-company-1", name: "Example Fabrication Ltd", website: "https://example-fabrication.test", news_page_url: "https://example-fabrication.test/news/" }];
+  for (const c of linkedContacts ?? []) {
+    if (!c.bigin_company_id || seen.has(c.bigin_company_id)) continue;
+    seen.add(c.bigin_company_id);
+    const n = crmCompanies.length;
+    const domain = `${(c.bigin_company_name ?? "company").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.test`;
+    crmCompanies.push({
+      bigin_id: c.bigin_company_id, name: c.bigin_company_name ?? "",
+      website: n % 3 === 2 ? null : `https://${domain}`,
+      news_page_url: n % 3 === 0 ? `https://${domain}/news/` : null,
+    });
+  }
+  await must("crm_companies", db.from("crm_companies").insert(crmCompanies));
+
   console.log("— analytics (~90 days) + engagement audit + rollups");
   const { data: allPub } = await db.from("stories").select("id, member_id, slug").eq("status", "published");
   const { data: allAds } = await db.from("adverts").select("id").eq("format", "banner");

@@ -680,40 +680,42 @@ describe("BiginCrmSync.pull", () => {
   });
 });
 
-describe("listCompanyNewsPages (story sources from Bigin)", () => {
+describe("listCompanies (CRM companies from Bigin)", () => {
   const accounts = (data: Record<string, unknown>[], info: Record<string, unknown> = { more_records: false }) => json({ data, info });
 
   it("the stub returns null — Bigin not connected, nothing to sync", async () => {
     unconnectedEnv();
-    expect(await getCrmSync().listCompanyNewsPages()).toBeNull();
+    expect(await getCrmSync().listCompanies()).toBeNull();
   });
 
-  it("pages through every company, names the field, and keeps only filled-in URLs", async () => {
+  it("pages through every company, names the fields, and keeps companies with no address too", async () => {
     liveEnv();
     const fetchSpy = fetchRoutes((url) => {
       if (!url.startsWith(`${API}/Accounts?`)) return undefined;
       return url.includes("page=1")
         ? accounts([
-            { id: "1", Account_Name: "Acme", News_Page_URL: " https://acme.test/news " },
+            { id: "1", Account_Name: "Acme", News_Page_URL: " https://acme.test/news ", Website: "https://acme.test" },
             { id: "2", Account_Name: "Blank", News_Page_URL: null },
-            { id: "3", Account_Name: "Empty", News_Page_URL: "  " },
+            { id: "3", Account_Name: "Empty", News_Page_URL: "  ", Website: " https://empty.test " },
           ], { more_records: true })
-        : accounts([{ id: "4", Account_Name: "Brightsteel", News_Page_URL: "brightsteel.test/blog" }]);
+        : accounts([{ id: "4", Account_Name: "Brightsteel", News_Page_URL: "brightsteel.test/blog" }, { Account_Name: "no id" }]);
     });
 
-    const result = await (await freshCrm()).getCrmSync().listCompanyNewsPages();
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
 
     expect(calls(fetchSpy)).toEqual([
       `GET ${API}/Accounts?fields=Account_Name,News_Page_URL,Website&per_page=200&page=1`,
       `GET ${API}/Accounts?fields=Account_Name,News_Page_URL,Website&per_page=200&page=2`,
     ]);
-    expect(result).toEqual({
-      complete: true,
-      companies: [
-        { id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false },
-        { id: "4", name: "Brightsteel", url: "brightsteel.test/blog", fromWebsite: false },
-      ],
-    });
+    expect(result?.complete).toBe(true);
+    expect(result?.companies.map((c) => ({ id: c.id, name: c.name, newsPageUrl: c.newsPageUrl, website: c.website }))).toEqual([
+      { id: "1", name: "Acme", newsPageUrl: "https://acme.test/news", website: "https://acme.test" },
+      { id: "2", name: "Blank", newsPageUrl: null, website: null },
+      { id: "3", name: "Empty", newsPageUrl: null, website: "https://empty.test" },
+      { id: "4", name: "Brightsteel", newsPageUrl: "brightsteel.test/blog", website: null },
+    ]);
+    // the record as Bigin gave it, for the detail view later (#54)
+    expect(result?.companies[0].fields).toEqual({ id: "1", Account_Name: "Acme", News_Page_URL: " https://acme.test/news ", Website: "https://acme.test" });
   });
 
   it("follows page_token past the first 2,000 records", async () => {
@@ -724,9 +726,15 @@ describe("listCompanyNewsPages (story sources from Bigin)", () => {
         ? accounts([{ id: "9", Account_Name: "Late", News_Page_URL: "https://late.test/" }])
         : accounts([], { more_records: true, next_page_token: "tok/2" });
     });
-    const result = await (await freshCrm()).getCrmSync().listCompanyNewsPages();
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
     expect(calls(fetchSpy)[1]).toContain("page_token=tok%2F2");
     expect(result?.companies.map((c) => c.id)).toEqual(["9"]);
+  });
+
+  it("an org with no companies at all reads as complete and empty (Bigin answers 204)", async () => {
+    liveEnv();
+    fetchRoutes((url) => (url.startsWith(`${API}/Accounts?`) ? noContent() : undefined));
+    expect(await (await freshCrm()).getCrmSync().listCompanies()).toEqual({ complete: true, companies: [] });
   });
 
   it("a refused call part-way returns what was read, marked incomplete, instead of throwing", async () => {
@@ -738,63 +746,9 @@ describe("listCompanyNewsPages (story sources from Bigin)", () => {
         ? accounts([{ id: "1", Account_Name: "Acme", News_Page_URL: "https://acme.test/news" }], { more_records: true })
         : json({ code: "LIMIT_REACHED", message: "out of credits" }, 429);
     });
-    expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
-      complete: false,
-      companies: [{ id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false }],
-    });
-  });
-
-  describe("Website fallback (5 Nov 2026)", () => {
-    it("uses the Website when News Page URL is blank, and marks it", async () => {
-      liveEnv();
-      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`)
-        ? accounts([
-            { id: "1", Account_Name: "Acme", News_Page_URL: "https://acme.test/news", Website: "https://acme.test" },
-            { id: "2", Account_Name: "Bright", News_Page_URL: null, Website: " https://bright.test " },
-            { id: "3", Account_Name: "Nothing", News_Page_URL: "", Website: null },
-          ])
-        : undefined);
-      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
-        complete: true,
-        companies: [
-          { id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false },
-          { id: "2", name: "Bright", url: "https://bright.test", fromWebsite: true },
-        ],
-      });
-    });
-
-    it("withholds every Website when no company has a News Page URL — most likely a misnamed field", async () => {
-      liveEnv();
-      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`)
-        ? accounts([
-            { id: "1", Account_Name: "Acme", Website: "https://acme.test" },
-            { id: "2", Account_Name: "Bright", Website: "https://bright.test" },
-          ])
-        : undefined);
-      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
-        complete: true, companies: [], websiteFallbackWithheld: true,
-      });
-    });
-
-    it("withholds them on a partial read too", async () => {
-      liveEnv();
-      vi.spyOn(console, "error").mockImplementation(() => {});
-      fetchRoutes((url) => {
-        if (!url.startsWith(`${API}/Accounts?`)) return undefined;
-        return url.includes("page=1")
-          ? accounts([{ id: "1", Account_Name: "Acme", News_Page_URL: null, Website: "https://acme.test" }], { more_records: true })
-          : json({ code: "LIMIT_REACHED", message: "out of credits" }, 429);
-      });
-      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
-        complete: false, companies: [], websiteFallbackWithheld: true,
-      });
-    });
-
-    it("an org with no addresses at all is just empty, not a warning", async () => {
-      liveEnv();
-      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`) ? accounts([{ id: "1", Account_Name: "Acme" }]) : undefined);
-      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({ complete: true, companies: [] });
-    });
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
+    expect(result?.complete).toBe(false);
+    expect(result?.companies.map((c) => c.id)).toEqual(["1"]);
   });
 });
 
