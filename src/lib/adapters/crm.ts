@@ -96,29 +96,76 @@ export type CompanyNewsPages = { complete: boolean; companies: CompanyNewsPage[]
 /**
  * One CRM company as Bigin returned it (issue #50). `website` and
  * `newsPageUrl` are trimmed, blank → null. `fields` is the record exactly as
- * Bigin sent it — today only the fields asked for (COMPANY_FIELDS); #54 asks
- * for every field and keeps this as the detail view's copy.
+ * Bigin sent it: every field when the field list could be read (#54), else
+ * only the known ones (COMPANY_FIELDS) — see CompanyFieldList.allFields.
  */
 export type CrmCompanyRecord = { id: string; name: string; website: string | null; newsPageUrl: string | null; fields: Record<string, unknown> };
+
+/** One Companies field: its API name and the label Bigin shows for it. */
+export type CompanyField = { apiName: string; label: string };
+
+/**
+ * Which fields the company read asked for, and why (issue #54).
+ *
+ *   · read "bigin": Bigin's field list was read; every field was asked for.
+ *   · read "refused": the token may not read the field list (it lacks
+ *     ZohoBigin.settings.fields.READ — HUMAN-TODO 1.15b); only the known
+ *     fields were asked for.
+ *   · read "failed": the field list call failed some other way; same fallback.
+ *
+ * `allFields` is true only when every field of every company came back, so a
+ * stored full copy may be replaced. `newsPageField` is the API name the News
+ * Page URL was read from: the field labelled "News Page URL" when the list
+ * has one (`newsPageFieldFound`), else NEWS_PAGE_FIELD.
+ */
+export type CompanyFieldList = {
+  read: "bigin" | "refused" | "failed";
+  fields: CompanyField[];
+  allFields: boolean;
+  newsPageField: string;
+  newsPageFieldFound: boolean;
+};
 
 /**
  * Every CRM company Bigin returned, address or not. `complete` as for
  * CompanyNewsPages: false means a company missing from the list may still
  * exist in Bigin, so nothing may be cleared, unlinked or marked deleted.
+ * `fieldList` is absent only from fakes that predate #54; treat it as the
+ * known fields.
  */
-export type CrmCompanies = { complete: boolean; companies: CrmCompanyRecord[] };
+export type CrmCompanies = { complete: boolean; companies: CrmCompanyRecord[]; fieldList?: CompanyFieldList };
 
 /**
- * The API name of the Companies field "News Page URL". Assumed from Bigin's
- * naming rule (spaces → underscores): Bigin shows no API names in its
- * settings, so it can't be checked by hand (HUMAN-TODO 1.15a). A wrong name
- * shows as the console's "no company has a News Page URL" warning.
+ * The fallback API name of the Companies field "News Page URL", from Bigin's
+ * naming rule (spaces → underscores). The company read finds the real name by
+ * its label in Bigin's field list (#54, NEWS_PAGE_LABEL) and uses this only
+ * when the list can't be read or has no such label. A wrong name shows as the
+ * console's "no company has a News Page URL" warning.
  */
 export const NEWS_PAGE_FIELD = "News_Page_URL";
+/** The label the News Page URL field is found by — what Jas named it in Bigin. */
+export const NEWS_PAGE_LABEL = "News Page URL";
 /** Bigin's standard Companies field, the fallback when News Page URL is empty (Luiza, 5 Nov 2026). */
 export const WEBSITE_FIELD = "Website";
-/** The Companies fields the company sync asks for. #54 replaces this with Bigin's field list. */
+/** The Companies fields asked for when Bigin's field list can't be read. */
 export const COMPANY_FIELDS = ["Account_Name", NEWS_PAGE_FIELD, WEBSITE_FIELD] as const;
+/** Labels for COMPANY_FIELDS, used when Bigin's own can't be read. */
+export const KNOWN_COMPANY_FIELDS: CompanyField[] = [
+  { apiName: "Account_Name", label: "Company Name" },
+  { apiName: NEWS_PAGE_FIELD, label: NEWS_PAGE_LABEL },
+  { apiName: WEBSITE_FIELD, label: "Website" },
+];
+/** Bigin's list endpoint takes at most 50 field names per call (get-records docs). */
+export const MAX_FIELDS_PER_CALL = 50;
+/**
+ * Field types not asked for in a list read. Zoho CRM serves subforms only on
+ * a single-record read; Bigin's docs are silent, so this is inferred. Asking
+ * for one could get the whole read refused.
+ */
+const UNLISTABLE_TYPES = new Set(["subform"]);
+
+/** "News Page URL", " news page  url " → the same key. */
+const labelKey = (label: unknown) => (typeof label === "string" ? label.toLowerCase().replace(/[^a-z0-9]/g, "") : "");
 
 export interface CrmSync {
   /** False for the local stub — the console uses it to say Bigin isn't connected. */
@@ -532,42 +579,118 @@ class BiginCrmSync implements CrmSync {
   }
 
   /**
-   * A full read of Companies, every company whether it has an address or not
-   * (the company sync stores them all, then derives story sources from them).
-   * A few thousand companies is a handful of calls a day. A refused call
-   * part-way returns what was read with `complete: false` rather than
-   * throwing, so a Bigin hiccup never reads as "every company was deleted"
-   * or "every URL was cleared".
+   * Bigin's Companies field list (settings/fields?module=Accounts), for the
+   * company read. Never throws: a refused or failed call falls back to the
+   * known fields, and the read goes on with those (#54).
    */
-  async listCompanies(): Promise<CrmCompanies> {
-    const companies: CrmCompanyRecord[] = [];
-    const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  private async companyFieldList(): Promise<CompanyFieldList> {
+    const known = (read: "refused" | "failed"): CompanyFieldList =>
+      ({ read, fields: KNOWN_COMPANY_FIELDS, allFields: false, newsPageField: NEWS_PAGE_FIELD, newsPageFieldFound: false });
+    let body: { fields?: Array<Record<string, unknown>> } | null;
+    try {
+      body = await this.request<{ fields?: Array<Record<string, unknown>> }>("/settings/fields?module=Accounts");
+    } catch (e) {
+      // OAUTH_SCOPE_MISMATCH: the token predates ZohoBigin.settings.fields.READ. Its HTTP status is undocumented for Bigin, so go by the code.
+      const refused = e instanceof BiginApiError && (e.result?.code === "OAUTH_SCOPE_MISMATCH" || e.result?.code === "NO_PERMISSION");
+      console.warn(`[crm] Bigin's Companies field list ${refused ? "is not allowed for this token" : "couldn't be read"}; reading the known fields only:`, e);
+      return known(refused ? "refused" : "failed");
+    }
+    const fields: CompanyField[] = [];
+    let newsPageField: string | null = null;
+    for (const f of body?.fields ?? []) {
+      if (typeof f.api_name !== "string" || !f.api_name || UNLISTABLE_TYPES.has(String(f.data_type))) continue;
+      // display_label is what people see; field_label can be an i18n key (Bigin's own sample).
+      const label = [f.display_label, f.field_label].find((l): l is string => typeof l === "string" && l.trim() !== "")?.trim() ?? f.api_name;
+      fields.push({ apiName: f.api_name, label });
+      if (!newsPageField && (labelKey(f.display_label) === labelKey(NEWS_PAGE_LABEL) || labelKey(f.field_label) === labelKey(NEWS_PAGE_LABEL))) {
+        newsPageField = f.api_name;
+      }
+    }
+    if (!fields.some((f) => f.apiName === "Account_Name")) {
+      console.warn("[crm] Bigin's Companies field list has no Account_Name; reading the known fields only");
+      return known("failed");
+    }
+    return { read: "bigin", fields, allFields: true, newsPageField: newsPageField ?? NEWS_PAGE_FIELD, newsPageFieldFound: !!newsPageField };
+  }
+
+  /**
+   * Every page of Companies with these fields, each record handed to `take`.
+   * Returns whether the read finished, and whether any page came back at all.
+   */
+  private async readCompanyPages(fields: readonly string[], take: (r: Record<string, unknown>) => void): Promise<{ complete: boolean; anyPage: boolean }> {
     let page = 1;
     let pageToken: string | null = null;
     for (let i = 0; i < MAX_PAGES; i++) {
       const paging: string = pageToken ? `page_token=${encodeURIComponent(pageToken)}` : `page=${page}`;
       let body: ListResponse<Record<string, unknown>> | null;
       try {
-        body = await this.request<ListResponse<Record<string, unknown>>>(`/Accounts?fields=${COMPANY_FIELDS.join(",")}&per_page=200&${paging}`);
+        body = await this.request<ListResponse<Record<string, unknown>>>(`/Accounts?fields=${fields.join(",")}&per_page=200&${paging}`);
       } catch (e) {
         console.error("[crm] reading companies stopped part-way:", e);
-        return { complete: false, companies };
+        return { complete: false, anyPage: i > 0 };
       }
-      for (const r of body?.data ?? []) {
-        if (typeof r.id !== "string" || !r.id) continue;
-        companies.push({
-          id: r.id,
-          name: typeof r.Account_Name === "string" ? r.Account_Name : "",
-          website: text(r[WEBSITE_FIELD]),
-          newsPageUrl: text(r[NEWS_PAGE_FIELD]),
-          fields: r,
-        });
-      }
-      if (!body?.info?.more_records) return { complete: true, companies };
+      for (const r of body?.data ?? []) if (typeof r.id === "string" && r.id) take(r);
+      if (!body?.info?.more_records) return { complete: true, anyPage: true };
       if (body.info.next_page_token) pageToken = body.info.next_page_token;
       else page++;
     }
-    return { complete: false, companies };
+    return { complete: false, anyPage: true };
+  }
+
+  /**
+   * A full read of Companies, every company whether it has an address or not
+   * (the company sync stores them all, then derives story sources from them).
+   * A few thousand companies is a handful of calls a day. A refused call
+   * part-way returns what was read with `complete: false` rather than
+   * throwing, so a Bigin hiccup never reads as "every company was deleted"
+   * or "every URL was cleared".
+   *
+   * Every field is asked for when Bigin's field list can be read (#54). More
+   * than 50 fields take one pass per 50: the first pass, with the name and
+   * both addresses, decides which companies there are and whether the read is
+   * complete; later passes only add fields to them, and a failed one just
+   * means not every field came back (`allFields: false`). If Bigin refuses
+   * the very first page of an every-field read, the read is redone with the
+   * known fields, so one field Bigin won't list can't stop the sync.
+   */
+  async listCompanies(): Promise<CrmCompanies> {
+    const fieldList = await this.companyFieldList();
+    // With Bigin's list in hand, only names it has: asking for a missing one could get the read refused.
+    const listed = new Set(fieldList.fields.map((f) => f.apiName));
+    const core = [...new Set(["Account_Name", fieldList.newsPageField, WEBSITE_FIELD])].filter((f) => fieldList.read !== "bigin" || listed.has(f));
+    const rest = fieldList.read === "bigin" ? [...listed].filter((f) => !core.includes(f)) : [];
+    const passes: string[][] = [[...core, ...rest.slice(0, MAX_FIELDS_PER_CALL - core.length)]];
+    for (let i = MAX_FIELDS_PER_CALL - core.length; i < rest.length; i += MAX_FIELDS_PER_CALL) passes.push(rest.slice(i, i + MAX_FIELDS_PER_CALL));
+
+    const records = new Map<string, Record<string, unknown>>();
+    const keep = (r: Record<string, unknown>) => {
+      if (!records.has(r.id as string)) records.set(r.id as string, r);
+    };
+    let first = await this.readCompanyPages(passes[0], keep);
+    if (!first.anyPage && passes[0].length > core.length) {
+      console.warn("[crm] Bigin refused the every-field read of Companies; reading the known fields only");
+      fieldList.allFields = false;
+      first = await this.readCompanyPages(core, keep);
+    } else {
+      for (const fields of passes.slice(1)) {
+        const more = await this.readCompanyPages(fields, (r) => {
+          const known = records.get(r.id as string);
+          if (known) Object.assign(known, r);
+        });
+        if (!more.complete) fieldList.allFields = false;
+      }
+    }
+    if (!first.complete) fieldList.allFields = false;
+
+    const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+    const companies: CrmCompanyRecord[] = [...records.values()].map((r) => ({
+      id: r.id as string,
+      name: typeof r.Account_Name === "string" ? r.Account_Name : "",
+      website: text(r[WEBSITE_FIELD]),
+      newsPageUrl: text(r[fieldList.newsPageField]),
+      fields: r,
+    }));
+    return { complete: first.complete, companies, fieldList };
   }
 
   /**

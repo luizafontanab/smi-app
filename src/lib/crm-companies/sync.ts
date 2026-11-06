@@ -1,4 +1,4 @@
-import { getCrmSync, type CompanyNewsPages, type CrmCompanies, type CrmSync } from "../adapters/crm";
+import { getCrmSync, type CompanyField, type CompanyFieldList, type CompanyNewsPages, type CrmCompanies, type CrmSync } from "../adapters/crm";
 import { serviceDb } from "../db/server";
 import type { Json, Tables } from "../db/types";
 import { applyBiginSources, companyNewsPages, type BiginSourcesRun } from "../sources/bigin";
@@ -9,7 +9,8 @@ import { applyBiginSources, companyNewsPages, type BiginSourcesRun } from "../so
  *
  *   1. Read every Bigin company (CrmSync.listCompanies).
  *   2. Store every one of them in `crm_companies` — members and non-members,
- *      with or without an address.
+ *      with or without an address — with a JSON copy of every Bigin field
+ *      when the field list could be read (#54).
  *   3. Derive story sources exactly as the sources-from-Bigin sync always
  *      has (lib/sources/bigin: companyNewsPages → applyBiginSources).
  *
@@ -24,6 +25,11 @@ import { applyBiginSources, companyNewsPages, type BiginSourcesRun } from "../so
  */
 
 export const COMPANY_SYNC_LAST_KEY = "crm_companies_last";
+/** Bigin's Companies field labels from the last read that got them — `settings` key crm_company_fields (#54). */
+export const COMPANY_FIELDS_KEY = "crm_company_fields";
+
+/** What crm_company_fields holds: the labels the detail view shows, and the News Page URL field's API name. */
+export type CompanyFieldLabels = { at: string; newsPageField: string; fields: CompanyField[] };
 
 /** What CRM's "last synced" line shows — `settings` key crm_companies_last. */
 export type CompanySyncRun = {
@@ -33,14 +39,26 @@ export type CompanySyncRun = {
   read: number;
   /** of `read`, companies not stored before */
   added: number;
-  /** of `read`, stored companies whose name, Website or News Page URL changed */
+  /** of `read`, stored companies with any field changed (only name, Website and News Page URL while the field list can't be read) */
   updated: number;
+  /** which fields were read (#54); absent from runs saved before it */
+  fieldList?: Omit<CompanyFieldList, "fields">;
   /** the story-source run, or null when sources weren't derived (Story crawler off) */
   sources: BiginSourcesRun | null;
 };
 
-export type LocalCompanyRow = Pick<Tables<"crm_companies">, "bigin_id" | "name" | "website" | "news_page_url">;
-type CompanyWrite = LocalCompanyRow;
+export type LocalCompanyRow = Pick<Tables<"crm_companies">, "bigin_id" | "name" | "website" | "news_page_url" | "fields">;
+/** `fields` is left out when the read didn't get every field and the row is already stored, so a full copy isn't shrunk. */
+type CompanyWrite = Omit<LocalCompanyRow, "fields"> & { fields?: Json };
+
+/** The same JSON whatever order its keys come in — jsonb returns them in its own. */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (v && typeof v === "object") {
+    return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v ?? null);
+}
 
 export type CompanyPlan = {
   /** new or changed companies, written in full */
@@ -56,14 +74,19 @@ export type CompanyPlan = {
 export function planCompanySync(read: CrmCompanies, local: readonly LocalCompanyRow[]): CompanyPlan {
   const stored = new Map(local.map((r) => [r.bigin_id, r]));
   const plan: CompanyPlan = { write: [], touch: [], added: 0, newsPages: companyNewsPages(read) };
+  const allFields = read.fieldList?.allFields === true;
   const seen = new Set<string>();
   for (const c of read.companies) {
     if (seen.has(c.id)) continue; // a record repeated across pages: one row, as Bigin has one company
     seen.add(c.id);
-    const row: CompanyWrite = { bigin_id: c.id, name: c.name, website: c.website, news_page_url: c.newsPageUrl };
     const before = stored.get(c.id);
+    const row: CompanyWrite = { bigin_id: c.id, name: c.name, website: c.website, news_page_url: c.newsPageUrl };
+    // Every field, or a company seen for the first time: keep Bigin's record. Otherwise the stored copy stays.
+    if (allFields || !before) row.fields = c.fields as Json;
     if (!before) plan.added++;
-    if (before && before.name === row.name && before.website === row.website && before.news_page_url === row.news_page_url) {
+    const same = before && before.name === row.name && before.website === row.website && before.news_page_url === row.news_page_url &&
+      (!allFields || canonical(before.fields) === canonical(row.fields));
+    if (same) {
       plan.touch.push(c.id);
     } else {
       plan.write.push(row);
@@ -98,7 +121,7 @@ export async function syncCompanies({
 
   const local: LocalCompanyRow[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from("crm_companies").select("bigin_id, name, website, news_page_url").order("bigin_id").range(from, from + PAGE - 1);
+    const { data, error } = await db.from("crm_companies").select("bigin_id, name, website, news_page_url, fields").order("bigin_id").range(from, from + PAGE - 1);
     if (error) fail("reading stored companies", error);
     local.push(...(data ?? []));
     if (!data || data.length < PAGE) break;
@@ -106,7 +129,10 @@ export async function syncCompanies({
 
   const plan = planCompanySync(read, local);
   const stamp = now().toISOString();
-  for (const part of chunks(plan.write)) {
+  // Rows with and without `fields` in separate upserts: in one, PostgREST would set a missing `fields` to its default.
+  const withFields = plan.write.filter((r) => "fields" in r);
+  const withoutFields = plan.write.filter((r) => !("fields" in r));
+  for (const part of [...chunks(withFields), ...chunks(withoutFields)]) {
     const { error } = await db.from("crm_companies")
       .upsert(part.map((r) => ({ ...r, last_synced_at: stamp, updated_at: stamp })), { onConflict: "bigin_id" });
     if (error) fail("storing companies", error);
@@ -125,10 +151,22 @@ export async function syncCompanies({
     added: plan.added,
     updated: plan.write.length - plan.added,
     sources,
+    ...(read.fieldList ? { fieldList: { read: read.fieldList.read, allFields: read.fieldList.allFields, newsPageField: read.fieldList.newsPageField, newsPageFieldFound: read.fieldList.newsPageFieldFound } } : {}),
   };
+  if (read.fieldList?.read === "bigin") {
+    const labels: CompanyFieldLabels = { at: stamp, newsPageField: read.fieldList.newsPageField, fields: read.fieldList.fields };
+    const { error } = await db.from("settings").upsert({ key: COMPANY_FIELDS_KEY, value: labels as unknown as Json });
+    if (error) fail("saving the field labels", error);
+  }
   const { error: saveError } = await db.from("settings").upsert({ key: COMPANY_SYNC_LAST_KEY, value: run as unknown as Json });
   if (saveError) fail("saving the run", saveError);
   return run;
+}
+
+/** The field labels from the last read of Bigin's field list, or null if it has never been read. */
+export async function readCompanyFieldLabels(): Promise<CompanyFieldLabels | null> {
+  const { data } = await serviceDb().from("settings").select("value").eq("key", COMPANY_FIELDS_KEY).maybeSingle();
+  return (data?.value as CompanyFieldLabels | undefined) ?? null;
 }
 
 export async function readCompanySyncRun(): Promise<CompanySyncRun | null> {

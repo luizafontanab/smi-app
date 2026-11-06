@@ -10,6 +10,11 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-06 — Every Bigin field for a company
+- In the Companies box on the CRM page, click a company's name to see every field Bigin holds for it, your own custom fields included, under the same labels as in Bigin.
+- The app now finds the "News Page URL" field by its label in Bigin, so the story crawler reads the right field even if Bigin named it differently behind the scenes.
+- Until the Bigin connection is given permission to read Bigin's field list, only the name, Website and News Page URL are kept, and the box says so. Nothing else changes in the meantime.
+
 ## 2026-11-06 — Companies on the CRM page
 - The CRM page has a new Companies box under Contacts. It lists every company in Bigin, members and non-members, including companies with no web address at all.
 - Each company shows its Website, its News Page URL, which of the two the story crawler watches ("News Page URL", "Website stand-in" or "none"), how many contacts are linked to it, and the member its stories are tagged with.

@@ -3,6 +3,7 @@ import { Pagination } from "@/components/Pagination";
 import { SubmitButton } from "@/components/SubmitButton";
 import type { CompanySyncRun } from "@/lib/crm-companies/sync";
 import { COMPANY_FILTERS, COMPANY_FILTER_LABEL, type AddressInUse, type CompanyFilter, type CompanyListRow } from "@/lib/crm-companies/list";
+import { describeFieldRead, type CompanyDetail } from "@/lib/crm-companies/detail";
 import { syncCompaniesNow } from "./actions";
 
 /**
@@ -12,8 +13,9 @@ import { syncCompaniesNow } from "./actions";
  *
  * Later tickets add to it: the Bigin sources panel moved from Story sources
  * (#51), the deleted-in-Bigin filter (#52), a detail editor above the table
- * for the member override (#53), every Bigin field (#54) and the News Page URL
- * (#55), and "covered by imported list" (#56).
+ * for the member override (#53) and the News Page URL (#55), and "covered by
+ * imported list" (#56). Opening a company (?company=) shows every field
+ * Bigin holds for it (#54, CompanyDetailPanel).
  */
 
 const IN_USE_LABEL: Record<AddressInUse, string> = { news_page: "News Page URL", website: "Website stand-in", none: "none" };
@@ -39,7 +41,7 @@ export function describeCompanyRun(run: CompanySyncRun): string {
 }
 
 export function CompaniesBox({
-  live, list, q, filter, run, flash, error, href, keep,
+  live, list, q, filter, run, flash, error, href, keep, detail,
 }: {
   live: boolean;
   list: { rows: CompanyListRow[]; count: number; page: number; pages: number } | null;
@@ -52,7 +54,10 @@ export function CompaniesBox({
   href: (over: Record<string, string | number | undefined>) => string;
   /** the contacts box's state, carried through this box's search form */
   keep: Record<string, string | undefined>;
+  /** the company opened with ?company=, if any */
+  detail?: CompanyDetail | null;
 }) {
+  const fieldNote = run && describeFieldRead(run);
   return (
     <section id="companies" aria-labelledby="companies-heading" className="mt-4 rounded-xl bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -81,7 +86,10 @@ export function CompaniesBox({
           <p className="mt-1 text-xs text-graphite">
             {run ? <>Last synced {fmt(run.at)}: {describeCompanyRun(run)}</> : "Not synced yet. Sync companies to bring in every company from Bigin."}
           </p>
+          {fieldNote && <p className="mt-1 text-xs text-graphite">{fieldNote}</p>}
           <p className="mt-1 text-xs text-graphite">Read-only here: change a company&apos;s details in Bigin, then sync.</p>
+
+          {detail && <CompanyDetailPanel detail={detail} closeHref={href({ company: undefined })} />}
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
             <nav aria-label="Filter companies" className="flex flex-wrap gap-1">
@@ -117,7 +125,11 @@ export function CompaniesBox({
                 <tbody>
                   {list.rows.map((c) => (
                     <tr key={c.id} className="border-t align-top">
-                      <td className="py-1.5">{c.name || <span className="text-graphite">(no name)</span>}</td>
+                      <td className="py-1.5">
+                        <Link href={href({ company: c.id })} aria-current={detail?.id === c.id ? "true" : undefined} className="hover:underline">
+                          {c.name || <span className="text-graphite">(no name)</span>}
+                        </Link>
+                      </td>
                       <td className="max-w-48 break-all text-xs text-graphite">{c.website ?? "—"}</td>
                       <td className="max-w-48 break-all text-xs text-graphite">{c.newsPageUrl ?? "—"}</td>
                       <td className={`text-xs ${c.inUse === "none" ? "text-danger" : c.inUse === "website" ? "text-graphite" : "text-success"}`}>{IN_USE_LABEL[c.inUse]}</td>
@@ -134,6 +146,31 @@ export function CompaniesBox({
           </div>
           <Pagination page={list.page} pages={list.pages} hrefFor={(p) => href({ cpage: p })} />
         </>
+      )}
+    </section>
+  );
+}
+
+/** Every field Bigin holds for one company (#54), under Bigin's labels. Read-only, like the rest of the box. */
+function CompanyDetailPanel({ detail, closeHref }: { detail: CompanyDetail; closeHref: string }) {
+  return (
+    <section aria-labelledby="company-detail-heading" className="mt-3 rounded border border-graphite/30 bg-graphite/5 p-3 text-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="company-detail-heading" className="font-bold text-ink">{detail.name || "(no name)"}</h3>
+        <Link href={closeHref} className="text-xs text-graphite hover:text-ink">Close</Link>
+      </div>
+      <p className="text-xs text-graphite">Bigin id {detail.biginId} · as of the sync at {fmt(detail.lastSyncedAt)}</p>
+      {detail.rows.length ? (
+        <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[minmax(10rem,auto)_1fr]">
+          {detail.rows.map((r) => (
+            <div key={r.apiName} className="contents">
+              <dt className="text-xs text-graphite">{r.label}</dt>
+              <dd className="break-words">{r.value ?? <span className="text-graphite">—</span>}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="mt-2 text-xs text-graphite">No fields stored yet. Sync companies to bring them in.</p>
       )}
     </section>
   );

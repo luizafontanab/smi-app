@@ -6,6 +6,7 @@ import { DELETE as deleteContact, GET as getContact, PUT as putContact } from "@
 import { GET as listContacts, POST as createContact } from "@/app/api/mock/bigin/bigin/v2/Contacts/route";
 import { GET as searchContacts } from "@/app/api/mock/bigin/bigin/v2/Contacts/search/route";
 import { GET as listAccounts } from "@/app/api/mock/bigin/bigin/v2/Accounts/route";
+import { GET as listFields } from "@/app/api/mock/bigin/bigin/v2/settings/fields/route";
 import { org } from "@/app/api/mock/bigin/store";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -81,6 +82,26 @@ describe("guard", () => {
   });
 });
 
+describe("GET /settings/fields?module=Accounts", () => {
+  it("lists the Companies fields with their labels", async () => {
+    const res = await listFields(req(`${API}/settings/fields?module=Accounts`));
+    expect(res.status).toBe(200);
+    expect((await res.json()).fields).toContainEqual(expect.objectContaining({ api_name: "News_Page_URL", display_label: "News Page URL", custom_field: true }));
+  });
+
+  it("answers OAUTH_SCOPE_MISMATCH when the org is set to refuse it, as Zoho does for a token without the scope", async () => {
+    org().refuseFieldList = true;
+    const res = await listFields(req(`${API}/settings/fields?module=Accounts`));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "OAUTH_SCOPE_MISMATCH", status: "error" });
+  });
+
+  it("needs a module, and is guarded like every other mock route", async () => {
+    expect((await listFields(req(`${API}/settings/fields`))).status).toBe(400);
+    expect((await listFields(req(`${API}/settings/fields?module=Accounts`, { headers: { authorization: "Zoho-oauthtoken anything" } }))).status).toBe(401);
+  });
+});
+
 describe("GET /Accounts (story sources from Bigin)", () => {
   it("lists companies with only the named fields, News Page URL included", async () => {
     const res = await listAccounts(req(`${API}/Accounts?fields=Account_Name,News_Page_URL&per_page=200&page=1`));
@@ -152,6 +173,7 @@ describe("the adapter against the mock", () => {
       const path = new URL(url).pathname.replace("/api/mock/bigin/bigin/v2", "");
       if (path === "/Contacts/search") return searchContacts(r);
       if (path === "/Accounts") return listAccounts(r);
+      if (path === "/settings/fields") return listFields(r);
       if (path === "/Contacts") return init?.method === "POST" ? createContact(r) : listContacts(r);
       const id = /^\/Contacts\/(\d+)$/.exec(path)?.[1];
       if (id) {
@@ -179,6 +201,63 @@ describe("the adapter against the mock", () => {
       { id: "9100000000003", name: "Northern Laser Cutting", newsPageUrl: null, website: "https://northern-laser.test" },
       { id: "9100000000004", name: "Fenland Tooling", newsPageUrl: null, website: null },
     ]);
+  });
+
+  /** Connected to the mock, with a fresh module so no token is cached from another test. */
+  async function mockCrm() {
+    vi.stubEnv("BIGIN_CLIENT_ID", "mock-id");
+    vi.stubEnv("BIGIN_CLIENT_SECRET", "mock-secret");
+    vi.stubEnv("BIGIN_REFRESH_TOKEN", "mock-refresh");
+    const fetchSpy = wireFetchToMock();
+    vi.resetModules();
+    const { getCrmSync } = await import("@/lib/adapters/crm");
+    return { crm: getCrmSync(), fetchSpy };
+  }
+
+  it("reads the Companies field list and keeps every field of every company, custom ones included", async () => {
+    const { crm } = await mockCrm();
+    const read = await crm.listCompanies();
+
+    expect(read?.fieldList).toMatchObject({ read: "bigin", allFields: true, newsPageField: "News_Page_URL", newsPageFieldFound: true });
+    expect(read?.fieldList?.fields).toContainEqual({ apiName: "Machine_Brands", label: "Machine Brands" });
+    expect(read?.fieldList?.fields).toContainEqual({ apiName: "News_Page_URL", label: "News Page URL" });
+    const acme = read?.companies.find((c) => c.id === "9100000000001");
+    expect(acme?.fields).toMatchObject({
+      Account_Name: "Acme Fabrication Ltd",
+      Phone: "01234 567890",
+      Machine_Brands: "Trumpf, Amada",
+      Owner: { name: "Jas", id: "9000000000001" },
+    });
+  });
+
+  it("finds the News Page URL field by its label, whatever Bigin named it", async () => {
+    const o = org();
+    o.accountFields.find((f) => f.api_name === "News_Page_URL")!.api_name = "News_Page";
+    for (const a of o.accounts) {
+      a.News_Page = a.News_Page_URL;
+      delete a.News_Page_URL;
+    }
+    const { crm } = await mockCrm();
+    const read = await crm.listCompanies();
+
+    expect(read?.fieldList).toMatchObject({ newsPageField: "News_Page", newsPageFieldFound: true });
+    expect(read?.companies.find((c) => c.id === "9100000000002")?.newsPageUrl).toBe("https://brightsteel.test/blog");
+  });
+
+  it("falls back to the known fields when the token may not read the field list, and still reads every company", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    org().refuseFieldList = true; // a token without ZohoBigin.settings.fields.READ
+    const { crm, fetchSpy } = await mockCrm();
+    const read = await crm.listCompanies();
+
+    expect(read?.fieldList).toMatchObject({ read: "refused", allFields: false, newsPageField: "News_Page_URL" });
+    expect(read?.complete).toBe(true);
+    expect(read?.companies.map((c) => c.newsPageUrl)).toEqual(["https://acme-fabrication.test/news/", "https://brightsteel.test/blog", null, null]);
+    expect(read?.companies[0].fields).toEqual({
+      id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/", Website: "https://acme-fabrication.test",
+    });
+    const listCall = fetchSpy.mock.calls.map(([u]) => String(u)).find((u) => u.includes("/Accounts?"));
+    expect(listCall).toContain("fields=Account_Name,News_Page_URL,Website&");
   });
 
   it("repairs a link to a contact deleted in Bigin: unlinks, recreates, links the new record", async () => {

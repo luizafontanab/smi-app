@@ -81,8 +81,9 @@ export type SourcePlan = {
  * (`fromWebsite`); a company with neither has no source.
  *
  * The Website stands in only in a read where at least one company has a News
- * Page URL. If none does, the field is most likely misnamed (NEWS_PAGE_FIELD
- * is unconfirmed, HUMAN-TODO 1.15a), and falling back would quietly swap
+ * Page URL. If none does, the field is most likely misnamed (no field
+ * labelled "News Page URL", or the field list unreadable and NEWS_PAGE_FIELD
+ * wrong, HUMAN-TODO 1.15a/1.15b), and falling back would quietly swap
  * every news page already linked for a homepage. So that read gives no
  * companies at all, flagged `websiteFallbackWithheld`, which the source sync
  * treats as "nothing to change" (planBiginSources' trustAbsence).

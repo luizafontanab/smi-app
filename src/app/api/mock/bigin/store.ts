@@ -26,9 +26,25 @@ export type MockContact = {
   Modified_Time: string;
 };
 
-export type MockAccount = { id: string; Account_Name: string; News_Page_URL: string | null; Website: string | null };
+/** A company: its id and name, then any other field by API name (the field list below says which). */
+export type MockAccount = { id: string; Account_Name: string } & Record<string, unknown>;
 
-type Org = { contacts: Map<string, MockContact>; accounts: MockAccount[]; nextId: number };
+/** One entry of Bigin's field list (settings/fields), the keys the adapter reads plus a few it doesn't. */
+export type MockField = { api_name: string; display_label: string; field_label: string; data_type: string; custom_field: boolean; visible: boolean };
+
+type Org = {
+  contacts: Map<string, MockContact>;
+  accounts: MockAccount[];
+  /** settings/fields?module=Accounts */
+  accountFields: MockField[];
+  /** Answer the field list with OAUTH_SCOPE_MISMATCH, as for a token without ZohoBigin.settings.fields.READ. */
+  refuseFieldList: boolean;
+  nextId: number;
+};
+
+const field = (api_name: string, display_label: string, data_type: string, custom_field = false): MockField =>
+  // field_label is an i18n key in Bigin's own sample, not the label people see
+  ({ api_name, display_label, field_label: custom_field ? display_label : `Accounts crm.label.${api_name.toLowerCase()}`, data_type, custom_field, visible: true });
 
 const g = globalThis as typeof globalThis & { __biginMockOrg?: Org };
 
@@ -36,11 +52,25 @@ function seedOrg(): Org {
   // News_Page_URL feeds the story crawler (src/lib/sources/bigin.ts), with
   // Website as its fallback: one company has only a Website, and one has
   // neither (shown as "no address" in CRM's Companies box), as in a real org.
+  // Beyond the three the story crawler needs, a few of Bigin's standard
+  // fields and one custom one, so the Companies box's detail view has
+  // something to list (issue #54).
+  const owner = { name: "Jas", id: "9000000000001" };
   const accounts: MockAccount[] = [
-    { id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/", Website: "https://acme-fabrication.test" },
-    { id: "9100000000002", Account_Name: "Brightsteel Engineering", News_Page_URL: "https://brightsteel.test/blog", Website: null },
-    { id: "9100000000003", Account_Name: "Northern Laser Cutting", News_Page_URL: null, Website: "https://northern-laser.test" },
-    { id: "9100000000004", Account_Name: "Fenland Tooling", News_Page_URL: null, Website: null },
+    { id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/", Website: "https://acme-fabrication.test", Phone: "01234 567890", Billing_City: "Leeds", Machine_Brands: "Trumpf, Amada", Owner: owner, Description: null },
+    { id: "9100000000002", Account_Name: "Brightsteel Engineering", News_Page_URL: "https://brightsteel.test/blog", Website: null, Phone: null, Billing_City: "Sheffield", Machine_Brands: null, Owner: owner, Description: "Sheet metal and powder coating." },
+    { id: "9100000000003", Account_Name: "Northern Laser Cutting", News_Page_URL: null, Website: "https://northern-laser.test", Phone: null, Billing_City: null, Machine_Brands: "Bystronic", Owner: owner, Description: null },
+    { id: "9100000000004", Account_Name: "Fenland Tooling", News_Page_URL: null, Website: null, Phone: null, Billing_City: null, Machine_Brands: null, Owner: owner, Description: null },
+  ];
+  const accountFields: MockField[] = [
+    field("Owner", "Company Owner", "ownerlookup"),
+    field("Account_Name", "Company Name", "text"),
+    field("Phone", "Phone", "phone"),
+    field("Website", "Website", "website"),
+    field("Billing_City", "Billing City", "text"),
+    field("Description", "Description", "textarea"),
+    field("News_Page_URL", "News Page URL", "website", true),
+    field("Machine_Brands", "Machine Brands", "text", true),
   ];
   const contacts = new Map<string, MockContact>();
   const now = Date.now();
@@ -63,7 +93,7 @@ function seedOrg(): Org {
       Modified_Time: new Date(now - (i + 1) * 3_600_000).toISOString(),
     });
   });
-  return { contacts, accounts, nextId: 9200000000100 };
+  return { contacts, accounts, accountFields, refuseFieldList: false, nextId: 9200000000100 };
 }
 
 export function org(): Org {
