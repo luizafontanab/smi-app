@@ -58,21 +58,17 @@ export function ClassicIndustryBody({ sections, topics, current, emptyText }: {
             </select>
           </label>
         )}
-        <form
-          data-part="industry-topics-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            router.push(`/industry/${topic}`);
-          }}
-        >
+        {/* A plain button, not a form submit: Go is a client-side page change,
+            not work that SubmitButton's pending state (#48) is for. */}
+        <div data-part="industry-topics-picker">
           <label data-part="industry-filter">
             <span data-part="form-label">Topics</span>
             <select data-part="industry-topics" value={topic} onChange={(e) => setTopic(e.target.value)}>
               {options.map((t) => <option key={t.slug} value={t.slug}>{t.name}</option>)}
             </select>
           </label>
-          <button type="submit" data-part="button-primary">Go</button>
-        </form>
+          <button type="button" data-part="button-primary" onClick={() => router.push(`/industry/${topic}`)}>Go</button>
+        </div>
       </div>
 
       {sections.length === 0 && <p data-part="empty-state">{emptyText}</p>}
