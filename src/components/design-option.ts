@@ -79,6 +79,12 @@ import { JoinPageView } from "@/components/join/JoinPageView";
 // component into the console's and dashboard's bundles too. Every rule in the
 // sheet is scoped to [data-site="public"].
 
+/**
+ * Which design option this branch builds. `classic` sets "classic" when it
+ * repoints the pieces below, so tests that only hold for Current can tell.
+ */
+export const DESIGN_OPTION: "current" | "classic" = "current";
+
 type PropsOf<C> = C extends ComponentType<infer P> ? P : never;
 
 /** Site header (public layout). */
