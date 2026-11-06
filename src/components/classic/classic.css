@@ -1150,12 +1150,18 @@
   line-height: 1.6;
 }
 
-/* The numbered list, in the email's order. The numbers are drawn by the
-   markup (#1…#n, stories and videos only), so the list's own markers go. */
+/* The issue's entries, in the email's order: runs of numbered items, each an
+   <ol>, with adverts and the heading between them. The numbers are drawn by
+   the markup (#1…#n, stories and videos only), so the lists' own markers go. */
 [data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-items"] {
   display: grid;
   gap: 2rem;
   margin: 2.5rem 0 0;
+}
+[data-site="public"] [data-part="newsletter-issue"] [data-part="newsletter-run"] {
+  display: grid;
+  gap: 2rem;
+  margin: 0;
   padding: 0;
   list-style: none;
 }

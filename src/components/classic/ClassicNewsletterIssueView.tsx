@@ -2,10 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
-import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "@/lib/newsletter-layout";
-import type { NewsletterIssueView } from "@/components/newsletter/NewsletterIssueView";
+import type { ReactElement } from "react";
+import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, STORY_SECTION_HEADING } from "@/lib/newsletter-layout";
+import { issueContent, type IssueCardData, type NewsletterIssueView } from "@/components/newsletter/NewsletterIssueView";
 
-type Card = { key: string; href: string; title: string; summary: string | null; image: string | null; focus: unknown; kicker: string | null; cta: string };
+/** One entry of the issue's run: a numbered story or video, or an unnumbered advert or heading. */
+type Entry = { numbered: boolean; node: ReactElement };
 
 /** "November 2026", from the send date the diary also keys on. */
 function issueMonth(iso: string | null | undefined): string | null {
@@ -14,7 +16,7 @@ function issueMonth(iso: string | null | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "Europe/London" });
 }
 
-function IssueCard({ card }: { card: Card }) {
+function IssueCard({ card }: { card: IssueCardData }) {
   return (
     <Link href={card.href} data-part="newsletter-card">
       <div data-part="card-image">
@@ -45,64 +47,91 @@ function IssueCard({ card }: { card: Card }) {
  * a banner. The email's "Sheeting Hot News" heading keeps its place after the
  * lead too, as an unnumbered entry.
  *
+ * Only the numbered entries are list items, so a screen reader's count matches
+ * the #n badges: each run of them is its own <ol start={n}>, and the adverts
+ * and the heading sit between the runs, all inside one labelled group.
+ *
  * The events diary and the supplier directory are disc-headed sections, drawn
  * only when they have entries. Layout and colour live in the #77 section of
  * classic.css, which reaches this markup through its data-part labels.
  */
 export function ClassicNewsletterIssueView({ issue, extras }: React.ComponentProps<typeof NewsletterIssueView>) {
-  // A story or video withdrawn since the send is hidden by RLS and comes back null; it is skipped.
-  const cards = issue.items.flatMap(({ story, video, position }): Card[] => {
-    if (story) return [{ key: `s${position}`, href: `/news/${story.slug}`, title: story.title, summary: story.excerpt, image: mediaUrl(story.cover_path), focus: story.cover_focus, kicker: null, cta: "Read article" }];
-    if (video) return [{ key: `v${position}`, href: `/video/${video.slug}`, title: video.title, summary: null, image: mediaUrl(video.thumbnail_path), focus: null, kicker: "Video", cta: "Watch video" }];
-    return [];
-  });
-  const placed = issue.ads.flatMap((slot) => (slot.advert ? [{ ...slot.advert, after_item: slot.after_item }] : []));
-  const { sponsor, banners } = splitMastheadSponsor(placed);
-  const sponsorImage = sponsor ? mediaUrl(sponsor.desktop_path) ?? mediaUrl(sponsor.mobile_path) : null;
+  const { cards, sponsor, sponsorImage, banners } = issueContent(issue);
   const month = issueMonth(issue.scheduled_at ?? issue.sent_at);
 
   let number = 0;
-  const entries = issueBlocks(cards, banners).flatMap((block, i) => {
+  const entries = issueBlocks(cards, banners).flatMap((block, i): Entry[] => {
     switch (block.kind) {
       case "heading":
-        return [
-          <li key="heading" data-part="newsletter-items-heading">
-            <h2 data-part="section-title">{STORY_SECTION_HEADING}</h2>
-          </li>,
-        ];
+        return [{
+          numbered: false,
+          node: (
+            <div key="heading" data-part="newsletter-items-heading">
+              <h2 data-part="section-title">{STORY_SECTION_HEADING}</h2>
+            </div>
+          ),
+        }];
       case "lead":
       case "row":
         return (block.kind === "lead" ? [block.item] : block.items).map((card) => {
           number++;
-          return (
-            <li key={card.key} data-part="newsletter-item">
-              <span data-part="newsletter-item-number">#{number}</span>
-              <IssueCard card={card} />
-            </li>
-          );
+          return {
+            numbered: true,
+            node: (
+              <li key={card.key} data-part="newsletter-item">
+                <span data-part="newsletter-item-number">#{number}</span>
+                <IssueCard card={card} />
+              </li>
+            ),
+          };
         });
       case "ad": {
         const ad = block.ad;
         const href = `/visit/${ad.id}?src=newsletter`;
         if (ad.format === "sponsored_story") {
-          return [
-            <li key={`ad-${ad.id}-${i}`} data-part="newsletter-sponsored-story">
-              <IssueCard card={{ key: ad.id, href, title: ad.headline ?? ad.name ?? "", summary: ad.body, image: mediaUrl(ad.desktop_path) ?? mediaUrl(ad.mobile_path), focus: null, kicker: "Sponsored", cta: "Read more" }} />
-            </li>,
-          ];
+          return [{
+            numbered: false,
+            node: (
+              <div key={`ad-${ad.id}-${i}`} data-part="newsletter-sponsored-story">
+                <IssueCard card={{ key: ad.id, href, title: ad.headline ?? ad.name ?? "", summary: ad.body, image: mediaUrl(ad.desktop_path) ?? mediaUrl(ad.mobile_path), focus: null, kicker: "Sponsored", cta: "Read more" }} />
+              </div>
+            ),
+          }];
         }
         const image = mediaUrl(ad.mobile_path) ?? mediaUrl(ad.desktop_path);
         if (!image) return [];
-        return [
-          <li key={`ad-${ad.id}-${i}`} data-part="newsletter-ad">
-            <p data-part="ad-label">Sponsored</p>
-            {/* eslint-disable-next-line @next/next/no-img-element -- advert artwork is shown at its own size, as in the email */}
-            <a href={href}><img src={image} alt={ad.name ?? "Sponsored"} /></a>
-          </li>,
-        ];
+        return [{
+          numbered: false,
+          node: (
+            <div key={`ad-${ad.id}-${i}`} data-part="newsletter-ad">
+              <p data-part="ad-label">Sponsored</p>
+              {/* eslint-disable-next-line @next/next/no-img-element -- advert artwork is shown at its own size, as in the email */}
+              <a href={href}><img src={image} alt={ad.name ?? "Sponsored"} /></a>
+            </div>
+          ),
+        }];
       }
     }
   });
+
+  // Consecutive numbered entries become one <ol>, starting at its first number.
+  const run: ReactElement[] = [];
+  let listed: ReactElement[] = [];
+  let first = 1;
+  const closeList = () => {
+    if (listed.length === 0) return;
+    run.push(<ol key={`run-${first}`} data-part="newsletter-run" start={first === 1 ? undefined : first}>{listed}</ol>);
+    first += listed.length;
+    listed = [];
+  };
+  for (const entry of entries) {
+    if (entry.numbered) listed.push(entry.node);
+    else {
+      closeList();
+      run.push(entry.node);
+    }
+  }
+  closeList();
 
   return (
     <div data-part="newsletter-issue">
@@ -124,7 +153,7 @@ export function ClassicNewsletterIssueView({ issue, extras }: React.ComponentPro
           {issue.intro && <p data-part="page-intro">{issue.intro}</p>}
         </header>
 
-        <ol data-part="newsletter-items" aria-label="In this issue">{entries}</ol>
+        <div data-part="newsletter-items" role="group" aria-label="In this issue">{run}</div>
 
         {extras.events.length > 0 && (
           <section data-part="newsletter-diary">
