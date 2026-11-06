@@ -57,9 +57,9 @@ test("H14/M18: the member header is light and the logo shares one row with the a
   const centre = account!.y + account!.height / 2;
   expect(centre).toBeGreaterThan(logo!.y - 8);
   expect(centre).toBeLessThan(logo!.y + logo!.height + 8);
-  // Phone: ~73px logo row (the 60px stacked lockup) + the tab strip ≈ 117px.
+  // Phone: ~88px logo row (the 72px stacked lockup) + the tab strip ≈ 132px.
   // It was 138px over three rows before #33.
-  expect((await header.boundingBox())!.height).toBeLessThan(isPhone(page) ? 120 : 140);
+  expect((await header.boundingBox())!.height).toBeLessThan(isPhone(page) ? 136 : 140);
 });
 
 test("M3: each invoice shows its date, amount and status without sideways scrolling", async ({ page }) => {

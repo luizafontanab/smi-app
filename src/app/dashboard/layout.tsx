@@ -56,7 +56,7 @@ export default async function MemberLayout({ children }: { children: React.React
           The company name shows from sm up; on a phone the account menu
           carries it (its accessible name and first line). */}
       <header className="border-b border-line bg-white text-ink">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-1.5 sm:py-3">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-2 sm:py-3">
           {/* The main wordmark now exits to the public homepage — same
               behaviour as the console lockup; the nav's Dashboard entry
               covers the member home. */}

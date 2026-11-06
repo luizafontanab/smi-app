@@ -29,12 +29,14 @@ test.describe("header", () => {
     await page.goto("/");
     const header = page.locator("header").first();
     const logo = header.locator("img").first();
-    // ~175px for the stacked lockup at h-15 on a phone, ~310px for the wide
-    // mark at sm:h-12 — it used to be squeezed to 136–159px.
+    // ~209px for the stacked lockup at h-18 on a phone (matched to the live
+    // site), ~310px for the wide mark at sm:h-12 — it used to be squeezed to
+    // 136–159px.
     const box = (await logo.boundingBox())!;
-    expect(box.width).toBeGreaterThanOrEqual(isPhone(page) ? 170 : 300);
-    // One row: the bar was 101px (phone) / 81px (tablet) when labels wrapped.
-    expect((await header.boundingBox())!.height).toBeLessThanOrEqual(80);
+    expect(box.width).toBeGreaterThanOrEqual(isPhone(page) ? 200 : 300);
+    // One row: the phone bar is ~89px by design (72px logo + 8px padding);
+    // the bar was 101px (phone) / 81px (tablet) when labels wrapped.
+    expect((await header.boundingBox())!.height).toBeLessThanOrEqual(isPhone(page) ? 92 : 80);
     for (const el of await header.locator("nav > *").all()) {
       if (!(await el.isVisible())) continue;
       expect((await el.boundingBox())!.height).toBeLessThanOrEqual(48);

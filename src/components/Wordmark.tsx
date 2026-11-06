@@ -32,10 +32,11 @@ export function Wordmark({ tone = "dark" }: {
   tone?: "dark" | "light";
 }) {
   const alt = "Sheet Metal Industries";
-  // Stacked lockup is 500 × 172 ≈ 2.9:1, shown 60px tall (≈175px wide). The
-  // headers trim their phone padding to 6px so the bar stays ~73px tall; the
-  // artwork itself has no margin to trim. The baked-in tagline is still small.
-  const { props: { srcSet: phone } } = getImageProps({ alt, src: "/logo-stacked.png", width: 175, height: 60 });
+  // Stacked lockup is 500 × 172 ≈ 2.9:1, shown 72px tall (≈209px wide, ~55%
+  // of a 390px phone) — matched to the live site's phone header. The headers
+  // keep their phone padding to 8px so the bar stays ~88px, as live; the
+  // artwork itself has no margin to trim.
+  const { props: { srcSet: phone } } = getImageProps({ alt, src: "/logo-stacked.png", width: 209, height: 72 });
   // Wide artwork is 1786.05 × 276.97 ≈ 6.45:1. Full size only from xl (lg is
   // where the header shows every nav link, and a 413px logo plus the full nav
   // overflows a 1024px viewport). Every header gives the mark's link shrink-0,
@@ -52,8 +53,8 @@ export function Wordmark({ tone = "dark" }: {
   });
   return (
     <picture>
-      <source media={PHONE_MEDIA} srcSet={phone} width={175} height={60} />
-      <img {...wide} alt={alt} className="h-15 w-auto sm:h-12 xl:h-16" />
+      <source media={PHONE_MEDIA} srcSet={phone} width={209} height={72} />
+      <img {...wide} alt={alt} className="h-18 w-auto sm:h-12 xl:h-16" />
     </picture>
   );
 }
