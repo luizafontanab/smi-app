@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { partsTargeted, selectorsOf } from "./css-selectors";
+import { partsTargeted, rulesOf, selectorsOf } from "./css-selectors";
 
 /**
  * Classic edge surfaces and shared pieces (#81), restyled through classic.css
@@ -20,12 +20,6 @@ function section(sheet: string, ticket: string): string {
   const end = sheet.indexOf(`/* ── end ${ticket} ── */`);
   if (start < 0 || end < start) throw new Error(`no ${ticket} section in classic.css`);
   return sheet.slice(start, end);
-}
-
-/** Innermost `selector { declarations }` pairs, comments stripped. Rules inside @media come out too. */
-function rulesOf(sheet: string): { selector: string; body: string }[] {
-  const src = sheet.replace(/\/\*[\s\S]*?\*\//g, "");
-  return [...src.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim().replace(/\s+/g, " "), body: m[2] }));
 }
 
 /** The body of each `@media <query> { … }` block in a sheet, comments stripped. */

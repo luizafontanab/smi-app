@@ -77,6 +77,11 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   { label: "footer band focus ring: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: NON_TEXT },
   // The black stack: white text, links hovering orange.
   { label: "footer text: white on black", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
+  // A sponsor takeover (#68 review, decisions 6 Nov, 16): ink on the sponsor's
+  // colour is unchecked, so Classic's ink-on-orange places go white on ink.
+  { label: "takeover: white on ink, for every ink-on-orange place", fg: c["--classic-button-text"], bg: c["--smi-ink"], min: TEXT },
+  { label: "takeover footer band button hover: ink on white", fg: c["--smi-ink"], bg: c["--classic-panel"], min: TEXT },
+  { label: "takeover focus ring: white on ink", fg: c["--classic-panel"], bg: c["--smi-ink"], min: NON_TEXT },
   { label: "footer link hover: orange on black", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: TEXT },
   // #71 header. White is written as the panel colour (#fff).
   { label: "top bar text", fg: c["--classic-panel"], bg: c["--classic-topbar"], min: TEXT },

@@ -99,6 +99,12 @@ function splitSelectorList(list: string): string[] {
   return out.map((s) => s.trim()).filter(Boolean);
 }
 
+/** Innermost `selector { declarations }` pairs, comments stripped. Rules inside @media come out too. */
+export function rulesOf(sheet: string): { selector: string; body: string }[] {
+  const src = sheet.replace(/\/\*[\s\S]*?\*\//g, "");
+  return [...src.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim().replace(/\s+/g, " "), body: m[2] }));
+}
+
 /** The `data-part` values a selector names, from `[data-part="x"]` (any quote, any match operator). */
 export function partsTargeted(selector: string): string[] {
   return [...selector.matchAll(/\[\s*data-part\s*[~|^$*]?=\s*(["']?)([^"'\]\s]+)\1\s*\]/g)].map((m) => m[2]);
