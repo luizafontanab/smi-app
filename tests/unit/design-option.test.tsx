@@ -133,7 +133,8 @@ describe("routes render their piece through the module", () => {
   it("industry", async () => {
     m.loadIndustryHub.mockResolvedValue({ industry: { name: "Laser" } });
     render(await IndustryPage(routeProps({ slug: "laser" })));
-    expect(screen.getByTestId("piece-IndustryView")).toHaveAttribute("data-props", "hub,slug");
+    // `industries` is the public industry list, for an option's topic switcher (#76); Current ignores it.
+    expect(screen.getByTestId("piece-IndustryView")).toHaveAttribute("data-props", "hub,industries,slug");
   });
 
   it("newsletter issue", async () => {
