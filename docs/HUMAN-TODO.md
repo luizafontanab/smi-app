@@ -61,12 +61,13 @@ Each service is independent; do them in any order.
 
 ### CRM — Bigin
 
-- [ ] **1.15a — After the first Bigin sync, check the "From Bigin" box on
-      `/console/sources`.** The story crawler reads the Companies field "News
+- [ ] **1.15a — After the first Bigin sync, check the "Story sources from
+      Bigin" panel in CRM's Companies box (`/console/crm#companies`; it moved
+      there from Story sources on 6 Nov).** The story crawler reads the Companies field "News
       Page URL" as `News_Page_URL` (`NEWS_PAGE_FIELD` in
       `src/lib/adapters/crm.ts`), and falls back to the company's Website when
       it's blank. Bigin shows no API names in its settings (checked 5 Nov), so
-      the name can only be confirmed by a sync. If the box shows the red "No
+      the name can only be confirmed by a sync. If the panel shows the red "No
       Bigin company came back with a News Page URL" warning, the name is
       probably wrong: nothing is added or paused, and the real name has to be
       found through Bigin's field API, which needs a settings-read scope added

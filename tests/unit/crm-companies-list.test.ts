@@ -42,4 +42,41 @@ describe("readCompanyList", () => {
       { name: "Nowhere Ltd", inUse: "none", contacts: 0, member: null },
     ]);
   });
+
+  it("gives each company its Story Sources source, so the box can link to it (#51)", async () => {
+    const db = asDb(mockDb({
+      from: fromByTable({
+        crm_companies: () => queryBuilder(dbOk([
+          { id: "u1", bigin_id: "1", name: "Acme", website: null, news_page_url: "https://acme.test/news", last_synced_at: "2026-11-06T03:00:00Z" },
+          { id: "u2", bigin_id: "2", name: "Nowhere Ltd", website: null, news_page_url: null, last_synced_at: "2026-11-06T03:00:00Z" },
+        ], 2)),
+        contacts: () => queryBuilder(dbOk([])),
+        content_sources: () => queryBuilder(dbOk([{ id: "src-1", bigin_account_id: "1", member: null }])),
+      }),
+    }));
+
+    const list = await readCompanyList(db, {});
+
+    expect(list.rows.map(({ name, sourceId }) => ({ name, sourceId }))).toEqual([
+      { name: "Acme", sourceId: "src-1" },
+      { name: "Nowhere Ltd", sourceId: null },
+    ]);
+  });
+
+  it("narrows to one company by its Bigin id, the target of a Story Sources link (#51)", async () => {
+    const companies = queryBuilder(dbOk([
+      { id: "u1", bigin_id: "1", name: "Acme", website: null, news_page_url: null, last_synced_at: "2026-11-06T03:00:00Z" },
+    ], 1));
+    const db = asDb(mockDb({
+      from: fromByTable({
+        crm_companies: () => companies,
+        contacts: () => queryBuilder(dbOk([])),
+        content_sources: () => queryBuilder(dbOk([])),
+      }),
+    }));
+
+    await readCompanyList(db, { biginId: "1" });
+
+    expect(companies.eq).toHaveBeenCalledWith("bigin_id", "1");
+  });
 });
