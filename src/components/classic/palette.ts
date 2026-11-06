@@ -25,6 +25,10 @@ export const CLASSIC_COLOURS = {
   // #71 header: the grey top bar, and the flat menu's resting link colour.
   "--classic-topbar": "#555555",
   "--classic-nav-link": "#b4b4b4",
+  // #80 forms: the error red (Current's --smi-danger) and a field's border,
+  // which has to reach 3:1 on white to show where the field is (WCAG 1.4.11).
+  "--classic-danger": "#b91c1c",
+  "--classic-field-edge": "#8c8c8c",
 } as const;
 
 const c = CLASSIC_COLOURS;
@@ -81,4 +85,9 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   { label: "newsletter sponsored story label and copy: meta on the canvas", fg: c["--classic-meta"], bg: c["--classic-canvas"], min: TEXT },
   { label: "newsletter sponsored story link: blue on the canvas", fg: c["--classic-blue"], bg: c["--classic-canvas"], min: TEXT },
   { label: "newsletter sponsored story link hover: blue on the canvas", fg: c["--classic-blue-hover"], bg: c["--classic-canvas"], min: TEXT },
+  // #80 forms on the contact, advertising and join-account panels: the error
+  // message and its edge, an invalid field's border, and a field's own border.
+  { label: "form error text: red on a panel", fg: c["--classic-danger"], bg: c["--classic-panel"], min: TEXT },
+  { label: "form error edge and invalid field border: red on a panel", fg: c["--classic-danger"], bg: c["--classic-panel"], min: NON_TEXT },
+  { label: "form field border on a panel", fg: c["--classic-field-edge"], bg: c["--classic-panel"], min: NON_TEXT },
 ];

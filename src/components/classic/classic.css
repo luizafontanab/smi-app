@@ -1306,6 +1306,353 @@
 
 /* ── #80 Detail and plain pages ──────────────────────────────────────────── */
 
+/* Detail pages (/event/[slug], /video/[slug], /member/[slug]) and plain pages
+   (CMS pages, /featured-machine, /advertising, /contact, /newsletters,
+   /join/account). Restyle only: every form, map, embed, share button and
+   rich-text body keeps Current's markup and behaviour. Shared parts are only
+   reached from inside a page root. Never set `display` on a part a utility
+   shows and hides (the phone-only media-pack button, the video grid's
+   hidden copies). tests/unit/classic/detail-plain-pages.test.ts pins this.
+
+   Not done here, by design (#80): no member-colour page background (Current
+   has none to neutralise: the member page sets no colour of its own), no
+   stripped member header, no event countdown, no photo banners. */
+
+/* Plain pages: the list pages' disc-and-title head (#79), on the canvas. The
+   title isn't always the root's first child (the CMS page and /featured-machine
+   render it inside a block layout), so it is reached as a descendant. */
+[data-site="public"] :is([data-part="cms-page"], [data-part="featured-machine-page"], [data-part="advertising-page"], [data-part="contact-page"], [data-part="newsletters-page"]) [data-part="page-title"] {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0;
+  padding-block: 1.5rem 0.5rem;
+  color: var(--smi-ink);
+  font-size: clamp(1.75rem, 1.3rem + 1.5vw, 2.75rem);
+  font-weight: 400;
+  line-height: 1.1;
+}
+[data-site="public"] :is([data-part="cms-page"], [data-part="featured-machine-page"], [data-part="advertising-page"], [data-part="contact-page"], [data-part="newsletters-page"]) [data-part="page-title"]::before {
+  content: "";
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+/* The glyph per page; empty alt text, so it is never read out (as #79). */
+[data-site="public"] [data-part="cms-page"] [data-part="page-title"]::before { content: "📄" / ""; }
+[data-site="public"] [data-part="featured-machine-page"] [data-part="page-title"]::before { content: "⚙️" / ""; }
+[data-site="public"] [data-part="advertising-page"] [data-part="page-title"]::before { content: "📈" / ""; }
+[data-site="public"] [data-part="contact-page"] [data-part="page-title"]::before { content: "✉️" / ""; }
+[data-site="public"] [data-part="newsletters-page"] [data-part="page-title"]::before { content: "📰" / ""; }
+
+/* ── Detail pages: event and video ── */
+
+/* One white panel, like the story page (#74): the back link, the cover or
+   embed, the title, the body, the actions and the share row all sit on it.
+   A gutter at every width (mx-auto stays: only max-width, margins and padding
+   change). */
+[data-site="public"] [data-part="event-page"],
+[data-site="public"] [data-part="video-page"] {
+  max-width: min(var(--classic-detail-width, 48rem), calc(100% - 1.5rem));
+  margin-block: 1.5rem 2rem;
+  padding: 0.25rem 1rem 1rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="video-page"] {
+  --classic-detail-width: 56rem;
+}
+@media (min-width: 48rem) {
+  [data-site="public"] [data-part="event-page"],
+  [data-site="public"] [data-part="video-page"] {
+    padding: 0.5rem 2.5rem 1.5rem;
+  }
+}
+
+[data-site="public"] :is([data-part="event-page"], [data-part="video-page"]) [data-part="back-link"] {
+  font-size: 1rem;
+}
+
+/* The headline: regular weight, uppercase, in ink, as on the story page. */
+[data-site="public"] :is([data-part="event-page"], [data-part="video-page"]) [data-part="page-title"] {
+  color: var(--smi-ink);
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  font-weight: 400;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+/* Date line, location and byline in Classic's meta grey; the date uppercase. */
+[data-site="public"] [data-part="event-page"] [data-part="event-meta"] [data-part="card-meta"] {
+  color: var(--classic-meta);
+}
+[data-site="public"] :is([data-part="event-page"], [data-part="video-page"]) :is([data-part="event-location"], [data-part="video-meta"]) {
+  color: var(--classic-meta);
+}
+/* The event type: ink on an orange tag, like the featured-member tab. */
+[data-site="public"] [data-part="event-page"] [data-part="event-meta"] [data-part="card-badge"] {
+  border-radius: var(--classic-radius);
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+}
+
+/* Cover and embed corners match the panel's. */
+[data-site="public"] :is([data-part="event-page"], [data-part="video-page"]) :is([data-part="event-cover"], [data-part="video-embed"]) {
+  border-radius: var(--classic-radius);
+}
+
+/* "This event has already taken place": meta grey on the canvas grey. */
+[data-site="public"] [data-part="event-page"] [data-part="form-notice"] {
+  border-color: transparent;
+  border-radius: var(--classic-radius);
+  background-color: var(--classic-canvas);
+  color: var(--classic-meta);
+}
+
+/* "Hosted by …": a white button with Classic's corners. */
+[data-site="public"] [data-part="event-page"] [data-part="button-secondary"] {
+  border-radius: var(--classic-radius);
+}
+
+/* "More videos": the list pages' in-page heading. */
+[data-site="public"] [data-part="video-page"] [data-part="video-more"] [data-part="section-title"] {
+  color: var(--smi-ink);
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Byline link, in blue like every text link. */
+[data-site="public"] [data-part="video-page"] [data-part="video-meta"] a {
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="video-page"] [data-part="video-meta"] a:hover {
+  color: var(--classic-blue-hover);
+}
+
+/* Share: the live site's blue buttons, hovering to orange with ink like the
+   primary buttons. The label stays meta grey. */
+[data-site="public"] :is([data-part="event-page"], [data-part="video-page"]) [data-part="share-label"] {
+  color: var(--classic-meta);
+}
+[data-site="public"] :is([data-part="event-page"], [data-part="video-page"]) [data-part="share-button"] {
+  border-color: transparent;
+  border-radius: var(--classic-radius);
+  background-color: var(--classic-blue);
+  color: var(--classic-button-text);
+}
+[data-site="public"] :is([data-part="event-page"], [data-part="video-page"]) [data-part="share-button"]:hover {
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+}
+
+/* ── Detail page: member ── */
+
+/* No page background: the member page keeps the canvas and its own cards.
+   The header card, the About panel, the map and the links take Classic's
+   corners and shadow. */
+[data-site="public"] [data-part="member-page"] [data-part="member-hero"] {
+  border-radius: var(--classic-radius) var(--classic-radius) 0 0;
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-header"] {
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-hero"] + [data-part="member-header"] {
+  border-radius: 0 0 var(--classic-radius) var(--classic-radius);
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-logo"] > div {
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-header"] [data-part="page-title"] {
+  color: var(--smi-ink);
+  font-size: clamp(1.75rem, 1.3rem + 1.5vw, 2.5rem);
+  font-weight: 400;
+  line-height: 1.1;
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-header"] [data-part="card-meta"] {
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-services"] [data-part="card-badge"] {
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-body"] [data-part="section-title"] {
+  color: var(--smi-ink);
+  font-size: 1.5rem;
+  font-weight: 400;
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-aside"] [data-part="map"] {
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="member-page"] [data-part="member-aside"] [data-part="member-link"] {
+  border-radius: var(--classic-radius);
+}
+
+/* ── Plain pages ── */
+
+/* CMS pages (about, policies, terms, FAQ…): the flat body takes Classic's
+   panel from sm up, where Current draws its card. The collapsible pages'
+   <details> sections keep globals.css's own cards, so a body holding them is
+   left alone. */
+@media (min-width: 40rem) {
+  [data-site="public"] [data-part="cms-page"] [data-part="page-title"] + [data-part="rich-text"]:not(:has(> details)) {
+    border-radius: var(--classic-radius);
+    box-shadow: var(--classic-shadow);
+  }
+}
+
+/* /featured-machine: the machine, or the empty state, on a Classic panel. */
+[data-site="public"] [data-part="featured-machine-page"] :is([data-part="machine-feature"], [data-part="empty-state"]) {
+  border-color: transparent;
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="featured-machine-page"] [data-part="machine-feature"] [data-part="card-meta"] {
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="featured-machine-page"] :is([data-part="machine-feature"] [data-part="card-title"], [data-part="empty-state"] [data-part="section-title"]) {
+  color: var(--smi-ink);
+  font-weight: 400;
+}
+[data-site="public"] [data-part="featured-machine-page"] [data-part="machine-feature"] [data-part="video-embed"] {
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] [data-part="featured-machine-page"] [data-part="machine-seller"] a {
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="featured-machine-page"] [data-part="machine-seller"] a:hover {
+  color: var(--classic-blue-hover);
+}
+[data-site="public"] [data-part="featured-machine-page"] [data-part="machine-actions"] [data-part="button-secondary"] {
+  border-radius: var(--classic-radius);
+}
+
+/* /advertising: the format cards as Classic panels, meta-grey labels. */
+[data-site="public"] [data-part="advertising-page"] [data-part="advert-format-card"] {
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="advertising-page"] [data-part="advert-format-card"] [data-part="card-meta"] {
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="advertising-page"] [data-part="advert-format-card"] [data-part="card-title"] {
+  color: var(--smi-ink);
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+[data-site="public"] [data-part="advertising-page"] [data-part="advert-format-card"] [data-part="card-image"] {
+  border-radius: var(--classic-radius);
+}
+
+/* In-page headings on the plain pages' panels (Bundles, Media pack…). */
+[data-site="public"] :is([data-part="advertising-page"], [data-part="contact-page"]) [data-part="panel"] [data-part="section-title"] {
+  color: var(--smi-ink);
+  font-size: 1.5rem;
+  font-weight: 400;
+}
+
+/* /contact: the editorial and sales addresses as blue links. */
+[data-site="public"] [data-part="contact-page"] [data-part="page-intro"] a {
+  color: var(--classic-blue);
+}
+[data-site="public"] [data-part="contact-page"] [data-part="page-intro"] a:hover {
+  color: var(--classic-blue-hover);
+}
+
+/* /newsletters: each issue a Classic panel; the subject underlines on hover. */
+[data-site="public"] [data-part="newsletters-page"] [data-part="newsletter-issue-card"] {
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="newsletters-page"] [data-part="newsletter-issue-card"] [data-part="card-meta"] {
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="newsletters-page"] [data-part="newsletter-issue-card"] [data-part="card-title"] {
+  color: var(--smi-ink);
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+[data-site="public"] [data-part="newsletters-page"] [data-part="newsletter-issue-card"]:hover [data-part="card-title"] {
+  text-decoration: underline;
+}
+
+/* /join/account: step 1 on its panel. "Step 1 of 4" in meta grey; the title
+   regular weight. The footer's join band stays hidden here (#72). */
+[data-site="public"] [data-part="join-account-page"] [data-part="join-step"] {
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="join-account-page"] [data-part="page-title"] {
+  color: var(--smi-ink);
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+/* ── Forms: contact, the advertising enquiry, join step 1 ── */
+
+/* The form colours. Declared once here; palette.ts carries the same hexes. */
+[data-site="public"] :is([data-part="contact-page"], [data-part="advertising-page"], [data-part="join-account-page"]) {
+  --classic-danger: #b91c1c;
+  /* The live site's fields have no border, only the soft shadow; Classic keeps
+     a light one, since a field's edge has to reach 3:1 on white (WCAG 1.4.11). */
+  --classic-field-edge: #8c8c8c;
+}
+
+/* Labels: the live site's 18px, in ink. */
+[data-site="public"] :is([data-part="contact-page"], [data-part="advertising-page"], [data-part="join-account-page"]) [data-part="form"] [data-part="form-label"] {
+  color: var(--smi-ink);
+  font-size: 1.125rem;
+}
+
+/* Fields: white, 5px corners, about 52px tall, the panel's soft shadow. */
+[data-site="public"] :is([data-part="contact-page"], [data-part="advertising-page"], [data-part="join-account-page"]) [data-part="form"] [data-part="form-input"] {
+  box-sizing: border-box;
+  min-height: 3.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--classic-field-edge);
+  border-radius: var(--classic-radius);
+  background-color: var(--classic-panel);
+  box-shadow: var(--classic-shadow);
+  color: var(--smi-ink);
+}
+[data-site="public"] :is([data-part="contact-page"], [data-part="advertising-page"], [data-part="join-account-page"]) [data-part="form"] [data-part="form-input"][aria-invalid="true"] {
+  border-color: var(--classic-danger);
+}
+
+/* Submit: the base rule already makes it blue with the orange/ink hover;
+   here it matches the fields' height. Disabled keeps Current's half opacity. */
+[data-site="public"] :is([data-part="contact-page"], [data-part="advertising-page"], [data-part="join-account-page"]) [data-part="form"] [data-part="button-primary"] {
+  min-height: 3.25rem;
+}
+
+/* Hints and the contact form's status line: meta grey. The status line can't
+   tell a sent message from a failure (one element, one class), so it stays
+   meta grey for both, as on Current. */
+[data-site="public"] :is([data-part="contact-page"], [data-part="advertising-page"], [data-part="join-account-page"]) [data-part="form"] [data-part="form-notice"] {
+  color: var(--classic-meta);
+}
+
+/* The error message: red text on white behind a red edge. Only once it holds
+   a message: empty, it is an sr-only live region, and this must not give that
+   1px box a border or padding. Never sets its size, position or clipping. */
+[data-site="public"] :is([data-part="contact-page"], [data-part="advertising-page"], [data-part="join-account-page"]) [data-part="form"] [data-part="form-error"]:not(:empty) {
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid var(--classic-danger);
+  border-radius: var(--classic-radius);
+  background-color: var(--classic-panel);
+  color: var(--classic-danger);
+}
+
 /* ── end #80 ── */
 
 /* ── #81 Edge surfaces and shared pieces ─────────────────────────────────── */
