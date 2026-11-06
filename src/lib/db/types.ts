@@ -2566,6 +2566,76 @@ export type Database = {
         }
         Relationships: []
       }
+      social_channel_posts: {
+        Row: {
+          buffer_post_id: string | null
+          channel_id: string
+          confirmed_at: string | null
+          confirmed_by: string | null
+          confirmed_image: string | null
+          confirmed_text: string | null
+          created_at: string
+          id: string
+          posted_at: string | null
+          skip: boolean
+          story_id: string | null
+          updated_at: string
+          video_id: string | null
+        }
+        Insert: {
+          buffer_post_id?: string | null
+          channel_id: string
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          confirmed_image?: string | null
+          confirmed_text?: string | null
+          created_at?: string
+          id?: string
+          posted_at?: string | null
+          skip?: boolean
+          story_id?: string | null
+          updated_at?: string
+          video_id?: string | null
+        }
+        Update: {
+          buffer_post_id?: string | null
+          channel_id?: string
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          confirmed_image?: string | null
+          confirmed_text?: string | null
+          created_at?: string
+          id?: string
+          posted_at?: string | null
+          skip?: boolean
+          story_id?: string | null
+          updated_at?: string
+          video_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_channel_posts_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "social_channel_posts_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_channel_posts_video_id_fkey"
+            columns: ["video_id"]
+            isOneToOne: false
+            referencedRelation: "videos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       source_items: {
         Row: {
           first_seen_at: string
@@ -3128,6 +3198,19 @@ export type Database = {
       site_stats: {
         Args: { p_from: string; p_site_host?: string; p_to: string }
         Returns: Json
+      }
+      social_waiting_items: {
+        Args: {
+          p_channel_ids: string[]
+          p_delay_minutes: number
+          p_now?: string
+        }
+        Returns: {
+          id: string
+          kind: string
+          title: string
+          waiting: number
+        }[]
       }
       staged_uploads_older_than: {
         Args: { p_before: string; p_limit?: number }

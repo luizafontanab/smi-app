@@ -181,10 +181,12 @@
 
 30. **Social posts: should a time you set yourself skip the daily limit? (20 Oct)** Each
     story and video now has its own **Post at** time, a **lead-in** (prefilled from the
-    summary) and a **Don't post** box, as your flow chart asks. The daily limit you set
-    in the Story Engine (3 a day today) still applies to all of them, so a post you
-    timed for 14:30 on a busy day moves to the next morning. **Should a time you set by
-    hand go out regardless?** Also worth knowing: the post is now the lead-in plus the
+    summary) and a **Don't post** box, as your flow chart asks. Since 5 Nov nothing goes
+    out on a channel until an admin has seen that channel's post and confirmed it. The
+    daily limit you set in the Story Engine (3 a day today) counts per channel: up to 3
+    a day on each of LinkedIn, X, Facebook and so on, stories and videos together. So a
+    post you timed for 14:30 on a busy day can move to the next morning on one channel
+    and still go out on the others. **Should a time you set by hand go out regardless?** Also worth knowing: the post is now the lead-in plus the
     link, without the title above it — LinkedIn and Facebook show the title in the link
     preview anyway. Tell us if you want the title back on top.
 

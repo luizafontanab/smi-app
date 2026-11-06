@@ -132,14 +132,14 @@ describe("saveVideo", () => {
 });
 
 describe("scheduleVideo", () => {
-  it("publishing now enqueues social push and, when there's a member, a notification", async () => {
+  it("publishing now notifies the member, and queues no social post nobody confirmed", async () => {
     const videosBuilder = queryBuilder(dbOk({ id: "v1", member_id: "m1", status: "draft" }));
     db({ videos: () => videosBuilder });
 
     await expect(scheduleVideo(form({ id: "v1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/videos$/);
 
     expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published" }));
-    expect(enqueue).toHaveBeenCalledWith("social_push", { video_id: "v1" }, expect.any(Date));
+    expect(enqueue).not.toHaveBeenCalledWith("social_push", expect.anything(), expect.anything());
   });
 
   it("rejects a return_to outside the video board", async () => {
@@ -349,7 +349,7 @@ describe("moveVideo", () => {
 
   // Dragging to Published must be the same code path as clicking Approve:
   // social push, member notification and an approvals row for the audit trail.
-  it("publishing from awaiting_approval notifies, pushes and records the approval", async () => {
+  it("publishing from awaiting_approval notifies and records the approval", async () => {
     const videosBuilder = queryBuilder(dbOk({ id: "v1", status: "awaiting_approval", member_id: "m1" }));
     const approvalsBuilder = queryBuilder(dbOk(null));
     db({ videos: () => videosBuilder, approvals: () => approvalsBuilder });
@@ -358,7 +358,7 @@ describe("moveVideo", () => {
 
     expect(res.ok).toBe(true);
     expect(videosBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "published" }));
-    expect(enqueue).toHaveBeenCalledWith("social_push", { video_id: "v1" }, expect.any(Date));
+    expect(enqueue).not.toHaveBeenCalledWith("social_push", expect.anything(), expect.anything());
     expect(enqueue).toHaveBeenCalledWith("notify_member", expect.objectContaining({ kind: "video_live" }));
     expect(approvalsBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", decision: "approved" }));
   });
@@ -461,12 +461,16 @@ describe("setVideoStatus", () => {
 describe("per-video social posts", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("publishing now queues the post at the configured delay, not a hard-coded 30 minutes", async () => {
+  it("publishing now queues a confirmed post at the configured delay, not a hard-coded 30 minutes", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-07-01T12:00:00Z"));
+    // as the lifecycle reads it, then — once written Live — as the push reads it back
+    const before = queryBuilder(dbOk({ id: "v1", member_id: null, status: "draft", social_at: null, published_at: null }));
+    const after = queryBuilder(dbOk({ status: "published", social_skip: false, social_at: null, published_at: "2026-07-01T12:00:00Z" }));
     db({
-      videos: () => queryBuilder(dbOk({ id: "v1", member_id: null, status: "draft", social_at: null, social_posted_at: null, published_at: null })),
-      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45 } })),
+      videos: () => ((before.update as ReturnType<typeof vi.fn>).mock.calls.length ? after : before),
+      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45, channelIds: ["li"] } })),
+      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, confirmed_at: "2026-07-01T09:00:00Z" }])),
     });
 
     await expect(scheduleVideo(form({ id: "v1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/videos$/);

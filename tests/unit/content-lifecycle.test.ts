@@ -61,9 +61,9 @@ function contentTable(opts: TableOpts) {
         return opts.write ? opts.write(String(id)) : dbOk({ id });
       }
       const cols = String(spy(b, "select").mock.calls[0]?.[0] ?? "");
-      // queueSocialPush's own read: an item not yet posted
-      if (cols.includes("social_posted_at")) {
-        return dbOk({ social_at: null, social_posted_at: null, published_at: new Date().toISOString() });
+      // queueSocialPush's own read, once the item is Live
+      if (cols.includes("social_skip")) {
+        return dbOk({ status: "published", social_at: null, social_skip: false, published_at: new Date().toISOString() });
       }
       if (called(b, "maybeSingle") || called(b, "single")) return dbOk(opts.row ?? null);
       return dbOk(opts.list ?? []);
@@ -82,6 +82,7 @@ function setup(o: { stories?: TableOpts; videos?: TableOpts; events?: TableOpts;
   };
   const approvals: Builder[] = [];
   const jobs: Builder[] = [];
+  const settings: Builder[] = [];
   const keep = (list: Builder[], b: Builder) => (list.push(b), b);
   const db = mockDb({
     from: fromByTable({
@@ -92,7 +93,11 @@ function setup(o: { stories?: TableOpts; videos?: TableOpts; events?: TableOpts;
       members: () => queryBuilder(dbOk({ industry_id: o.memberIndustry ?? null })),
       approvals: () => keep(approvals, queryBuilder(dbOk(null))),
       jobs: () => keep(jobs, queryBuilder(dbOk(null))),
-      settings: () => queryBuilder(dbOk({ value: { delay_minutes: 30 } })),
+      // One channel connected, confirmed before the item went Live (issue #43): going Live queues its post.
+      settings: () => keep(settings, queryBuilder(dbOk({ value: { delay_minutes: 30, channelIds: ["li"] } }))),
+      social_channel_posts: () => queryBuilder(dbOk([
+        { channel_id: "li", skip: false, posted_at: null, confirmed_at: new Date(Date.now() - 3_600_000).toISOString() },
+      ])),
       story_members: () => queryBuilder(dbOk([])),
     }),
   });
@@ -109,14 +114,16 @@ function setup(o: { stories?: TableOpts; videos?: TableOpts; events?: TableOpts;
   const rowReads = (table: keyof typeof tables) =>
     tables[table].builders.filter((b) =>
       !called(b, "update") && called(b, "maybeSingle")
-      && !String(spy(b, "select").mock.calls[0]?.[0] ?? "").includes("social_posted_at")).length;
+      && !String(spy(b, "select").mock.calls[0]?.[0] ?? "").includes("social_skip")).length;
+  /** Reads of one settings row, by key. */
+  const settingsReads = (key: string) => settings.filter((b) => spy(b, "eq").mock.calls.some(([, v]) => v === key)).length;
   const approvalRows = () => approvals.flatMap((b) => spy(b, "insert").mock.calls.map(([r]) => r));
   const jobDeletes = () => jobs.filter((b) => called(b, "delete")).map((b) => spy(b, "filter").mock.calls);
   const kinds = () => enqueue.mock.calls.map(([k]) => k);
   const notices = () => enqueue.mock.calls.filter(([k]) => k === "notify_member").map(([, p]) => p);
   const tablesRead = () => db.from.mock.calls.map(([t]) => t);
 
-  return { deps, db, enqueue, writes, rowReads, approvalRows, jobDeletes, kinds, notices, tablesRead };
+  return { deps, db, enqueue, writes, rowReads, approvalRows, jobDeletes, kinds, notices, tablesRead, settingsReads };
 }
 
 type Harness = ReturnType<typeof setup>;
@@ -896,10 +903,10 @@ describe("publishDue", () => {
     expect(h.tablesRead()).not.toContain("approvals");
   });
 
-  it("reads the social settings once for the whole run", async () => {
+  it("reads the social caps once for the whole run", async () => {
     const h = due();
     await publishDue(h.deps, now);
-    expect(h.tablesRead().filter((t) => t === "settings")).toHaveLength(1);
+    expect(h.settingsReads("social_caps")).toBe(1);
   });
 
   it("does nothing when nothing is due", async () => {

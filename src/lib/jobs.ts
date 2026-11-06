@@ -2,12 +2,14 @@ import { serviceDb } from "./db/server";
 import type { Json } from "./db/types";
 import { notifyConsole } from "./notify-admin";
 import { siteUrl } from "./site-url";
-import { londonAt, londonDayStart } from "./london-time";
-import { excerptFromHtml } from "./sanitize";
-import { composeSocialText, fillStoryPostLinks, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
-import type { SentPost, SocialPost } from "./adapters/social";
-import { taggedMembers } from "./story-members";
-import { isMemberLinkable } from "./member-visibility";
+import { londonAt } from "./london-time";
+import { fillStoryPostLinks, queueSocialPush, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
+import type { SentPost } from "./adapters/social";
+import { planSocialPush, waitingSummary } from "./social-confirm";
+import {
+  claimChannelPost, clearConfirmations, connectedChannelIds, loadSocialItem, postedTodayByChannel, readChannelRecords,
+  recordBufferPostId, releaseChannelPost, socialWaiting, type SocialTarget,
+} from "./social-post";
 import { graceUntilFrom } from "./grace-period";
 import { publishDue } from "./content-lifecycle";
 import { logError } from "./log";
@@ -256,93 +258,6 @@ async function nextOverflowSlot(db: ReturnType<typeof serviceDb>, delayMinutes: 
   return new Date(slot.getTime() + (count ?? 0) * delayMinutes * 60_000);
 }
 
-/**
- * Posts that actually went out since London midnight, stories and videos
- * together. Counted from `social_posted_at`, not from `done` jobs: a push that
- * was skipped, withdrawn or deferred over the cap also ends `done`, and used
- * to eat the day's allowance.
- */
-async function postedToday(db: ReturnType<typeof serviceDb>): Promise<number> {
-  const since = londonDayStart(new Date()).toISOString();
-  const [stories, videos] = await Promise.all([
-    db.from("stories").select("id", { count: "exact", head: true }).gte("social_posted_at", since),
-    db.from("videos").select("id", { count: "exact", head: true }).gte("social_posted_at", since),
-  ]);
-  return (stories.count ?? 0) + (videos.count ?? 0);
-}
-
-type SocialItem = {
-  table: "stories" | "videos";
-  id: string;
-  status: string;
-  social_at: string | null;
-  social_skip: boolean;
-  social_posted_at: string | null;
-  lead: string;
-  path: string;
-  imagePath: string | null;
-  tags: () => Promise<Pick<SocialPost, "tagHandles" | "extraTagHandles">>;
-};
-
-/** A story or video in the one shape social_push needs, so the two can't drift apart. */
-async function loadSocialItem(db: ReturnType<typeof serviceDb>, payload: Record<string, unknown>): Promise<SocialItem | null> {
-  if (payload.video_id) {
-    const { data: video } = await db
-      .from("videos")
-      .select("id, title, slug, description, thumbnail_path, status, social_at, social_text, social_skip, social_posted_at, member:members(name, social, status, archived_at)")
-      .eq("id", String(payload.video_id))
-      .single();
-    if (!video) return null;
-    return {
-      table: "videos",
-      id: video.id,
-      status: video.status,
-      social_at: video.social_at,
-      social_skip: video.social_skip,
-      social_posted_at: video.social_posted_at,
-      lead: video.social_text || excerptFromHtml(video.description) || video.title,
-      path: `/video/${video.slug}`,
-      imagePath: video.thumbnail_path,
-      // Same rule as a story's tags below: no tag for a member without a public page.
-      tags: async () => ({ tagHandles: (isMemberLinkable(video.member) ? video.member.social ?? {} : {}) as Record<string, string> }),
-    };
-  }
-  const { data: story } = await db
-    .from("stories")
-    // FK named: story_members makes a bare `members` embed ambiguous here.
-    .select("id, title, slug, cover_path, member_id, status, social_at, social_text, social_skip, social_posted_at, summary:story_summary, member:members!stories_member_id_fkey(name, social, status, archived_at)")
-    .eq("id", String(payload.story_id))
-    .single();
-  if (!story) return null;
-  return {
-    table: "stories",
-    id: story.id,
-    status: story.status,
-    social_at: story.social_at,
-    social_skip: story.social_skip,
-    social_posted_at: story.social_posted_at,
-    // The editor's lead-in, else the summary (the excerpt, or the opening of the body), else the title.
-    lead: story.social_text || story.summary || story.title,
-    path: `/news/${story.slug}`,
-    imagePath: story.cover_path,
-    // Every other member the story features is tagged too (Jas 13/10 item
-    // 12). Same rule for the primary and the extras: only a member with a
-    // public page (isMemberLinkable — not archived, active or grace) is
-    // tagged. ask-jas 14 (archived members in social posts) is still open;
-    // until Jas answers, the safe default is not to put a company that has
-    // left — or been archived — into a public post. Applies alike to both.
-    tags: async () => {
-      const extras = (await taggedMembers(db, story.id, story.member_id))
-        .filter((m) => m.id !== story.member_id && isMemberLinkable(m));
-      return {
-        // @-tag from the CRM-stored handle — never hand-typed
-        tagHandles: (isMemberLinkable(story.member) ? story.member.social ?? {} : {}) as Record<string, string>,
-        extraTagHandles: extras.map((m) => (m.social ?? {}) as Record<string, string>),
-      };
-    },
-  };
-}
-
 async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: string) {
   const db = serviceDb();
   switch (kind) {
@@ -358,63 +273,86 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       break;
     }
     case "social_push": {
-      const item = await loadSocialItem(db, payload);
-      if (!item) return;
-      // Re-checked when it runs, not when it was queued: taken down, "don't
-      // post" ticked, or already out — no post. A story withdrawn inside the
-      // delay used to be posted anyway.
-      if (item.status !== "published" || item.social_skip || item.social_posted_at) return;
-      // Its post time was moved later after this was queued — wait for it.
-      if (item.social_at && new Date(item.social_at).getTime() > Date.now() + 60_000) {
-        await enqueue("social_push", payload, new Date(item.social_at));
-        return;
-      }
-      // daily cap check (2–3 posts/day — never bombard)
+      // Issue #43: each channel posts on its own, only once an admin has
+      // confirmed exactly what it receives. Everything is re-checked here, when
+      // the job runs, not when it was queued.
+      const target: SocialTarget = payload.video_id ? { video_id: String(payload.video_id) } : { story_id: String(payload.story_id) };
+      const item = await loadSocialItem(db, target);
+      // taken down, or "Don't post" for the whole item: no post
+      if (!item || item.status !== "published" || item.social_skip) return;
+      const channelIds = await connectedChannelIds(db);
+      const records = await readChannelRecords(db, target);
+      // Nobody confirmed anything still to post: nothing to do, and no need to ask Buffer anything.
+      if (!channelIds.some((c) => { const r = records.get(c); return r?.confirmed_at && !r.skip && !r.posted_at; })) return;
+
+      const { channelPosts, getSocialPublisher, isSocialLive } = await import("./adapters/social");
+      const publisher = getSocialPublisher();
+      const networks = await publisher.channelNetworks();
+      // A passing lookup failure must not change every channel's text (the
+      // fallback is one X-fitted text) and so cancel its confirmation. Retry.
+      if (networks.kind === "failed") throw new Error("[social] couldn't look up which network each Buffer channel is; retrying rather than posting");
+
       const caps = await readSocialCaps(db);
-      if ((await postedToday(db)) >= caps.per_day) {
-        // push past the cap — spaced across tomorrow, not stacked on one slot
-        await enqueue("social_push", payload, await nextOverflowSlot(db, caps.delay_minutes));
-        return;
+      const plan = planSocialPush({
+        now: new Date(),
+        item: { socialAt: item.social_at, publishedAt: item.published_at, skip: item.social_skip },
+        delayMinutes: caps.delay_minutes,
+        perDay: caps.per_day,
+        channels: channelPosts(item.post, channelIds, networks).map(({ post }) => ({
+          post,
+          record: records.get(post.channelId) ?? null,
+        })),
+        postedToday: await postedTodayByChannel(db, channelIds),
+      });
+      // Changed since confirmed: those wait for confirmation again (and show in Needs You Today).
+      if (plan.unconfirm.length) await clearConfirmations(db, target, plan.unconfirm);
+
+      // Every due channel is attempted: one bad channel must not stop the
+      // others. Each is claimed (posted_at stamped, atomically) just before
+      // it goes to Buffer, and the claim handed back if Buffer refuses it:
+      // Buffer has no idempotency key, so the claim is what stops a second run
+      // — or a retry — posting it twice. Only for a real post: the logging
+      // stub must not make the editor say "posted".
+      const live = isSocialLive();
+      const sent: SentPost[] = [];
+      const failed: { channelId: string; error: string }[] = [];
+      for (const post of plan.send) {
+        if (live && !(await claimChannelPost(db, target, post))) continue;
+        try {
+          const accepted = await publisher.publishChannel(post);
+          if (live && accepted?.id) await recordBufferPostId(db, target, post.channelId, accepted.id);
+          if (accepted) sent.push(accepted);
+        } catch (e) {
+          if (live) await releaseChannelPost(db, target, post.channelId);
+          failed.push({ channelId: post.channelId, error: e instanceof Error ? e.message : String(e) });
+        }
       }
-      const { getSocialPublisher, isSocialLive, SocialPublishError } = await import("./adapters/social");
-      // The story page links to SMI's own posts (Jas 13/10 item 8). Their URLs
-      // used to be pasted in by hand; now they're filled from Buffer, straight
-      // away if it already has them, otherwise once it has sent the post.
-      // Videos have no post-link fields.
-      const collectLinks = async (sent: SentPost[]) => {
-        if (item.table !== "stories" || !sent.length) return;
-        const waiting = await fillStoryPostLinks(db, item.id, sent);
+
+      // The story page links to SMI's own posts (Jas 13/10 item 8), filled
+      // from Buffer: straight away if it has them, otherwise once it has sent
+      // the post. Videos have no post-link fields.
+      if ("story_id" in target && sent.length) {
+        const waiting = await fillStoryPostLinks(db, target.story_id, sent);
         if (waiting.length) {
-          await enqueue("social_links", { story_id: item.id, post_ids: waiting.map((p) => p.id), tries: 0 },
+          await enqueue("social_links", { story_id: target.story_id, post_ids: waiting.map((p) => p.id), tries: 0 },
             new Date(Date.now() + SOCIAL_LINK_BACKOFF[0] * 60_000));
         }
-      };
-      // GAPS B4.5: channels an earlier attempt of this job already reached.
-      const done = Array.isArray(payload.done_channel_ids)
-        ? payload.done_channel_ids.filter((x): x is string => typeof x === "string")
-        : [];
-      let sent: SentPost[];
-      try {
-        sent = (await getSocialPublisher().publish({
-          text: composeSocialText(item.lead, `${siteUrl()}${item.path}`),
-          imagePath: item.imagePath,
-          ...(await item.tags()),
-        }, { skipChannelIds: done })) ?? [];
-      } catch (e) {
-        // Some channels took it: record them on this job's own payload (a retry
-        // re-reads the row), so the retry posts only to the ones still owed —
-        // Buffer has no idempotency key. Their links are collected now, too.
-        if (e instanceof SocialPublishError && e.doneChannelIds.length) {
-          await db.from("jobs").update({ payload: { ...payload, done_channel_ids: [...done, ...e.doneChannelIds] } as Json }).eq("id", jobId);
-          await collectLinks(e.sent);
-        }
-        throw e;
       }
-      // Stamped only for a real post: the logging stub must not make the editor say "Posted".
-      if (isSocialLive()) {
-        await db.from(item.table).update({ social_posted_at: new Date().toISOString() }).eq("id", item.id);
+
+      // Run again for the next channel, re-read from the database so a save or
+      // Confirm made while this ran is included and leaves one job, not two:
+      // a channel whose time is still to come, or one over its daily limit —
+      // spaced across tomorrow, not stacked on one slot. Queued before a
+      // failure is thrown, so channels that didn't fail aren't left without a
+      // job when this one's retries run out; the failed ones are this job's
+      // own retry.
+      const overflow = plan.overCap.length ? await nextOverflowSlot(db, caps.delay_minutes) : null;
+      // With the stub nothing is stamped, so what it just "sent" is held too, or it would run again at once.
+      const hold = [...plan.overCap, ...failed.map((f) => f.channelId), ...(live ? [] : plan.send.map((p) => p.channelId))];
+      await queueSocialPush(db, target, enqueue, caps, { hold, also: overflow });
+      if (failed.length) {
+        throw new Error(`[social] Buffer publish failed for ${failed.length} of ${plan.send.length} channel(s) — ${failed.map((f) => f.error).join("; ")}`);
       }
-      await collectLinks(sent);
       break;
     }
     case "social_links": {
@@ -509,11 +447,19 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         ["Member pages submitted for review", drafts.count],
       ].filter(([, count]) => Number(count) > 0) as [string, number][];
 
+      // Issue #43: each Live item whose post time has passed with a channel
+      // still unconfirmed, once, linking to its editor.
+      const social = await socialWaiting(db, { delayMinutes: (await readSocialCaps(db)).delay_minutes });
+
       // Silence is the correct output on a quiet day — a "nothing to do" email
       // every morning is how a digest gets filtered into a folder unread.
-      if (!lines.length) return;
+      if (!lines.length && !social.length) return;
 
-      const total = lines.reduce((sum, [, count]) => sum + count, 0);
+      const total = lines.reduce((sum, [, count]) => sum + count, 0) + social.length;
+      const socialLines = social.length
+        ? ["", "  Social posts waiting for confirmation:",
+          ...social.map((w) => `  “${w.title}”: ${waitingSummary(w.waiting, w.total)} — ${siteUrl()}${w.href}`)]
+        : [];
       const [{ getEmailSender }, { renderAdminEmail }, { loadEmailTemplates }] = await Promise.all([
         import("./adapters/email"),
         import("./email/templates"),
@@ -527,7 +473,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         {
           total: String(total),
           total_s: total === 1 ? "" : "s",
-          lines: lines.map(([label, count]) => `  ${count} — ${label}`).join("\n"),
+          lines: [...lines.map(([label, count]) => `  ${count} — ${label}`), ...socialLines].join("\n").replace(/^\n/, ""),
           console_url: `${siteUrl()}/console`,
         },
         await loadEmailTemplates(),

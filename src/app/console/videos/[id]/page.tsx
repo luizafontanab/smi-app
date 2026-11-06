@@ -5,16 +5,18 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
-import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus } from "../../actions";
+import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus, confirmVideoSocial } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { UploadField } from "@/components/UploadField";
-import { SocialPostFields } from "@/components/console/SocialPostFields";
-import { latestSocialJob, readSocialCaps, socialStatusLine } from "@/lib/social-push";
-import { isSocialLive } from "@/lib/adapters/social";
+import { SocialConfirmForm, SocialPostFields } from "@/components/console/SocialPostFields";
+import { latestSocialJob, readSocialCaps } from "@/lib/social-push";
+import { cachedChannelNetworks, isSocialLive } from "@/lib/adapters/social";
+import { loadSocialPanel, videoSocialItem } from "@/lib/social-post";
+import { socialNotes } from "@/lib/social-confirm";
 import { formatLondon, londonInputValue } from "@/lib/london-time";
 import { excerptFromHtml } from "@/lib/sanitize";
 
@@ -38,7 +40,7 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
   const [video, members, inds, socialCaps, socialJob] = await Promise.all([
     isNew
       ? Promise.resolve(null)
-      : must(db.from("videos").select("*, member:members(name, logo_path, slug, industry_id)").eq("id", id).maybeSingle(), "console/videos editor"),
+      : must(db.from("videos").select("*, member:members(name, logo_path, slug, industry_id, social, status, archived_at)").eq("id", id).maybeSingle(), "console/videos editor"),
     must(db.from("members").select("id, name").eq("status", "active").order("name"), "console/videos members"),
     must(db.from("industries").select("id, name").order("sort_order"), "console/videos industries"),
     readSocialCaps(db),
@@ -56,9 +58,15 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
   // Approve / Schedule send the Industry box as it stands, so what Jas sees is what goes Live.
   const industryField = <MirrorInput source="industry_id" name="industry_id" defaultValue={String(industryDefault)} />;
   const isPinned = !!video?.pinned_until && new Date(video.pinned_until) > new Date();
-  const socialStatus = video
-    ? socialStatusLine({ ...video, job: socialJob, caps: socialCaps, live: isSocialLive() })
-    : undefined;
+  // Issue #43: each channel's preview, confirmation and status, built from the row already read above.
+  const socialPanel = video
+    ? await loadSocialPanel(db, { video_id: id }, {
+      networks: () => cachedChannelNetworks(),
+      delayMinutes: socialCaps.delay_minutes,
+      item: videoSocialItem(video),
+    })
+    : null;
+  const socialNoteLines = video ? socialNotes({ live: isSocialLive(), job: socialJob }) : [];
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -116,10 +124,14 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
           fallback={excerptFromHtml(video?.description) ?? video?.title ?? ""}
           fallbackName="description"
           caps={socialCaps}
-          status={socialStatus}
+          panel={socialPanel}
+          notes={socialNoteLines}
+          confirmable={!!video}
+          confirmed={typeof sp.confirmed === "string" ? sp.confirmed : undefined}
         />
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
+      {video && <SocialConfirmForm action={confirmVideoSocial} id={id} />}
 
       {!isNew && video && (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">

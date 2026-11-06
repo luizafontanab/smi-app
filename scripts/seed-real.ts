@@ -1119,7 +1119,10 @@ async function main() {
     const insert = rows.map((row) => {
       const r: Record<string, unknown> = { ...row };
       for (const key of ["wp_member_id", "category_slugs", "member_wp_ids"]) delete r[key];
-      return { ...r, member_id: memberId(row.wp_member_id) };
+      // Historical WordPress stories never get a social post on their own
+      // (issue #43): marked "Don't post", as migration 20261105000002 marks
+      // every item already Live, so they never wait in Needs You Today.
+      return { ...r, member_id: memberId(row.wp_member_id), social_skip: true };
     });
     const { data, error } = await db.from("stories").insert(insert).select("id, slug");
     if (error) throw error;
@@ -1180,6 +1183,7 @@ async function main() {
       ...r,
       slug: videoSlug(r.title as string),
       member_id: memberId(wp_member_id as number | null),
+      social_skip: true, // as the stories above
     }));
     const { error } = await db.from("videos").insert(insert);
     if (error) throw error;

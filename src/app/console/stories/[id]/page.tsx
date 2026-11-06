@@ -5,7 +5,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { renderableHtml } from "@/lib/sanitize";
-import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, setStoryStatus } from "../../actions";
+import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, setStoryStatus, confirmStorySocial } from "../../actions";
 import { CoverField } from "@/components/CoverField";
 import { parseFocus } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -21,11 +21,13 @@ import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Badge } from "@/components/console/ui";
 import { STORY_STATUS_LABELS, isMemberDraft, parseStoryListFilters, storyListHref } from "@/lib/story-board";
-import { SocialPostFields } from "@/components/console/SocialPostFields";
+import { SocialConfirmForm, SocialPostFields } from "@/components/console/SocialPostFields";
 import { CountedInput } from "@/components/console/CountedInput";
 import { STORY_SUMMARY_WORDS } from "@/lib/newsletter-layout";
-import { latestSocialJob, readSocialCaps, socialStatusLine } from "@/lib/social-push";
-import { isSocialLive } from "@/lib/adapters/social";
+import { latestSocialJob, readSocialCaps } from "@/lib/social-push";
+import { cachedChannelNetworks, isSocialLive } from "@/lib/adapters/social";
+import { loadSocialPanel, storySocialItem } from "@/lib/social-post";
+import { socialNotes, socialSummary } from "@/lib/social-confirm";
 import { formatLondon, londonInputValue } from "@/lib/london-time";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +52,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const [story, cats, allMembers, inds, socialCaps, socialJob] = await Promise.all([
     isNew
       ? Promise.resolve(null)
-      : must(db.from("stories").select("*, summary:story_summary, member:members!stories_member_id_fkey(name, logo_path, slug, status, archived_at, industry_id), categories:story_categories(category:categories(slug, name))").eq("id", id).maybeSingle(), "console/stories editor"),
+      : must(db.from("stories").select("*, summary:story_summary, member:members!stories_member_id_fkey(name, logo_path, slug, status, archived_at, industry_id, social), categories:story_categories(category:categories(slug, name))").eq("id", id).maybeSingle(), "console/stories editor"),
     must(db.from("categories").select("id, name").order("name"), "console/stories categories"),
     // Every member, filtered below: the pickers offer the ones with a public
     // page, plus anyone this story already names whatever their state — a
@@ -99,9 +101,16 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
   const storedPosts = (story?.social_posts && typeof story.social_posts === "object" && !Array.isArray(story.social_posts)
     ? story.social_posts
     : {}) as Partial<Record<string, string>>;
-  const socialStatus = story
-    ? socialStatusLine({ ...story, job: socialJob, caps: socialCaps, live: isSocialLive() })
-    : undefined;
+  // Issue #43: each channel's preview, confirmation and status, built from the rows already read above.
+  const socialPanel = story
+    ? await loadSocialPanel(db, { story_id: id }, {
+      networks: () => cachedChannelNetworks(),
+      delayMinutes: socialCaps.delay_minutes,
+      item: storySocialItem(story, tagged),
+    })
+    : null;
+  const socialStatus = socialPanel ? socialSummary(socialPanel.channels.map((c) => c.state)) : undefined;
+  const socialNoteLines = story ? socialNotes({ live: isSocialLive(), job: socialJob }) : [];
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -212,7 +221,16 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           </div>
         </fieldset>
         <CoverField cover={cover} focus={focus} hint="Landscape works best: at least 1200×675px (16:9), JPG/PNG/WebP, max 8MB. Leaving this empty keeps the current image. The crop fixes lost heads — it applies on the story page, the news cards and the homepage." />
-        <SocialPostFields item={story} fallback={story?.summary ?? story?.title ?? ""} fallbackName="summary" caps={socialCaps} status={socialStatus} />
+        <SocialPostFields
+          item={story}
+          fallback={story?.summary ?? story?.title ?? ""}
+          fallbackName="summary"
+          caps={socialCaps}
+          panel={socialPanel}
+          notes={socialNoteLines}
+          confirmable={!!story}
+          confirmed={typeof sp.confirmed === "string" ? sp.confirmed : undefined}
+        />
         {/* Jas 13/10 item 8: the story page links readers to SMI's own post of
             the story rather than offering share buttons. Filled from Buffer once
             it has sent the post (social_links job); still editable, for a post
@@ -246,6 +264,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
         </fieldset>
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
+      {story && <SocialConfirmForm action={confirmStorySocial} id={id} />}
 
       {!isNew && story && (
         <>
@@ -264,7 +283,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           </div>
           <p className="mt-1 text-sm text-graphite">{statusNext(story)}</p>
           <p className="mt-0.5 text-sm text-graphite">
-            {socialStatus} <a href="#social" className="underline">Change the social post</a>
+            {socialStatus} <a href="#social" className="underline">See and confirm the social post</a>
           </p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           {/* Ready to review (Jas's flow chart, 16 Oct): approve, then schedule.

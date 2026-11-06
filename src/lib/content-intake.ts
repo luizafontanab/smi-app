@@ -24,7 +24,9 @@ import { MEMBER_CHANGED_ERROR, memberCanEdit } from "@/lib/member-content";
 import { resolveCoordinates, type Geocoder } from "@/lib/member-geocode";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { keepUntouchedPosts, parseStoryPosts } from "@/lib/social";
-import { rescheduleSocialPush, socialFieldsFromForm } from "@/lib/social-push";
+import { channelSkipsFromForm, queueSocialPush, socialFieldsFromForm } from "@/lib/social-push";
+import type { JobKind } from "@/lib/jobs";
+import { saveChannelSkips } from "@/lib/social-post";
 import { isMemberDraft } from "@/lib/story-board";
 import { replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
 import { YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
@@ -64,6 +66,8 @@ export type IntakeDeps = {
   notify: (n: SubmittedNotice) => Promise<void>;
   /** Record a failure the caller isn't told about because the save itself landed. Must not throw. */
   log: (area: string, error: unknown, context?: Record<string, unknown>) => void;
+  /** The job queue (lib/jobs enqueue): a save can move or queue the item's social post. */
+  enqueue: (kind: JobKind, payload?: Record<string, unknown>, dueAt?: Date) => Promise<void>;
 };
 
 export type IntakeMember = { userId: string; memberId: string };
@@ -485,8 +489,15 @@ export async function save(d: IntakeDeps, kind: IntakeKind, id: string | null, f
     savedId = id;
     const previousImage = (previous?.[p.image.column] as string | null | undefined) ?? null;
     if (image && previousImage && previousImage !== image) await d.upload.removeIfUnused([previousImage]);
-    // A push already waiting moves to the edited time; none is ever created here.
-    if (kind !== "event") await rescheduleSocialPush(d.db, kind === "story" ? { story_id: id } : { video_id: id });
+    // Issue #43: the per-channel "Don't post" boxes, then the pending push
+    // brought in line — moved, dropped, or queued for a channel an admin has
+    // already confirmed. An item nobody confirmed is never queued here.
+    if (kind !== "event") {
+      const target = kind === "story" ? { story_id: id } : { video_id: id };
+      const skips = channelSkipsFromForm(form);
+      if (skips) await saveChannelSkips(d.db, target, skips);
+      await queueSocialPush(d.db, target, d.enqueue);
+    }
   } else {
     const { data, error } = await tableOf(d, kind).insert({
       ...values,

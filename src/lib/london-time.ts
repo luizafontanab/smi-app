@@ -95,6 +95,18 @@ export function formatLondon(iso: string | Date): string {
   });
 }
 
+/**
+ * A compact UK time for a status line: "5 Nov 15:00". Given `now`, a time on
+ * the same London day is just "15:00" — for something still to come. No
+ * weekday or year: these lines sit next to dates days, not years, apart.
+ */
+export function formatLondonShort(iso: string | Date, now?: Date): string {
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString("en-GB", { timeZone: ZONE, hour: "2-digit", minute: "2-digit" });
+  const day = (d: Date) => d.toLocaleDateString("en-GB", { timeZone: ZONE, day: "numeric", month: "short" });
+  return now && day(at) === day(now) && at.getFullYear() === now.getFullYear() ? time : `${day(at)} ${time}`;
+}
+
 /** Midnight London time at the start of the London day containing `at`. */
 export function londonDayStart(at: Date): Date {
   const w = wall(at);

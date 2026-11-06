@@ -109,10 +109,10 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
 
       <section className="mt-6 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="text-sm font-bold text-ink">Social push settings</h2>
-        <p className="mt-1 text-xs text-graphite">How many auto-posts go out a day (UK day, stories and videos together), and how long after going live a story or video posts when its editor leaves &quot;Post at&quot; empty.</p>
+        <p className="mt-1 text-xs text-graphite">How many posts each social channel gets a day (UK day, stories and videos together), and how long after going live a confirmed story or video posts when its editor leaves &quot;Post at&quot; empty. Nothing posts on a channel until an admin confirms it in the editor.</p>
         <form action={saveSocialCaps} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
           <label className="flex flex-col">
-            Per day
+            Per day, per channel
             <input type="number" name="per_day" min={1} defaultValue={caps.per_day} className="mt-1 w-20 rounded border px-2 py-1" />
           </label>
           <label className="flex flex-col">
@@ -124,7 +124,7 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
 
         <h2 className="mt-5 text-sm font-bold text-ink">Buffer channels</h2>
         <p className="mt-1 text-xs text-graphite">
-          Which connected Buffer channels auto-posts go to — Buffer sends one post per channel, with no &quot;post everywhere&quot; default, so this must be set before any post can send.
+          Which connected Buffer channels social posts go to — Buffer sends one post per channel, with no &quot;post everywhere&quot; default, so this must be set before any post can send.
         </p>
         {channels.legacyProfileIds.length > 0 && (
           <p className="mt-2 rounded bg-danger/10 p-2 text-xs text-danger">

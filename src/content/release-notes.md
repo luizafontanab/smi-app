@@ -10,6 +10,15 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-05 — Social posts wait for you to confirm each channel
+- A story or video no longer posts to social media by itself. Under "Social post" in the editor you now see exactly what each connected channel will receive (the lead-in, the link, that network's member tags and the picture), and nothing goes out on a channel until you press its Confirm button, or Confirm all.
+- Confirm works on the saved version, so it is greyed out with "Save first" while you have unsaved changes. You can confirm in any status; a confirmed channel still posts only once the story is live and its post time has come.
+- Confirm only ever confirms what you were looking at. If the post changed after you opened the editor, for example because someone else saved it or a member changed their handle, nothing is confirmed and the editor asks you to check the preview and confirm again.
+- Each channel posts on its own: LinkedIn can go out while X is still waiting. If anything a channel would receive changes after you confirmed it, for example the lead-in, the picture, or a member's X handle, that channel holds back and asks to be confirmed again.
+- Each channel has its own "Don't post" box, and the existing one now means "don't post this anywhere". Everything that was already live has been marked "Don't post", so old stories are never shared unless you untick it and confirm.
+- A live story with a channel still waiting after its post time shows in Needs You Today and in the morning email, e.g. "1 of 3 channels needs confirming", with a link to the editor. The editor shows a line per channel saying who confirmed it and when, when it posts, or when it was posted.
+- The daily limit in the Story Engine now counts per channel: "3 a day" means up to 3 on each channel.
+
 ## 2026-11-05 — Check story sources now
 - Command Centre and Story sources have a "Check sources now" button. It looks for new articles straight away instead of waiting for the daily check, and new ones appear as suggestions on Story sources as usual.
 - One click checks up to about a minute's worth of the sources that are due, then says how many it checked, how many new suggestions it found, how many couldn't be read and how many are still due. Click again to carry on with the rest.

@@ -61,7 +61,8 @@ function setup(o: Partial<Record<Table, TableOpts>> & { rpc?: () => Promise<DbRe
   const geocode = vi.fn<IntakeDeps["geocode"]>(async () => null);
   const notify = vi.fn<IntakeDeps["notify"]>(async () => {});
   const log = vi.fn<IntakeDeps["log"]>();
-  const deps: IntakeDeps = { db: asDb(db), upload: { store, remove, removeIfUnused }, geocode, notify, log };
+  const enqueue = vi.fn<IntakeDeps["enqueue"]>(async () => {});
+  const deps: IntakeDeps = { db: asDb(db), upload: { store, remove, removeIfUnused }, geocode, notify, log, enqueue };
 
   const ops = (t: Table, method: "insert" | "update") =>
     tables[t].builders.filter((b) => called(b, method)).map((b) => ({

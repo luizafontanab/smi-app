@@ -94,6 +94,26 @@ _Avoid_: unpublish, return to draft
 The lasting note of who approved or declined a content item, when, and why.
 _Avoid_: audit log (that is a separate record of member account changes)
 
+## Social
+
+**Social channel**:
+One of SMI's own accounts on a social network (LinkedIn, Facebook, X and so on) that social posts go out on.
+_Avoid_: profile, page, account
+
+**Social post**:
+SMI's own post about a Live story or video on its social channels: the lead-in, the link, and tags for the members it features. Only stories and videos get one; events never do.
+_Avoid_: share, push, tweet; never "post" alone, which is easily confused with a content item
+
+**Lead-in**:
+The short text a social post opens with, before the link. It follows the story's summary or the video's description unless an admin writes one.
+
+**Confirm a social post**:
+An admin's sign-off, for one social channel, after seeing exactly what that channel will receive. Each channel is confirmed separately, and nothing goes out on a channel without one. Any change to what that channel would receive cancels its confirmation, which then has to be given again. It never makes a post go out before the item is Live.
+_Avoid_: approve (that is the decision about the content item itself)
+
+**Don't post**:
+An admin's decision that a story or video gets no social post, either on one social channel or on all of them. It is a decision, not a missing confirmation, so a channel marked this way is never listed as waiting.
+
 ## Site design
 
 **Design variant**:

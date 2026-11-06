@@ -9,6 +9,9 @@ import { londonAt, londonDayStart } from "@/lib/london-time";
 import { inboxKindLabel } from "@/lib/console-notification-links";
 import { OverviewCalendar, type OverviewItem } from "./OverviewCalendar";
 import { markInboxRead } from "./actions";
+import { readSocialCaps } from "@/lib/social-push";
+import { socialWaiting } from "@/lib/social-post";
+import { waitingSummary } from "@/lib/social-confirm";
 import { SourceCheckPanel } from "@/components/console/SourceCheckPanel";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { readSourceCheckRun } from "@/lib/sources/run";
@@ -222,6 +225,12 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   ];
 
   const needs: { label: string; href: string; urgent?: boolean }[] = [];
+  // Issue #43: a Live item whose post time has passed with a channel still
+  // unconfirmed waits indefinitely — listed once, linking to its editor.
+  const socialWaits = await socialWaiting(db, { delayMinutes: (await readSocialCaps(db)).delay_minutes, now: new Date(now) });
+  for (const w of socialWaits) {
+    needs.push({ label: `Social post for “${w.title}”: ${waitingSummary(w.waiting, w.total)}`, href: w.href });
+  }
   if (pendingStories?.length) needs.push({ label: `${pendingStories.length} member stories awaiting your approval`, href: "/console/stories" });
   if (pendingVideos?.length) needs.push({ label: `${pendingVideos.length} member videos awaiting your approval`, href: "/console/videos" });
   if (pendingEvents?.length) needs.push({ label: `${pendingEvents.length} member events awaiting approval`, href: "/console/events" });
