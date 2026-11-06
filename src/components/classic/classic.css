@@ -306,6 +306,121 @@
 
 /* ── #79 List pages ──────────────────────────────────────────────────────── */
 
+/* /news, /video, /member, /event and /search: the disc-and-title head on the
+   canvas, everything below it on one white panel, cards 4 across at desktop.
+   Restyle only: every filter, the map, the calendar and pagination keep their
+   markup and behaviour. Shared parts are only reached from inside a page root.
+   tests/unit/classic/list-pages.test.ts pins what this reaches and avoids. */
+
+/* The page root. A gutter at every width (mx-auto stays: only max-width and
+   padding change). The panel is drawn by ::before, starting below the head,
+   so the chevron stripes still show behind the title as on the live site. */
+[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) {
+  --classic-list-head: 6.5rem;
+  position: relative;
+  isolation: isolate;
+  max-width: min(72rem, calc(100% - 1.5rem));
+  margin-bottom: 2rem;
+  padding: 0 1rem 1rem;
+}
+[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"])::before {
+  content: "";
+  position: absolute;
+  inset: var(--classic-list-head) 0 0;
+  z-index: -1;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+
+/* Disc-and-title head: an orange disc carrying a decorative glyph, then the
+   title in large regular-weight ink. Its height matches where the panel
+   starts; a title that wraps just runs onto the panel, still ink on white. */
+[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) > [data-part="page-title"] {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--classic-list-head);
+  margin: 0 0 1.5rem;
+  padding-block: 1.5rem;
+  color: var(--smi-ink);
+  font-size: clamp(1.75rem, 1.3rem + 1.5vw, 2.75rem);
+  font-weight: 400;
+  line-height: 1.1;
+}
+[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) > [data-part="page-title"]::before {
+  content: "";
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+/* The glyph per page. The alt text after the slash is empty, so it is never
+   read out; a browser without that syntax drops the line and shows a plain disc. */
+[data-site="public"] [data-part="news-page"] > [data-part="page-title"]::before { content: "📣" / ""; }
+[data-site="public"] [data-part="video-list-page"] > [data-part="page-title"]::before { content: "🎥" / ""; }
+[data-site="public"] [data-part="member-directory"] > [data-part="page-title"]::before { content: "👥" / ""; }
+[data-site="public"] [data-part="event-list-page"] > [data-part="page-title"]::before { content: "📅" / ""; }
+[data-site="public"] [data-part="search-page"] > [data-part="page-title"]::before { content: "🔍" / ""; }
+
+/* In-page headings (All news, Featured members, Calendar, Past events…). */
+[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) [data-part="section-title"] {
+  color: var(--smi-ink);
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Search boxes, date inputs and the comboboxes: Classic's 5px corners. */
+[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) :is([data-part="form-input"], [data-part="button-secondary"], [data-part="filter-select-control"]) {
+  border-radius: var(--classic-radius);
+}
+
+/* Filter pills: shape only. Their active state is a utility class Classic
+   can't select, so colours stay Current's (ink when active, white when not). */
+[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) [data-part="filter-pill"] {
+  border-radius: var(--classic-radius);
+}
+
+/* List / Cloud / Map: the active view is blue like a primary button. */
+[data-site="public"] [data-part="member-directory"] [data-part="view-toggle-link"] {
+  border-radius: var(--classic-radius);
+}
+[data-site="public"] [data-part="member-directory"] [data-part="view-toggle-link"][aria-current="true"] {
+  border-color: transparent;
+  background-color: var(--classic-blue);
+  color: var(--classic-button-text);
+}
+
+/* The events map and the past-events list sit on the panel; round the map to match. */
+[data-site="public"] [data-part="event-list-page"] [data-part="map"] {
+  border-radius: var(--classic-radius);
+  overflow: hidden;
+}
+
+@media (min-width: 48rem) {
+  [data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) {
+    padding: 0 2rem 2rem;
+  }
+}
+
+/* Four across from lg, where Current has three. /event's card-grid is a
+   stacked list of wide cards and is left out. Phones and tablets keep
+   Current's one and two columns. */
+@media (min-width: 64rem) {
+  [data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="search-page"]) [data-part="card-grid"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 /* ── end #79 ── */
 
 /* ── #80 Detail and plain pages ──────────────────────────────────────────── */
