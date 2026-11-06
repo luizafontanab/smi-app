@@ -458,6 +458,13 @@ original numbers, because other items and docs refer to them.
       In each deployment's **Share** popover, switch to *Only people with
       access*. Until then, anyone holding a link can see the preview, test data
       included.
+- [ ] **7.5 — Supply a real photo for the Classic `/join` banner.** Classic's
+      join page opens with a photo banner reading "Become a Member", like the
+      existing site. It shows a marked placeholder until a real workshop or
+      machinery photo is chosen. Use one SMI owns the rights to, not a story's
+      cover image. Send it in landscape, at least 1920 px wide; the white
+      banner text sits over it with a dark overlay.
+      From [#78](https://github.com/luizafontanab/smi-app/issues/78).
 
 **Done:** 1.19 was already on when checked on 6 Nov: preview and branch URLs redirect to the Vercel login.
 

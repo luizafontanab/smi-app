@@ -934,6 +934,155 @@
 
 /* ── #76 Industry ────────────────────────────────────────────────────────── */
 
+/* /industry/[slug], the "Topic page" (ClassicIndustryView): a disc-and-title
+   head and the two selects on the canvas, then one white panel per section
+   with its cards four across and a blue "See all …" button. Everything is
+   scoped to the view's root, [data-part="industry-page"]; the cards keep
+   #75's look. */
+
+[data-site="public"] [data-part="industry-page"] {
+  max-width: min(72rem, calc(100% - 1.5rem));
+  margin: 0 auto 2.5rem;
+}
+
+/* Title: a 3rem orange disc carrying a decorative glyph, then the name large.
+   The alt text after the slash is empty, so the glyph is never read out. */
+[data-site="public"] [data-part="industry-page"] > [data-part="page-title"] {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding-block: 2rem 1.5rem;
+  color: var(--smi-ink);
+  font-size: clamp(2rem, 1.5rem + 1.75vw, 3rem);
+  font-weight: 400;
+  line-height: 1.1;
+}
+[data-site="public"] [data-part="industry-page"] > [data-part="page-title"]::before {
+  content: "🏭" / "";
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* Sort By and Topics: labelled white selects on the canvas. The meta-grey
+   border is what makes them findable: white on the canvas alone is about
+   1.3:1, under the 3:1 a control's edge needs. */
+[data-site="public"] [data-part="industry-page"] [data-part="filters"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-filter"] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 14rem;
+  max-width: 14rem;
+  color: var(--smi-ink);
+  font-size: 1rem;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-filter"]:has([data-part="industry-topics"]) {
+  max-width: 36rem;
+}
+[data-site="public"] [data-part="industry-page"] :is([data-part="industry-sort"], [data-part="industry-topics"]) {
+  width: 100%;
+  min-height: 3.25rem;
+  padding-inline: 1rem;
+  border: 1px solid var(--classic-meta);
+  border-radius: var(--classic-radius);
+  background-color: var(--classic-panel);
+  color: var(--smi-ink);
+  font: inherit;
+  font-size: 1.125rem;
+}
+
+/* Sections: white panels. */
+[data-site="public"] [data-part="industry-page"] [data-part="industry-section"],
+[data-site="public"] [data-part="industry-page"] > [data-part="empty-state"] {
+  margin-top: 2rem;
+  padding: 1.25rem 1rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="industry-page"] > [data-part="empty-state"] {
+  color: var(--classic-meta);
+  text-align: center;
+}
+
+/* Section heads: a smaller disc and the title, as on the home page. */
+[data-site="public"] [data-part="industry-page"] [data-part="industry-section"] > [data-part="section-title"] {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+  color: var(--smi-ink);
+  font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem);
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: normal;
+  text-transform: none;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-section"] > [data-part="section-title"]::before {
+  content: "";
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background-color: var(--smi-brand);
+}
+
+/* Cards: one column on phones, two from sm, four from lg. Cards fill their
+   cell so a row's cards line up. */
+[data-site="public"] [data-part="industry-page"] [data-part="industry-section"] > [data-part="card-grid"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-section"] > [data-part="card-grid"] > li > * {
+  height: 100%;
+}
+
+/* See all: a centred blue button (colours from #70's button-primary). */
+[data-site="public"] [data-part="industry-page"] [data-part="industry-see-all"] {
+  margin: 2rem 0 0;
+  text-align: center;
+}
+[data-site="public"] [data-part="industry-page"] [data-part="industry-see-all"] > [data-part="button-primary"] {
+  display: inline-block;
+  padding: 0.75rem 1.75rem;
+  font-size: 1.125rem;
+  line-height: 1.3;
+}
+
+@media (min-width: 40rem) {
+  [data-site="public"] [data-part="industry-page"] [data-part="industry-section"] > [data-part="card-grid"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 48rem) {
+  [data-site="public"] [data-part="industry-page"] [data-part="industry-section"],
+  [data-site="public"] [data-part="industry-page"] > [data-part="empty-state"] {
+    padding: 2rem;
+  }
+}
+@media (min-width: 64rem) {
+  [data-site="public"] [data-part="industry-page"] [data-part="industry-section"] > [data-part="card-grid"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 /* ── end #76 ── */
 
 /* ── #77 Newsletter issue ────────────────────────────────────────────────── */
@@ -1182,6 +1331,189 @@
 /* ── end #77 ── */
 
 /* ── #78 Join ────────────────────────────────────────────────────────────── */
+
+/* Classic's /join, "Hybrid" (ClassicJoinView). Everything is scoped to its
+   wrapper, [data-part="join-page"]. The hexes match palette.ts. */
+[data-site="public"] [data-part="join-page"] {
+  /* PLACEHOLDER banner backdrop: there is no photo yet (docs/HUMAN-TODO.md
+     7.5). This is the gradient's lightest stop. The white title is checked
+     against it in palette.ts. */
+  --classic-join-banner: #2b3440;
+  /* The live site's red icon disc. It holds an emoji, never text. */
+  --classic-red: #e3141e;
+  padding-bottom: 3rem;
+}
+
+/* The banner: full width, the title in white at its foot. PLACEHOLDER: a
+   gradient that only darkens from --classic-join-banner, standing in for the
+   live site's photo. When a real photo replaces it, keep a dark overlay behind
+   the title so white still passes AA. Never a borrowed story cover. */
+[data-site="public"] [data-part="join-page"] [data-part="join-banner"] {
+  display: flex;
+  align-items: flex-end;
+  min-height: 220px;
+  background-color: var(--classic-join-banner);
+  background-image: linear-gradient(160deg, var(--classic-join-banner) 0%, var(--classic-chrome) 100%);
+  color: var(--classic-panel);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-banner-inner"] {
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  padding: 2rem 1rem 2.5rem;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-banner"] [data-part="page-title"] {
+  margin: 0;
+  font-size: clamp(2.5rem, 2rem + 2vw, 3.25rem);
+  line-height: 1.1;
+  color: var(--classic-panel);
+}
+
+[data-site="public"] [data-part="join-page"] [data-part="join-body"] {
+  max-width: 64rem;
+  margin-inline: auto;
+  padding: 2.5rem 1rem 0;
+}
+
+/* Price beside How joining works, in one white panel. Stacked on phones. */
+[data-site="public"] [data-part="join-page"] [data-part="join-price-panel"] {
+  display: grid;
+  gap: 2rem;
+  padding: 1.5rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-price"] {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-price-amount"] {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 3.5rem;
+  line-height: 1;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="page-intro"] {
+  margin: 0.75rem 0 0;
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="join-page"] [data-part="button-primary"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-stripe-note"] {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--classic-meta);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] {
+  padding-top: 1.5rem;
+  border-top: 2px solid var(--classic-canvas);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] [data-part="section-title"] {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] ol {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] li {
+  display: flex;
+  gap: 1rem;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-steps"] b {
+  font-weight: 400;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-step-detail"] {
+  color: var(--classic-meta);
+}
+/* Ink on orange. */
+[data-site="public"] [data-part="join-page"] [data-part="join-step-number"] {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+}
+@media (min-width: 768px) {
+  [data-site="public"] [data-part="join-page"] [data-part="join-price-panel"] {
+    grid-template-columns: 1fr 1.3fr;
+    align-items: center;
+    padding: 2rem;
+  }
+  [data-site="public"] [data-part="join-page"] [data-part="join-steps"] {
+    padding: 0 0 0 2rem;
+    border-top: 0;
+    border-left: 2px solid var(--classic-canvas);
+  }
+}
+
+/* The four benefits: white panels, each with a coloured disc. The discs run
+   orange, red, blue, orange, as on the live page. They hold an emoji only
+   (aria-hidden), so no text sits on red or blue. */
+[data-site="public"] [data-part="join-page"] [data-part="join-benefits"] {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+@media (min-width: 640px) {
+  [data-site="public"] [data-part="join-page"] [data-part="join-benefits"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"] {
+  display: flex;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background-color: var(--classic-panel);
+  border-radius: var(--classic-radius);
+  box-shadow: var(--classic-shadow);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit-disc"] {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  font-size: 1.25rem;
+  background-color: var(--smi-brand);
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"]:nth-child(2) [data-part="join-benefit-disc"] {
+  background-color: var(--classic-red);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"]:nth-child(3) [data-part="join-benefit-disc"] {
+  background-color: var(--classic-blue);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"] [data-part="card-title"] {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  color: var(--smi-ink);
+}
+[data-site="public"] [data-part="join-page"] [data-part="join-benefit"] [data-part="card-excerpt"] {
+  margin: 0.5rem 0 0;
+  color: var(--smi-ink);
+}
 
 /* ── end #78 ── */
 

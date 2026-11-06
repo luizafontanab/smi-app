@@ -1,13 +1,15 @@
 import Link from "next/link";
 
-const BENEFITS = [
+/** The four membership benefits, [title, detail]. Exported so the Classic join view (#78) shows the same copy. */
+export const JOIN_BENEFITS: readonly (readonly [string, string])[] = [
   ["Your company page", "A permanent, Google-indexed profile with your story library, map, video and contact routes."],
   ["Post your own news", "Publish through SMI's site, newsletter and social channels — every story links back to you."],
   ["See your reach", "Statistics showing how often your page is viewed, how far your stories reach and how your adverts perform."],
   ["Community", "Part of the UK's sheet metal trade network — events, the golf day, and the monthly newsletter."],
 ];
 
-const STEPS = [
+/** How joining works, [title, detail], in order. Exported for the Classic join view (#78). */
+export const JOIN_STEPS: readonly (readonly [string, string])[] = [
   ["Create your account", "Company name, email, password — two minutes."],
   ["Pay £40/month", "Card via Stripe, or redeem a promo code."],
   ["Build your draft page", "Describe your company; we auto-fill what we know."],
@@ -39,7 +41,7 @@ export function JoinPageView() {
         </Link>
       </div>
       <div data-part="join-benefits" className="mt-8 grid gap-4 sm:grid-cols-2">
-        {BENEFITS.map(([title, detail]) => (
+        {JOIN_BENEFITS.map(([title, detail]) => (
           <div key={title} data-part="join-benefit" className="rounded-lg bg-white p-5 shadow-sm">
             <h2 data-part="card-title" className="font-bold text-ink">{title}</h2>
             <p data-part="card-excerpt" className="mt-1 text-sm text-graphite">{detail}</p>
@@ -51,7 +53,7 @@ export function JoinPageView() {
       <div data-part="join-steps" className="mt-8 rounded-xl border border-brand/30 bg-brand/10 p-6 text-center text-ink sm:p-8">
         <h2 data-part="section-title" className="text-xl font-bold">How joining works</h2>
         <ol className="mx-auto mt-4 max-w-md space-y-3 text-left text-base sm:text-sm">
-          {STEPS.map(([title, detail], i) => (
+          {JOIN_STEPS.map(([title, detail], i) => (
             <li key={title} className="flex gap-3">
               <span data-part="join-step-number" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-ink">{i + 1}</span>
               <span><b>{title}</b> <span className="text-graphite">— {detail}</span></span>
