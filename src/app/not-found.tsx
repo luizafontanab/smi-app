@@ -1,7 +1,7 @@
 import Link from "next/link";
 // Loads the design option's stylesheet: this page sits outside the public
 // layout but is part of the public site (data-site="public" below).
-import "@/components/design-option";
+import "@/components/design-option-styles";
 
 /**
  * Root 404 — URLs that match no route at all, so no route group's layout
