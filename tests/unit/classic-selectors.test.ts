@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkClassicSelectors, classicCss, selectorsOf, sourceParts } from "./css-selectors";
+import { checkClassicSelectors, classicCss, selectorsOf, sourceParts } from "./classic-css-selectors";
 
 /**
  * Seam 3 of the Classic design option (#68, #70): classic.css selects only what
@@ -11,7 +11,7 @@ import { checkClassicSelectors, classicCss, selectorsOf, sourceParts } from "./c
  * out of its reach.
  */
 
-const repo = path.resolve(__dirname, "../../..");
+const repo = path.resolve(__dirname, "../..");
 const css = classicCss;
 const parts = sourceParts(path.join(repo, "src"));
 

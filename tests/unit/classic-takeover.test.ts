@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { contrastRatio } from "@/lib/contrast";
 import { CLASSIC_COLOURS, CLASSIC_CONTRAST_PAIRS } from "@/components/classic/palette";
-import { classicCss, rulesOf, selectorsOf } from "./css-selectors";
+import { classicCss, rulesOf, selectorsOf } from "./classic-css-selectors";
 
 /**
  * A sponsor takeover recolours --smi-brand to the sponsor's hex, and the

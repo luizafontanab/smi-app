@@ -3,14 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ClassicIndustryView } from "@/components/classic/ClassicIndustryView";
 import type { IndustryHub } from "@/app/(public)/industry/[slug]/hub.data";
-import { resetDbServerMocks } from "../../stubs/db-server";
+import { resetDbServerMocks } from "../stubs/db-server";
 
 /**
  * Seam 2 of the Classic design option (#68, #76): the Classic industry page,
  * "Topic page". Prior art: tests/unit/industry-bar.test.tsx.
  */
 
-vi.mock("@/lib/db/server", () => import("../../stubs/db-server"));
+vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 

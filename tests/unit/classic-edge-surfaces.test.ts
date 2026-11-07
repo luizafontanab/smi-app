@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./css-selectors";
+import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./classic-css-selectors";
 
 /**
  * Classic edge surfaces and shared pieces (#81), restyled through classic.css
@@ -11,7 +11,7 @@ import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./cs
  * sign-in, reset and unsubscribe forms.
  */
 
-const root = path.resolve(__dirname, "../../..");
+const root = path.resolve(__dirname, "../..");
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 const css = classicCss;
 

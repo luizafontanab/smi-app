@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { ClassicFooter } from "@/components/classic/ClassicFooter";
 import { SMI_SOCIAL_URLS } from "@/lib/social";
 import { SIGNUP_SURFACES } from "@/lib/newsletter-consent";
-import { resetDbServerMocks } from "../../stubs/db-server";
+import { resetDbServerMocks } from "../stubs/db-server";
 
 /**
  * Seam 2 of the Classic design option (#68, #72): the Classic footer reads the
@@ -15,7 +15,7 @@ import { resetDbServerMocks } from "../../stubs/db-server";
  */
 
 // NewsletterSignup -> subscribeNewsletter -> serviceDb.
-vi.mock("@/lib/db/server", () => import("../../stubs/db-server"));
+vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 afterEach(() => {
   vi.mocked(usePathname).mockReset();

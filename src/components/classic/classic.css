@@ -8,7 +8,7 @@
  *   - Every selector starts from [data-site="public"], so nothing here reaches
  *     /console or /dashboard.
  *   - Select data-site, data-part and plain elements only. Never a class:
- *     Tailwind utilities change freely. tests/unit/classic/selectors.test.ts
+ *     Tailwind utilities change freely. tests/unit/classic-selectors.test.ts
  *     enforces this, and checks each data-part still exists in src.
  *   - No @layer. Unlayered CSS outranks Tailwind's layered utilities, which is
  *     how these rules win over the classes on Current's markup. The flip side:
@@ -815,7 +815,7 @@
    FeaturedMemberCard, plus /search's and /member's inline member cards), one
    look wherever they appear. Generic parts (card-title, card-meta…) are only
    ever reached from inside a card root, because page lists reuse those names.
-   tests/unit/classic/cards.test.ts pins both. */
+   tests/unit/classic-cards.test.ts pins both. */
 
 /* White, 5px radius, the panel shadow. */
 [data-site="public"] :is([data-part="story-card"], [data-part="video-card"], [data-part="event-card"], [data-part="member-tile"], [data-part="featured-member-card"], [data-part="search-member-card"]) {
@@ -1532,7 +1532,7 @@
    canvas, everything below it on one white panel, cards 4 across at desktop.
    Restyle only: every filter, the map, the calendar and pagination keep their
    markup and behaviour. Shared parts are only reached from inside a page root.
-   tests/unit/classic/list-pages.test.ts pins what this reaches and avoids. */
+   tests/unit/classic-list-pages.test.ts pins what this reaches and avoids. */
 
 /* The page root. A gutter at every width (mx-auto stays: only max-width and
    padding change). The panel is drawn by ::before, starting below the head,
@@ -1653,7 +1653,7 @@
    rich-text body keeps Current's markup and behaviour. Shared parts are only
    reached from inside a page root. Never set `display` on a part a utility
    shows and hides (the phone-only media-pack button, the video grid's
-   hidden copies). tests/unit/classic/detail-plain-pages.test.ts pins this.
+   hidden copies). tests/unit/classic-detail-plain-pages.test.ts pins this.
 
    Not done here, by design (#80): no member-colour page background (Current
    has none to neutralise: the member page sets no colour of its own), no
@@ -2001,7 +2001,7 @@
 /* Login, reset, reset/new and unsubscribe, the root 404, the public 404, the
    error page, the loading skeleton, and the shared pieces every public page
    can carry. Restyle only: nothing here hides, disables or moves a form
-   control. tests/unit/classic/edge-surfaces.test.ts pins what this reaches.
+   control. tests/unit/classic-edge-surfaces.test.ts pins what this reaches.
 
    Takeover: the layout sets a takeover's hex as an inline --smi-brand on the
    [data-site="public"] wrapper. An inline declaration beats any normal
@@ -2198,7 +2198,7 @@
    hex against white, so ink on it is unchecked: every place Classic puts ink
    text on var(--smi-brand) switches to white on ink, like the footer band
    button. Decorative emoji discs keep the sponsor colour: they hold no text.
-   tests/unit/classic/takeover.test.ts fails on an ink-on-orange rule without
+   tests/unit/classic-takeover.test.ts fails on an ink-on-orange rule without
    an override here. */
 [data-site="public"][data-takeover] [data-part="button-primary"]:hover:not(:disabled),
 [data-site="public"][data-takeover] [data-part="form-submit"]:hover:not(:disabled),

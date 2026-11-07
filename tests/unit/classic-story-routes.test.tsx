@@ -23,11 +23,11 @@ vi.mock("@/lib/analytics", () => ({ record: vi.fn(), requestContext: vi.fn(async
 vi.mock("@/lib/newsletter-tracking", () => ({ issueFromLink: vi.fn(async () => null), newsletterLinkParams: vi.fn(() => ({})) }));
 vi.mock("@/lib/story-page", () => ({ loadStoryPageData: m.loadStoryPageData }));
 vi.mock("@/lib/story-preview", () => ({ canPreviewStory: () => true, redirectsToLiveStory: () => false, previewBackHref: () => "/console" }));
-vi.mock("@/lib/db/server", () => import("../../stubs/db-server"));
+vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 // An async server component, which a jsdom render can't await.
 vi.mock("@/components/JoinCta", () => ({ JoinCta: () => null }));
 
-import { resetDbServerMocks } from "../../stubs/db-server";
+import { resetDbServerMocks } from "../stubs/db-server";
 import StoryPage from "@/app/(public)/news/[slug]/page";
 import StoryPreviewPage from "@/app/(public)/preview/story/[id]/page";
 

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * The static checks behind tests/unit/classic/selectors.test.ts (#70), kept
+ * The static checks behind tests/unit/classic-selectors.test.ts (#70), kept
  * apart so the test can prove they fail on a fixture as well as pass on the
  * real classic.css.
  *
@@ -13,7 +13,7 @@ import path from "node:path";
  */
 
 /** The real classic.css, read once for every test that checks it. */
-export const classicCss = fs.readFileSync(path.resolve(__dirname, "../../../src/components/classic/classic.css"), "utf8");
+export const classicCss = fs.readFileSync(path.resolve(__dirname, "../../src/components/classic/classic.css"), "utf8");
 
 /** One ticket's section of the sheet, from its `/* ── #NN ` marker to `/* ── end #NN ── *\/`. */
 export function sectionOf(sheet: string, ticket: string): string {

@@ -7,14 +7,14 @@ import { ClassicHomeView } from "@/components/classic/ClassicHomeView";
 import { GridHome } from "@/app/(public)/home.grid";
 import type { HomeData } from "@/app/(public)/home.data";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
-import { resetDbServerMocks } from "../../stubs/db-server";
+import { resetDbServerMocks } from "../stubs/db-server";
 
 /**
  * Seam 2 of the Classic design option (#68, #73): the Classic home view.
  * Prior art: tests/unit/home-grid.test.tsx, which covers Current's GridHome.
  */
 
-vi.mock("@/lib/db/server", () => import("../../stubs/db-server"));
+vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 // NewsletterSignup (in the newsletter panel) imports the public server actions.
 vi.mock("@/app/(public)/actions", () => ({ subscribeNewsletter: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ currentUser: vi.fn(async () => null) }));

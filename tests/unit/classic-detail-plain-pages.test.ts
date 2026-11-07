@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./css-selectors";
+import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./classic-css-selectors";
 import { CLASSIC_COLOURS, CLASSIC_CONTRAST_PAIRS } from "@/components/classic/palette";
 
 /**

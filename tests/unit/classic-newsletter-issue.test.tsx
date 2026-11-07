@@ -4,9 +4,9 @@ import { render, screen, within } from "@testing-library/react";
 import { ClassicNewsletterIssueView } from "@/components/classic/ClassicNewsletterIssueView";
 import type { NewsletterIssue, NewsletterIssueExtras } from "@/components/newsletter/NewsletterIssueView";
 
-import { resetDbServerMocks } from "../../stubs/db-server";
+import { resetDbServerMocks } from "../stubs/db-server";
 
-vi.mock("@/lib/db/server", () => import("../../stubs/db-server"));
+vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 afterEach(() => {
   resetDbServerMocks();

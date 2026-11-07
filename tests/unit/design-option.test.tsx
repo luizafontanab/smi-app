@@ -87,7 +87,7 @@ const story = { id: "11111111-1111-4111-8111-111111111111", slug: "a-story", tit
 describe("the hook-point module", () => {
   it("resolves each of the seven pieces to Current's component", async () => {
     const pieces = await vi.importActual<typeof import("@/components/design-option")>("@/components/design-option");
-    // On the `classic` branch the pieces are Classic's own; its tests live in tests/unit/classic.
+    // On the `classic` branch the pieces are Classic's own; its tests are tests/unit/classic-*.test.ts(x).
     if (pieces.DESIGN_OPTION !== "current") return;
     const { SiteHeader } = await import("@/components/SiteHeader");
     const { GridSiteFooter } = await import("@/components/GridSiteFooter");

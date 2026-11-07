@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { contrastRatio } from "@/lib/contrast";
 import { CLASSIC_COLOURS, CLASSIC_CONTRAST_PAIRS } from "@/components/classic/palette";
-import { classicCss } from "./css-selectors";
+import { classicCss } from "./classic-css-selectors";
 
 /**
  * Seam 3 of the Classic design option (#68, #70): Classic's colour pairs pass

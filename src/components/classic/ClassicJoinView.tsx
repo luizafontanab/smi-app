@@ -23,7 +23,7 @@ const BENEFIT_GLYPHS: Readonly<Record<string, string>> = {
  *
  * The copy is Current's, word for word. The benefits and steps come from
  * JoinPageView's exported constants. The few inline lines are checked against
- * Current's rendered page by tests/unit/classic/join-view.test.tsx.
+ * Current's rendered page by tests/unit/classic-join-view.test.tsx.
  *
  * Current's phone-only "Join for £40/month" button is left out. Here the price
  * panel, with its Join now button, sits straight under the banner on phones.

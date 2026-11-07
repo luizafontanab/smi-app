@@ -2,7 +2,7 @@
  * Classic's colours and the pairs that have to pass WCAG AA (spec #68, #70).
  *
  * classic.css declares each of these custom properties with the same value
- * inside [data-site="public"], and tests/unit/classic/contrast.test.ts checks
+ * inside [data-site="public"], and tests/unit/classic-contrast.test.ts checks
  * both: every pair below against src/lib/contrast.ts, and every value below
  * against its declaration in the sheet. Change a colour here and in the sheet
  * together, or the test fails.

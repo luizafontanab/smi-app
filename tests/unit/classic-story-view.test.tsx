@@ -4,7 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import { ClassicStoryView } from "@/components/classic/ClassicStoryView";
 import { DEFAULT_LAYOUTS } from "@/lib/blocks/defaults";
 import type { StoryPageData } from "@/lib/story-page";
-import { resetDbServerMocks } from "../../stubs/db-server";
+import { resetDbServerMocks } from "../stubs/db-server";
 
 /**
  * Seam 2 of the Classic design option (#68, #74): the Classic story page.
@@ -14,7 +14,7 @@ import { resetDbServerMocks } from "../../stubs/db-server";
  */
 
 // AdSlot and the cover resolve media URLs; JoinCta/NewsletterSignup reach serviceDb.
-vi.mock("@/lib/db/server", () => import("../../stubs/db-server"));
+vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 // An async server component, which a jsdom render can't await. A stand-in
 // marks where the layout's join_cta block lands.
 vi.mock("@/components/JoinCta", () => ({ JoinCta: () => <section data-testid="join-cta" /> }));

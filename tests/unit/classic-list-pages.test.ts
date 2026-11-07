@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./css-selectors";
+import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./classic-css-selectors";
 
 /**
  * Classic list pages (#79): /news, /video, /member, /event and /search are

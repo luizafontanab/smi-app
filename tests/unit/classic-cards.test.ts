@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classicCss, partsTargeted, sectionOf, selectorsOf } from "./css-selectors";
+import { classicCss, partsTargeted, sectionOf, selectorsOf } from "./classic-css-selectors";
 
 /**
  * Classic cards (#75): the shared cards are restyled through classic.css alone,
