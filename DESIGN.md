@@ -100,6 +100,8 @@ components:
 
 # Design System: Sheet Metal Industries
 
+**Scope (Classic branch).** This document describes **Current**, the design on `staging`. On the `classic` branch the public site wears **Classic** (spec #68), which follows SMI's existing website on purpose. It sets aside three rules here: The One Accent Rule (it adds `--classic-blue` #3100ff for links and buttons and `--classic-red` #e3141e for decorative icon discs), "Don't add gradients" (the join banner's placeholder gradient, until its photo arrives; docs/HUMAN-TODO.md 7.5), and "League Spartan speaks, Source Sans 3 reads" (Classic sets everything in League Spartan). Classic's colours live in `src/components/classic/palette.ts` and `classic.css`, with their WCAG AA pairs tested there. The console and member area are Current on both branches, and every other rule here still applies to Classic.
+
 ## Overview
 
 **Creative North Star: "Cut Steel, Clean Paper"**
