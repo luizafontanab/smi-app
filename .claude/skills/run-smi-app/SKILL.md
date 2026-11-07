@@ -68,7 +68,7 @@ docker exec supabase_db_app psql -U postgres -At -F'|' -c "select status from st
 
 ## Reseed
 
-Only when the data is wrong or a migration landed — it drops the database.
+Only when the data is actually wrong, and only with the user's say-so — it drops the database. A new migration goes in without a reset: see step 2 of the `db-change` skill.
 
 ```bash
 supabase db reset && docker restart supabase_kong_app && sleep 5 \

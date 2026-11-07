@@ -55,13 +55,27 @@ Three more rules:
 
 ## 2. Apply it locally
 
+**Default: run the file straight into the running database.** It keeps the data, and other
+sessions and worktrees sharing the local Supabase carry on undisturbed:
+
+```bash
+psql postgresql://postgres:postgres@127.0.0.1:56322/postgres -v ON_ERROR_STOP=1 -f supabase/migrations/<file>.sql
+```
+
+This records nothing in Supabase's migration history, so a later reset (or another
+session) may run the same file again. That's why the migration must be **idempotent**:
+`create table if not exists`, `add column if not exists`, `drop policy if exists` before
+`create policy`, `create or replace function`. Run it twice to prove it.
+
+**Reset only with the user's say-so**, and only when the data is actually wrong. It drops
+the database:
+
 ```bash
 supabase db reset && docker restart supabase_kong_app && sleep 5 && pnpm seed
 ```
 
-This **drops the database** — only run it because a migration actually landed. The Kong
-restart is not optional: it keeps stale connections after a reset and the seed fails
-without it. See the `run-smi-app` skill for the full form with `.env.local` sourced.
+The Kong restart is not optional: it keeps stale connections after a reset and the seed
+fails without it. See the `run-smi-app` skill for the full form with `.env.local` sourced.
 
 ## 3. Regenerate the types — don't hand-patch them
 
