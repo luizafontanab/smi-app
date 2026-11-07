@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ROUTES, type Role } from "../visual/manifest";
+import { ROUTES, type Role, type Route } from "../visual/manifest";
 
 /**
  * Runs only under the `mobile` Playwright project (390×844, touch — see
@@ -97,6 +97,24 @@ test("the member cloud does not push the page sideways", async ({ page }) => {
 
 const ACCOUNT: Record<Exclude<Role, "anon">, string> = { member: "member1@smi.local", admin: "jas@smi.local" };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * A route pinned to one local record, re-aimed at a record that exists in this
+ * database: the first link on its `liveIdFrom` list page whose path is the
+ * route's own with a different id. CI seeds a fresh database, so the pinned
+ * ids only exist on the machine that pinned them.
+ */
+async function livePath(page: import("@playwright/test").Page, route: Route): Promise<string> {
+  if (!route.liveIdFrom) return route.path;
+  const prefix = route.path.slice(0, route.path.lastIndexOf("/") + 1);
+  await page.goto(route.liveIdFrom, { waitUntil: "load" });
+  const hrefs = await page.locator(`a[href^="${prefix}"]`).evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""));
+  const live = hrefs.find((h) => UUID.test(h.slice(prefix.length)));
+  expect.soft(live, `${route.id}: no ${prefix}<id> link on ${route.liveIdFrom}`).toBeDefined();
+  return live ?? route.path;
+}
+
 for (const role of ["anon", "member", "admin"] as const) {
   // Desktop entries only: the @phone copies are the same paths, and this
   // project already sets the viewport.
@@ -107,12 +125,13 @@ for (const role of ["anon", "member", "admin"] as const) {
     if (role !== "anon") await login(page, ACCOUNT[role]);
     for (const route of routes) {
       if (route.cookies) await page.context().addCookies(route.cookies.map((c) => ({ ...c, url: page.url() })));
-      const response = await page.goto(route.path, { waitUntil: "load" });
+      const path = await livePath(page, route);
+      const response = await page.goto(path, { waitUntil: "load" });
       // A pinned example that has gone (after a reseed) is a stale pin, not a
       // layout pass — say so rather than measuring the not-found page.
-      expect.soft(response?.status(), `${route.id}: ${route.path} did not load`).toBeLessThan(400);
+      expect.soft(response?.status(), `${route.id}: ${path} did not load`).toBeLessThan(400);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      expect.soft(overflow, `${route.id}: ${route.path} scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(0);
+      expect.soft(overflow, `${route.id}: ${path} scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(0);
     }
   });
 }

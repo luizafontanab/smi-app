@@ -117,6 +117,9 @@ test.describe("console member editor", () => {
   });
 
   test("renaming a live member 301s the old public URL", async ({ page }) => {
+    // Five saves before the redirect check: about 21s of the 30s default on CI,
+    // which ran out while the old URL's redirect was still streaming in.
+    test.slow();
     const ts = Date.now();
     const company = `E2E Slug Ltd ${ts}`;
     const editor = await createMember(page, company, `e2e-slug-${ts}@test.local`);
