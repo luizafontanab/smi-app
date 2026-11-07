@@ -70,9 +70,9 @@ describe("ClassicFooter: what Current's footer offers", () => {
     expect(linkedin).toHaveAttribute("rel", "noopener");
   });
 
-  it("offers a Back to Top link to the main content", () => {
+  it("offers a Back to Top link to the top of the page", () => {
     render(<ClassicFooter />);
-    expect(screen.getByRole("link", { name: "Back to Top" })).toHaveAttribute("href", "#main");
+    expect(screen.getByRole("link", { name: "Back to Top" })).toHaveAttribute("href", "#top");
   });
 
   it("shows the current year in the legal line", () => {

@@ -43,7 +43,9 @@ const SIGNUP = "grid_footer" as const;
 export function ClassicFooter() {
   return (
     <footer data-part="site-footer">
-      <a href="#main" data-part="site-footer-back-to-top">
+      {/* "#top" is the top of the document (HTML spec: no element has id="top"),
+          so the grey top bar comes back into view; "#main" stopped below it. */}
+      <a href="#top" data-part="site-footer-back-to-top">
         <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="m6 15 6-6 6 6" />
         </svg>
