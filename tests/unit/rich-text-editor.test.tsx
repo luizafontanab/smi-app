@@ -23,8 +23,11 @@ afterEach(() => {
 // Tiptap's `immediatelyRender: false` means the editor instance (and the
 // component's toolbar/content DOM) only appears after a mount effect — every
 // test waits for it rather than assuming the first render already has it.
+// The wait is 10s, not waitFor's 1s default: alone the editor mounts in
+// milliseconds, but under a full parallel run (several worktrees checking at
+// once) it missed the 1s mark and a random test in this file failed.
 async function ready(ariaLabel: string) {
-  await waitFor(() => expect(screen.getByLabelText(ariaLabel)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByLabelText(ariaLabel)).toBeInTheDocument(), { timeout: 10_000 });
 }
 
 describe("RichTextEditor", () => {
