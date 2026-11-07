@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { bannersTouch, belowFoldSequence, phoneSequence } from "@/app/(public)/home.grid";
+import { bannersTouch, belowFoldSequence, HOME_TOP_STORIES, phoneCap, phoneSequence } from "@/app/(public)/home.grid";
+import { uniqueFeaturedMembers } from "@/lib/featured-members";
 import type { HomeSectionId } from "@/lib/home-sections";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
@@ -52,5 +53,29 @@ describe("belowFoldSequence", () => {
 
   it("drops home_3 below the stats band with a single section", () => {
     expect(belowFoldSequence(["videos"])).toEqual(["videos", "home_2", "stats", "home_3"]);
+  });
+});
+
+/*
+ * Helpers GridHome exports so another design option's home view reads its data
+ * the same way (#68 review) rather than keeping copies that drift.
+ */
+describe("GridHome's shared helpers", () => {
+  it("lists each featured member once, and skips a placement with no member", () => {
+    const a = { slug: "a", name: "A" };
+    const b = { slug: "b", name: "B" };
+    expect(uniqueFeaturedMembers([{ member: a }, { member: null }, { member: b }, { member: { ...a } }])).toEqual([a, b]);
+  });
+
+  it("drops the third and later cards of a row on a phone", () => {
+    // Asserts which cards are capped, not the class that does it (#68: no tests of class strings).
+    const [first, second, third, fourth] = [0, 1, 2, 3].map(phoneCap);
+    expect([first, second]).toEqual([undefined, undefined]);
+    expect(third).toBeTruthy();
+    expect(fourth).toBe(third);
+  });
+
+  it("shows ten top stories: two fold highlights and an eight-tile carousel", () => {
+    expect(HOME_TOP_STORIES).toBe(10);
   });
 });

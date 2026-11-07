@@ -8,7 +8,7 @@ import { loadStoryPageData } from "@/lib/story-page";
 import { canPreviewStory, previewBackHref, redirectsToLiveStory } from "@/lib/story-preview";
 import { STORY_STATUS_LABELS, isMemberDraft, type ListStatus } from "@/lib/story-board";
 import { UUID_RE } from "@/lib/validate";
-import { StoryPageView } from "@/components/story/StoryPageView";
+import { StoryView } from "@/components/design-option";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 
 /**
  * An unpublished story rendered exactly as it will publish — the same
- * StoryPageView as /news/[slug], inside the same public chrome, with the
+ * StoryView (design-option hook point) as /news/[slug], inside the same public chrome, with the
  * admin's layout around it (Jas 13/10 items 10/15: the old previews were
  * simplified re-renders that didn't match the real page).
  *
@@ -60,7 +60,7 @@ export default async function StoryPreviewPage(props: PageProps<"/preview/story/
 
   return (
     <>
-      <div role="status" className="border-b-2 border-brand bg-brand/10">
+      <div role="status" data-part="story-preview-bar" className="border-b-2 border-brand bg-brand/10">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm text-ink">
           <p>
             <strong>Preview</strong> · {statusLabel}. Readers can&apos;t see this page; this is how it will look once published.
@@ -68,8 +68,8 @@ export default async function StoryPreviewPage(props: PageProps<"/preview/story/
           <Link href={back} className="font-medium underline">← Back to editing</Link>
         </div>
       </div>
-      <div className="mx-auto max-w-4xl px-4 lg:max-w-6xl">
-        <StoryPageView
+      <div data-part="story-page" className="mx-auto max-w-4xl px-4 lg:max-w-6xl">
+        <StoryView
           story={story}
           categories={cats}
           cover={mediaUrl(story.cover_path)}

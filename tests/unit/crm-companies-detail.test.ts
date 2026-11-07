@@ -67,7 +67,7 @@ describe("describeFieldRead (the Companies box's quiet note)", () => {
   });
 
   it("names the missing permission when the token may not read the field list", () => {
-    expect(describeFieldRead({ fieldList: { ...base, read: "refused", allFields: false } })).toMatch(/Only name, Website and News Page URL are kept.*HUMAN-TODO/);
+    expect(describeFieldRead({ fieldList: { ...base, read: "refused", allFields: false } })).toMatch(/Only name, Website and News Page URL are kept.*issue #88/);
   });
 
   it("says which field was used when none is labelled News Page URL", () => {

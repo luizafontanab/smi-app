@@ -47,11 +47,11 @@ export default async function SearchPage(props: PageProps<"/search">) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4">
-      <h1 className="mt-6 text-2xl font-bold text-ink">Search</h1>
-      <form className="mt-4 flex max-w-xl gap-2" role="search">
+    <div data-part="search-page" className="mx-auto max-w-6xl px-4">
+      <h1 data-part="page-title" className="mt-6 text-2xl font-bold text-ink">Search</h1>
+      <form data-part="search-form" className="mt-4 flex max-w-xl gap-2" role="search">
         <label htmlFor="site-search" className="sr-only">Search the site</label>
-        <input
+        <input data-part="form-input"
           id="site-search"
           type="search"
           name="q"
@@ -59,29 +59,29 @@ export default async function SearchPage(props: PageProps<"/search">) {
           placeholder="Search stories, members, machinery…"
           className="w-full rounded border bg-white px-4 py-2.5"
         />
-        <button className="rounded bg-ink px-5 py-2.5 text-white">Search</button>
+        <button data-part="button-primary" className="rounded bg-ink px-5 py-2.5 text-white">Search</button>
       </form>
 
       {/* Members always rank first — the hierarchy rule */}
       {members.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-brand-text">Members</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <section data-part="search-members" className="mt-8">
+          <h2 data-part="section-title" className="mb-3 text-sm font-bold uppercase tracking-wide text-brand-text">Members</h2>
+          <div data-part="card-grid" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {members.map((m) => (
-              <Link key={m.slug} href={`/member/${m.slug}`} className="flex items-center gap-3 rounded-lg border-2 border-brand/40 bg-white p-3 shadow-sm hover:border-brand">
+              <Link data-part="search-member-card" key={m.slug} href={`/member/${m.slug}`} className="flex items-center gap-3 rounded-lg border-2 border-brand/40 bg-white p-3 shadow-sm hover:border-brand">
                 {/* A wide box with object-contain, not a 40px square: most
                     members' logos are wordmarks, which a square squeezed to
                     an unreadable sliver (#33 C15). */}
                 {m.logo_path && (
-                  <span className="relative h-12 w-20 shrink-0">
+                  <span data-part="card-image" className="relative h-12 w-20 shrink-0">
                     <Image src={mediaUrl(m.logo_path)!} alt="" fill sizes="80px" className="object-contain" unoptimized />
                   </span>
                 )}
                 <div className="min-w-0">
-                  <p className="font-semibold text-ink">{m.name}</p>
+                  <p data-part="card-title" className="font-semibold text-ink">{m.name}</p>
                   {/* The description is stored as rich text — shown raw it
                       read "<p>Welcome to…" (#33 C2). */}
-                  <p className="text-sm text-graphite line-clamp-2 sm:text-xs">{excerptFromHtml(m.description, 160)}</p>
+                  <p data-part="card-excerpt" className="text-sm text-graphite line-clamp-2 sm:text-xs">{excerptFromHtml(m.description, 160)}</p>
                 </div>
               </Link>
             ))}
@@ -90,14 +90,14 @@ export default async function SearchPage(props: PageProps<"/search">) {
       )}
 
       {stories.length > 0 && (
-        <section className="mt-8">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-ink">Stories</h2>
-            <Link href={qs({ filter: memberOnly ? undefined : "members" })} className={`tap rounded border px-3 py-1.5 text-sm ${memberOnly ? "bg-brand text-ink" : "bg-white"}`}>
+        <section data-part="search-stories" className="mt-8">
+          <div data-part="section-head" className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 data-part="section-title" className="text-sm font-bold uppercase tracking-wide text-ink">Stories</h2>
+            <Link data-part="filter-pill" href={qs({ filter: memberOnly ? undefined : "members" })} className={`tap rounded border px-3 py-1.5 text-sm ${memberOnly ? "bg-brand text-ink" : "bg-white"}`}>
               Member stories only
             </Link>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div data-part="card-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {stories.map((s) => <StoryCard key={s.id} story={s} />)}
           </div>
           <Pagination page={page} pages={pages} hrefFor={(p) => qs({ page: p })} />
@@ -105,7 +105,7 @@ export default async function SearchPage(props: PageProps<"/search">) {
       )}
 
       {q && members.length === 0 && stories.length === 0 && (
-        <p className="mt-10 text-graphite">Nothing found for “{q}”.</p>
+        <p data-part="empty-state" className="mt-10 text-graphite">Nothing found for “{q}”.</p>
       )}
       <div className="my-10" />
     </div>

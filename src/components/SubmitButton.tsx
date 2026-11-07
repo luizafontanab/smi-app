@@ -52,7 +52,7 @@ export function SubmitButton({
     pressed ?? (rest.name ? data?.get(rest.name) === rest.value : !data || data.get("intent") == null);
   const working = pending && mine;
   return (
-    <button
+    <button data-part="form-submit"
       {...rest}
       ref={ref}
       type="submit"

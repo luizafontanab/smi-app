@@ -6,6 +6,9 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import { cookieStore, requestHeaders, resetNextHeadersMocks } from "../stubs/next-headers";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
 vi.mock("@/lib/adapters/company-resolver", () => ({
   resolveIp: vi.fn(async () => ({ region: "West Midlands", company: null })),
 }));
@@ -53,14 +56,13 @@ describe("record", () => {
   });
 
   it("logs rather than throws when the insert fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => queryBuilder(dbError("insert failed")) })));
 
     record([{ kind: "ad_impression", advert_id: "ad1" }]);
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[analytics]"), "insert failed");
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "analytics:events-insert", error: "insert failed" }));
   });
 });
 
@@ -122,14 +124,13 @@ describe("recordSearch", () => {
   });
 
   it("logs rather than throws when the insert fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => queryBuilder(dbError("insert failed")) })));
 
     recordSearch({ query: "steel", results_count: 0 });
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[analytics]"), "insert failed");
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "analytics:search-insert", error: "insert failed" }));
   });
 });
 
@@ -240,16 +241,12 @@ describe("requestContext", () => {
   it("logs rather than throws when the consent counter fails", async () => {
     // Fire-and-forget: a failed counter must never take down the page view it
     // was measuring.
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const rpc = vi.fn(async () => ({ data: null, error: { message: "rpc missing" } }));
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ rpc })));
 
     await expect(requestContext()).resolves.toBeTruthy();
     await vi.waitFor(() =>
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[analytics] bump_consent_stats failed:",
-        "rpc missing",
-      ),
+      expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "analytics:consent-stats", error: "rpc missing" })),
     );
   });
 });

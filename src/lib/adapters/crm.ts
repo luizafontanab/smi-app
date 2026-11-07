@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { logError } from "../log";
 import { serviceDb } from "../db/server";
 import type { Json, TablesInsert } from "../db/types";
 import { applyOptIn } from "../contacts";
@@ -119,7 +120,7 @@ export type CompanyField = { apiName: string; label: string };
  *
  *   · read "bigin": Bigin's field list was read; every field was asked for.
  *   · read "refused": the token may not read the field list (it lacks
- *     ZohoBigin.settings.fields.READ — HUMAN-TODO 1.15b); only the known
+ *     ZohoBigin.settings.fields.READ — issue #88); only the known
  *     fields were asked for.
  *   · read "failed": the field list call failed some other way; same fallback.
  *
@@ -484,7 +485,7 @@ const mayBeGoneRecord = (e: BiginApiError) =>
   e.status === 404 || (e.result?.code === "INVALID_DATA" && (e.result.details?.api_name ?? "id") === "id");
 /**
  * Did Bigin refuse because the token isn't allowed to do this at all — the
- * Companies write scope missing from the refresh token (HUMAN-TODO §7), or
+ * Companies write scope missing from the refresh token (issue #88), or
  * the token's user lacking the permission in Bigin? Read from the error
  * `code`, never the HTTP status: Zoho sends OAUTH_SCOPE_MISMATCH as a 401,
  * the same status as an expired or invalid token (notes: Bigin's docs give
@@ -668,7 +669,7 @@ class BiginCrmSync implements CrmSync {
       try {
         body = await this.request<ListResponse<Record<string, unknown>>>(`/Accounts?fields=${fields.join(",")}&per_page=200&${paging}`);
       } catch (e) {
-        console.error("[crm] reading companies stopped part-way:", e);
+        logError({ source: "adapter", area: "crm:companies", error: e, context: { page: i } });
         return { complete: false, anyPage: i > 0 };
       }
       for (const r of body?.data ?? []) if (typeof r.id === "string" && r.id) take(r);
@@ -740,7 +741,7 @@ class BiginCrmSync implements CrmSync {
    * Bigin's update-records docs give a sample of. `trigger: []` so the write
    * fires no Bigin workflow. A blank address is sent as null, which clears
    * the field (as Zoho's other APIs do; unverified on a live account,
-   * HUMAN-TODO 3.3).
+   * issue #88).
    */
   async updateCompanyNewsPage(biginId: string, url: string | null, field = NEWS_PAGE_FIELD): Promise<void> {
     const body = await this.request<WriteResponse>("/Accounts", {
@@ -757,7 +758,7 @@ class BiginCrmSync implements CrmSync {
    * OAUTH_SCOPE_MISMATCH, and one with it gets a validation error about the
    * empty `data` instead. That ordering is how Zoho's API gateway works on
    * its other products; Bigin's docs don't state it, so it's unverified on a
-   * live account until HUMAN-TODO 3.3's first run.
+   * live account until issue #88's first run.
    */
   async canWriteCompanies(): Promise<boolean | null> {
     try {
@@ -1135,7 +1136,7 @@ class BiginCrmSync implements CrmSync {
         pushed++;
       } catch (e) {
         pushFailed++;
-        console.error(`[crm] retrying push for contact ${id} failed:`, e);
+        logError({ source: "adapter", area: "crm:retry-push", error: e, context: { contact_id: id } });
       }
     }
 
@@ -1188,7 +1189,7 @@ export async function syncContactToCrm(contactId: string, opts: PushOptions = {}
     }
     await crm.pushContact(contactId, opts);
   } catch (e) {
-    console.error(`[crm] push failed for contact ${contactId}; queued for retry:`, e);
+    logError({ source: "adapter", area: "crm:push", error: e, context: { contact_id: contactId, retry: "queued" } });
     try {
       // lazy: jobs.ts imports this module lazily too, and its other imports aren't needed on this path
       const { enqueue } = await import("../jobs");
@@ -1199,7 +1200,7 @@ export async function syncContactToCrm(contactId: string, opts: PushOptions = {}
       );
     } catch (queueError) {
       // still not lost: the row stays dirty and the next crm_sync sweep pushes it
-      console.error(`[crm] could not queue the retry for contact ${contactId}:`, queueError);
+      logError({ source: "job", area: "crm:queue-retry", error: queueError, context: { contact_id: contactId } });
     }
   }
 }

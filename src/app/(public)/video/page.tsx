@@ -57,43 +57,43 @@ export default async function VideosPage(props: PageProps<"/video">) {
   const gridVideos = headline ? videos.filter((v) => v.id !== headline.id) : videos;
 
   return (
-    <div className="mx-auto max-w-6xl px-4">
-      <h1 className="mt-6 text-2xl font-bold text-ink">Videos</h1>
+    <div data-part="video-list-page" className="mx-auto max-w-6xl px-4">
+      <h1 data-part="page-title" className="mt-6 text-2xl font-bold text-ink">Videos</h1>
       <SearchForm className="mt-4 flex gap-2" />
       {/* Industry pills, same shape and data as the newsroom's — this is where
           /industry/[slug]'s Videos section sends its "See all". */}
       {showIndustries && (
-        <nav aria-label="Filter by industry" className={`mt-4 ${PILL_ROW}`}>
-          <Link href={href({ industry: undefined })} className={`${PILL} ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
+        <nav data-part="filter-pills" aria-label="Filter by industry" className={`mt-4 ${PILL_ROW}`}>
+          <Link data-part="filter-pill" href={href({ industry: undefined })} className={`${PILL} ${!industry ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>All industries</Link>
           {inds.map((i) => (
-            <Link key={i.slug} href={href({ industry: i.slug })} className={`${PILL} ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
+            <Link data-part="filter-pill" key={i.slug} href={href({ industry: i.slug })} className={`${PILL} ${industry === i.slug ? "bg-ink text-white" : "bg-white hover:border-ink"}`}>
               {i.name}
             </Link>
           ))}
         </nav>
       )}
       {headline && (
-        <div className="mt-6">
-          <p className="text-xs uppercase tracking-widest text-graphite">Featured</p>
+        <div data-part="video-featured" className="mt-6">
+          <p data-part="section-title" className="text-xs uppercase tracking-widest text-graphite">Featured</p>
           <div className="mt-2 max-w-sm">
             <VideoCard video={headline} />
           </div>
         </div>
       )}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div data-part="card-grid" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {gridVideos.slice(0, 6).map((v) => <VideoCard key={v.id} video={v} />)}
       </div>
       {/* Mid-page banner, same placement rule as the newsroom: below the first two
           rows, never above the content readers came for. Rendered unconditionally —
           the slot is booked inventory, so it must not vanish on a short listing. */}
-      <div className="my-6"><AdSlot slotKey="videos_mid" adverts={slots.get("videos_mid") ?? []} showPlaceholders={showPlaceholders} path="/video" /></div>
+      <div data-part="ad-slot-wrap" className="my-6"><AdSlot slotKey="videos_mid" adverts={slots.get("videos_mid") ?? []} showPlaceholders={showPlaceholders} path="/video" /></div>
       {gridVideos.length > 6 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div data-part="card-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {gridVideos.slice(6).map((v) => <VideoCard key={v.id} video={v} />)}
         </div>
       )}
       {videos.length === 0 && (
-        <p className="mt-10 text-center text-graphite">
+        <p data-part="empty-state" className="mt-10 text-center text-graphite">
           {industry ? <>No videos in this industry yet. <Link href={href({ industry: undefined })} className="underline">See all videos</Link></> : "No videos found."}
         </p>
       )}

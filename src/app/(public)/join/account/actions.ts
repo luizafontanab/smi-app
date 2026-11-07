@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { logError } from "@/lib/log";
 import { sessionDb } from "@/lib/db/server";
 import { membershipTypeIdsFromForm, membershipTypesError } from "@/lib/member-services";
 import { provisionMember } from "@/lib/membership";
@@ -68,7 +69,7 @@ export async function createAccount(_prev: { message: string }, formData: FormDa
     const { enqueue } = await import("@/lib/jobs");
     await enqueue("notify_member", { member_id: result.memberId, kind: "welcome" });
   } catch (e) {
-    console.error("[join] welcome email could not be queued:", e);
+    logError({ source: "server", area: "action:createAccount", error: e, context: { member_id: result.memberId, step: "queue-welcome" } });
   }
 
   const session = await sessionDb();

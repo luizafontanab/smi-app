@@ -12,8 +12,8 @@ import { storyPostLinks } from "@/lib/social";
 export function StorySocialLinks({ posts }: { posts: unknown }) {
   const links = storyPostLinks(posts);
   return (
-    <section aria-labelledby="story-socials" className="mt-8 flex flex-wrap items-center gap-3">
-      <h2 id="story-socials" className="text-xs font-bold uppercase tracking-widest text-graphite">
+    <section aria-labelledby="story-socials" data-part="story-socials" className="mt-8 flex flex-wrap items-center gap-3">
+      <h2 id="story-socials" data-part="section-title" className="text-xs font-bold uppercase tracking-widest text-graphite">
         View / share on our socials
       </h2>
       <ul className="flex gap-2">

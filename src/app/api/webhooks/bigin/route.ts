@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { logError } from "@/lib/log";
 import { getCrmSync, webhookTokenMatches } from "@/lib/adapters/crm";
 
 /**
@@ -51,7 +52,8 @@ export async function POST(request: NextRequest) {
     if (event.operation === "delete") await crm.unlink(ids);
     else await crm.pullIds(ids);
   } catch (e) {
-    console.error(`[bigin-webhook] ${event.operation} of ${ids.length} contact(s) failed; the next poll will catch up:`, e);
+    // Not lost: the next poll catches up.
+    logError({ source: "webhook", area: "bigin-webhook:sync", error: e, context: { operation: event.operation, count: ids.length } });
   }
   return NextResponse.json({ ok: true });
 }

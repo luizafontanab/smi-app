@@ -101,7 +101,7 @@ export function describeFieldRead(run: Pick<CompanySyncRun, "fieldList">): strin
   const f = run.fieldList;
   if (!f) return null;
   if (f.read === "refused") {
-    return "Only name, Website and News Page URL are kept: the Bigin connection isn't allowed to read the field list yet (HUMAN-TODO 1.15b).";
+    return "Only name, Website and News Page URL are kept: the Bigin connection isn't allowed to read the field list yet (issue #88).";
   }
   if (f.read === "failed") return "Only name, Website and News Page URL were read this time: Bigin's field list couldn't be read.";
   const notes: string[] = [];

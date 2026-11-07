@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { logError } from "./log";
 import { serviceDb } from "./db/server";
 
 /** What an advert invoice pays for — at most one is set. Shown to the member as `description`. */
@@ -112,7 +113,7 @@ export async function raiseInvoice(
   if (amountPennies <= 0) return null;
   const result = await insertInvoice(memberId, amountPennies, prefix, link);
   if (!result.ok) {
-    console.error(`raiseInvoice: ${prefix} invoice for member ${memberId} was not stored: ${result.error}`);
+    logError({ source: "db", area: "invoicing:raise", error: result.error, context: { member_id: memberId, prefix } });
     return null;
   }
   return result.invoice;
@@ -184,6 +185,6 @@ export async function ensureInvoice(
     const winner = await existing();
     if (winner) return winner;
   }
-  console.error(`ensureInvoice: ${prefix} invoice for ${target.column} ${target.id} was not stored: ${inserted.error}`);
+  logError({ source: "db", area: "invoicing:ensure", error: inserted.error, context: { [target.column]: target.id, prefix } });
   return { ok: false, error: `The invoice could not be stored: ${inserted.error}` };
 }

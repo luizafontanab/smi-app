@@ -111,7 +111,7 @@ export function MoreNewsScroller({ className, children }: {
   }, [stop]);
 
   return (
-    <ul ref={ref} className={className} onPointerMove={onPointerMove} onPointerLeave={stop} onPointerDown={stop}>
+    <ul ref={ref} data-part="carousel" className={className} onPointerMove={onPointerMove} onPointerLeave={stop} onPointerDown={stop}>
       {children}
     </ul>
   );

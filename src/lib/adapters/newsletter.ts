@@ -1,4 +1,5 @@
 import { allRows } from "../db/all-rows";
+import { logError } from "../log";
 import { serviceDb } from "../db/server";
 import { mediaUrl } from "../db/server";
 import { siteUrl } from "../site-url";
@@ -535,7 +536,7 @@ class ResendNewsletterSender implements NewsletterSender {
       const res = await this.api(`/segments/${encodeURIComponent(this.segmentId)}/contacts?${query}`, undefined, undefined, "GET");
       if (res.status === 429) throw new EmailSendError(`Resend rate-limited the segment listing: ${res.body.slice(0, 200)}`, 429, res.retryAfterMs);
       if (!res.ok) {
-        console.error(`[newsletter] listing segment ${this.segmentId} failed (${res.status}): ${res.body.slice(0, 200)}`);
+        logError({ source: "adapter", area: "newsletter:segment-list", error: `listing the segment failed (${res.status}): ${res.body.slice(0, 200)}`, context: { segment_id: this.segmentId, status: res.status } });
         return null;
       }
       let parsed: { data?: { id?: string; email?: string; unsubscribed?: boolean }[]; has_more?: boolean };

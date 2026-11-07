@@ -61,13 +61,13 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
         const ads = slots?.get(key) ?? [];
         // the wrapper carries margin, so it must not render around a null slot
         return ads.length || showPlaceholders
-          ? <div key={block.id} className={adWrapperClassName}><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} path={path} /></div>
+          ? <div key={block.id} data-part="ad-slot-wrap" className={adWrapperClassName}><AdSlot adverts={ads} slotKey={key} showPlaceholders={showPlaceholders} path={path} /></div>
           : null;
       }
       case "back_link": {
         const { label, href } = block.props as { label: string; href: string };
         return (
-          <div key={block.id} className="mt-6">
+          <div key={block.id} data-part="back-link" className="mt-6">
             {/* tap: a 20px-tall text link was the only way back on a phone (#33 C16) */}
             <Link href={href} className="tap text-sm text-graphite hover:text-ink">← {label}</Link>
           </div>
@@ -77,9 +77,9 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
         const limit = typeof block.props?.limit === "number" ? block.props.limit : 4;
         if (!latestStories?.length) return null;
         return (
-          <section key={block.id} className="mt-10">
-            <h2 className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">Latest News</h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <section key={block.id} data-part="section" className="mt-10">
+            <h2 data-part="section-title" className="mb-3 text-lg font-bold uppercase tracking-wide text-ink">Latest News</h2>
+            <div data-part="card-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {latestStories.slice(0, limit).map((s) => <StoryCard key={s.id} story={s} size="sm" />)}
             </div>
           </section>
@@ -108,14 +108,14 @@ export function BlockRenderer({ pageType, layout, anchors, slots, latestStories,
         return <JoinCta key={block.id} />;
       case "newsletter_signup":
         return (
-          <section key={block.id} className="my-10 rounded-xl bg-graphite/10 p-6">
-            <h2 className="font-bold text-ink">{SIGNUP_SURFACES.page_block.heading}</h2>
+          <section key={block.id} data-part="newsletter-signup-block" className="my-10 rounded-xl bg-graphite/10 p-6">
+            <h2 data-part="section-title" className="font-bold text-ink">{SIGNUP_SURFACES.page_block.heading}</h2>
             <div className="mt-3 max-w-md"><NewsletterSignup surface="page_block" /></div>
           </section>
         );
       case "supplier_logos":
         return supplierLogos?.length || showPlaceholders ? (
-          <div key={block.id} className="-mx-4 mt-8"><SupplierLogos adverts={supplierLogos ?? []} showPlaceholders={showPlaceholders} /></div>
+          <div key={block.id} data-part="supplier-logos-wrap" className="-mx-4 mt-8"><SupplierLogos adverts={supplierLogos ?? []} showPlaceholders={showPlaceholders} /></div>
         ) : null;
       default:
         return null;

@@ -1,4 +1,5 @@
 import { serviceDb } from "./db/server";
+import { logError } from "./log";
 import type { InboxCategory, InboxKind, InboxNotificationKind, InboxPayload } from "./console-notification-links";
 import type { AdminEmailKind } from "./email/templates";
 
@@ -73,7 +74,7 @@ export async function notifyAdminFunnel(opts: {
       await getEmailSender().send({ to: ADMIN_EMAIL, ...mail });
     }
   } catch (e) {
-    console.error("[funnel] admin notification failed:", e);
+    logError({ source: "adapter", area: "notify-admin:funnel", error: e });
   }
 }
 
@@ -127,6 +128,6 @@ export async function notifyConsole(opts: {
       payload: opts.payload ?? {},
     });
   } catch (e) {
-    console.error("[notify-console] notification failed:", e);
+    logError({ source: "db", area: "notify-admin:console", error: e });
   }
 }

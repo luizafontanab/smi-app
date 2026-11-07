@@ -9,6 +9,7 @@ export function SkipLink() {
   return (
     <a
       href="#main"
+      data-part="skip-link"
       className="sr-only rounded font-semibold focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-brand focus:px-4 focus:py-2 focus:text-ink focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-ink"
     >
       Skip to content

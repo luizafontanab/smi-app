@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
@@ -10,8 +11,8 @@ import react from "@vitejs/plugin-react";
  * Real environment always wins over the file.
  */
 function localEnv(): Record<string, string> {
-  const file = path.resolve(__dirname, ".env.local");
-  if (!fs.existsSync(file)) return {};
+  const file = localEnvFile();
+  if (!file) return {};
   const out: Record<string, string> = {};
   for (const line of fs.readFileSync(file, "utf8").split("\n")) {
     const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
@@ -19,6 +20,28 @@ function localEnv(): Record<string, string> {
     out[m[1]] = process.env[m[1]] ?? m[2].replace(/^(["'])(.*)\1$/, "$2");
   }
   return out;
+}
+
+/**
+ * This checkout's .env.local, or else the main checkout's. A git worktree
+ * (agents run one per ticket) has no .env.local of its own, so without the
+ * fallback every integration suite fails at import there. The main checkout
+ * is the parent of the shared git dir.
+ */
+function localEnvFile(): string | null {
+  const own = path.resolve(__dirname, ".env.local");
+  if (fs.existsSync(own)) return own;
+  try {
+    const gitDir = execFileSync(
+      "git",
+      ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { cwd: __dirname, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    const main = path.join(path.dirname(gitDir), ".env.local");
+    return fs.existsSync(main) ? main : null;
+  } catch {
+    return null;
+  }
 }
 
 export default defineConfig({

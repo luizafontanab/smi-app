@@ -25,7 +25,7 @@ import type { SVGProps } from "react";
 export function Chip({ children, as = "h2" }: { children: React.ReactNode; as?: "h2" | "p" }) {
   const Tag = as;
   return (
-    <Tag className="inline-block bg-brand px-2.5 py-1 font-sans text-xs font-extrabold sm:text-[11px] uppercase tracking-[0.12em] text-ink">
+    <Tag data-part="section-title" className="inline-block bg-brand px-2.5 py-1 font-sans text-xs font-extrabold sm:text-[11px] uppercase tracking-[0.12em] text-ink">
       {children}
     </Tag>
   );
@@ -37,7 +37,7 @@ export function Chip({ children, as = "h2" }: { children: React.ReactNode; as?: 
  * "text seems small" complaint.
  */
 export function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs sm:text-[11px] font-bold uppercase tracking-[0.1em] text-brand-text">{children}</p>;
+  return <p data-part="card-eyebrow" className="text-xs sm:text-[11px] font-bold uppercase tracking-[0.1em] text-brand-text">{children}</p>;
 }
 
 /**
@@ -48,13 +48,15 @@ export function Eyebrow({ children }: { children: React.ReactNode }) {
  * would come down to Tailwind's output order, not the order they are written
  * in. The placement cards on the fold pass the warm one.
  */
-export function Panel({ children, className = "", border = "border-line" }: {
+export function Panel({ children, className = "", border = "border-line", part = "panel" }: {
   children: React.ReactNode;
   className?: string;
   border?: "border-line" | "border-brand/50";
+  /** Its data-part label (design-option.ts): "panel", or the card kind a card passes. */
+  part?: string;
 }) {
   return (
-    <div className={`rounded-[var(--gh-radius)] border ${border} bg-white ${className}`}>{children}</div>
+    <div data-part={part} className={`rounded-[var(--gh-radius)] border ${border} bg-white ${className}`}>{children}</div>
   );
 }
 
@@ -69,15 +71,17 @@ const BAND_TONES = {
  * sections with edge-to-edge grey and near-black bands rather than rules.
  * `.gh` sets no max-width, so a section inside it is already page-wide.
  */
-export function Band({ tone = "plain", className = "", inner = "", children }: {
+export function Band({ tone = "plain", className = "", inner = "", part = "home-band", children }: {
   tone?: keyof typeof BAND_TONES;
   className?: string;
   /** Extra classes for the contained column (padding, grid). */
   inner?: string;
+  /** Its data-part label (design-option.ts). Advert bands pass "home-band-ad". */
+  part?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className={`${BAND_TONES[tone]} ${className}`}>
+    <section data-part={part} className={`${BAND_TONES[tone]} ${className}`}>
       <div className={`mx-auto max-w-6xl px-4 ${inner}`}>{children}</div>
     </section>
   );
@@ -87,18 +91,18 @@ const BTN_BASE = "inline-block rounded-[var(--gh-radius)] px-5 py-2.5 text-sm fo
 
 /** The comps' black in-card action ("Read more", "View all events"). */
 export function BtnDark({ href, children }: { href: string; children: React.ReactNode }) {
-  return <Link href={href} className={`${BTN_BASE} bg-ink text-white hover:bg-chrome-hover`}>{children}</Link>;
+  return <Link href={href} data-part="button-primary" className={`${BTN_BASE} bg-ink text-white hover:bg-chrome-hover`}>{children}</Link>;
 }
 
 /** The comps' orange membership CTA. Ink on orange — never white (see note above). */
 export function BtnBrand({ href, children }: { href: string; children: React.ReactNode }) {
-  return <Link href={href} className={`${BTN_BASE} bg-brand text-ink hover:brightness-110`}>{children}</Link>;
+  return <Link href={href} data-part="join-button" className={`${BTN_BASE} bg-brand text-ink hover:brightness-110`}>{children}</Link>;
 }
 
 /** "More →" link in a section head, beside a Chip. */
 export function MoreLink({ href, children = "See all" }: { href: string; children?: React.ReactNode }) {
   return (
-    <Link href={href} className="tap shrink-0 text-xs font-semibold text-brand-text hover:underline">
+    <Link href={href} data-part="see-all" className="tap shrink-0 text-xs font-semibold text-brand-text hover:underline">
       {children} <span aria-hidden="true">→</span>
     </Link>
   );
@@ -107,7 +111,7 @@ export function MoreLink({ href, children = "See all" }: { href: string; childre
 /** Chip on the left, optional "see all" on the right — the comps' section head row. */
 export function SectionHead({ title, href, seeAll }: { title: string; href?: string; seeAll?: string }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-4">
+    <div data-part="section-head" className="mb-4 flex items-center justify-between gap-4">
       <Chip>{title}</Chip>
       {href && <MoreLink href={href}>{seeAll}</MoreLink>}
     </div>
@@ -141,7 +145,7 @@ function IconPerson(props: SVGProps<SVGSVGElement>) {
 export function Meta({ date, by, className = "" }: { date?: string | null; by?: string | null; className?: string }) {
   if (!date && !by) return null;
   return (
-    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-brand-text sm:text-[11px] ${className}`}>
+    <div data-part="card-meta" className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-brand-text sm:text-[11px] ${className}`}>
       {by && (
         <span className="inline-flex items-center gap-1.5">
           <IconPerson width={13} height={13} />
@@ -161,6 +165,6 @@ export function Meta({ date, by, className = "" }: { date?: string | null; by?: 
 /** Uppercase card headline in the display face — the comps' dominant text shape. */
 export function CardTitle({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <h3 className={`font-heading font-extrabold uppercase leading-[1.15] ${className}`}>{children}</h3>
+    <h3 data-part="card-title" className={`font-heading font-extrabold uppercase leading-[1.15] ${className}`}>{children}</h3>
   );
 }

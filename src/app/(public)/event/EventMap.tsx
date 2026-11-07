@@ -14,14 +14,14 @@ export function EventMap({ events }: { events: EventPin[] }) {
   if (withCoords.length === 0) return null;
 
   return (
-    <section className="mt-8">
-      <h2 className="text-lg font-bold text-ink">Event map</h2>
+    <section data-part="event-map" className="mt-8">
+      <h2 data-part="section-title" className="text-lg font-bold text-ink">Event map</h2>
       {withCoords.length < events.length && (
-        <p className="mt-2 text-sm text-graphite">
+        <p data-part="form-notice" className="mt-2 text-sm text-graphite">
           Showing {withCoords.length} of {events.length} events with a known location.
         </p>
       )}
-      <div className="mt-3">
+      <div data-part="map" className="mt-3">
         <PinMap
           ariaLabel="Map of upcoming event locations"
           pins={withCoords.map((e) => ({ href: `/event/${e.slug}`, label: e.title, lat: e.lat, lng: e.lng }))}

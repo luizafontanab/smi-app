@@ -4,6 +4,12 @@ import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 /**
@@ -112,7 +118,6 @@ describe("syncContacts — pruning the segment", () => {
 
   it("removes nothing when the segment can't be listed, and reports the sync as failed", async () => {
     live();
-    vi.spyOn(console, "error").mockImplementation(() => {});
     contacts(dbOk([{ email: "a@b.com", name: null }]));
     const spy = resend(new Response("server error", { status: 500 }));
 

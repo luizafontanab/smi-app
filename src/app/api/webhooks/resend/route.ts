@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { logError } from "@/lib/log";
 import { NextResponse, type NextRequest } from "next/server";
 import { serviceDb } from "@/lib/db/server";
 import { applyOptIn } from "@/lib/contacts";
@@ -73,7 +74,7 @@ type ResendEvent = {
 async function bumpNewsletterMetric(broadcastId: string | undefined, metric: "opens" | "clicks"): Promise<void> {
   if (!broadcastId) return;
   const { error } = await serviceDb().rpc("bump_newsletter_metric", { p_broadcast_id: broadcastId, p_metric: metric });
-  if (error) console.error(`[resend-webhook] bump_newsletter_metric(${metric}) failed:`, error.message);
+  if (error) logError({ source: "webhook", area: "resend-webhook:bump-metric", error: error.message, context: { metric, code: error.code ?? null } });
 }
 
 /** Stamp a contact as unsubscribed, honouring the permanence rule. */

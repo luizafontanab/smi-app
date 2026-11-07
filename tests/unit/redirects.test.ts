@@ -5,6 +5,9 @@ import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
 
 afterEach(() => {
   resetDbServerMocks();
@@ -49,7 +52,6 @@ describe("resolveRedirect", () => {
   });
 
   it("detects a cycle and returns null rather than looping forever", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
       from: hops(
         { to_path: "/b", status_code: 301 },
@@ -58,7 +60,7 @@ describe("resolveRedirect", () => {
     })));
 
     expect(await resolveRedirect("/a")).toBeNull();
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "redirects:cycle", context: { at: "/b", to: "/a" } }));
   });
 
   it("stops after MAX_HOPS rather than following a chain forever", async () => {

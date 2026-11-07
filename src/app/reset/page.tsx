@@ -6,6 +6,9 @@ import { siteUrl } from "@/lib/site-url";
 import { allowRequest, HOUR, withinLimit } from "@/lib/rate-limit";
 import { SubmitButton } from "@/components/SubmitButton";
 import { AuthLogo } from "@/components/AuthLogo";
+// Loads the design option's stylesheet: this page sits outside the public
+// layout but is part of the public site (data-site="public" below).
+import "@/components/design-option-styles";
 
 export const metadata = { title: "Reset your password" };
 
@@ -41,13 +44,13 @@ export default async function ResetPage(props: PageProps<"/reset">) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-paper px-4">
-      <div className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
+    <div data-site="public" data-part="auth-page" className="flex min-h-screen items-center justify-center bg-paper px-4">
+      <div data-part="auth-panel" className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
         <AuthLogo />
 
         {sent ? (
           <>
-            <p className="mt-4 rounded bg-success/10 p-3 text-center text-sm text-success">
+            <p data-part="form-notice" className="mt-4 rounded bg-success/10 p-3 text-center text-sm text-success">
               If that address has an account, a reset link is on its way. The link is valid for one hour.
             </p>
             <p className="mt-4 text-center text-sm">
@@ -59,8 +62,8 @@ export default async function ResetPage(props: PageProps<"/reset">) {
             <p className="mt-1 text-center text-sm text-graphite">
               Enter your email and we&apos;ll send you a link to set a new password.
             </p>
-            <label htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
-            <input id="email" name="email" type="email" required autoComplete="email" className="mt-1 w-full rounded border px-3 py-2" />
+            <label data-part="form-label" htmlFor="email" className="mt-5 block text-sm font-medium">Email</label>
+            <input id="email" name="email" data-part="form-input" type="email" required autoComplete="email" className="mt-1 w-full rounded border px-3 py-2" />
             <div className="mt-5">
               <SubmitButton pendingLabel="Sending…">Send reset link</SubmitButton>
             </div>

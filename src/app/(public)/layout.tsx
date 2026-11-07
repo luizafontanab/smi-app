@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { JsonLd } from "@/components/JsonLd";
-import { SiteHeader } from "@/components/SiteHeader";
-import { SiteFooter } from "@/components/SiteFooter";
-import { GridSiteFooter } from "@/components/GridSiteFooter";
+// Header and footer come through the design-option hook point, never their
+// component files (#69). Forge's footer is not a design-option piece.
+import { Footer as DesignFooter, Header } from "@/components/design-option";
+import { SiteFooter as ForgeSiteFooter } from "@/components/SiteFooter";
 import { CookieConsent } from "@/components/CookieConsent";
 import { SkipLink } from "@/components/SkipLink";
 import { currentUser } from "@/lib/auth";
@@ -32,7 +33,7 @@ export default async function PublicLayout({ children }: { children: React.React
   // just the homepage: there is one public layout, and a light homepage under
   // a near-black header was the thing to avoid.
   const isGrid = variant === "grid";
-  const Footer = isGrid ? GridSiteFooter : SiteFooter;
+  const Footer = isGrid ? DesignFooter : ForgeSiteFooter;
 
   // Signed-in members only: an anonymous visit adds no query, and an admin's
   // unread signal is the console's own inbox bell. currentUser() reads cookies,
@@ -49,20 +50,24 @@ export default async function PublicLayout({ children }: { children: React.React
   const bannerHref = takeover?.memberSlug ? `/member/${takeover.memberSlug}` : undefined;
 
   return (
-    <div style={style} className="flex min-h-full flex-1 flex-col">
+    // data-site="public" scopes a design option's stylesheet to the public site;
+    // it never goes on /console or /dashboard (#69). data-takeover flags the
+    // inline --smi-brand above, so an option can change what it puts on that
+    // colour; Current's stylesheet ignores it (#68 review).
+    <div data-site="public" data-takeover={takeover ? "" : undefined} style={style} className="flex min-h-full flex-1 flex-col">
       {/* Site identity for search/AI crawlers — page-specific types (Article,
           Event, …) are added by the pages themselves. */}
       <JsonLd data={[organizationLd(), webSiteLd()]} />
       <SkipLink />
       {takeover && (
         bannerHref ? (
-          <Link href={bannerHref} aria-label="Advertisement — visit the takeover sponsor">
+          <Link href={bannerHref} data-part="takeover-banner" aria-label="Advertisement — visit the takeover sponsor">
             {/* eslint-disable-next-line @next/next/no-img-element -- full-bleed takeover banner, not a fixed-ratio card image */}
             <img src={mediaUrl(takeover.bannerPath)!} alt="" className="w-full" />
           </Link>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={mediaUrl(takeover.bannerPath)!} alt="" className="w-full" />
+          <img src={mediaUrl(takeover.bannerPath)!} alt="" data-part="takeover-banner" className="w-full" />
         )
       )}
       {/* The strip sits above the header on forge and below it on grid — the
@@ -70,9 +75,9 @@ export default async function PublicLayout({ children }: { children: React.React
           reads as the header's secondary nav; on forge it is the first thing
           on the page as before. */}
       {!isGrid && <IndustryBar industries={industries} tone="dark" />}
-      <SiteHeader user={user} unread={unread} tone={isGrid ? "light" : "dark"} />
+      <Header user={user} unread={unread} tone={isGrid ? "light" : "dark"} />
       {isGrid && <IndustryBar industries={industries} tone="grey" />}
-      <main id="main" className="flex-1">{children}</main>
+      <main id="main" data-part="site-main" className="flex-1">{children}</main>
       <Footer />
       <CookieConsent />
     </div>

@@ -16,14 +16,15 @@ import { reportClientError } from "@/lib/client-error-report";
  */
 export default function PublicError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
+    // eslint-disable-next-line no-restricted-properties -- browser devtools copy; reportClientError below records it in the error log
     console.error("[public] render error:", error);
     // Recorded server-side too (docs/logging.md); the digest ties it to the server's own entry.
     reportClientError({ message: error.message, stack: error.stack, digest: error.digest, kind: "boundary" });
   }, [error]);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-      <h1 className="text-3xl font-bold text-ink">Something went wrong at our end</h1>
+    <div data-part="error-page" className="mx-auto max-w-2xl px-4 py-20 text-center">
+      <h1 data-part="page-title" className="text-3xl font-bold text-ink">Something went wrong at our end</h1>
       <p className="mt-4 text-graphite">
         This one is on us, not on you. Trying again often clears it — the page may have hit a
         temporary problem loading its content.
@@ -32,9 +33,10 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
         <RetryButton
           retry={retry}
           error={error}
+          data-part="button-primary"
           className="rounded bg-ink px-4 py-2 font-semibold text-white hover:brightness-110"
         />
-        <Link href="/" className="rounded border border-ink px-4 py-2 font-semibold text-ink hover:bg-ink/5">
+        <Link href="/" data-part="button-secondary" className="rounded border border-ink px-4 py-2 font-semibold text-ink hover:bg-ink/5">
           Back to the homepage
         </Link>
       </div>

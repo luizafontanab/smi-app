@@ -49,9 +49,9 @@ export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
   // section carries its own white card, so the flat-card wrapper stays off.
   const pageMain = (
     <>
-      <h1 className="mt-6 text-2xl font-bold text-ink">{page.title}</h1>
+      <h1 data-part="page-title" className="mt-6 text-2xl font-bold text-ink">{page.title}</h1>
       {page.collapsible ? (
-        <div
+        <div data-part="rich-text"
           className="story-body story-read mt-1"
           dangerouslySetInnerHTML={{ __html: collapseSections(renderableHtml(page.body)) }}
         />
@@ -64,7 +64,7 @@ export default async function StaticPage(props: PageProps<"/pages/[slug]">) {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4">
+    <div data-part="cms-page" className="mx-auto max-w-6xl px-4">
       <BlockRenderer
         pageType="static_page"
         layout={layout}

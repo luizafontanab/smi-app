@@ -41,7 +41,7 @@ const SITE_LINKS = [
 
 export function GridSiteFooter() {
   return (
-    <footer className="bg-[var(--gh-footer)] text-white">
+    <footer data-part="site-footer" className="bg-[var(--gh-footer)] text-white">
       {/* Three columns only from lg: at tablet width the third left the
           newsletter field ~105px wide (#33), so there it spans a full row
           under the other two. */}
@@ -53,11 +53,12 @@ export function GridSiteFooter() {
             width={819}
             height={270}
             className="h-16 w-auto"
+            data-part="site-footer-logo"
           />
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-white/70">
             The voice of the UK sheet metal, fabrication and welding trade.
           </p>
-          <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold">
+          <div data-part="site-footer-socials" className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold">
             {SOCIAL_CHANNELS.map((c) => (
               <a
                 key={c.key}
@@ -74,8 +75,8 @@ export function GridSiteFooter() {
           </div>
         </div>
 
-        <nav aria-label="Footer">
-          <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">Site</p>
+        <nav aria-label="Footer" data-part="site-footer-links">
+          <p data-part="site-footer-heading" className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">Site</p>
           <ul className="mt-3 grid gap-1.5 text-sm text-white/80">
             {SITE_LINKS.map((l) => (
               <li key={l.href}>
@@ -86,8 +87,8 @@ export function GridSiteFooter() {
           </ul>
         </nav>
 
-        <div className="md:col-span-2 lg:col-span-1">
-          <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">{SIGNUP_SURFACES.grid_footer.heading}</p>
+        <div data-part="site-footer-signup" className="md:col-span-2 lg:col-span-1">
+          <p data-part="site-footer-heading" className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">{SIGNUP_SURFACES.grid_footer.heading}</p>
           <p className="mt-3 max-w-md text-sm leading-relaxed text-white/70">
             {SIGNUP_SURFACES.grid_footer.blurb}
           </p>
@@ -97,7 +98,7 @@ export function GridSiteFooter() {
         </div>
       </div>
 
-      <div className="border-t border-white/10 py-5 text-center text-xs text-white/60">
+      <div data-part="site-footer-legal" className="border-t border-white/10 py-5 text-center text-xs text-white/60">
         © {new Date().getFullYear()} Sheet Metal Industries. All rights reserved.
       </div>
     </footer>

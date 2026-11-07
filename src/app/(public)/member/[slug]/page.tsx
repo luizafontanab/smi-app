@@ -99,26 +99,26 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           archived row at all — but an admin looking at a page that nobody else
           can see needs telling, or the archive silently looks like a no-op. */}
       {member.archived_at && (
-        <p className="mt-6 rounded border border-line bg-shade px-4 py-2 text-sm text-graphite">
+        <p data-part="form-notice" className="mt-6 rounded border border-line bg-shade px-4 py-2 text-sm text-graphite">
           <strong className="font-semibold text-ink">Archived.</strong> This page is hidden from the public site, from search and
           from the directory. You can see it because you are signed in as an admin.
         </p>
       )}
       {hero && (
-        <div className="relative mt-6 h-64 overflow-hidden rounded-t-xl">
+        <div data-part="member-hero" className="relative mt-6 h-64 overflow-hidden rounded-t-xl">
           <Image src={hero} alt="" fill sizes="100vw" className="object-cover" unoptimized />
         </div>
       )}
       {/* Stacked on phones (#33): beside a 112px logo the name, address and
           services had ~178px, so the address ran to five lines. Stacked, the
           -mt-16 pull also lands the logo in the hero as intended. */}
-      <header className={`relative z-10 ${hero ? "rounded-b-xl" : "mt-6 rounded-xl"} flex flex-col items-start gap-4 bg-white p-5 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-5 sm:p-6`}>
+      <header data-part="member-header" className={`relative z-10 ${hero ? "rounded-b-xl" : "mt-6 rounded-xl"} flex flex-col items-start gap-4 bg-white p-5 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-5 sm:p-6`}>
         {/* Logo overlaps up into the hero (a -mt-16 pull, plus relative z-10 on
             the header so it explicitly wins the stacking order rather than
             relying on DOM-order paint order — that was fragile enough to
             occasionally paint the logo behind the hero). Prominent position
             per fix list; the white ring reads against any hero photo. */}
-        <div className={hero ? "-mt-16 shrink-0" : "shrink-0"}>
+        <div data-part="member-logo" className={hero ? "-mt-16 shrink-0" : "shrink-0"}>
           {member.logo_path ? (
             // Rounded box is bigger than the image inside it (112px box, 96px
             // image) so the corner radius only ever clips white background,
@@ -132,35 +132,35 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
           ) : null}
         </div>
         <div className="w-full min-w-0 sm:w-auto sm:flex-1">
-          <p className="text-xs uppercase tracking-widest text-brand-text">SMI Member{industryName ? ` · ${industryName}` : ""}</p>
-          <h1 className="break-words text-2xl font-bold text-ink">{member.name}</h1>
-          <p className="text-sm text-graphite">{member.address}</p>
+          <p data-part="card-meta" className="text-xs uppercase tracking-widest text-brand-text">SMI Member{industryName ? ` · ${industryName}` : ""}</p>
+          <h1 data-part="page-title" className="break-words text-2xl font-bold text-ink">{member.name}</h1>
+          <p data-part="member-address" className="text-sm text-graphite">{member.address}</p>
           {member.services.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div data-part="member-services" className="mt-2 flex flex-wrap gap-1.5">
               {member.services.map((s) => (
-                <span key={s.slug} className="rounded-full bg-graphite/10 px-2.5 py-0.5 text-xs font-medium text-graphite">{s.name}</span>
+                <span data-part="card-badge" key={s.slug} className="rounded-full bg-graphite/10 px-2.5 py-0.5 text-xs font-medium text-graphite">{s.name}</span>
               ))}
             </div>
           )}
         </div>
       </header>
 
-      <div className="mt-6 grid items-stretch gap-6 lg:grid-cols-3">
+      <div data-part="member-body" className="mt-6 grid items-stretch gap-6 lg:grid-cols-3">
         <div className="flex lg:col-span-2">
           {/* flex + w-full/flex-col so the visible card itself fills the
               grid-stretched row height (never shorter than the sidebar, can
               be taller) rather than just its invisible wrapper growing. */}
-          <section className="flex w-full flex-col rounded-lg bg-white p-6 shadow-sm">
-            <h2 className="font-bold text-ink">About</h2>
+          <section data-part="panel" className="flex w-full flex-col rounded-lg bg-white p-6 shadow-sm">
+            <h2 data-part="section-title" className="font-bold text-ink">About</h2>
             <RichText html={member.description} className="mt-2 text-ink" />
           </section>
         </div>
-        <aside className="flex flex-col gap-4">
+        <aside data-part="member-aside" className="flex flex-col gap-4">
           {/* Google Maps, the same map as the directory's Map view (PinMap).
               `!= null`, not truthiness — a longitude of 0 runs through
               Greenwich and London. */}
           {member.lat != null && member.lng != null && (
-            <div className="overflow-hidden rounded-lg bg-white shadow-sm">
+            <div data-part="map" className="overflow-hidden rounded-lg bg-white shadow-sm">
               <PinMap
                 ariaLabel={`Map showing ${member.name}'s location`}
                 pins={[{ href: `/member/${member.slug}`, label: member.name, lat: member.lat, lng: member.lng }]}
@@ -170,7 +170,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
                 scrollWheelZoom={false}
                 popups={false}
               />
-              <p className="p-3 text-xs text-graphite">{member.address}</p>
+              <p data-part="card-meta" className="p-3 text-xs text-graphite">{member.address}</p>
             </div>
           )}
           {/* Website, phone and socials together, under the map — replaces
@@ -188,7 +188,7 @@ export default async function MemberPage(props: PageProps<"/member/[slug]">) {
   const profileVideo = videos.length ? <MemberVideos videos={videos} /> : null;
 
   return (
-    <div className="mx-auto max-w-6xl px-4">
+    <div data-part="member-page" className="mx-auto max-w-6xl px-4">
       <BlockRenderer
         pageType="member_profile"
         layout={layout}

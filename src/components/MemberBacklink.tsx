@@ -8,7 +8,7 @@ import { MemberTiles } from "@/components/MemberTiles";
  */
 export function MemberBacklink({ name, slug, logoUrl, label }: { name: string; slug: string; logoUrl?: string | null; label?: string }) {
   return (
-    <div className="mt-8">
+    <div data-part="member-backlink" className="mt-8">
       <MemberTiles members={[{ name, slug, logoUrl: logoUrl ?? null }]} layout="inline" label={label} />
     </div>
   );

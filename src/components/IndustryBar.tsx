@@ -68,7 +68,7 @@ export function IndustryBar({ industries, tone = "dark" }: {
   const names = industries.map((c) => c.name);
   const twoRows = new Set(balancedBreaks(names, 2));
   return (
-    <nav aria-label="Industries" className={t.bar}>
+    <nav aria-label="Industries" data-part="industry-strip" className={t.bar}>
       <div className="mx-auto flex max-w-6xl items-center gap-x-1 overflow-x-auto px-4 pr-10 [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] lg:flex-wrap lg:justify-center lg:overflow-visible lg:py-0.5 lg:pr-4 lg:[mask-image:none]">
         <span className={`hidden shrink-0 pr-2 text-[11px] uppercase tracking-wide sm:block lg:hidden ${t.label}`}>Industries</span>
         {industries.map((c, i) => (
@@ -78,6 +78,7 @@ export function IndustryBar({ industries, tone = "dark" }: {
             {twoRows.has(i) && <span aria-hidden className="hidden basis-full lg:block" />}
             <Link
               href={`/industry/${c.slug}`}
+              data-part="industry-strip-link"
               className={`tap shrink-0 whitespace-nowrap rounded px-2 py-1 text-xs ${t.link}`}
             >
               {c.name}

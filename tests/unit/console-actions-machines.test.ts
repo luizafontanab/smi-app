@@ -7,6 +7,12 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import { invoicesTable } from "../stubs/invoices-table";
 import type { CurrentUser } from "@/lib/auth";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 type Expire = { ok: true } | { ok: false; status: string | null; error: string };
@@ -230,7 +236,6 @@ describe("Featured Member billing", () => {
   });
 
   it("a new slot whose invoice fails says so on the slot's page", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db({ placements: () => queryBuilder(dbOk({ id: PL }, 0)), invoices: () => queryBuilder(dbError("boom")) });
     await expect(saveFeaturedMemberPlacement(form({ member_id: "m1", starts_on: "2099-10-01", ends_on: "2099-10-31", price_pounds: "400" })))
       .rejects.toThrow(new RegExp(`featured-member/${PL}\\?error=Saved%2C%20but%20the%20invoice`));

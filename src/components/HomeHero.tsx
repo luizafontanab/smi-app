@@ -46,9 +46,9 @@ export function HomeHero({ items }: { items: HeroItem[] }) {
   };
 
   return (
-    <section ref={sectionRef} className="hero" onPointerLeave={onPointerLeave}>
+    <section ref={sectionRef} data-part="home-hero" className="hero" onPointerLeave={onPointerLeave}>
       {/* `/` had no h1 at all before this. */}
-      <h1 className="sr-only">Sheet Metal Industries — news for UK sheet metal, fabrication and welding</h1>
+      <h1 data-part="page-title" className="sr-only">Sheet Metal Industries — news for UK sheet metal, fabrication and welding</h1>
 
       <div className="hero-media-stack absolute inset-0" aria-hidden="true">
         {items.map((item, i) => (

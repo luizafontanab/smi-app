@@ -9,6 +9,12 @@ import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult }
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const { requireConsole, enqueue, syncContactToCrm, crm, saveLastRun, firstImportDone, readLastRun } = vi.hoisted(() => ({
@@ -742,7 +748,6 @@ describe("Bigin console actions", () => {
     expect(await searchBiginCompanies("Acm")).toEqual([{ id: "900", name: "Acme" }]);
     expect(crm.searchCompanies).toHaveBeenCalledWith("Acm");
 
-    vi.spyOn(console, "error").mockImplementation(() => {});
     crm.searchCompanies.mockRejectedValueOnce(new Error("Bigin down"));
     expect(await searchBiginCompanies("Acm")).toEqual([]);
   });

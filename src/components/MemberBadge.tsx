@@ -13,8 +13,8 @@ export function MemberBadge({ variant = "overlay", label = "Member news" }: {
 }) {
   const base = "bg-ink text-[11px] font-bold uppercase tracking-wide text-white";
   return variant === "inline" ? (
-    <span className={`rounded-full px-3 py-1 ${base}`}>{label}</span>
+    <span data-part="card-badge" className={`rounded-full px-3 py-1 ${base}`}>{label}</span>
   ) : (
-    <span className={`absolute left-2 top-2 z-10 rounded px-2 py-0.5 ${base}`}>{label}</span>
+    <span data-part="card-badge" className={`absolute left-2 top-2 z-10 rounded px-2 py-0.5 ${base}`}>{label}</span>
   );
 }

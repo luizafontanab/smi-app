@@ -128,7 +128,7 @@ export function AdCreative({ advertId, name, href, desktop, mobile, shape, path,
   }, [active, advertId, loaded, path]);
 
   return (
-    <Link ref={ref} href={href} className="block" aria-label={`Advert: ${name}`} data-active={active}>
+    <Link ref={ref} href={href} data-part="ad-slot" className="block" aria-label={`Advert: ${name}`} data-active={active}>
       {shape === "banner" || shape === "banner_narrow" ? (
         // The two-creative shapes: a wide strip cannot survive a phone, so the
         // mobile artwork is a different shape, not a resize. Both swap at md:,

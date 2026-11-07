@@ -12,8 +12,8 @@ export function SearchForm({
   className?: string;
 }) {
   return (
-    <form action="/search" className={className}>
-      <input
+    <form data-part="search-form" action="/search" className={className}>
+      <input data-part="form-input"
         name="q"
         type="search"
         aria-label="Search the site"
@@ -21,7 +21,7 @@ export function SearchForm({
         // 16px below sm: iOS Safari zooms the page into any smaller input on focus (#33 C5)
         className="min-w-0 flex-1 rounded border border-line px-4 py-2.5 text-base sm:text-sm"
       />
-      <button className="rounded bg-brand px-5 py-2.5 text-sm font-bold text-ink hover:brightness-110">Search</button>
+      <button data-part="button-primary" className="rounded bg-brand px-5 py-2.5 text-sm font-bold text-ink hover:brightness-110">Search</button>
     </form>
   );
 }

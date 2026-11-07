@@ -10,6 +10,7 @@ import {
 } from "@/components/grid-home/cards";
 import { Band, SectionHead } from "@/components/grid-home/ui";
 import { excluding, type HomeData } from "./home.data";
+import { uniqueFeaturedMembers } from "@/lib/featured-members";
 
 /**
  * The grid home page. Above the fold is two equally-weighted news highlights
@@ -68,7 +69,7 @@ export function GridHome({
   // Member news rotates into it near the top instead of living only at the
   // foot of the page (GAPS A9.3) — capped so the fold stays ≤20% member.
   const moreNews = weaveMemberNews({
-    carousel: rest.slice(0, 8),
+    carousel: rest.slice(0, HOME_CAROUSEL_STORIES),
     alsoInFold: [lead, second].filter((s): s is NonNullable<typeof s> => Boolean(s)),
     memberNews,
   });
@@ -84,18 +85,14 @@ export function GridHome({
   const issues = newsletters.filter((i) => i.web_slug);
 
   /*
-   * Sold featured-member placements, for the sidebar box. Deduplicated on slug
-   * because a member can hold overlapping placements — the same rule and the
-   * same one-liner as the directory's featured strip (member/page.tsx). It
-   * doubles as the null-member filter: placements.member_id is nullable.
+   * Sold featured-member placements, for the sidebar box, each member once
+   * (uniqueFeaturedMembers in @/lib/featured-members; the directory's featured strip uses it too).
    *
    * Resolved here rather than inside the box because it also decides the
    * band's column classes below. Two predicates would eventually disagree and
    * leave a 3fr column of nothing down the left of the section.
    */
-  const featured = [...new Map(
-    featuredMembers.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : [])),
-  ).values()];
+  const featured = uniqueFeaturedMembers(featuredMembers);
 
 
   /*
@@ -124,14 +121,14 @@ export function GridHome({
          * column. Both class strings appear here whole so Tailwind's scanner
          * sees them.
          */}
-        <Band inner="py-8">
+        <Band part="home-videos" inner="py-8">
           {/* grid-cols-1 for the same reason as the fold's: the Featured
               members box is a sideways scroller below lg, and an implicit
               track would grow to its full width and push the page sideways. */}
           <div className={`grid grid-cols-1 gap-5 ${featured.length > 0 ? "lg:grid-cols-[3fr_9fr]" : ""}`}>
             <div className="lg:col-start-2 lg:row-start-1">
               <SectionHead title="Latest videos" href="/video" seeAll="See all videos" />
-              <div className="grid gap-5 sm:grid-cols-3">
+              <div data-part="card-grid" className="grid gap-5 sm:grid-cols-3">
                 {videos.slice(0, 3).map((v, i) => <div key={v.id} className={phoneCap(i)}><GhVideoCard video={v} /></div>)}
               </div>
             </div>
@@ -154,9 +151,9 @@ export function GridHome({
       <>
         {/* ── Member news ──────────────────────────────────────────────────── */}
         {railNews.length > 0 && (
-          <Band inner="py-8">
+          <Band part="home-member-news" inner="py-8">
             <SectionHead title="Featured member news" href="/news" seeAll="More member news" />
-            <div className="grid gap-8 md:grid-cols-3">
+            <div data-part="card-grid" className="grid gap-8 md:grid-cols-3">
               {railNews.slice(0, 3).map((s, i) => <div key={s.id} className={phoneCap(i)}><GhMemberRow story={s} /></div>)}
             </div>
           </Band>
@@ -203,9 +200,9 @@ export function GridHome({
          * it twice on one page is the thing to avoid.
          */}
         {upcomingEvents.length > 0 && (
-          <Band inner="py-8">
+          <Band part="home-events" inner="py-8">
             <SectionHead title="Upcoming events" href="/event" seeAll="All events" />
-            <div className="grid gap-5 sm:grid-cols-3">
+            <div data-part="card-grid" className="grid gap-5 sm:grid-cols-3">
               {upcomingEvents.map((e) => <GhEventCard key={e.slug} event={e} />)}
             </div>
           </Band>
@@ -215,9 +212,9 @@ export function GridHome({
     newsletters: (
       <>
         {issues.length > 0 && (
-          <Band inner="py-8">
+          <Band part="home-newsletters" inner="py-8">
             <SectionHead title="Latest newsletters" href="/newsletters" seeAll="Newsletter archive" />
-            <div className="grid gap-5 sm:grid-cols-3">
+            <div data-part="card-grid" className="grid gap-5 sm:grid-cols-3">
               {issues.map((issue, i) => <div key={issue.number} className={phoneCap(i)}><GhNewsletterCard issue={issue} /></div>)}
             </div>
           </Band>
@@ -242,7 +239,7 @@ export function GridHome({
        * py-8 rather than pb-8 — a tinted band needs its top padding too, or the
        * artwork sits flush against the colour change.
        */}
-      <Band tone="grey" inner="py-8">
+      <Band tone="grey" part="home-band-ad" inner="py-8">
         <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_3" adverts={banners.get("home_3") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
       </Band>
     </>
@@ -252,7 +249,7 @@ export function GridHome({
     ...sectionContent,
     home_2: (
       /* Grey, like home_1 — the page alternates white and grey bands. */
-      <Band tone="grey" inner="py-4">
+      <Band tone="grey" part="home-band-ad" inner="py-4">
         <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_2" adverts={banners.get("home_2") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
       </Band>
     ),
@@ -267,7 +264,7 @@ export function GridHome({
     <>
       {/* Grid has no editorial hero, so the page's h1 is visually the wordmark
           in the header — but the document still needs one. */}
-      <h1 className="sr-only">Sheet Metal Industries — UK sheet metal, fabrication and welding news</h1>
+      <h1 data-part="page-title" className="sr-only">Sheet Metal Industries — UK sheet metal, fabrication and welding news</h1>
 
       {/*
        * ── Above the fold ─────────────────────────────────────────────────
@@ -276,7 +273,7 @@ export function GridHome({
        * both. No items-start here on purpose — the two story cards stretch to
        * each other so their "Read more" links land on one line.
        */}
-      <Band inner="pt-6">
+      <Band part="home-fold" inner="pt-6">
         {/* grid-cols-1 below lg, not the implicit column: an implicit track
             grows to its widest child's min-content, and the More News row is
             ~1700px of fixed-width tiles, which pushed the whole page sideways
@@ -292,11 +289,11 @@ export function GridHome({
           {/* flex-1 on each card so the pair fills the two-row span exactly —
               the covers absorb the slack rather than leaving it under the
               second card. */}
-          <div className="flex flex-col gap-4 md:col-span-2 md:flex-row lg:col-span-1 lg:row-span-2 lg:flex-col">
+          <div data-part="home-placements" className="flex flex-col gap-4 md:col-span-2 md:flex-row lg:col-span-1 lg:row-span-2 lg:flex-col">
             {machine && <div className="flex-1"><GhMachineCard machine={machine} /></div>}
             {featuredEvent && <div className="flex-1"><GhEventCard event={featuredEvent} featured /></div>}
           </div>
-          <div className="md:col-span-2">
+          <div data-part="home-more-news" className="md:col-span-2">
             <GhMoreNews stories={moreNews} />
           </div>
         </div>
@@ -304,7 +301,7 @@ export function GridHome({
 
       {/* The rotating banner is a real advert slot, not an editorial hero —
           see the top-of-file note on the above-the-fold exception. */}
-      <Band tone="grey" className="mt-6" inner="py-4">
+      <Band tone="grey" part="home-band-ad" className="mt-6" inner="py-4">
         <div className={HOME_AD_WRAPPER}><AdSlot slotKey="home_1" adverts={banners.get("home_1") ?? []} showPlaceholders={showPlaceholders} path="/" /></div>
       </Band>
 
@@ -378,11 +375,21 @@ export const bannersTouch = (seq: BelowFoldPiece[]) =>
 const isBanner = (p: BelowFoldPiece) => p === "home_2" || p === "home_3";
 
 /** Third and later cards of a row drop below sm — the phone page was ~7,000px (#33 C9). */
-const phoneCap = (i: number) => (i >= 2 ? "max-sm:hidden" : undefined);
+export const phoneCap = (i: number) => (i >= 2 ? "max-sm:hidden" : undefined);
 
 /**
  * Banner width on a phone: a 370×280 mobile creative at full width was most
  * of a screen, three times over. Capped and centred as on the story page
  * (BlockRenderer's STORY_AD_WRAPPER); from md the desktop strip shows uncapped.
  */
-const HOME_AD_WRAPPER = "mx-auto w-full max-w-[300px] md:max-w-none";
+export const HOME_AD_WRAPPER = "mx-auto w-full max-w-[300px] md:max-w-none";
+
+/** The More News carousel's length, after the two fold highlights. */
+const HOME_CAROUSEL_STORIES = 8;
+/**
+ * How far down `stories` the home page reaches: the two fold highlights plus
+ * the carousel. Another design option's home view stops at the same story, so
+ * the options show the same stories.
+ */
+export const HOME_TOP_STORIES = 2 + HOME_CAROUSEL_STORIES;
+

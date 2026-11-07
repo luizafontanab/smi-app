@@ -1,4 +1,5 @@
 import { serviceDb } from "./db/server";
+import { logError } from "./log";
 import { replaceMemberMembershipTypes } from "./member-services";
 import { notifyConsole } from "./notify-admin";
 import { invoiceNumber } from "./invoicing";
@@ -102,7 +103,7 @@ export async function provisionMember(opts: {
     try {
       await replaceMemberMembershipTypes(db, member.id, opts.membershipTypeIds);
     } catch (e) {
-      console.error("[join] membership types not saved:", e);
+      logError({ source: "db", area: "join:membership-types", error: e, context: { member_id: member.id } });
     }
   }
   return { memberId: member.id };
@@ -120,7 +121,7 @@ async function notifyQuietly(memberId: string, payload: Record<string, unknown>)
     const { enqueue } = await import("./jobs");
     await enqueue("notify_member", { member_id: memberId, ...payload });
   } catch (e) {
-    console.error("[membership] notification could not be queued:", e);
+    logError({ source: "server", area: "membership:queue-notification", error: e, context: { member_id: memberId } });
   }
 }
 

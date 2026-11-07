@@ -76,21 +76,7 @@ Each service is independent; do them in any order.
       "using their Website": every one is a homepage checked daily, so expect
       more suggestions than from news pages alone (3.7 covers the first-week
       review).
-- [ ] **1.15b — Regenerate the Bigin refresh token with two more scopes.** The
-      CRM companies work (spec #49) needs, on top of the four from 1.15:
-      `ZohoBigin.settings.fields.READ` (read the Companies field list: every
-      field in a company's detail view, and the News Page URL found by its
-      label, #54) and `ZohoBigin.modules.accounts.UPDATE` (write a company's
-      News Page URL back to Bigin, #55, and "Use as News Page URL" on a
-      company covered by the imported list, #56). Scope names are from Bigin's v2 API
-      docs, not yet tried on a live token. In the Zoho API Console's Self
-      Client (portal Bigin), generate a code with the full list in
-      `.env.example` (the CRM section), exchange it for a refresh token, and
-      replace `BIGIN_REFRESH_TOKEN` in Vercel Production. Until then the
-      company sync keeps working with name, Website and News Page URL only,
-      and a News Page URL edited here can't reach Bigin. Afterwards, run
-      "Sync companies" on `/console/crm` and open a company: it should list
-      Bigin's own field labels, custom fields included.
+- **1.15b — Bigin token: two more scopes for CRM Companies.** Moved to [#88](https://github.com/luizafontanab/smi-app/issues/88) on 7 Nov 2026.
 
 ### Social — Buffer
 
@@ -322,26 +308,7 @@ through Proof and approval first.
       - A PUT to a deleted contact fails safely.
       - Deleting a race-created duplicate (`?wf_trigger=false`) works with the
         granted scopes.
-      - **Companies (spec #49).** Each of these was settled from Bigin's docs
-        only, never against a live account:
-        - *Before 1.15b, on the current token:* does one `GET /Accounts/{id}`
-          return every field, custom ones included? If it does, the company
-          panel's "In Bigin" fields (#54) needn't wait for the new token.
-          The docs' sample suggests so; no sentence says it.
-        - When regenerating the token (1.15b): Zoho accepts both scope names,
-          `ZohoBigin.settings.fields.READ` and `ZohoBigin.modules.accounts.UPDATE`,
-          as written. If it rejects either, the error names the one.
-        - The write check (a `PUT /Accounts` with no records,
-          `canWriteCompanies` in `src/lib/adapters/crm.ts`): record what Bigin
-          answers before and after 1.15b. The app expects `OAUTH_SCOPE_MISMATCH`
-          without the scope and a validation error about the empty `data` with
-          it. Anything else leaves the News Page URL editor in CRM disabled.
-        - Clear a company's News Page URL in CRM: Bigin's field must be empty
-          afterwards (the app sends `null`). If it keeps the old address, the
-          next sync puts it back.
-        - The field list (1.15a): the News Page URL field's `display_label`,
-          not only its `field_label`, reads "News Page URL". The Companies box
-          names the field it fell back to if not.
+      - **Companies (spec #49).** Moved to [#88](https://github.com/luizafontanab/smi-app/issues/88) on 7 Nov 2026.
 - [ ] **3.4 — First Bigin import, with Jas, before the next newsletter.** In
       `/console/crm`, click **Preview import**, read the counts, then **Run first
       import**. Imported contacts are subscribed unless they opted out in Bigin,
@@ -482,7 +449,11 @@ original numbers, because other items and docs refer to them.
       API calls a day). Bigin has no test mode: real keys write to real
       contacts. Do 1.13–1.14 for it, put its keys in **Preview** only, and run
       3.3 against it.
-- [ ] **1.19 — Turn on Deployment Protection for Preview deployments.**
+- **7.3 — Vercel share links for each design option.** Moved to [#83](https://github.com/luizafontanab/smi-app/issues/83) on 6 Nov 2026.
+- **7.4 — Revoke both share links once Jas picks.** Moved to [#84](https://github.com/luizafontanab/smi-app/issues/84) on 6 Nov 2026.
+- **7.5 — A real photo for the Classic `/join` banner.** Moved to [#85](https://github.com/luizafontanab/smi-app/issues/85) on 6 Nov 2026.
+
+**Done:** 1.19 was already on when checked on 6 Nov: preview and branch URLs redirect to the Vercel login.
 
 ### Housekeeping
 

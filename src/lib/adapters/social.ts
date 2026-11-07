@@ -27,6 +27,7 @@
  */
 
 import { socialHandle, socialHref } from "@/lib/social";
+import { logError } from "../log";
 import { mediaUrl, serviceDb } from "../db/server";
 import { readSocialChannels } from "../social-channels";
 import type { ChannelPost } from "../social-confirm";
@@ -284,7 +285,7 @@ class BufferPublisher implements SocialPublisher {
       }
       return { kind: "known", services };
     } catch (e) {
-      console.error("[social] buffer channel lookup failed:", e);
+      logError({ source: "adapter", area: "social:buffer-channels", error: e });
       return { kind: "failed" };
     }
   }
@@ -306,7 +307,7 @@ class BufferPublisher implements SocialPublisher {
         const post = sentPost(body.data.post);
         if (post) out.push(post);
       } catch (e) {
-        console.error("[social] buffer post lookup failed:", e);
+        logError({ source: "adapter", area: "social:buffer-post-lookup", error: e, context: { post_id: id } });
       }
     }
     return out;
@@ -326,7 +327,7 @@ class BufferPublisher implements SocialPublisher {
       });
     } catch (e) {
       // 1. Transport: DNS, connection reset, abort.
-      console.error("[social] buffer publish failed:", e);
+      logError({ source: "adapter", area: "social:buffer-publish", error: e, context: { stage: "transport" } });
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
 
@@ -334,7 +335,7 @@ class BufferPublisher implements SocialPublisher {
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       const error = `Buffer rejected the request (${res.status}): ${detail.slice(0, 300)}`;
-      console.error("[social] buffer publish failed:", error);
+      logError({ source: "adapter", area: "social:buffer-publish", error, context: { stage: "http", status: res.status } });
       return { ok: false, error };
     }
 
@@ -345,14 +346,14 @@ class BufferPublisher implements SocialPublisher {
       body = await res.json();
     } catch {
       const error = "Buffer returned a non-JSON response";
-      console.error("[social] buffer publish failed:", error);
+      logError({ source: "adapter", area: "social:buffer-publish", error, context: { stage: "parse" } });
       return { ok: false, error };
     }
 
     // 4. Top-level GraphQL errors — document or validation failures, HTTP 200.
     if (body.errors?.length) {
       const error = `Buffer GraphQL error: ${body.errors.map((e) => e.message ?? "unknown").join("; ")}`;
-      console.error("[social] buffer publish failed:", error);
+      logError({ source: "adapter", area: "social:buffer-publish", error, context: { stage: "graphql" } });
       return { ok: false, error };
     }
 
@@ -361,7 +362,7 @@ class BufferPublisher implements SocialPublisher {
     const payload = body.data?.createPost;
     if (payload?.__typename !== "PostActionSuccess") {
       const error = payload?.message ?? `Buffer returned an unexpected payload (${payload?.__typename ?? "no data"})`;
-      console.error("[social] buffer publish failed:", error);
+      logError({ source: "adapter", area: "social:buffer-publish", error, context: { stage: "payload", typename: payload?.__typename ?? null } });
       return { ok: false, error };
     }
 
