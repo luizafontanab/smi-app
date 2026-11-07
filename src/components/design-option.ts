@@ -62,11 +62,11 @@
  * rename or remove one without checking the option stylesheets that target it.
  */
 import type { ComponentType } from "react";
-import { SiteHeader } from "@/components/SiteHeader";
-import { GridHome } from "@/app/(public)/home.grid";
-import { StoryPageView } from "@/components/story/StoryPageView";
-import { IndustryPageView } from "@/components/industry/IndustryPageView";
-import { NewsletterIssueView as CurrentNewsletterIssueView } from "@/components/newsletter/NewsletterIssueView";
+import type { SiteHeader } from "@/components/SiteHeader";
+import type { GridHome } from "@/app/(public)/home.grid";
+import type { StoryPageView } from "@/components/story/StoryPageView";
+import type { IndustryPageView } from "@/components/industry/IndustryPageView";
+import type { NewsletterIssueView as CurrentNewsletterIssueView } from "@/components/newsletter/NewsletterIssueView";
 // Classic's own pieces, one per hook point (#71–#78). The Current components
 // above stay imported only for the props types each piece must accept.
 import { ClassicHeader } from "@/components/classic/ClassicHeader";

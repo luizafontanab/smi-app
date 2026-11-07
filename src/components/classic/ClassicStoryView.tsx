@@ -15,8 +15,8 @@ import { adSlotKeys, isAnchor, type Block } from "@/lib/blocks/schema";
  *
  * Top to bottom: "‹ Back to News", then ONE narrow white panel holding the
  * story's header, hero and body, the share row and the member tiles in a
- * single column under the article (no sidebar), then whatever the admin's
- * layout puts after the article — adverts, Latest News, the join and sign-up
+ * single column under the story (no sidebar), then whatever the admin's
+ * layout puts after the story — adverts, Latest News, the join and sign-up
  * blocks — outside the panel, at the page's width.
  *
  * The layout still decides the order. It is cut in two after its last anchor
@@ -55,7 +55,7 @@ export function ClassicStoryView({ story, categories, cover, members, socialPost
     story,
     categories,
     cover,
-    // "inline": one column, the member tiles under the article.
+    // "inline": one column, the member tiles under the story.
     main: <StoryMain body={body} share={<StorySocialLinks posts={socialPosts} />} members={members} layout="inline" />,
   });
 

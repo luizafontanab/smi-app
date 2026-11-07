@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { JOIN_BENEFITS, JOIN_STEPS } from "@/components/join/JoinPageView";
 
-/** Decorative glyph per benefit, in JOIN_BENEFITS order. The disc colours are in classic.css #78. */
-const BENEFIT_GLYPHS = ["🏢", "📰", "📈", "🤝"];
+/** Decorative glyph per benefit, by JOIN_BENEFITS title. The disc colours are in classic.css #78. */
+const BENEFIT_GLYPHS: Readonly<Record<string, string>> = {
+  "Your company page": "🏢",
+  "Post your own news": "📰",
+  "See your reach": "📈",
+  Community: "🤝",
+};
 
 /**
  * Classic's join page (hook point `JoinView` in src/components/design-option.ts;
@@ -57,9 +62,9 @@ export function ClassicJoinView() {
           </div>
         </div>
         <div data-part="join-benefits">
-          {JOIN_BENEFITS.map(([title, detail], i) => (
+          {JOIN_BENEFITS.map(([title, detail]) => (
             <div key={title} data-part="join-benefit">
-              <span data-part="join-benefit-disc" aria-hidden="true">{BENEFIT_GLYPHS[i]}</span>
+              <span data-part="join-benefit-disc" aria-hidden="true">{BENEFIT_GLYPHS[title]}</span>
               <div>
                 <h3 data-part="card-title">{title}</h3>
                 <p data-part="card-excerpt">{detail}</p>

@@ -65,6 +65,15 @@ describe("ClassicJoinView", () => {
     }
   });
 
+  // The glyphs are keyed by benefit title, so renaming a benefit on staging
+  // must not leave its disc empty.
+  it("gives every benefit's disc a glyph", () => {
+    const { container } = page();
+    const discs = [...container.querySelectorAll('[data-part="join-benefit-disc"]')];
+    expect(discs).toHaveLength(4);
+    for (const d of discs) expect(d.textContent).not.toBe("");
+  });
+
   it("uses no photo in the banner yet: a marked placeholder, never a borrowed story cover", () => {
     const { container } = page();
     expect(container.querySelector('[data-part="join-banner"] img')).toBeNull();
