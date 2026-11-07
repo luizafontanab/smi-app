@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { bannersTouch, belowFoldSequence, HOME_TOP_STORIES, phoneCap, phoneSequence, uniqueFeaturedMembers } from "@/app/(public)/home.grid";
+import { bannersTouch, belowFoldSequence, HOME_TOP_STORIES, phoneCap, phoneSequence } from "@/app/(public)/home.grid";
+import { uniqueFeaturedMembers } from "@/lib/featured-members";
 import type { HomeSectionId } from "@/lib/home-sections";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
@@ -67,7 +68,11 @@ describe("GridHome's shared helpers", () => {
   });
 
   it("drops the third and later cards of a row on a phone", () => {
-    expect([0, 1, 2, 3].map(phoneCap)).toEqual([undefined, undefined, "max-sm:hidden", "max-sm:hidden"]);
+    // Asserts which cards are capped, not the class that does it (#68: no tests of class strings).
+    const [first, second, third, fourth] = [0, 1, 2, 3].map(phoneCap);
+    expect([first, second]).toEqual([undefined, undefined]);
+    expect(third).toBeTruthy();
+    expect(fourth).toBe(third);
   });
 
   it("shows ten top stories: two fold highlights and an eight-tile carousel", () => {

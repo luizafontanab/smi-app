@@ -84,7 +84,7 @@ export default async function NewsPage(props: PageProps<"/news">) {
   const hasFilters = Boolean(category || industry || member || from || to || memberOnly);
 
   return (
-    <div data-part="news-page" className="mx-auto max-w-6xl px-4">
+    <div data-part="news-list-page" className="mx-auto max-w-6xl px-4">
       <h1 data-part="page-title" className="mt-6 text-2xl font-bold text-ink">Newsroom</h1>
 
       {/* ── Rails: Latest / Member news / For you ────────────────────────── */}

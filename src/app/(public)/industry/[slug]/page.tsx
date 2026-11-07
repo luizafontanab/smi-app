@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { industries as industryList, industryBySlug } from "@/lib/queries";
 import { IndustryView } from "@/components/design-option";
-import { loadIndustryHub } from "./hub.data";
+import { loadIndustryHub } from "@/lib/industry-hub";
 
 export const dynamic = "force-dynamic";
 

@@ -14,7 +14,7 @@ const { isFeatureEnabled, loadIndustryHub, industryBySlug, industries } = vi.hoi
   industries: vi.fn(async () => [{ slug: "welding", name: "Welding" }]),
 }));
 vi.mock("@/lib/feature-flags", () => ({ isFeatureEnabled }));
-vi.mock("@/app/(public)/industry/[slug]/hub.data", () => ({ loadIndustryHub }));
+vi.mock("@/lib/industry-hub", () => ({ loadIndustryHub }));
 vi.mock("@/lib/queries", () => ({ industryBySlug, industries }));
 
 afterEach(() => {
