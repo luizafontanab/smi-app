@@ -50,7 +50,7 @@ describe("Classic under a sponsor takeover", () => {
 
   it("keeps the footer band's button and focus ring visible once the band is ink", () => {
     const band = declared.filter((d) => d.selector.startsWith(`${TAKEOVER} [data-part="site-footer-join`));
-    expect(band.find((d) => d.selector.endsWith(":focus-visible"))?.body).toMatch(/outline-color:\s*var\(--classic-panel\)/);
+    expect(band.find((d) => d.selector.endsWith(":focus-visible"))?.body).toMatch(/outline-color:\s*var\(--classic-white\)/);
     expect(band.find((d) => d.selector.endsWith('[data-part="site-footer-join-button"]:hover'))?.body).toMatch(/background-color:\s*var\(--classic-panel\)/);
   });
 
@@ -64,7 +64,7 @@ describe("Classic under a sponsor takeover", () => {
 
 describe("classic.css colours", () => {
   it("spells white through the palette, never a bare #fff outside its declarations", () => {
-    const bare = declared.filter((d) => /#fff(fff)?\b/i.test(d.body.replace(/--classic-(panel|button-text):\s*#ffffff;/g, "")));
+    const bare = declared.filter((d) => /#fff(fff)?\b/i.test(d.body.replace(/--classic-(panel|white|button-text):\s*#ffffff;/g, "")));
     expect(bare.map((d) => d.selector)).toEqual([]);
   });
 });

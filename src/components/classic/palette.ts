@@ -16,6 +16,8 @@ export const CLASSIC_COLOURS = {
   "--classic-canvas": "#e2e2e2",
   "--classic-stripe": "#dbdbdb",
   "--classic-panel": "#ffffff",
+  // White as a text or outline colour; --classic-panel is the panel's fill.
+  "--classic-white": "#ffffff",
   "--classic-chrome": "#000000",
   "--classic-blue": "#3100ff",
   "--classic-blue-hover": "#1d0099",
@@ -76,18 +78,18 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   { label: "footer band button hover edge: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: NON_TEXT },
   { label: "footer band focus ring: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: NON_TEXT },
   // The black stack: white text, links hovering orange.
-  { label: "footer text: white on black", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
+  { label: "footer text: white on black", fg: c["--classic-white"], bg: c["--classic-chrome"], min: TEXT },
   // A sponsor takeover (#68 review, decisions 6 Nov, 16): ink on the sponsor's
   // colour is unchecked, so Classic's ink-on-orange places go white on ink.
   { label: "takeover: white on ink, for every ink-on-orange place", fg: c["--classic-button-text"], bg: c["--smi-ink"], min: TEXT },
   { label: "takeover footer band button hover: ink on white", fg: c["--smi-ink"], bg: c["--classic-panel"], min: TEXT },
-  { label: "takeover focus ring: white on ink", fg: c["--classic-panel"], bg: c["--smi-ink"], min: NON_TEXT },
+  { label: "takeover focus ring: white on ink", fg: c["--classic-white"], bg: c["--smi-ink"], min: NON_TEXT },
   { label: "footer link hover: orange on black", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: TEXT },
-  // #71 header. White is written as the panel colour (#fff).
-  { label: "top bar text", fg: c["--classic-panel"], bg: c["--classic-topbar"], min: TEXT },
-  { label: "focus ring on the top bar", fg: c["--classic-panel"], bg: c["--classic-topbar"], min: NON_TEXT },
+  // #71 header.
+  { label: "top bar text", fg: c["--classic-white"], bg: c["--classic-topbar"], min: TEXT },
+  { label: "focus ring on the top bar", fg: c["--classic-white"], bg: c["--classic-topbar"], min: NON_TEXT },
   { label: "menu link on the black chrome", fg: c["--classic-nav-link"], bg: c["--classic-chrome"], min: TEXT },
-  { label: "current menu link on the black chrome", fg: c["--classic-panel"], bg: c["--classic-chrome"], min: TEXT },
+  { label: "current menu link on the black chrome", fg: c["--classic-white"], bg: c["--classic-chrome"], min: TEXT },
   { label: "current-section underline on the black chrome", fg: c["--smi-brand"], bg: c["--classic-chrome"], min: NON_TEXT },
   // #77 newsletter issue: the #n badge, and the sponsored story on the canvas grey.
   { label: "newsletter item number: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: TEXT },
@@ -98,7 +100,7 @@ export const CLASSIC_CONTRAST_PAIRS: readonly ContrastPair[] = [
   // #78 join page. The banner title is white over the placeholder gradient,
   // whose stops only get darker than this one. A real photo must keep an
   // overlay at least this dark behind the title.
-  { label: "join banner title: white on the banner", fg: c["--classic-panel"], bg: c["--classic-join-banner"], min: TEXT },
+  { label: "join banner title: white on the banner", fg: c["--classic-white"], bg: c["--classic-join-banner"], min: TEXT },
   { label: "join step numbers: ink on orange", fg: c["--smi-ink"], bg: c["--smi-brand"], min: TEXT },
   { label: "join step detail: meta on a panel", fg: c["--classic-meta"], bg: c["--classic-panel"], min: TEXT },
   // #80 forms on the contact, advertising and join-account panels: the error

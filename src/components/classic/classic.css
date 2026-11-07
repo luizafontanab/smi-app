@@ -44,6 +44,8 @@
   --classic-canvas: #e2e2e2;
   --classic-stripe: #dbdbdb;
   --classic-panel: #ffffff;
+  /* White as a text or outline colour; --classic-panel is the panel's fill. */
+  --classic-white: #ffffff;
   --classic-chrome: #000000;
   --classic-blue: #3100ff;
   --classic-blue-hover: #1d0099;
@@ -179,7 +181,7 @@
   padding-inline: max(var(--classic-header-gutter), calc((100% - var(--classic-header-width)) / 2 + var(--classic-header-gutter)));
   border-top: 4px solid var(--smi-brand);
   background-color: var(--classic-topbar);
-  color: var(--classic-panel);
+  color: var(--classic-white);
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
@@ -199,7 +201,7 @@
 [data-site="public"] [data-part="site-topbar-socials"] a {
   display: inline-flex;
   align-items: center;
-  color: var(--classic-panel);
+  color: var(--classic-white);
   opacity: 0.75;
 }
 [data-site="public"] [data-part="site-topbar-socials"] a:hover {
@@ -214,7 +216,7 @@
 }
 /* White text, underlined on hover: orange text on #555 is only 3:1. */
 [data-site="public"] [data-part="site-topbar-links"] a {
-  color: var(--classic-panel);
+  color: var(--classic-white);
   text-decoration: none;
 }
 [data-site="public"] [data-part="site-topbar-links"] a:hover {
@@ -224,7 +226,7 @@
 /* The base's blue ring fails on #555 and orange only just reaches 3:1, so the
    top bar's ring is white. */
 [data-site="public"] [data-part="site-topbar"] :focus-visible {
-  outline-color: var(--classic-panel);
+  outline-color: var(--classic-white);
 }
 /* 44px touch targets on coarse pointers (the icons are 20px). */
 @media (pointer: coarse) {
@@ -251,7 +253,7 @@
   top: 0;
   z-index: 40;
   background-color: var(--classic-chrome);
-  color: var(--classic-panel);
+  color: var(--classic-white);
 }
 [data-site="public"] [data-part="site-header-bar"] {
   display: flex;
@@ -316,12 +318,12 @@
   text-decoration: none;
 }
 [data-site="public"] [data-part="site-menu"] [data-part="site-nav-link"]:hover {
-  color: var(--classic-panel);
+  color: var(--classic-white);
 }
 /* The current section: white, with the orange underline. */
 [data-site="public"] [data-part="site-menu"] [data-part="site-nav-link"][aria-current] {
   border-bottom-color: var(--smi-brand);
-  color: var(--classic-panel);
+  color: var(--classic-white);
 }
 
 /* Search and the signed-out login icon, from 40rem; below that the drawer
@@ -343,7 +345,7 @@
 }
 [data-site="public"] [data-part="site-search"]:hover,
 [data-site="public"] [data-part="site-login"]:hover {
-  color: var(--classic-panel);
+  color: var(--classic-white);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -437,7 +439,7 @@
   gap: 2.5rem;
   padding: 5.625rem 1rem;
   background-color: var(--classic-chrome);
-  color: var(--classic-panel);
+  color: var(--classic-white);
   font-size: 0.9375rem;
   text-align: center;
 }
@@ -498,7 +500,7 @@
 }
 [data-site="public"] [data-part="site-footer-main"] a,
 [data-site="public"] [data-part="site-footer-links"] button {
-  color: var(--classic-panel);
+  color: var(--classic-white);
   text-decoration: none;
 }
 [data-site="public"] [data-part="site-footer-main"] a:hover,
@@ -1361,7 +1363,7 @@
   min-height: 220px;
   background-color: var(--classic-join-banner);
   background-image: linear-gradient(160deg, var(--classic-join-banner) 0%, var(--classic-chrome) 100%);
-  color: var(--classic-panel);
+  color: var(--classic-white);
 }
 [data-site="public"] [data-part="join-page"] [data-part="join-banner-inner"] {
   width: 100%;
@@ -1373,7 +1375,7 @@
   margin: 0;
   font-size: clamp(2.5rem, 2rem + 2vw, 3.25rem);
   line-height: 1.1;
-  color: var(--classic-panel);
+  color: var(--classic-white);
 }
 
 [data-site="public"] [data-part="join-page"] [data-part="join-body"] {
@@ -2037,7 +2039,7 @@
 }
 [data-site="public"][data-part="not-found"] [data-part="not-found-header"] a {
   font-weight: 400;
-  color: var(--classic-panel);
+  color: var(--classic-white);
 }
 /* The "404" eyebrow sits on the bare canvas and stripes, where Current's
    brown-orange is 4.24:1 on the stripe. Ink instead. */
@@ -2224,7 +2226,7 @@
 }
 [data-site="public"][data-takeover] [data-part="site-footer-join"] :focus-visible,
 [data-site="public"][data-takeover] [data-part="skip-link"]:focus-visible {
-  outline-color: var(--classic-panel);
+  outline-color: var(--classic-white);
 }
 
 /* Industry Topics: the select and its blue Go button share a row, the button
