@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { ClassicNewsletterIssueView } from "@/components/classic/ClassicNewsletterIssueView";
 import type { NewsletterIssue, NewsletterIssueExtras } from "@/components/newsletter/NewsletterIssueView";
 
+import { resetDbServerMocks } from "../../stubs/db-server";
+
 vi.mock("@/lib/db/server", () => import("../../stubs/db-server"));
+
+afterEach(() => {
+  resetDbServerMocks();
+});
 
 /**
  * Seam 2 of the Classic design option (#68, #77): Classic's newsletter issue

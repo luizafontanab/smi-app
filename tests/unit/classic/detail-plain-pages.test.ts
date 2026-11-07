@@ -1,7 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { partsTargeted, selectorsOf } from "./css-selectors";
+import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./css-selectors";
 import { CLASSIC_COLOURS, CLASSIC_CONTRAST_PAIRS } from "@/components/classic/palette";
 
 /**
@@ -14,22 +12,10 @@ import { CLASSIC_COLOURS, CLASSIC_CONTRAST_PAIRS } from "@/components/classic/pa
  * (the member page's background, utilities that show and hide things).
  */
 
-const css = fs.readFileSync(path.resolve(__dirname, "../../../src/components/classic/classic.css"), "utf8");
-
-function section(sheet: string, ticket: string): string {
-  const start = sheet.indexOf(`/* ── ${ticket} `);
-  const end = sheet.indexOf(`/* ── end ${ticket} ── */`);
-  if (start < 0 || end < start) throw new Error(`no ${ticket} section in classic.css`);
-  return sheet.slice(start, end);
-}
+const css = classicCss;
 
 /** Innermost `selector { declarations }` pairs, comments stripped. Rules inside @media come out too. */
-function rulesOf(sheet: string): { selector: string; body: string }[] {
-  const src = sheet.replace(/\/\*[\s\S]*?\*\//g, "");
-  return [...src.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim().replace(/\s+/g, " "), body: m[2] }));
-}
-
-const pageCss = section(css, "#80");
+const pageCss = sectionOf(css, "#80");
 const selectors = selectorsOf(pageCss);
 const rules = rulesOf(pageCss);
 /** Rules whose selector list includes a selector naming `part`. */

@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkClassicSelectors, selectorsOf, sourceParts } from "./css-selectors";
+import { checkClassicSelectors, classicCss, selectorsOf, sourceParts } from "./css-selectors";
 
 /**
  * Seam 3 of the Classic design option (#68, #70): classic.css selects only what
@@ -13,7 +12,7 @@ import { checkClassicSelectors, selectorsOf, sourceParts } from "./css-selectors
  */
 
 const repo = path.resolve(__dirname, "../../..");
-const css = fs.readFileSync(path.join(repo, "src/components/classic/classic.css"), "utf8");
+const css = classicCss;
 const parts = sourceParts(path.join(repo, "src"));
 
 describe("classic.css selectors", () => {

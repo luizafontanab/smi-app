@@ -1,9 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { contrastRatio } from "@/lib/contrast";
 import { CLASSIC_COLOURS, CLASSIC_CONTRAST_PAIRS } from "@/components/classic/palette";
-import { rulesOf, selectorsOf } from "./css-selectors";
+import { classicCss, rulesOf, selectorsOf } from "./css-selectors";
 
 /**
  * A sponsor takeover recolours --smi-brand to the sponsor's hex, and the
@@ -12,7 +10,7 @@ import { rulesOf, selectorsOf } from "./css-selectors";
  * Classic puts ink text on var(--smi-brand) switches to white on ink.
  */
 
-const css = fs.readFileSync(path.resolve(__dirname, "../../../src/components/classic/classic.css"), "utf8");
+const css = classicCss;
 const SCOPE = '[data-site="public"]';
 const TAKEOVER = '[data-site="public"][data-takeover]';
 

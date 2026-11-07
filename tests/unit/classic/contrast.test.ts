@@ -1,8 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { contrastRatio } from "@/lib/contrast";
 import { CLASSIC_COLOURS, CLASSIC_CONTRAST_PAIRS } from "@/components/classic/palette";
+import { classicCss } from "./css-selectors";
 
 /**
  * Seam 3 of the Classic design option (#68, #70): Classic's colour pairs pass
@@ -11,7 +10,7 @@ import { CLASSIC_COLOURS, CLASSIC_CONTRAST_PAIRS } from "@/components/classic/pa
  * changed in one place and not the other fails here.
  */
 
-const css = fs.readFileSync(path.resolve(__dirname, "../../../src/components/classic/classic.css"), "utf8");
+const css = classicCss;
 
 describe("Classic colours", () => {
   it("are the spec's hexes (#68, decisions 6 Nov: meta grey #606060, not #666)", () => {

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { partsTargeted, rulesOf, selectorsOf } from "./css-selectors";
+import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./css-selectors";
 
 /**
  * Classic edge surfaces and shared pieces (#81), restyled through classic.css
@@ -13,14 +13,7 @@ import { partsTargeted, rulesOf, selectorsOf } from "./css-selectors";
 
 const root = path.resolve(__dirname, "../../..");
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
-const css = read("src/components/classic/classic.css");
-
-function section(sheet: string, ticket: string): string {
-  const start = sheet.indexOf(`/* ── ${ticket} `);
-  const end = sheet.indexOf(`/* ── end ${ticket} ── */`);
-  if (start < 0 || end < start) throw new Error(`no ${ticket} section in classic.css`);
-  return sheet.slice(start, end);
-}
+const css = classicCss;
 
 /** The body of each `@media <query> { … }` block in a sheet, comments stripped. */
 function mediaBlocks(sheet: string, query: RegExp): string[] {
@@ -28,7 +21,7 @@ function mediaBlocks(sheet: string, query: RegExp): string[] {
   return [...src.matchAll(/@media([^{]*)\{((?:[^{}]*\{[^{}]*\})*)[^{}]*\}/g)].filter((m) => query.test(m[1])).map((m) => m[2]);
 }
 
-const edgeCss = section(css, "#81");
+const edgeCss = sectionOf(css, "#81");
 const selectors = selectorsOf(edgeCss);
 const rules = rulesOf(edgeCss);
 const reaches = (part: string) => selectors.filter((s) => partsTargeted(s).includes(part));
@@ -79,7 +72,7 @@ describe("Classic edge surfaces (#81)", () => {
 
   describe("the /news supplier logos", () => {
     it("bleed to the panel's edge at md and up, by exactly the padding #79 gives the panel there", () => {
-      const listPadding = mediaBlocks(section(css, "#79"), /min-width:\s*48rem/).join("\n");
+      const listPadding = mediaBlocks(sectionOf(css, "#79"), /min-width:\s*48rem/).join("\n");
       const inset = /padding\s*:\s*0\s+(\S+)/.exec(listPadding)?.[1];
       expect(inset).toBeDefined();
       const md = rulesOf(mediaBlocks(edgeCss, /min-width:\s*48rem/).join("\n"));

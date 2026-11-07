@@ -12,6 +12,17 @@ import path from "node:path";
  * (@keyframes, @font-face).
  */
 
+/** The real classic.css, read once for every test that checks it. */
+export const classicCss = fs.readFileSync(path.resolve(__dirname, "../../../src/components/classic/classic.css"), "utf8");
+
+/** One ticket's section of the sheet, from its `/* ── #NN ` marker to `/* ── end #NN ── *\/`. */
+export function sectionOf(sheet: string, ticket: string): string {
+  const start = sheet.indexOf(`/* ── ${ticket} `);
+  const end = sheet.indexOf(`/* ── end ${ticket} ── */`);
+  if (start < 0 || end < start) throw new Error(`no ${ticket} section in classic.css`);
+  return sheet.slice(start, end);
+}
+
 const SCOPE = '[data-site="public"]';
 /** At-rules whose block holds more rules. */
 const NESTING_AT_RULES = /^@(media|supports|container)\b/i;

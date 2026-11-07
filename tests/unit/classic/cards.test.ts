@@ -1,7 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { partsTargeted, selectorsOf } from "./css-selectors";
+import { classicCss, partsTargeted, sectionOf, selectorsOf } from "./css-selectors";
 
 /**
  * Classic cards (#75): the shared cards are restyled through classic.css alone,
@@ -11,16 +9,9 @@ import { partsTargeted, selectorsOf } from "./css-selectors";
  * heading or list that reuses `card-title` isn't swept up.
  */
 
-const css = fs.readFileSync(path.resolve(__dirname, "../../../src/components/classic/classic.css"), "utf8");
+const css = classicCss;
 
-function section(sheet: string, ticket: string): string {
-  const start = sheet.indexOf(`/* ── ${ticket} `);
-  const end = sheet.indexOf(`/* ── end ${ticket} ── */`);
-  if (start < 0 || end < start) throw new Error(`no ${ticket} section in classic.css`);
-  return sheet.slice(start, end);
-}
-
-const cardSelectors = selectorsOf(section(css, "#75"));
+const cardSelectors = selectorsOf(sectionOf(css, "#75"));
 const targeted = new Set(cardSelectors.flatMap(partsTargeted));
 
 /** The outer element of each shared card (story, video, event, member tile, featured member) plus search's member card. */

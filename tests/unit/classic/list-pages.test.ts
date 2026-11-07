@@ -1,7 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { partsTargeted, selectorsOf } from "./css-selectors";
+import { classicCss, partsTargeted, rulesOf, sectionOf, selectorsOf } from "./css-selectors";
 
 /**
  * Classic list pages (#79): /news, /video, /member, /event and /search are
@@ -12,22 +10,10 @@ import { partsTargeted, selectorsOf } from "./css-selectors";
  * see it), pagination (#81's) and the events list (a stacked list, not a grid).
  */
 
-const css = fs.readFileSync(path.resolve(__dirname, "../../../src/components/classic/classic.css"), "utf8");
-
-function section(sheet: string, ticket: string): string {
-  const start = sheet.indexOf(`/* ── ${ticket} `);
-  const end = sheet.indexOf(`/* ── end ${ticket} ── */`);
-  if (start < 0 || end < start) throw new Error(`no ${ticket} section in classic.css`);
-  return sheet.slice(start, end);
-}
+const css = classicCss;
 
 /** Innermost `selector { declarations }` pairs, comments stripped. Rules inside @media come out too. */
-function rulesOf(sheet: string): { selector: string; body: string }[] {
-  const src = sheet.replace(/\/\*[\s\S]*?\*\//g, "");
-  return [...src.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim().replace(/\s+/g, " "), body: m[2] }));
-}
-
-const listCss = section(css, "#79");
+const listCss = sectionOf(css, "#79");
 const selectors = selectorsOf(listCss);
 const rules = rulesOf(listCss);
 
