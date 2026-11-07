@@ -16,6 +16,7 @@ import { reportClientError } from "@/lib/client-error-report";
  */
 export default function PublicError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
+    // eslint-disable-next-line no-restricted-properties -- browser devtools copy; reportClientError below records it in the error log
     console.error("[public] render error:", error);
     // Recorded server-side too (docs/logging.md); the digest ties it to the server's own entry.
     reportClientError({ message: error.message, stack: error.stack, digest: error.digest, kind: "boundary" });

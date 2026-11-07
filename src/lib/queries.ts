@@ -215,12 +215,16 @@ export async function storyCategories() {
   return data ?? [];
 }
 
-/** The industry list (Jas's ten) — industry bar, industry pages, directory filter. */
-export async function industries() {
+/**
+ * The industry list (Jas's ten) — industry bar, industry pages, directory filter.
+ * cache()d because the public layout reads it for the industry bar and most
+ * public pages read it again for their own filters in the same request.
+ */
+export const industries = cache(async () => {
   const db = publicDb();
   const { data } = await db.from("industries").select("slug, name").order("sort_order");
   return data ?? [];
-}
+});
 
 /**
  * The industry row behind a public /industry/[slug] page, or null.

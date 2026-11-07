@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ClassicIndustryView } from "@/components/classic/ClassicIndustryView";
-import type { IndustryHub } from "@/app/(public)/industry/[slug]/hub.data";
+import type { IndustryHub } from "@/lib/industry-hub";
 import { resetDbServerMocks } from "../stubs/db-server";
 
 /**

@@ -5,10 +5,10 @@
  * from its own branch: Current from `staging`, Classic from `classic`. The
  * seven pieces below are the only components the two options swap. The public
  * layout and the routes import them from HERE and never from the component
- * file, so `classic` changes this one existing file and nothing else: it points
- * each export at a Classic component in its own folder and imports its
- * stylesheet at the marked spot. A merge from `staging` conflicts only when the
- * list itself changes.
+ * file, so `classic` changes two existing files and nothing else: this one,
+ * which it points at Classic components in their own folder, and
+ * design-option-styles.ts, where it imports its stylesheet. A merge from
+ * `staging` conflicts only when the list itself changes.
  *
  * On `staging` every export is Current's own component and no stylesheet is
  * imported, so nothing here changes what Current looks like. The type
@@ -78,13 +78,11 @@ import { ClassicNewsletterIssueView } from "@/components/classic/ClassicNewslett
 import { ClassicJoinView } from "@/components/classic/ClassicJoinView";
 
 // ── Option stylesheet ─────────────────────────────────────────────────────
-// Current has none. `classic` imports its stylesheet on the next line.
-import "./classic/classic.css";
-// The public layout imports this module, and so do the surfaces outside it
-// (login, reset, reset/new, unsubscribe, the root 404), so the sheet reaches
-// every public page. Not the root layout: that would put every public client
-// component into the console's and dashboard's bundles too. Every rule in the
-// sheet is scoped to [data-site="public"].
+// Imported in design-option-styles.ts, not here. The public layout gets it
+// through this import; the surfaces outside the layout (login, reset,
+// reset/new, unsubscribe, the root 404) import that module directly, so they
+// don't load the seven pieces below.
+import "./design-option-styles";
 
 /**
  * Which design option this branch builds. `classic` sets "classic" when it

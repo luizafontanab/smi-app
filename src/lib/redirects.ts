@@ -1,4 +1,5 @@
 import { serviceDb } from "@/lib/db/server";
+import { logError } from "./log";
 
 /** Longest chain we will follow. Renames are rare; anything deeper is a bug. */
 const MAX_HOPS = 5;
@@ -36,7 +37,7 @@ export async function resolveRedirect(fromPath: string): Promise<ResolvedRedirec
     if (seen.has(data.to_path)) {
       // A cycle. Sending the reader round it forever is strictly worse than a
       // 404, and a 308 would bake that loop into their browser cache.
-      console.error(`[redirects] cycle detected at ${current} → ${data.to_path}`);
+      logError({ source: "server", area: "redirects:cycle", error: new Error("redirect cycle detected"), context: { at: current, to: data.to_path } });
       return null;
     }
     seen.add(data.to_path);

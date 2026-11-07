@@ -1,4 +1,4 @@
-import type { IndustryHub } from "@/app/(public)/industry/[slug]/hub.data";
+import type { IndustryHub } from "@/lib/industry-hub";
 import { StoryCard } from "@/components/StoryCard";
 import { EventCard, MemberTile, VideoCard } from "@/components/cards";
 import { ClassicIndustryBody, type IndustrySection } from "@/components/classic/ClassicIndustryBody";

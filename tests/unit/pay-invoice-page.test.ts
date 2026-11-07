@@ -6,6 +6,12 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import type { MemberView } from "@/lib/auth";
 import { EmbeddedCheckout } from "@/app/dashboard/pay/invoice/[id]/EmbeddedCheckout";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 /**
  * The pay page's own guards (the action has its twin in
  * pay-invoice-actions.test.ts): who may open it, which invoices it serves, and
@@ -86,7 +92,6 @@ describe("/dashboard/pay/invoice/[id]", () => {
   });
 
   it("still renders when that fast-path settle fails — the webhook retries until it lands", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     settleInvoice.mockRejectedValueOnce(new Error("connection reset"));
     db(row);
     await expect(open({ session_id: "cs_test_1" })).resolves.toBeTruthy();

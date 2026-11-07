@@ -63,6 +63,7 @@ const loggingFetch: typeof fetch = async (input, init) => {
     } catch {
       // non-absolute URL; keep it as given
     }
+    // eslint-disable-next-line no-restricted-properties -- the Supabase transport logger; feeding it into logError is a Phase 2 decision (docs/logging.md, db/log-client.ts), and callers already log the failures they act on
     console.error(`[supabase] ${res.status} ${res.statusText} ${where} ${detail}`);
   }
   return res;

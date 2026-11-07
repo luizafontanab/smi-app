@@ -4,6 +4,12 @@ import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 afterEach(() => {
@@ -53,9 +59,10 @@ describe("issueExtras", () => {
   });
 
   it("leaves a block out when its read fails, rather than failing the send", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db({ events: () => queryBuilder(dbError("boom")), newsletter_directory: () => queryBuilder(dbError("boom")) });
 
     expect(await issueExtras("iss1", null)).toEqual({ events: [], directory: [] });
+    expect(logError).toHaveBeenCalledTimes(2);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "newsletter:extras", context: { issue_id: "iss1", part: "events-diary" } }));
   });
 });

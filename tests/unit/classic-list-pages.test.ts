@@ -18,9 +18,9 @@ const selectors = selectorsOf(listCss);
 const rules = rulesOf(listCss);
 
 /** The outer element of each list page. */
-const PAGE_ROOTS = ["news-page", "video-list-page", "member-directory", "event-list-page", "search-page"];
+const PAGE_ROOTS = ["news-list-page", "video-list-page", "member-directory", "event-list-page", "search-page"];
 /** Pages whose card-grid is a real grid; /event's is a stacked list of wide cards. */
-const GRID_PAGES = ["news-page", "video-list-page", "member-directory", "search-page"];
+const GRID_PAGES = ["news-list-page", "video-list-page", "member-directory", "search-page"];
 
 describe("Classic list pages (#79)", () => {
   it.each(PAGE_ROOTS)("turn %s into a white panel", (root) => {

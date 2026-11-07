@@ -1,4 +1,5 @@
 import "server-only";
+import { logError } from "../log";
 
 import { cache } from "react";
 import { serviceDb } from "../db/server";
@@ -34,7 +35,8 @@ export const loadEmailTemplates = cache(async (): Promise<EmailTemplateMap> => {
   // doesn't go out at all, and the send sites treat a throw as a hard failure
   // worth retrying and dead-lettering.
   if (error) {
-    console.error("[email] could not read email_templates, using shipped copy:", error.message);
+    // Falls back to the shipped copy below, but still a failure worth knowing about.
+    logError({ source: "db", area: "email:templates", error: error.message, context: { code: error.code ?? null } });
     return {};
   }
 

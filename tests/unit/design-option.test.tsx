@@ -57,7 +57,7 @@ vi.mock("@/lib/newsletter-extras", () => ({ issueExtras: vi.fn(async () => ({ ev
 vi.mock("@/lib/story-page", () => ({ loadStoryPageData: vi.fn(async () => ({ members: [], industrySlug: null })) }));
 vi.mock("@/lib/story-preview", () => ({ canPreviewStory: () => true, redirectsToLiveStory: () => false, previewBackHref: () => "/console" }));
 vi.mock("@/app/(public)/home.data", () => ({ loadHome: vi.fn(async () => ({ stories: [] })) }));
-vi.mock("@/app/(public)/industry/[slug]/hub.data", () => ({ loadIndustryHub: m.loadIndustryHub }));
+vi.mock("@/lib/industry-hub", () => ({ loadIndustryHub: m.loadIndustryHub }));
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 import { resetDbServerMocks, sessionDb } from "../stubs/db-server";
@@ -217,10 +217,17 @@ describe('the public-site scope, data-site="public"', () => {
     ]);
   });
 
-  it("every public surface loads the module, so an option's stylesheet reaches it", () => {
-    const src = path.resolve(__dirname, "../../src/app");
-    for (const f of ["(public)/layout.tsx", "login/page.tsx", "reset/page.tsx", "reset/new/page.tsx", "unsubscribe/page.tsx", "not-found.tsx"]) {
-      expect(fs.readFileSync(path.join(src, f), "utf8"), f).toMatch(/from "@\/components\/design-option"|import "@\/components\/design-option"/);
+  it("every public surface loads the stylesheet hook, so an option's stylesheet reaches it", () => {
+    const src = path.resolve(__dirname, "../../src");
+    // The layout gets it through the hook-point module.
+    expect(fs.readFileSync(path.join(src, "app/(public)/layout.tsx"), "utf8")).toMatch(/from "@\/components\/design-option"/);
+    expect(fs.readFileSync(path.join(src, "components/design-option.ts"), "utf8")).toMatch(/import "\.\/design-option-styles"/);
+    // The surfaces outside it import the hook directly, and never the pieces:
+    // those would pull the home carousels and site header into their bundles.
+    for (const f of ["login/page.tsx", "reset/page.tsx", "reset/new/page.tsx", "unsubscribe/page.tsx", "not-found.tsx"]) {
+      const text = fs.readFileSync(path.join(src, "app", f), "utf8");
+      expect(text, f).toMatch(/import "@\/components\/design-option-styles"/);
+      expect(text, f).not.toMatch(/["']@\/components\/design-option["']/);
     }
   });
 });

@@ -11,8 +11,9 @@ import {
 } from "@/components/grid-home/cards";
 import { Band } from "@/components/grid-home/ui";
 import {
-  belowFoldSequence, HOME_AD_WRAPPER, HOME_TOP_STORIES, phoneCap, phoneSequence, uniqueFeaturedMembers, type BelowFoldPiece,
+  belowFoldSequence, HOME_AD_WRAPPER, HOME_TOP_STORIES, phoneCap, phoneSequence, type BelowFoldPiece,
 } from "@/app/(public)/home.grid";
+import { uniqueFeaturedMembers } from "@/lib/featured-members";
 import { excluding, type HomeData } from "@/app/(public)/home.data";
 
 /**

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { logError } from "./log";
 import { serviceDb } from "./db/server";
 import { websiteUrl } from "./website-url";
 
@@ -98,7 +99,7 @@ async function liveBookings(): Promise<(LiveAdvert & { format: string })[]> {
   // Never swallow this. A schema mismatch here returns null data, which would
   // empty every slot on the site with no exception and no 500 — an outage that
   // looks exactly like "nothing is booked".
-  if (error) console.error("liveBookings failed", error);
+  if (error) logError({ source: "db", area: "adverts:live-bookings", error: error.message, context: { code: error.code ?? null } });
 
   const seen = new Set<string>();
   return (data ?? [])

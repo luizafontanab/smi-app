@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadIndustryHub } from "@/app/(public)/industry/[slug]/hub.data";
+import { loadIndustryHub } from "@/lib/industry-hub";
 
 type Rec = Record<string, unknown>;
 const WELDING = { id: 7, slug: "welding", name: "Welding" };

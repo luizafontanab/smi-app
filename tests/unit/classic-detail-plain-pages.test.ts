@@ -24,7 +24,7 @@ const rulesFor = (part: string) => rules.filter((r) => partsTargeted(r.selector)
 const rulesOn = (part: string) => rules.filter((r) => r.selector.split(",").some((s) => s.trim().endsWith(`[data-part="${part}"]`)));
 
 /** Plain pages: the title sits on the canvas and gets the list pages' disc. */
-const PLAIN_ROOTS = ["cms-page", "featured-machine-page", "advertising-page", "contact-page", "newsletters-page"];
+const PLAIN_ROOTS = ["cms-page", "featured-machine-page", "advertising-page", "contact-page", "newsletter-list-page"];
 /** Detail pages drawn on one white panel. The member page keeps its own cards. */
 const PANEL_ROOTS = ["event-page", "video-page"];
 /** Pages carrying a form: contact, the advertising enquiry, join step 1. */

@@ -40,6 +40,10 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 Create a GitHub issue.
 
+## When a skill breaks a spec into tickets
+
+Tickets that can run in parallel will each build their own copy of anything they share, unless the first ticket names it. So the first (blocking) ticket lists the **shared seams** the later tickets extend, and creates each as a stub: URL parameters and what they mean, the panel or component later tickets add to, the read model they all query. Spec #49 is the cautionary case: three tickets each built a different `?company=` panel, and merging them took two merger agents.
+
 ## When a skill says "fetch the relevant ticket"
 
 Read it as in **Read an issue** above.

@@ -1537,7 +1537,7 @@
 /* The page root. A gutter at every width (mx-auto stays: only max-width and
    padding change). The panel is drawn by ::before, starting below the head,
    so the chevron stripes still show behind the title as on the live site. */
-[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) {
+[data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) {
   --classic-list-head: 6.5rem;
   position: relative;
   isolation: isolate;
@@ -1545,7 +1545,7 @@
   margin-bottom: 2rem;
   padding: 0 1rem 1rem;
 }
-[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"])::before {
+[data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"])::before {
   content: "";
   position: absolute;
   inset: var(--classic-list-head) 0 0;
@@ -1558,7 +1558,7 @@
 /* Disc-and-title head: an orange disc carrying a decorative glyph, then the
    title in large regular-weight ink. Its height matches where the panel
    starts; a title that wraps just runs onto the panel, still ink on white. */
-[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) > [data-part="page-title"] {
+[data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) > [data-part="page-title"] {
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -1571,7 +1571,7 @@
   font-weight: 400;
   line-height: 1.1;
 }
-[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) > [data-part="page-title"]::before {
+[data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) > [data-part="page-title"]::before {
   content: "";
   display: grid;
   place-items: center;
@@ -1586,14 +1586,14 @@
 }
 /* The glyph per page. The alt text after the slash is empty, so it is never
    read out; a browser without that syntax drops the line and shows a plain disc. */
-[data-site="public"] [data-part="news-page"] > [data-part="page-title"]::before { content: "📣" / ""; }
+[data-site="public"] [data-part="news-list-page"] > [data-part="page-title"]::before { content: "📣" / ""; }
 [data-site="public"] [data-part="video-list-page"] > [data-part="page-title"]::before { content: "🎥" / ""; }
 [data-site="public"] [data-part="member-directory"] > [data-part="page-title"]::before { content: "👥" / ""; }
 [data-site="public"] [data-part="event-list-page"] > [data-part="page-title"]::before { content: "📅" / ""; }
 [data-site="public"] [data-part="search-page"] > [data-part="page-title"]::before { content: "🔍" / ""; }
 
 /* In-page headings (All news, Featured members, Calendar, Past events…). */
-[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) [data-part="section-title"] {
+[data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) [data-part="section-title"] {
   color: var(--smi-ink);
   font-size: 1.5rem;
   font-weight: 400;
@@ -1602,13 +1602,13 @@
 }
 
 /* Search boxes, date inputs and the comboboxes: Classic's 5px corners. */
-[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) :is([data-part="form-input"], [data-part="button-secondary"], [data-part="filter-select-control"]) {
+[data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) :is([data-part="form-input"], [data-part="button-secondary"], [data-part="filter-select-control"]) {
   border-radius: var(--classic-radius);
 }
 
 /* Filter pills: shape only. Their active state is a utility class Classic
    can't select, so colours stay Current's (ink when active, white when not). */
-[data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) [data-part="filter-pill"] {
+[data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) [data-part="filter-pill"] {
   border-radius: var(--classic-radius);
 }
 
@@ -1629,7 +1629,7 @@
 }
 
 @media (min-width: 48rem) {
-  [data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) {
+  [data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="event-list-page"], [data-part="search-page"]) {
     padding: 0 2rem 2rem;
   }
 }
@@ -1638,7 +1638,7 @@
    stacked list of wide cards and is left out. Phones and tablets keep
    Current's one and two columns. */
 @media (min-width: 64rem) {
-  [data-site="public"] :is([data-part="news-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="search-page"]) [data-part="card-grid"] {
+  [data-site="public"] :is([data-part="news-list-page"], [data-part="video-list-page"], [data-part="member-directory"], [data-part="search-page"]) [data-part="card-grid"] {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
@@ -1662,7 +1662,7 @@
 /* Plain pages: the list pages' disc-and-title head (#79), on the canvas. The
    title isn't always the root's first child (the CMS page and /featured-machine
    render it inside a block layout), so it is reached as a descendant. */
-[data-site="public"] :is([data-part="cms-page"], [data-part="featured-machine-page"], [data-part="advertising-page"], [data-part="contact-page"], [data-part="newsletters-page"]) [data-part="page-title"] {
+[data-site="public"] :is([data-part="cms-page"], [data-part="featured-machine-page"], [data-part="advertising-page"], [data-part="contact-page"], [data-part="newsletter-list-page"]) [data-part="page-title"] {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1673,7 +1673,7 @@
   font-weight: 400;
   line-height: 1.1;
 }
-[data-site="public"] :is([data-part="cms-page"], [data-part="featured-machine-page"], [data-part="advertising-page"], [data-part="contact-page"], [data-part="newsletters-page"]) [data-part="page-title"]::before {
+[data-site="public"] :is([data-part="cms-page"], [data-part="featured-machine-page"], [data-part="advertising-page"], [data-part="contact-page"], [data-part="newsletter-list-page"]) [data-part="page-title"]::before {
   content: "";
   display: grid;
   place-items: center;
@@ -1691,7 +1691,7 @@
 [data-site="public"] [data-part="featured-machine-page"] [data-part="page-title"]::before { content: "⚙️" / ""; }
 [data-site="public"] [data-part="advertising-page"] [data-part="page-title"]::before { content: "📈" / ""; }
 [data-site="public"] [data-part="contact-page"] [data-part="page-title"]::before { content: "✉️" / ""; }
-[data-site="public"] [data-part="newsletters-page"] [data-part="page-title"]::before { content: "📰" / ""; }
+[data-site="public"] [data-part="newsletter-list-page"] [data-part="page-title"]::before { content: "📰" / ""; }
 
 /* ── Detail pages: event and video ── */
 
@@ -1911,19 +1911,19 @@
 }
 
 /* /newsletters: each issue a Classic panel; the subject underlines on hover. */
-[data-site="public"] [data-part="newsletters-page"] [data-part="newsletter-issue-card"] {
+[data-site="public"] [data-part="newsletter-list-page"] [data-part="newsletter-issue-card"] {
   border-radius: var(--classic-radius);
   box-shadow: var(--classic-shadow);
 }
-[data-site="public"] [data-part="newsletters-page"] [data-part="newsletter-issue-card"] [data-part="card-meta"] {
+[data-site="public"] [data-part="newsletter-list-page"] [data-part="newsletter-issue-card"] [data-part="card-meta"] {
   color: var(--classic-meta);
 }
-[data-site="public"] [data-part="newsletters-page"] [data-part="newsletter-issue-card"] [data-part="card-title"] {
+[data-site="public"] [data-part="newsletter-list-page"] [data-part="newsletter-issue-card"] [data-part="card-title"] {
   color: var(--smi-ink);
   font-size: 1.25rem;
   font-weight: 400;
 }
-[data-site="public"] [data-part="newsletters-page"] [data-part="newsletter-issue-card"]:hover [data-part="card-title"] {
+[data-site="public"] [data-part="newsletter-list-page"] [data-part="newsletter-issue-card"]:hover [data-part="card-title"] {
   text-decoration: underline;
 }
 
@@ -2181,10 +2181,10 @@
    below md (Current's -mx-4 already matches) and 2rem from md, so the band
    goes out by 2rem there and its row comes back in by the same 2rem. */
 @media (min-width: 48rem) {
-  [data-site="public"] [data-part="news-page"] > [data-part="supplier-logos-wrap"] {
+  [data-site="public"] [data-part="news-list-page"] > [data-part="supplier-logos-wrap"] {
     margin-inline: -2rem;
   }
-  [data-site="public"] [data-part="news-page"] > [data-part="supplier-logos-wrap"] > [data-part="supplier-logos"] > div {
+  [data-site="public"] [data-part="news-list-page"] > [data-part="supplier-logos-wrap"] > [data-part="supplier-logos"] > div {
     padding-inline: 2rem;
   }
 }

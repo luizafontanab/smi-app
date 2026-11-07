@@ -4,6 +4,7 @@ import { serviceDb } from "@/lib/db/server";
 import { MEMBERSHIP_CHECKOUT_KIND, membershipCheckoutIsEmbedded, paymentsAreLive } from "@/lib/adapters/payments";
 import { retrieveCheckoutSession, STRIPE_JS_URL, stripePublishableKey } from "@/lib/adapters/advert-checkout";
 import { recordMembershipCheckout } from "@/lib/membership";
+import { logError } from "@/lib/log";
 import { PayForm } from "./PayForm";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export default async function MemberPayPage(props: PageProps<"/dashboard/pay">) 
       } catch (e) {
         // The webhook is the authority and retries until it lands; the page
         // says "not confirmed yet" below rather than erroring.
-        console.error(`[pay] return-page record failed for member ${user.memberId}:`, e);
+        logError({ source: "server", area: "render:/dashboard/pay", error: e, context: { member_id: user.memberId, step: "record-checkout" } });
       }
       ({ data: member } = await load());
     }

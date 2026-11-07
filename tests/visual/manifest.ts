@@ -24,6 +24,12 @@ export type Route = {
   waitFor?: { selector: string };
   /** Where a pinned example came from, so the next person can repin it. */
   pin?: string;
+  /**
+   * A list page that links to this route's kind of record. The e2e phone sweep
+   * opens it and takes the first live id, because CI seeds a fresh database
+   * where the pinned id doesn't exist. The visual suite keeps the pin.
+   */
+  liveIdFrom?: string;
   /** Explicit, never silent. A skipped route is listed in every report. */
   skip?: string;
   /** Desktop (1280) unless set. The @phone copies below set "phone". */
@@ -123,6 +129,7 @@ const DASHBOARD: Route[] = [
 
   member("/dashboard/advert/852ffe1a-b8c6-4514-a89d-d739b5eb2929", {
     id: "dashboard_advert_id",
+    liveIdFrom: "/dashboard/advertising/manage",
     pin: "member1's first booking (live KUKA banner; repinned 22 Oct, the old pin no longer existed after a reseed)",
   }),
 
@@ -224,10 +231,12 @@ const CONSOLE_PINNED: Route[] = [
   }),
   admin("/console/adverts/7a80b0ba-0fde-4ba7-b041-d486e4f6b211", {
     id: "console_advert_id",
+    liveIdFrom: "/console/adverts",
     pin: "member1's scheduled KUKA banner run (repinned 22 Oct: the old pin no longer existed after a reseed). The seed has no draft, so the A2.12 draft forms aren't in the picture",
   }),
   admin("/console/notifications/44894901-5d1a-4c72-9200-40ae867e4216", {
     id: "console_message_id",
+    liveIdFrom: "/console/notifications",
     pin: "first thread on /console/notifications (the route was /console/messages until fix-list 71; the id is unchanged)",
   }),
   {
@@ -239,6 +248,7 @@ const CONSOLE_PINNED: Route[] = [
   // fix-list 76/78 edit pages — new routes, no baselines yet.
   admin("/console/adverts/featured-member/4b350595-ab6a-4d62-8a20-f36c276fd117", {
     id: "console_featured_member_id",
+    liveIdFrom: "/console/adverts/featured-member",
     pin: "first slot on /console/adverts/featured-member",
   }),
   // Featured Event (HUMAN-TODO 4.4) — new route, no baseline yet.
@@ -256,10 +266,12 @@ const CONSOLE_PINNED: Route[] = [
   },
   admin("/console/adverts/banners/f98d4427-077b-4d91-b9c4-45b893ba3651", {
     id: "console_banner_run_id",
+    liveIdFrom: "/console/adverts/banners",
     pin: "the latest-ending banner run in the local seed (advert_bookings joined to adverts.format = banner, ends_on desc)",
   }),
   admin("/console/adverts/suppliers/3b9314bc-e2dd-4ed2-99d9-6ace54129ba6", {
     id: "console_supplier_logo_id",
+    liveIdFrom: "/console/adverts/suppliers",
     pin: "first row on /console/adverts/suppliers",
   }),
   {

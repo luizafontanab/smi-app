@@ -6,6 +6,12 @@ import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { MemberView } from "@/lib/auth";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 /**
  * /dashboard/pay with embedded Checkout (GAPS B1.7): what Stripe's return
  * (`?session_id=`) may record, and for whom. The recording itself, and its
@@ -95,7 +101,6 @@ describe("/dashboard/pay — Stripe's return", () => {
   });
 
   it("still renders when the fast-path record fails — the webhook retries until it lands", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     recordMembershipCheckout.mockRejectedValueOnce(new Error("connection reset"));
     await expect(open({ session_id: "cs_live_5" })).resolves.toBeTruthy();
   });

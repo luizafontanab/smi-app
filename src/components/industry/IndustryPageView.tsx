@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { IndustryHub } from "@/app/(public)/industry/[slug]/hub.data";
+import type { IndustryHub } from "@/lib/industry-hub";
 import { Carousel, StoryCard } from "@/components/StoryCard";
 import { EventCard, MemberTile, VideoCard } from "@/components/cards";
 

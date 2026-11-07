@@ -10,6 +10,7 @@ import {
 } from "@/components/grid-home/cards";
 import { Band, SectionHead } from "@/components/grid-home/ui";
 import { excluding, type HomeData } from "./home.data";
+import { uniqueFeaturedMembers } from "@/lib/featured-members";
 
 /**
  * The grid home page. Above the fold is two equally-weighted news highlights
@@ -85,7 +86,7 @@ export function GridHome({
 
   /*
    * Sold featured-member placements, for the sidebar box, each member once
-   * (uniqueFeaturedMembers below; the directory's featured strip uses it too).
+   * (uniqueFeaturedMembers in @/lib/featured-members; the directory's featured strip uses it too).
    *
    * Resolved here rather than inside the box because it also decides the
    * band's column classes below. Two predicates would eventually disagree and
@@ -392,11 +393,3 @@ const HOME_CAROUSEL_STORIES = 8;
  */
 export const HOME_TOP_STORIES = 2 + HOME_CAROUSEL_STORIES;
 
-/**
- * Sold featured-member placements as the members to show, each once: a member
- * can hold overlapping placements, so they are deduplicated on slug. It
- * doubles as the null-member filter, since placements.member_id is nullable.
- */
-export function uniqueFeaturedMembers<M extends { slug: string }>(placements: readonly { member: M | null }[]): M[] {
-  return [...new Map(placements.flatMap((p) => (p.member ? [[p.member.slug, p.member] as const] : []))).values()];
-}

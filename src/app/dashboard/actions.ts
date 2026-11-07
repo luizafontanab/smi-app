@@ -845,7 +845,7 @@ export async function renewAdvertBooking(formData: FormData) {
     return back("You've already asked to book this run again — that request is waiting for a decision.");
   }
   if (error || !renewal) {
-    console.error(`[dashboard] renewal of booking ${id} failed: ${error?.message ?? "no row returned"}`);
+    logError({ source: "db", area: "action:renewAdvertBooking", error: error?.message ?? "renewal insert returned no row", userId: user.userId, context: { booking_id: id, code: error?.code ?? null } });
     return back("The new run couldn't be booked just now — please try again.");
   }
   // Links to the NEW booking, not the run it was renewed from — the new one is

@@ -1,4 +1,5 @@
 import { serviceDb } from "./db/server";
+import { logError } from "./log";
 import { isMemberLinkable } from "./member-visibility";
 import { diaryWindow } from "./newsletter-layout";
 
@@ -30,8 +31,8 @@ export async function issueExtras(issueId: string, sendAt: string | null | undef
       .order("starts_on").limit(DIARY_LIMIT),
     db.from("newsletter_directory").select("member:members(slug, name, logo_path, status, archived_at)").eq("issue_id", issueId),
   ]);
-  if (eventsError) console.error(`[newsletter] events diary for ${issueId}: ${eventsError.message}`);
-  if (picksError) console.error(`[newsletter] directory for ${issueId}: ${picksError.message}`);
+  if (eventsError) logError({ source: "db", area: "newsletter:extras", error: eventsError.message, context: { issue_id: issueId, part: "events-diary" } });
+  if (picksError) logError({ source: "db", area: "newsletter:extras", error: picksError.message, context: { issue_id: issueId, part: "directory" } });
 
   const directory = (picks ?? [])
     .flatMap((row) => (isMemberLinkable(row.member) ? [row.member] : []))

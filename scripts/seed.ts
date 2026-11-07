@@ -388,6 +388,21 @@ async function main() {
     await must("advert_bookings", db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, starts_on: iso(monthsAgo), ends_on: iso(monthsAhead) }));
   }
 
+  // member1's own banner run, scheduled for next month: the member login then has
+  // a booking to open under Advertising, and it shows on no public page yet. The
+  // e2e phone sweep opens it from /dashboard/advertising/manage.
+  {
+    const m = activeMembers[0];
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const nextMonthEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+    const [dPath, mPath] = await Promise.all([
+      upload("panels/member1-wide.svg", svgBanner(m.name, 1280, 170, palette[6]), "image/svg+xml"),
+      upload("panels/member1-narrow.svg", svgBanner(m.name, 370, 280, palette[6]), "image/svg+xml"),
+    ]);
+    const { data: ad } = await must("adverts", db.from("adverts").insert({ member_id: m.id, name: `${m.name} banner`, desktop_path: dPath, mobile_path: mPath, format: "banner" }).select("id").single());
+    await must("advert_bookings", db.from("advert_bookings").insert({ advert_id: ad!.id, ...booked, status: "scheduled", went_live_at: null, starts_on: iso(nextMonth), ends_on: iso(nextMonthEnd) }));
+  }
+
   // Sample prices (fix-list 77): a run carries its own price now that the rate
   // card is gone — so local revenue and booking pages have numbers to show.
   // Bundle parts are left unpriced; the bundle carries their price.

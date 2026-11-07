@@ -4,6 +4,9 @@ import { asDb, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
 
 const send = vi.fn(async () => {});
 vi.mock("@/lib/adapters/email", () => ({ getEmailSender: vi.fn(() => ({ send })) }));
@@ -119,7 +122,6 @@ describe("notifyAdminFunnel", () => {
   });
 
   it("never throws into the signup flow, even when the insert itself throws", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const from = vi.fn(() => ({ insert: vi.fn(() => { throw new Error("db unreachable"); }) }));
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from })));
     const { notifyAdminFunnel } = await freshNotifyAdmin(undefined);
@@ -128,7 +130,7 @@ describe("notifyAdminFunnel", () => {
       category: "message", kind: "membership",
       name: "Acme Ltd", email: "acme@example.com", message: "Wants to join",
     })).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "notify-admin:funnel" }));
   });
 });
 
@@ -186,13 +188,12 @@ describe("notifyConsole", () => {
   });
 
   it("never throws into the action that raised it", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const from = vi.fn(() => ({ insert: vi.fn(() => { throw new Error("db unreachable"); }) }));
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from })));
     const { notifyConsole } = await freshNotifyAdmin(undefined);
 
     await expect(notifyConsole({ kind: "story_submitted", name: "Acme Ltd", message: "Submitted." }))
       .resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "notify-admin:console" }));
   });
 });

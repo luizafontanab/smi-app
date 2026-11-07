@@ -1,4 +1,5 @@
 import { RENDERABLE_BOOKING_STATUSES } from "@/lib/adverts";
+import { logError } from "@/lib/log";
 import { record, requestContext } from "@/lib/analytics";
 import { serviceDb } from "@/lib/db/server";
 import { allowRequest, MINUTE } from "@/lib/rate-limit";
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
     .in("status", RENDERABLE_BOOKING_STATUSES)
     .lte("starts_on", today)
     .gte("ends_on", today);
-  if (error) console.error("impression validation failed", error);
+  if (error) logError({ source: "db", area: "api:seen", error: error.message, context: { code: error.code ?? null } });
 
   const live = [...new Set((data ?? []).map((b) => b.advert_id))];
   if (live.length === 0) return new Response(null, { status: 204 });

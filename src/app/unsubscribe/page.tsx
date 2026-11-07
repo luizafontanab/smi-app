@@ -5,7 +5,7 @@ import { confirmUnsubscribe, requestUnsubscribe } from "./actions";
 import { AuthLogo } from "@/components/AuthLogo";
 // Loads the design option's stylesheet: this page sits outside the public
 // layout but is part of the public site (data-site="public" below).
-import "@/components/design-option";
+import "@/components/design-option-styles";
 
 export const metadata = { title: "Unsubscribe", robots: { index: false } };
 export const dynamic = "force-dynamic";

@@ -41,7 +41,7 @@ describe("Classic edge surfaces (#81)", () => {
 
     it("stays database-free: it imports only next/link and the design-option stylesheet", () => {
       const imports = [...read("src/app/not-found.tsx").matchAll(/^import\s[^;]*?["']([^"']+)["']/gm)].map((m) => m[1]);
-      expect(imports.sort()).toEqual(["@/components/design-option", "next/link"]);
+      expect(imports.sort()).toEqual(["@/components/design-option-styles", "next/link"]);
     });
   });
 
@@ -76,7 +76,7 @@ describe("Classic edge surfaces (#81)", () => {
       const inset = /padding\s*:\s*0\s+(\S+)/.exec(listPadding)?.[1];
       expect(inset).toBeDefined();
       const md = rulesOf(mediaBlocks(edgeCss, /min-width:\s*48rem/).join("\n"));
-      const bleed = md.find((r) => partsTargeted(r.selector).includes("news-page") && partsTargeted(r.selector).includes("supplier-logos-wrap"));
+      const bleed = md.find((r) => partsTargeted(r.selector).includes("news-list-page") && partsTargeted(r.selector).includes("supplier-logos-wrap"));
       expect(bleed?.body).toMatch(new RegExp(`margin-inline\\s*:\\s*-${inset}\\b`));
     });
 

@@ -14,7 +14,7 @@ import { MemberMap } from "@/components/MemberMap";
 import { MultiSelectCombobox } from "@/components/MultiSelectCombobox";
 import { Pagination } from "@/components/Pagination";
 import { MemberTile } from "@/components/cards";
-import { uniqueFeaturedMembers } from "@/app/(public)/home.grid";
+import { uniqueFeaturedMembers } from "@/lib/featured-members";
 
 /** A searchParams value is `string | string[] | undefined` — normalise either shape to an array. */
 const asArray = (v: string | string[] | undefined): string[] => (Array.isArray(v) ? v : v ? [v] : []);
@@ -238,7 +238,7 @@ export default async function MembersPage(props: PageProps<"/member">) {
               resolve gets no pin — so coverage can be sparse. Say so rather
               than silently dropping members. */}
           {withCoords.length < pinRows.length && (
-            <p data-part="form-notice" className="mb-3 text-sm text-graphite">
+            <p data-part="member-map-note" className="mb-3 text-sm text-graphite">
               Showing {withCoords.length} of {pinRows.length} members with a known location.
             </p>
           )}

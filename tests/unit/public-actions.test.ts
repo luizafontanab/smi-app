@@ -5,6 +5,9 @@ import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
 
 const { allowRequest, send, syncContactToCrm } = vi.hoisted(() => ({
   allowRequest: vi.fn(async () => true),
@@ -128,7 +131,6 @@ describe("subscribeNewsletter", () => {
   });
 
   it("doesn't claim success when that opt-in fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     let call = 0;
     // 1: the lookup, 2: the update
     const contactsBuilder = queryBuilder(() => (call++ === 0 ? dbOk({ id: "c1", subscribed: false, unsubscribed_at: null }) : dbError("timeout")));
@@ -140,7 +142,7 @@ describe("subscribeNewsletter", () => {
 
     expect(result.message).not.toMatch(/Subscribed/);
     expect(syncContactToCrm).not.toHaveBeenCalled();
-    errorSpy.mockRestore();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:subscribeNewsletter", context: expect.objectContaining({ step: "opt-in" }) }));
   });
 
   it("leaves an already-subscribed contact's row alone when it has a real consent record", async () => {
@@ -211,14 +213,13 @@ describe("sendContactMessage", () => {
   });
 
   it("still acknowledges the visitor even when the admin email send fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => queryBuilder(dbOk(null)) })));
     send.mockRejectedValue(new Error("Resend rejected the send (403)"));
 
     const result = await sendContactMessage({ message: "" }, form({ name: "A", email: "a@example.com", message: "hi" }));
 
     expect(result).toEqual({ message: "Thanks — we'll come back to you shortly." });
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:sendContactMessage" }));
   });
 
   it("acknowledges the visitor and sends nothing when ADMIN_EMAIL isn't configured", async () => {

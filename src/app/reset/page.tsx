@@ -8,7 +8,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { AuthLogo } from "@/components/AuthLogo";
 // Loads the design option's stylesheet: this page sits outside the public
 // layout but is part of the public site (data-site="public" below).
-import "@/components/design-option";
+import "@/components/design-option-styles";
 
 export const metadata = { title: "Reset your password" };
 

@@ -6,6 +6,12 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import { calledWith, callsOf, invoicesTable, rowThenUpdated, type InvoiceRow } from "../stubs/invoices-table";
 import type { CurrentUser } from "@/lib/auth";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 type Expire = { ok: true } | { ok: false; status: string | null; error: string };
@@ -71,7 +77,6 @@ describe("saveBooking", () => {
   // Review finding 16 Oct: the run was written held and the failed invoice
   // ignored — no pay link anywhere, and Jas told "Saved".
   it("a failed invoice is said on the run's page, where Raise invoice is", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db({ advert_bookings: () => queryBuilder(dbOk({ id: "b1", advert: { member_id: "m1" } })), invoices: () => queryBuilder(dbError("boom")) });
     await expect(saveBooking(form({ advert_id: "ad1", price_pounds: "650", starts_on: "2026-09-01", ends_on: "2026-09-30" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/b1\?error=Saved%2C%20but%20the%20invoice%20couldn't%20be%20raised/);
@@ -346,7 +351,6 @@ describe("saveBundleBooking", () => {
   });
 
   it("a failed bundle invoice is said on the bundle's page", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db({ bundles: bundle, advert_bookings: () => queryBuilder(dbOk(null, 2)), invoices: () => queryBuilder(dbError("boom")) });
     const fd = form({ bundle_id: "bd1", starts_on: "2026-09-01", ends_on: "2026-09-30" });
     fd.append("advert_ids", "ad1");
@@ -425,7 +429,6 @@ describe("decideAdvertBooking", () => {
   });
 
   it("an approval whose invoice fails is approved, and says so on the run's page", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db({ advert_bookings: () => awaiting(), invoices: () => queryBuilder(dbError("boom")), approvals: () => queryBuilder(dbOk(null)) });
     await expect(decideAdvertBooking(form({ id: "b1", decision: "approve" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/b1\?error=Saved%2C%20but%20the%20invoice/);
@@ -687,7 +690,6 @@ describe("markInvoicePaid", () => {
   });
 
   it("a database failure is said on the page, not thrown to the error boundary", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db({}, async () => dbError("connection reset"));
     await expect(markInvoicePaid(form({ invoice_id: INV, confirm: "1", return_to: "/console/adverts/b1" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/b1\?error=The%20payment%20couldn't%20be%20recorded/);

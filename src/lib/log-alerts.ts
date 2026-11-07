@@ -82,6 +82,7 @@ export async function maybeAlert(row: LogResultRow, rec: Recorded): Promise<void
     const { logDb } = await import("./db/log-client");
     await logDb()?.from("error_events").update({ alerted_at: new Date().toISOString() }).eq("id", row.event_id);
   } catch (e) {
+    // eslint-disable-next-line no-restricted-properties -- alerting is part of the logger; logError here would recurse
     console.error("[error-log] alert failed:", e instanceof Error ? e.message : e);
   }
 }

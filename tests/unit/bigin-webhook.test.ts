@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/webhooks/bigin/route";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 /**
  * `/api/webhooks/bigin` is unauthenticated except for the token Bigin echoes
  * back, and it writes `contacts`. These pin the gate and the routing; what a
@@ -83,8 +89,8 @@ describe("/api/webhooks/bigin", () => {
 
   it("still answers 200 when the pull fails — the next poll catches up, a retry storm wouldn't help", async () => {
     vi.stubEnv("BIGIN_WEBHOOK_TOKEN", TOKEN);
-    vi.spyOn(console, "error").mockImplementation(() => {});
     pullIds.mockRejectedValueOnce(new Error("Bigin down"));
     expect((await notify(event())).status).toBe(200);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ source: "webhook", area: "bigin-webhook:sync" }));
   });
 });

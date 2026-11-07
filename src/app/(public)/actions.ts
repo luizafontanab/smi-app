@@ -1,6 +1,7 @@
 "use server";
 
 import { applyOptIn } from "@/lib/contacts";
+import { logError } from "@/lib/log";
 import { optInEvidence, signupWording } from "@/lib/newsletter-consent";
 import { serviceDb } from "@/lib/db/server";
 import { ADMIN_EMAIL } from "@/lib/notify-admin";
@@ -36,7 +37,7 @@ export async function subscribeNewsletter(_prev: { message: string }, formData: 
       .update({ ...applyOptIn(existing, { newsletter: "subscribed", reOptIn: false }), ...evidence })
       .eq("id", existing.id).is("unsubscribed_at", null);
     if (error) {
-      console.error("[newsletter] could not opt in an existing contact:", error.message);
+      logError({ source: "db", area: "action:subscribeNewsletter", error: error.message, context: { contact_id: existing.id, step: "opt-in", code: error.code ?? null } });
       return { message: "Something went wrong — please try again in a moment." };
     }
   } else if (!existing.opt_in_at || existing.opt_in_source === "bigin") {
@@ -46,7 +47,7 @@ export async function subscribeNewsletter(_prev: { message: string }, formData: 
     // subscribed restamps nothing, as in the console. They are subscribed
     // either way, so a failure here is logged, not shown.
     const { error } = await db.from("contacts").update(evidence).eq("id", existing.id);
-    if (error) console.error("[newsletter] could not record consent for an existing contact:", error.message);
+    if (error) logError({ source: "db", area: "action:subscribeNewsletter", error: error.message, context: { contact_id: existing.id, step: "consent-record", code: error.code ?? null } });
   }
   // Write-through to Bigin (GAPS B6.2). Never throws: the signup is already
   // recorded above, and a CRM outage must not cost a visitor their
@@ -94,7 +95,7 @@ export async function sendContactMessage(_prev: { message: string }, formData: F
     // enquiry is already safe in the console inbox (line 35), so the visitor
     // must still get their acknowledgement — losing the send is not losing
     // the message.
-    console.error("[contact] admin notification failed:", e);
+    logError({ source: "adapter", area: "action:sendContactMessage", error: e, context: { step: "admin-notification" } });
   }
   return { message: "Thanks — we'll come back to you shortly." };
 }

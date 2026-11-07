@@ -8,6 +8,7 @@ import { reportClientError } from "@/lib/client-error-report";
 /** Member-area error boundary; renders inside the member layout chrome. */
 export default function MemberError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
+    // eslint-disable-next-line no-restricted-properties -- browser devtools copy; reportClientError below records it in the error log
     console.error("[member] render error:", error);
     // Recorded server-side too (docs/logging.md); the digest ties it to the server's own entry.
     reportClientError({ message: error.message, stack: error.stack, digest: error.digest, kind: "boundary" });
