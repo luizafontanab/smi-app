@@ -444,27 +444,9 @@ original numbers, because other items and docs refer to them.
       API calls a day). Bigin has no test mode: real keys write to real
       contacts. Do 1.13–1.14 for it, put its keys in **Preview** only, and run
       3.3 against it.
-- [ ] **7.3 — Give Jas a Vercel share link for each design option**, once
-      the `classic` branch has been pushed. In Vercel, open the latest
-      `staging` deployment → **Share** → keep the default *branch* link →
-      **Copy Link**. Do the same for `classic`. Send Jas both links: Current is
-      `https://smi-app-git-staging-mom-ai.vercel.app` and Classic is
-      `https://smi-app-git-classic-mom-ai.vercel.app` (the Classic URL is
-      unconfirmed until its first deploy). Vercel's docs say a branch link
-      follows the latest deploy but don't state it outright, so after the next
-      push to `staging`, check that Jas's link still opens.
-      Decided in [How will Jas open both live previews?](https://github.com/luizafontanab/smi-app/issues/60).
-- [ ] **7.4 — Once Jas has picked a design option, revoke both share links.**
-      In each deployment's **Share** popover, switch to *Only people with
-      access*. Until then, anyone holding a link can see the preview, test data
-      included.
-- [ ] **7.5 — Supply a real photo for the Classic `/join` banner.** Classic's
-      join page opens with a photo banner reading "Become a Member", like the
-      existing site. It shows a marked placeholder until a real workshop or
-      machinery photo is chosen. Use one SMI owns the rights to, not a story's
-      cover image. Send it in landscape, at least 1920 px wide; the white
-      banner text sits over it with a dark overlay.
-      From [#78](https://github.com/luizafontanab/smi-app/issues/78).
+- **7.3 — Vercel share links for each design option.** Moved to [#83](https://github.com/luizafontanab/smi-app/issues/83) on 6 Nov 2026.
+- **7.4 — Revoke both share links once Jas picks.** Moved to [#84](https://github.com/luizafontanab/smi-app/issues/84) on 6 Nov 2026.
+- **7.5 — A real photo for the Classic `/join` banner.** Moved to [#85](https://github.com/luizafontanab/smi-app/issues/85) on 6 Nov 2026.
 
 **Done:** 1.19 was already on when checked on 6 Nov: preview and branch URLs redirect to the Vercel login.
 
