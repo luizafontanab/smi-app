@@ -134,6 +134,7 @@ export async function recordError(input: LogErrorInput): Promise<void> {
     record = buildRecord(input);
     // The console line first, always: if the database is the thing that's
     // down, Vercel's function log still has the error.
+    // eslint-disable-next-line no-restricted-properties -- the logger's own console line; it must print even when the database write fails
     console.error(`[error] ${JSON.stringify({ source: record.p_source, area: record.p_area, message: record.p_message, path: record.p_path, digest: record.p_digest, fingerprint: record.p_fingerprint })}`);
     const { logDb } = await import("./db/log-client");
     const db = logDb();
@@ -144,6 +145,7 @@ export async function recordError(input: LogErrorInput): Promise<void> {
     type Args = import("./db/types").Database["public"]["Functions"]["log_error_event"]["Args"];
     const { data, error } = await db.rpc("log_error_event", record as unknown as Args);
     if (error) {
+      // eslint-disable-next-line no-restricted-properties -- the logger's own fallback; logError here would recurse
       console.error(`[error-log] could not record ${record.p_fingerprint}: ${error.message}`);
       return;
     }
@@ -154,6 +156,7 @@ export async function recordError(input: LogErrorInput): Promise<void> {
     }
   } catch (e) {
     try {
+      // eslint-disable-next-line no-restricted-properties -- the logger's own fallback; logError here would recurse
       console.error(`[error-log] logger failed${record ? ` for ${record.p_fingerprint}` : ""}:`, e instanceof Error ? e.message : e);
     } catch {
       // nothing left to do — the logger must not throw

@@ -9,6 +9,12 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import { invoicesTable } from "../stubs/invoices-table";
 import type { CurrentUser } from "@/lib/auth";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const { requireConsole, uploadImage, uploadDocument, enqueue, removeMedia } = vi.hoisted(() => ({
@@ -238,7 +244,6 @@ describe("startAdvertFromInterest — the amount", () => {
   });
 
   it("says so when the invoice couldn't be raised, instead of handing off as if it had", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db({ visibility_requests: () => queryBuilder(dbOk({ id: "req1", member_id: "m1", product: "banner" })), invoices: () => queryBuilder(dbError("boom")) });
     await expect(startAdvertFromInterest(form({ id: "req1", amount_pounds: "100" })))
       .rejects.toThrow(/NEXT_REDIRECT:\/console\/adverts\/interest\?error=Confirmed%2C%20but%20the%20invoice/);

@@ -6,6 +6,9 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import type { ProvisionResult } from "@/lib/membership";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
 
 const { allowRequest, provisionMember, notifyAdminFunnel, enqueue } = vi.hoisted(() => ({
   allowRequest: vi.fn(async () => true),
@@ -128,12 +131,11 @@ describe("createAccount", () => {
   });
 
   it("still signs the member in and redirects even when the welcome email fails to queue", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     stubSignIn();
     enqueue.mockRejectedValue(new Error("queue unavailable"));
 
     await expect(createAccount({ message: "" }, form())).rejects.toThrow("NEXT_REDIRECT:/dashboard/pay");
 
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:createAccount", context: { member_id: "m1", step: "queue-welcome" } }));
   });
 });

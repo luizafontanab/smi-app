@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { logError } from "../log";
 import { serviceDb } from "../db/server";
 import type { Json, TablesInsert } from "../db/types";
 import { applyOptIn } from "../contacts";
@@ -545,7 +546,7 @@ class BiginCrmSync implements CrmSync {
           `/Accounts?fields=Account_Name,${NEWS_PAGE_FIELD},${WEBSITE_FIELD}&per_page=200&${paging}`,
         );
       } catch (e) {
-        console.error("[crm] reading company news pages stopped part-way:", e);
+        logError({ source: "adapter", area: "crm:news-pages", error: e, context: { page: i } });
         return done(false);
       }
       for (const r of body?.data ?? []) {
@@ -926,7 +927,7 @@ class BiginCrmSync implements CrmSync {
         pushed++;
       } catch (e) {
         pushFailed++;
-        console.error(`[crm] retrying push for contact ${id} failed:`, e);
+        logError({ source: "adapter", area: "crm:retry-push", error: e, context: { contact_id: id } });
       }
     }
 
@@ -979,7 +980,7 @@ export async function syncContactToCrm(contactId: string, opts: PushOptions = {}
     }
     await crm.pushContact(contactId, opts);
   } catch (e) {
-    console.error(`[crm] push failed for contact ${contactId}; queued for retry:`, e);
+    logError({ source: "adapter", area: "crm:push", error: e, context: { contact_id: contactId, retry: "queued" } });
     try {
       // lazy: jobs.ts imports this module lazily too, and its other imports aren't needed on this path
       const { enqueue } = await import("../jobs");
@@ -990,7 +991,7 @@ export async function syncContactToCrm(contactId: string, opts: PushOptions = {}
       );
     } catch (queueError) {
       // still not lost: the row stays dirty and the next crm_sync sweep pushes it
-      console.error(`[crm] could not queue the retry for contact ${contactId}:`, queueError);
+      logError({ source: "job", area: "crm:queue-retry", error: queueError, context: { contact_id: contactId } });
     }
   }
 }

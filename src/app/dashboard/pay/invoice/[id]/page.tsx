@@ -7,6 +7,7 @@ import { UUID_RE } from "@/lib/validate";
 import { advertPaymentsMode, ADVERT_INVOICE_KIND, retrieveCheckoutSession, STRIPE_JS_URL, stripePublishableKey } from "@/lib/adapters/advert-checkout";
 import { formatPounds, settleInvoice } from "@/lib/advert-payments";
 import { isPayableOnline } from "@/lib/invoicing";
+import { logError } from "@/lib/log";
 import { simulateInvoicePayment } from "../actions";
 import { EmbeddedCheckout } from "./EmbeddedCheckout";
 
@@ -53,7 +54,7 @@ export default async function PayInvoicePage(props: PageProps<"/dashboard/pay/in
       } catch (e) {
         // The webhook is the authority and retries until it lands; the page
         // just shows "not confirmed yet" below rather than an error.
-        console.error(`[pay/invoice] return-page settle failed for ${invoice.number}:`, e);
+        logError({ source: "server", area: "render:/dashboard/pay/invoice/[id]", error: e, context: { invoice_id: invoice.id, step: "settle" } });
       }
       ({ data: invoice } = await load());
       if (!invoice) notFound();

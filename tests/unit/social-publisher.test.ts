@@ -8,6 +8,9 @@ import { asDb, dbOk, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
 
 const post = (over: Partial<SocialPost> = {}): SocialPost => ({
   text: "First line\nSecond line",
@@ -97,18 +100,15 @@ describe("channelText — tags", () => {
 
 describe("getSocialPublisher — Buffer", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     resetDbServerMocks();
     fetchSpy?.mockRestore();
-    errorSpy.mockRestore();
   });
 
   it("sends one createPost mutation for the channel, with the token and exactly the text given", async () => {
@@ -150,14 +150,14 @@ describe("getSocialPublisher — Buffer", () => {
     fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad token", { status: 401 }));
 
     await expect(getSocialPublisher().publishChannel(send())).rejects.toThrow(/channel-1.*401/);
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "social:buffer-publish" }));
   });
 
   it("logs and rethrows on a network failure so the job retries", async () => {
     fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
 
     await expect(getSocialPublisher().publishChannel(send())).rejects.toThrow("network down");
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "social:buffer-publish" }));
   });
 
   // The three below all return HTTP 200. The pre-GraphQL `!res.ok` check read
@@ -169,7 +169,7 @@ describe("getSocialPublisher — Buffer", () => {
     );
 
     await expect(getSocialPublisher().publishChannel(send())).rejects.toThrow(/Channel not found/);
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "social:buffer-publish" }));
   });
 
   it("fails on a top-level GraphQL error returned with HTTP 200", async () => {
@@ -207,7 +207,6 @@ describe("Buffer — the live links of SMI's posts", () => {
 
   beforeEach(() => {
     vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
-    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -261,7 +260,6 @@ describe("channel networks and each channel's post", () => {
 
   beforeEach(() => {
     vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
-    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -359,7 +357,6 @@ describe("cachedChannelNetworks", () => {
 
   it("asks Buffer once for a few minutes, then again; a failed answer is never kept", async () => {
     vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
-    vi.spyOn(console, "error").mockImplementation(() => {});
     withSettings({ channelIds: ["li"], organizationId: "org-1" });
     const ok = () => new Response(JSON.stringify({ data: { channels: [{ id: "li", service: "linkedin" }] } }));
     const fetchSpy = vi.spyOn(globalThis, "fetch")

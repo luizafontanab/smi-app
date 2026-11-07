@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { logError } from "./log";
 import { cookies, headers } from "next/headers";
 import { CONSENT_COOKIE } from "./consent";
 import { serviceDb } from "./db/server";
@@ -104,7 +105,7 @@ export function record(events: (EventRow & Partial<Consent>)[]): void {
     .from("analytics_events")
     .insert(rows)
     .then(({ error }) => {
-      if (error) console.error("[analytics] insert failed:", error.message);
+      if (error) logError({ source: "db", area: "analytics:events-insert", error: error.message, context: { code: error.code ?? null } });
     });
 }
 
@@ -122,7 +123,7 @@ export function recordSearch(entry: SearchQueryRow & Partial<Consent>): void {
     .from("search_queries")
     .insert(row)
     .then(({ error }) => {
-      if (error) console.error("[analytics] search_queries insert failed:", error.message);
+      if (error) logError({ source: "db", area: "analytics:search-insert", error: error.message, context: { code: error.code ?? null } });
     });
 }
 
@@ -160,7 +161,7 @@ function bumpConsentStats(consented: boolean): void {
   void serviceDb()
     .rpc("bump_consent_stats", { p_consented: consented })
     .then(({ error }) => {
-      if (error) console.error("[analytics] bump_consent_stats failed:", error.message);
+      if (error) logError({ source: "db", area: "analytics:consent-stats", error: error.message, context: { code: error.code ?? null } });
     });
 }
 

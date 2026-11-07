@@ -4,6 +4,12 @@ import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 afterEach(() => {
@@ -558,7 +564,6 @@ describe("ResendNewsletterSender", () => {
       contactsDb([{ email: "keep@example.com" }], []);
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
         String(input).includes("/segments/") ? new Response("boom", { status: 500 }) : new Response("{}", { status: 200 }));
-      vi.spyOn(console, "error").mockImplementation(() => {});
 
       const result = await getNewsletterSender().sendIssue("iss1");
 

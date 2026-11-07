@@ -1835,7 +1835,7 @@ export async function markInvoicePaid(formData: FormData) {
   try {
     result = await settleInvoice(id);
   } catch (e) {
-    console.error("[markInvoicePaid]", e);
+    logError({ source: "db", area: "action:markInvoicePaid", error: e, context: { invoice_id: id } });
     redirect(`${back}${sep}error=${encodeURIComponent("The payment couldn't be recorded — nothing was changed. Try again in a moment.")}`);
   }
   if (!result.settled) {
@@ -2779,7 +2779,7 @@ export async function searchBiginCompanies(q: string): Promise<{ id: string; nam
   try {
     return await getCrmSync().searchCompanies(String(q ?? "").slice(0, 100));
   } catch (e) {
-    console.error("[crm] Bigin company search failed:", e);
+    logError({ source: "adapter", area: "action:searchBiginCompanies", error: e });
     return [];
   }
 }
@@ -3002,7 +3002,7 @@ async function sendAccountInvite(email: string): Promise<boolean> {
     });
     return true;
   } catch (e) {
-    console.error("[console] account invite failed:", e);
+    logError({ source: "adapter", area: "console:account-invite", error: e });
     return false;
   }
 }
@@ -3196,7 +3196,7 @@ export async function deleteMember(formData: FormData) {
     const { error: authError } = await db.auth.admin.deleteUser(profile.user_id);
     // Best-effort: the member row is already gone, and failing the action here
     // would tell Jas the delete did not happen when most of it did.
-    if (authError) console.error(`[console] could not delete auth user ${profile.user_id}:`, authError.message);
+    if (authError) logError({ source: "db", area: "action:deleteMember", error: authError.message, userId: admin.userId, context: { member_id: id, auth_user_id: profile.user_id, step: "delete-auth-user" } });
   }
 
   revalidateMemberSurfaces(id, member.slug);
@@ -3292,7 +3292,7 @@ export async function replyToInboxMessage(formData: FormData) {
     const mail = renderReply({ name: m.name, subject, body }, await loadEmailTemplates());
     await getEmailSender().send({ to: m.email, ...mail });
   } catch (e) {
-    console.error("[console] inbox reply failed:", e);
+    logError({ source: "adapter", area: "action:replyToInboxMessage", error: e, userId: user.userId, context: { message_id: id } });
     failure = e instanceof Error ? e.message.slice(0, 300) : "The mail provider rejected it.";
   }
 

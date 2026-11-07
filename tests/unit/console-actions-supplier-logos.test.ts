@@ -6,6 +6,12 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import { invoicesTable } from "../stubs/invoices-table";
 import type { CurrentUser } from "@/lib/auth";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const { requireConsole, uploadImage, removeMedia } = vi.hoisted(() => ({
@@ -290,7 +296,6 @@ describe("saveArtworkRun — the run's invoice follows its price", () => {
   });
 
   it("a failed invoice on a new run is said on the run's own page", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     uploadImage.mockResolvedValue("panels/logo.png");
     db({
       members: () => queryBuilder(dbOk({ name: "Acme Steel" })),

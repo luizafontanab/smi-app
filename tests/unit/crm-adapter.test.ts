@@ -13,6 +13,12 @@ import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const { enqueue } = vi.hoisted(() => ({ enqueue: vi.fn(async () => {}) }));
@@ -731,7 +737,6 @@ describe("listCompanyNewsPages (story sources from Bigin)", () => {
 
   it("a refused call part-way returns what was read, marked incomplete, instead of throwing", async () => {
     liveEnv();
-    vi.spyOn(console, "error").mockImplementation(() => {});
     fetchRoutes((url) => {
       if (!url.startsWith(`${API}/Accounts?`)) return undefined;
       return url.includes("page=1")
@@ -778,7 +783,6 @@ describe("listCompanyNewsPages (story sources from Bigin)", () => {
 
     it("withholds them on a partial read too", async () => {
       liveEnv();
-      vi.spyOn(console, "error").mockImplementation(() => {});
       fetchRoutes((url) => {
         if (!url.startsWith(`${API}/Accounts?`)) return undefined;
         return url.includes("page=1")
@@ -913,7 +917,6 @@ describe("BiginCrmSync.sync", () => {
 
   it("throws after recording when a retried push fails, so the job surfaces in Needs You Today", async () => {
     liveEnv();
-    vi.spyOn(console, "error").mockImplementation(() => {});
     let contactsCall = 0;
     const t = db({
       settings: dbOk({ value: { since: "2026-10-07T00:00:00Z" } }),
@@ -955,7 +958,6 @@ describe("BiginCrmSync.sync", () => {
 describe("syncContactToCrm", () => {
   it("marks the row dirty, pushes, and queues a retry instead of throwing when Bigin fails", async () => {
     liveEnv();
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const t = db({ contacts: dbOk(local({ bigin_id: "500" })) });
     fetchRoutes(() => new Response("down", { status: 503 }));
 
@@ -977,7 +979,6 @@ describe("syncContactToCrm", () => {
 
   it("swallows a failure to queue the retry too — the dirty flag still gets it pushed later", async () => {
     liveEnv();
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db({ contacts: () => dbError("db down") as DbResult });
     enqueue.mockRejectedValueOnce(new Error("queue down"));
     const { syncContactToCrm } = await freshCrm();

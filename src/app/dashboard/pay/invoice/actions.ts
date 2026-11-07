@@ -8,6 +8,7 @@ import { UUID_RE } from "@/lib/validate";
 import { advertPaymentsMode } from "@/lib/adapters/advert-checkout";
 import { invoiceCheckoutSecret, settleInvoice } from "@/lib/advert-payments";
 import { isPayableOnline } from "@/lib/invoicing";
+import { logError } from "@/lib/log";
 
 /**
  * The member's own unpaid advertising or visibility invoice, or null. Server
@@ -45,7 +46,10 @@ export async function createInvoiceCheckoutSession(invoiceId: string): Promise<s
     `${siteUrl()}/dashboard/pay/invoice/${invoice.id}?session_id={CHECKOUT_SESSION_ID}`,
   );
   if (!result.ok) {
-    console.error(`[pay/invoice] ${invoice.number}: ${result.error}`);
+    // Paid in the meantime (another tab, or the webhook got there first) is an
+    // expected race, not a failure; anything else is Stripe or the database.
+    if (result.alreadyPaid) console.warn(`[pay/invoice] ${invoice.number}: ${result.error}`);
+    else logError({ source: "adapter", area: "action:createInvoiceCheckoutSession", error: result.error, context: { invoice_id: invoice.id } });
     throw new Error(result.alreadyPaid
       ? "This invoice has just been paid — refresh the page to see it."
       : "We couldn't start the payment. Please try again, or contact us.");

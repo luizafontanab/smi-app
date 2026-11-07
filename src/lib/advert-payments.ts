@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { logError } from "./log";
 import { serviceDb } from "./db/server";
 import { enqueue, runQueuedJobSoon } from "./jobs";
 import { advertPaymentsMode, createInvoiceCheckout, expireCheckoutSession, retrieveCheckoutSession } from "./adapters/advert-checkout";
@@ -135,7 +136,7 @@ export async function settleInvoice(invoiceId: string, opts: SettleOptions = {})
   // sessions were reused) must not take the money again.
   if (row.open_session_id && row.open_session_id !== opts.sessionId) {
     const expired = await expireCheckoutSession(row.open_session_id);
-    if (!expired.ok && expired.status === "open") console.error(`[settle] ${invoiceId} is paid but its other session ${row.open_session_id} is still open: ${expired.error}`);
+    if (!expired.ok && expired.status === "open") logError({ source: "adapter", area: "settle:other-session-open", error: `paid invoice still has another open checkout session: ${expired.error}`, context: { invoice_id: invoiceId, session_id: row.open_session_id } });
   }
   for (const path of BILLING_PATHS) revalidatePath(path);
   return { settled: true, memberId: row.member_id! };
@@ -200,7 +201,7 @@ export async function voidInvoices(link: InvoiceTarget): Promise<VoidResult> {
       // Anything else — already expired, or Stripe unreachable — still voids:
       // the session dies within the hour on its own, and if it is paid in that
       // window the webhook finds a void invoice and raises the alarm.
-      if (!expired.ok && expired.status !== "expired") console.error(`[void] ${invoice.id}: ${expired.error}`);
+      if (!expired.ok && expired.status !== "expired") logError({ source: "adapter", area: "void:expire-session", error: expired.error, context: { invoice_id: invoice.id, status: expired.status ?? null } });
     }
     const { data: done, error: voidError } = await db
       .from("invoices")

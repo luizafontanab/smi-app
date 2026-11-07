@@ -10,6 +10,12 @@ import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const { requireConsole, removeMedia, recordRename, uploadImage, uploadDocument } = vi.hoisted(() => ({
@@ -151,7 +157,6 @@ describe("replyToInboxMessage", () => {
   // The old version sent and kept nothing, so a provider rejection redirected
   // with an error and destroyed whatever had just been typed.
   it("keeps the typed reply and records why it failed when the provider rejects it", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const { messages, replies } = inboxDb(message());
     send.mockRejectedValueOnce(new Error("mailbox unavailable"));
 

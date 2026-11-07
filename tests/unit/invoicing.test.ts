@@ -4,6 +4,12 @@ import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 afterEach(() => {
@@ -56,9 +62,9 @@ describe("raiseInvoice", () => {
   });
 
   it("returns null (and logs) for an item that already has an issued invoice", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     db(queryBuilder(itemTaken()));
     expect(await raiseInvoice("m1", 1000, "ADV", { advert_booking_id: "b1" })).toBeNull();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "invoicing:raise", context: { member_id: "m1", prefix: "ADV" } }));
   });
 });
 
@@ -119,10 +125,10 @@ describe("ensureInvoice", () => {
   });
 
   it("reports a failed insert as an error, not as nothing", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const invoices = queryBuilder((): DbResult => (callsOf(invoices.insert).length ? dbError("disk full") : dbOk([])));
     db(invoices);
     expect(await ensureInvoice("m1", 65000, "ADV", { advert_booking_id: "b1" }))
       .toEqual({ ok: false, error: expect.stringContaining("disk full") });
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "invoicing:ensure", context: { advert_booking_id: "b1", prefix: "ADV" } }));
   });
 });

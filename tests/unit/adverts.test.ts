@@ -10,6 +10,9 @@ import { resetDbServerMocks } from "../stubs/db-server";
 import { cookieStore, resetNextHeadersMocks } from "../stubs/next-headers";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
 
 afterEach(() => {
   resetDbServerMocks();
@@ -110,11 +113,10 @@ describe("liveAdverts / liveAdvertsByFormat", () => {
   });
 
   it("never throws on a query error — just logs and returns nothing", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: () => queryBuilder(dbError("boom")) })));
 
     expect(await liveAdverts("banner")).toEqual([]);
-    expect(errorSpy).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "adverts:live-bookings" }));
   });
 
   it("liveAdvertsByFormat buckets every requested format from one query, defaulting unmatched formats to []", async () => {

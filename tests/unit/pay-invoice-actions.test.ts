@@ -5,6 +5,12 @@ import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase
 import { resetDbServerMocks } from "../stubs/db-server";
 import type { CurrentUser } from "@/lib/auth";
 
+// logError is the seam these failure paths report through (docs/logging.md);
+// mocked so a test never writes to the real error log.
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+vi.mock("@/lib/log", () => ({ logError }));
+afterEach(() => logError.mockReset());
+
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
 const { requireMember, settleInvoice, invoiceCheckoutSecret } = vi.hoisted(() => ({
@@ -80,10 +86,14 @@ describe("createInvoiceCheckoutSession", () => {
   });
 
   it("tells the member to refresh when the open session has just been paid", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     db(issued);
     invoiceCheckoutSecret.mockResolvedValueOnce({ ok: false, error: "complete", alreadyPaid: true });
     await expect(createInvoiceCheckoutSession(INV)).rejects.toThrow(/just been paid/);
+    // An expected race, not a failure: noted, never alerted.
+    expect(warnSpy).toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it("refuses an invoice that's already paid", async () => {

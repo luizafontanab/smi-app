@@ -23,6 +23,24 @@ const eslintConfig = defineConfig([
     // app's own lint output.
     ".claude/**",
   ]),
+  // A bare console.error only reaches the function log, where nobody looks;
+  // logError() also records the error and alerts the developer on first sight.
+  // console.warn/log/info are left alone — they are for expected conditions.
+  {
+    files: ["src/**/*.{ts,tsx,js,jsx,mjs}"],
+    ignores: ["src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "console",
+          property: "error",
+          message:
+            "Use logError() from src/lib/log.ts (see docs/logging.md) so the failure is recorded and alerted. In client code, errors reach the log via reportClientError / the error boundaries. If console.error is genuinely needed (the logger's own internals), disable this line with a reason.",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

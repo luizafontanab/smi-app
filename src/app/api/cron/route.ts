@@ -1,4 +1,5 @@
 import { runDueJobs } from "@/lib/jobs";
+import { logError } from "@/lib/log";
 
 /**
  * Vercel Cron entrypoint (schedule in vercel.json); the local runner hits it too.
@@ -15,7 +16,7 @@ import { runDueJobs } from "@/lib/jobs";
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
-    console.error("[cron] CRON_SECRET is not set — refusing to run jobs.");
+    logError({ source: "server", area: "cron:unconfigured", error: new Error("CRON_SECRET is not set — refusing to run jobs.") });
     return Response.json({ error: "cron is not configured" }, { status: 503 });
   }
   if (request.headers.get("authorization") !== `Bearer ${secret}`) {

@@ -41,6 +41,7 @@ export const onRequestError: Instrumentation.onRequestError = async (err, reques
     // The logger needs node:crypto and the Supabase client — neither belongs
     // in an edge bundle, so the edge runtime keeps the console line only.
     if (process.env.NEXT_RUNTIME !== "nodejs") {
+      // eslint-disable-next-line no-restricted-properties -- edge runtime: the logger (node:crypto, Supabase client) is unavailable here
       console.error(`[error] ${JSON.stringify({ source: "server", area: input.area, path: input.path, digest: input.digest })}`);
       return;
     }
