@@ -59,6 +59,12 @@ describe("cancelling goes through SMI", () => {
     expect(terms).not.toContain("from your member area");
   });
 
+  // Decided 9 Nov 2026: no refund is offered when a member cancels, so the
+  // pro-rata placeholder goes rather than waiting on SMI.
+  it("the membership terms carry no placeholder about pro-rata refunds", () => {
+    expect(page("membership-terms").body).not.toMatch(/pro-rata refund/);
+  });
+
   it("the FAQ sends cancelling to SMI and keeps self-service for the rest", () => {
     const faq = page("faq").body;
     expect(faq).toContain("update your details, change your password or view invoices. To cancel, contact us.");

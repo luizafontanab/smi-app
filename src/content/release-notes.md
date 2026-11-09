@@ -10,6 +10,9 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-09 — No refund note left in the Membership terms
+- The Membership terms no longer carry an "SMI TO CONFIRM" note about pro-rata refunds under Cancelling. No refund is offered when a member cancels, so there was nothing left to confirm.
+
 ## 2026-11-09 — Buffer channels show their names
 - Once saved, the Buffer channels on the Story Engine page are no longer an editable box of ids. Each channel shows its name, network and whether Buffer still has it connected, with a link to its page. Click Edit to change them, and Cancel to leave them as they were.
 - A channel that's disconnected in Buffer, or no longer in your Buffer organisation, is marked in red, because posts to it would fail.

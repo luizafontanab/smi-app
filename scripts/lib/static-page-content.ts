@@ -268,7 +268,6 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
 <p>Membership buys you access to the platform, not a guarantee of publication. We may decline a submission, ask you to change it, or unpublish something that turns out to be inaccurate. We will always tell you why.</p>
 <h2>Cancelling</h2>
 <p>You can cancel at any time by contacting us. Cancelling stops the next payment; your membership, your company page and your ability to submit content all continue to the end of the period you have already paid for. After that your company page comes off the public site, and news we published about you remains in the archive.</p>
-<p>[SMI TO CONFIRM: whether a pro-rata refund is ever offered mid-period, and on what grounds. The platform does not issue one today.]</p>
 <h2>If a payment fails</h2>
 <p>We will email you and your membership enters a short grace period during which your page stays live. If payment is not resolved by the end of it, membership lapses and your company page comes off the site. Paying brings it straight back.</p>
 <h2>Ending membership from our side</h2>
