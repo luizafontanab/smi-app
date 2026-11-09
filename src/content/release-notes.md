@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-09 — Visits are counted again on staging
+- Fixed staging not recording page views, story views and advert views and clicks since early November. Visits from then until this fix can't be recovered, so November's figures on staging will be low.
+- The site now repairs this by itself: if a month's visit records can't be stored, the nightly background job fixes it on its next run.
+
 ## 2026-11-09 — Social posts: Claude writes them, Buffer schedules them
 - Each social channel in the story and video editors now has its own wording box. Click Write with Claude to have Claude write that channel's post from the story, to suit the network: a few short paragraphs for LinkedIn, one or two sentences for X. Read it and change anything before you save. Leave the box empty to use the lead-in, as before. The link and the members' tags are still added after it automatically.
 - Send draft to Buffer puts exactly what that channel would receive into Buffer as a draft, so you can see it there before anything goes out. A draft is never published.
