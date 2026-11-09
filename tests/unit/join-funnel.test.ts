@@ -239,6 +239,67 @@ describe.skipIf(!KEY)("join funnel", () => {
     expect(await pendingCancel(lapsedId)).toEqual({ status: "lapsed", cancel_requested_at: null });
   });
 
+  // ── Undo a cancellation (#92): the reverse of the above, same result type.
+  const PENDING = "2026-11-01T10:00:00.000Z";
+
+  it("undoCancellation clears the pending cancel once and queues the 'will continue' email once", async () => {
+    const memberId = await cancelMember("undo-stub", { cancel_requested_at: PENDING });
+    const { undoCancellation } = await import("@/lib/membership");
+
+    expect(await undoCancellation(memberId)).toEqual({ ok: true, changed: true });
+    expect(await pendingCancel(memberId)).toEqual({ status: "active", cancel_requested_at: null });
+    expect(await queuedEmails(memberId)).toEqual(["membership_cancel_undone"]);
+
+    expect(await undoCancellation(memberId)).toEqual({ ok: true, changed: false });
+    expect(await queuedEmails(memberId)).toEqual(["membership_cancel_undone"]); // never re-sent
+  });
+
+  it("undoCancellation in live mode resumes renewal on the stored subscription id only", async () => {
+    const memberId = await cancelMember("undo-live", { cancel_requested_at: PENDING, stripe_subscription_id: `sub_undo_${ts}` });
+    const fetchSpy = stubStripe(() => new Response("{}", { status: 200 }));
+    const { undoCancellation } = await import("@/lib/membership");
+
+    expect(await undoCancellation(memberId)).toEqual({ ok: true, changed: true });
+    const stripeCalls = fetchSpy.mock.calls.filter(([u]) => String(u).includes("/v1/subscriptions/"));
+    expect(stripeCalls).toHaveLength(1);
+    expect(String(stripeCalls[0][0])).toMatch(new RegExp(`/v1/subscriptions/sub_undo_${ts}$`));
+    expect(new URLSearchParams(String(stripeCalls[0][1]?.body)).get("cancel_at_period_end")).toBe("false");
+    expect((await pendingCancel(memberId))?.cancel_requested_at).toBeNull();
+  });
+
+  it("undoCancellation refuses when live and no stripe_subscription_id is on record (B1.6)", async () => {
+    const memberId = await cancelMember("undo-nosub", { cancel_requested_at: PENDING });
+    const fetchSpy = stubStripe(() => new Response("{}", { status: 200 }));
+    const { undoCancellation } = await import("@/lib/membership");
+
+    expect(await undoCancellation(memberId)).toEqual({ ok: false, reason: "no_subscription" });
+    expect(new Date((await pendingCancel(memberId))!.cancel_requested_at!).toISOString()).toBe(PENDING);
+    expect(await queuedEmails(memberId)).toEqual([]);
+    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes("/v1/subscriptions/"))).toBe(false);
+  });
+
+  it("undoCancellation passes Stripe's rejection through and changes nothing", async () => {
+    const memberId = await cancelMember("undo-rejected", { cancel_requested_at: PENDING, stripe_subscription_id: `sub_undo_rej_${ts}` });
+    stubStripe(() => new Response(JSON.stringify({ error: { message: "No such subscription" } }), { status: 404 }));
+    const { undoCancellation } = await import("@/lib/membership");
+
+    expect(await undoCancellation(memberId)).toEqual({ ok: false, reason: "stripe_rejected", detail: expect.stringContaining("No such subscription") });
+    expect(new Date((await pendingCancel(memberId))!.cancel_requested_at!).toISOString()).toBe(PENDING);
+    expect(await queuedEmails(memberId)).toEqual([]);
+  });
+
+  it("undoCancellation reports a period Stripe has already ended and leaves the row unchanged", async () => {
+    const memberId = await cancelMember("undo-closed", { cancel_requested_at: PENDING, stripe_subscription_id: `sub_undo_closed_${ts}` });
+    stubStripe(() => new Response(JSON.stringify({ error: { message: "A canceled subscription can only update its cancellation_details and metadata." } }), { status: 400 }));
+    const { undoCancellation } = await import("@/lib/membership");
+
+    expect(await undoCancellation(memberId)).toEqual({ ok: false, reason: "period_ended" });
+    const after = await pendingCancel(memberId);
+    expect(after?.status).toBe("active");
+    expect(new Date(after!.cancel_requested_at!).toISOString()).toBe(PENDING);
+    expect(await queuedEmails(memberId)).toEqual([]);
+  });
+
   it("comp_expiry sweep moves an expired comp to grace and notes it for Jas", async () => {
     const name = `Expired Comp Ltd ${ts}`;
     const { data: member } = await db.from("members").insert({

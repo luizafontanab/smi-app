@@ -17,6 +17,10 @@
 - Each cancel is listed as "Cancelled membership" under Admin access on the member's page, with your name.
 - If the member's subscription was set up outside this site, you're told to cancel it in Stripe instead, and nothing changes. If Stripe refuses, its own message is shown.
 - Members who pay by invoice see "Invoice billing: stop raising invoices by hand" instead of the button. Draft and lapsed members have no section.
+- While a cancellation is pending, the section has an Undo cancellation action for a member who changed their mind. Tick the box and click Undo cancellation.
+- Undoing keeps the member's card payments renewing as normal, clears the pending cancellation, and emails the member that their membership will continue. The new "Your SMI membership will continue" email can be edited under Email templates.
+- Each undo is listed as "Undid cancellation" under Admin access on the member's page, with your name.
+- If the paid period has already ended, you're told the member needs to rejoin, and nothing changes.
 
 ## 2026-11-07 — Story titles in capitals, and company links from Bigin
 - A story's title now always shows in capitals, at the same size and colour, on the published page and in both story previews. The title is still saved as you typed it, so search results, link previews and newsletters are unchanged.

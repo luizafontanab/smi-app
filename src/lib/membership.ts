@@ -283,7 +283,7 @@ export async function applyPaymentFailure(memberId: string): Promise<void> {
 }
 
 /**
- * Why a change to a membership's renewal — cancel now, undo (#92) next — did
+ * Why a change to a membership's renewal — a cancel (#90) or its undo (#92) — did
  * not happen. The module states the reason only; wording is the caller's
  * (the console's admin wording lives in `app/console/membership-messages.ts`).
  *
@@ -299,7 +299,7 @@ export type MembershipChangeFailure =
   | { ok: false; reason: "stripe_rejected"; detail: string };
 
 /**
- * The result of a cancel (and of #92's undo). `changed` is false when the
+ * The result of a cancel and of its undo (#92). `changed` is false when the
  * membership was already in the asked-for state, so a repeat is harmless and a
  * caller can skip its audit row.
  */
@@ -310,7 +310,7 @@ export type MembershipChangeResult = { ok: true; changed: boolean } | Membership
  * - `none`: draft or lapsed — no section at all.
  * - `invoice`: invoice billing has no card subscription to stop; the admin
  *   stops raising invoices by hand.
- * - `pending`: a card member whose cancel is scheduled (#92 offers Undo here).
+ * - `pending`: a card member whose cancel is scheduled; Undo is offered (#92).
  * - `cancellable`: a card member, active or in grace, with no cancel pending.
  * The page renders from it and the console action refuses anything else, so
  * the two can't disagree.
@@ -367,6 +367,49 @@ export async function requestCancellation(memberId: string): Promise<MembershipC
     .select("id");
   if (!stamped?.length) return { ok: true, changed: false };
   await notifyQuietly(memberId, { kind: "membership_cancel_requested" });
+  return { ok: true, changed: true };
+}
+
+/**
+ * Undo a cancellation (#92) — the reverse of `requestCancellation`, for a
+ * member who changed their mind: tell Stripe (if live) to keep renewing the
+ * stored subscription, clear the pending cancel, and queue the "membership
+ * will continue" email. Same result type and the same B1.6 rule as cancel.
+ *
+ * If Stripe has already closed the subscription the result is `period_ended`
+ * and the row is left as it is — the member must rejoin. With no cancel
+ * pending it changes nothing (`changed: false`), so a repeat is harmless.
+ */
+export async function undoCancellation(memberId: string): Promise<MembershipChangeResult> {
+  const db = serviceDb();
+  const { data: member } = await db
+    .from("members")
+    .select("status, stripe_subscription_id, cancel_requested_at")
+    .eq("id", memberId)
+    .maybeSingle();
+  if (!member) return { ok: false, reason: "not_found" };
+  if (!member.cancel_requested_at) return { ok: true, changed: false }; // nothing pending — idempotent
+  if (member.status === "lapsed") return { ok: false, reason: "period_ended" };
+
+  const { paymentsAreLive, getPayments } = await import("./adapters/payments");
+  if (paymentsAreLive()) {
+    if (!member.stripe_subscription_id) return { ok: false, reason: "no_subscription" };
+    const result = await getPayments().keepRenewing(member.stripe_subscription_id);
+    if (!result.ok) {
+      return result.reason === "period_ended"
+        ? { ok: false, reason: "period_ended" }
+        : { ok: false, reason: "stripe_rejected", detail: result.error };
+    }
+  }
+
+  // Only where still stamped: two undos racing past the read above must not
+  // both clear and both email.
+  const { data: cleared } = await db.from("members")
+    .update({ cancel_requested_at: null })
+    .eq("id", memberId).not("cancel_requested_at", "is", null)
+    .select("id");
+  if (!cleared?.length) return { ok: true, changed: false };
+  await notifyQuietly(memberId, { kind: "membership_cancel_undone" });
   return { ok: true, changed: true };
 }
 

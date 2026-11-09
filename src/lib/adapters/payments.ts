@@ -24,8 +24,8 @@ export type CheckoutResult =
   | { kind: "error"; message: string };
 
 /**
- * A change to a subscription's renewal (cancel-at-period-end; #92 adds the
- * "keep renewing" call beside it, returning this same type). The failure
+ * A change to a subscription's renewal (cancel-at-period-end, and the #92
+ * "keep renewing" call beside it). The failure
  * carries a reason, so the membership module can tell "Stripe has already
  * closed this subscription" (`period_ended`) from any other refusal; `error`
  * is Stripe's own message, for an admin, never for a member.
@@ -46,6 +46,13 @@ export interface Payments {
    * touched") means a cancel action can never derive/guess an id another way.
    */
   cancelSubscription(subscriptionId: string): Promise<CancelResult>;
+  /**
+   * Undo a scheduled cancel (#92): `cancel_at_period_end` back to false, so
+   * the subscription renews as normal. Same B1.6 rule — only ever the stored
+   * subscription id. A subscription Stripe has already closed can't be
+   * revived; that comes back as `period_ended`.
+   */
+  keepRenewing(subscriptionId: string): Promise<CancelResult>;
 }
 
 /**
@@ -84,6 +91,10 @@ class LocalStubPayments implements Payments {
 
   async cancelSubscription(): Promise<CancelResult> {
     return { ok: true }; // nothing real to cancel — the member row itself is updated by the caller
+  }
+
+  async keepRenewing(): Promise<CancelResult> {
+    return { ok: true }; // nothing real to resume — the caller clears the member row
   }
 }
 
@@ -207,11 +218,25 @@ class StripePayments implements Payments {
     if (!res.ok) return subscriptionRefusal(res, "the cancellation");
     return { ok: true };
   }
+
+  /** The reverse of `cancelSubscription`: `cancel_at_period_end=false` on the same subscription (#92). */
+  async keepRenewing(subscriptionId: string): Promise<CancelResult> {
+    const res = await fetch(`${this.baseUrl}/v1/subscriptions/${subscriptionId}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.secretKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ cancel_at_period_end: "false" }),
+    });
+    if (!res.ok) return subscriptionRefusal(res, "the undo");
+    return { ok: true };
+  }
 }
 
 /**
  * Stripe's answer to a refused subscription update, as a CancelResult. Shared
- * by every renewal change (cancel now; keep-renewing in #92). Stripe's own
+ * by every renewal change (cancel, and keep-renewing from #92). Stripe's own
  * `error.message` is passed through when the body is its usual JSON, trimmed
  * to 300 characters as before; a subscription Stripe has already closed
  * ("A canceled subscription can only update its cancellation_details and

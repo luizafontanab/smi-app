@@ -67,7 +67,7 @@ Already done from this call, so no item: Industries pre-filter (gap 19; `industr
 
 Several closed B items were written against documented APIs and **have never run against a live account**. Confirm each on its first real use:
 
-- Stripe checkout, subscriptions and cancel (B1.1, B1.5)
+- Stripe checkout, subscriptions, cancel and undo-cancel (B1.1, B1.5)
 - Buffer GraphQL enums (B4.4)
 - Resend Broadcasts/Contacts (B5.1) and its webhook fields (A5.4)
 - Bigin push, pull, opt-out and webhook (B6.4–B6.8)

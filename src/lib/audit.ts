@@ -31,8 +31,9 @@ export type AuditAction =
   | "member_archived"
   | "member_unarchived"
   | "member_deleted"
-  // Membership renewal changes made from the console (#90; #92 adds the undo).
-  | "membership_cancelled";
+  // Membership renewal changes made from the console (#90, #92).
+  | "membership_cancelled"
+  | "membership_cancel_undone";
 
 /** The events whose IP is kept (90 days) — sign-in and credential changes, where it helps spot a stranger. */
 const IP_ACTIONS = new Set<AuditAction>([

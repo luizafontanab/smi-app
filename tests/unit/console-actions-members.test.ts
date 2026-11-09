@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   archiveMember, cancelMemberMembership, createMember, deleteMember, recordMemberPayment, saveMember, setMemberStatus, unarchiveMember,
+  undoMemberCancellation,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
@@ -10,7 +11,7 @@ import type { MembershipChangeResult, ProvisionResult } from "@/lib/membership";
 
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { requireConsole, uploadImage, removeMedia, enqueue, provisionMember, applyPaymentResult, requestCancellation, send, recordRename, audit } = vi.hoisted(() => ({
+const { requireConsole, uploadImage, removeMedia, enqueue, provisionMember, applyPaymentResult, requestCancellation, undoCancellation, send, recordRename, audit } = vi.hoisted(() => ({
   audit: vi.fn(async () => {}),
   requireConsole: vi.fn(async (): Promise<CurrentUser> => ({
     userId: "admin1", email: "jas@smi.local", role: "admin", memberId: null, displayName: "Jas",
@@ -21,6 +22,7 @@ const { requireConsole, uploadImage, removeMedia, enqueue, provisionMember, appl
   provisionMember: vi.fn(async (): Promise<ProvisionResult> => ({ memberId: "m1" })),
   applyPaymentResult: vi.fn(async () => {}),
   requestCancellation: vi.fn(async (): Promise<MembershipChangeResult> => ({ ok: true, changed: true })),
+  undoCancellation: vi.fn(async (): Promise<MembershipChangeResult> => ({ ok: true, changed: true })),
   send: vi.fn(async () => {}),
   recordRename: vi.fn(async () => {}),
 }));
@@ -36,6 +38,7 @@ vi.mock("@/lib/membership", async (importOriginal) => ({
   provisionMember,
   applyPaymentResult,
   requestCancellation,
+  undoCancellation,
 }));
 vi.mock("@/lib/adapters/email", () => ({ getEmailSender: vi.fn(() => ({ send })) }));
 vi.mock("@/lib/redirects", () => ({ recordRename }));
@@ -48,6 +51,7 @@ afterEach(() => {
   provisionMember.mockReset().mockResolvedValue({ memberId: "m1" });
   applyPaymentResult.mockReset().mockResolvedValue(undefined);
   requestCancellation.mockReset().mockResolvedValue({ ok: true, changed: true });
+  undoCancellation.mockReset().mockResolvedValue({ ok: true, changed: true });
   send.mockReset().mockResolvedValue(undefined);
   recordRename.mockReset().mockResolvedValue(undefined);
   audit.mockClear();
@@ -352,6 +356,53 @@ describe("cancelMemberMembership (#90)", () => {
     db({ members: () => queryBuilder(dbOk(row)) });
     await expect(cancel()).rejects.toThrow(message);
     expect(requestCancellation).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+});
+
+describe("undoMemberCancellation (#92)", () => {
+  const pendingMember = { status: "active", billing_mode: "card", cancel_requested_at: "2026-11-01T10:00:00Z" };
+  const undo = (fields: Record<string, string> = { id: "m1", confirm: "1" }) => undoMemberCancellation(form(fields));
+
+  it("refuses without the confirm tick, says why, and changes nothing", async () => {
+    db({ members: () => queryBuilder(dbOk(pendingMember)) });
+    await expect(undo({ id: "m1" })).rejects.toThrow(/NEXT_REDIRECT:\/console\/members\/m1\?error=Tick%20the%20box%20to%20confirm/);
+    expect(undoCancellation).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("undoes, writes 'Undid cancellation' with the acting admin, and redirects with a notice", async () => {
+    db({ members: () => queryBuilder(dbOk(pendingMember)) });
+    await expect(undo()).rejects.toThrow("NEXT_REDIRECT:/console/members/m1?undone=1");
+    expect(undoCancellation).toHaveBeenCalledWith("m1");
+    expect(audit).toHaveBeenCalledWith({ action: "membership_cancel_undone", actorUserId: "admin1", actorRole: "admin", memberId: "m1" });
+  });
+
+  it("writes no audit row when there was nothing left to undo", async () => {
+    db({ members: () => queryBuilder(dbOk(pendingMember)) });
+    undoCancellation.mockResolvedValue({ ok: true, changed: false });
+    await expect(undo()).rejects.toThrow("NEXT_REDIRECT:/console/members/m1?undone=1");
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ ok: false, reason: "period_ended" } as const, "This membership has already ended — the member needs to rejoin."],
+    [{ ok: false, reason: "no_subscription" } as const,
+      "This member's subscription wasn't created by this site, so its cancellation can't be undone here. Undo it in Stripe."],
+    [{ ok: false, reason: "stripe_rejected", detail: "Stripe rejected the undo (404): No such subscription: 'sub_x'" } as const,
+      "Stripe rejected the undo (404): No such subscription: 'sub_x'"],
+    [{ ok: false, reason: "not_found" } as const, "That member no longer exists."],
+  ])("shows the admin wording for %o and writes no audit row", async (result, message) => {
+    db({ members: () => queryBuilder(dbOk(pendingMember)) });
+    undoCancellation.mockResolvedValue(result);
+    await expect(undo()).rejects.toThrow(`NEXT_REDIRECT:/console/members/m1?error=${encodeURIComponent(message)}`);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a member with no cancel pending without touching the membership", async () => {
+    db({ members: () => queryBuilder(dbOk({ ...pendingMember, cancel_requested_at: null })) });
+    await expect(undo()).rejects.toThrow(/No%20cancellation%20is%20pending/);
+    expect(undoCancellation).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();
   });
 });

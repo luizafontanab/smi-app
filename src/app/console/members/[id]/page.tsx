@@ -15,7 +15,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import {
   archiveMember, cancelMemberMembership, consoleUploadImage, createMember, decideRevision, deleteMember, recordMemberPayment,
-  saveMember, setMemberStatus, unarchiveMember,
+  saveMember, setMemberStatus, unarchiveMember, undoMemberCancellation,
 } from "../../actions";
 import { DeleteMemberDialog } from "./DeleteMemberDialog";
 import { CancelMembershipSection } from "./CancelMembershipSection";
@@ -173,6 +173,11 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
           Cancellation scheduled. The member has been emailed; their membership ends at the close of the paid period.
         </p>
       )}
+      {typeof sp.undone === "string" && (
+        <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">
+          Cancellation undone. The member has been emailed; their payments resume at the next renewal.
+        </p>
+      )}
       {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
 
       {pendingRevision && (
@@ -313,7 +318,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         </div>
       </Card>
 
-      <CancelMembershipSection member={member} cancel={cancelMemberMembership} />
+      <CancelMembershipSection member={member} cancel={cancelMemberMembership} undo={undoMemberCancellation} />
 
       <Card className="mt-4">
         <SectionTitle>Activity</SectionTitle>
@@ -412,6 +417,7 @@ const ACCESS_LABEL: Partial<Record<AuditRow["action"], string>> = {
   member_archived: "Archived",
   member_unarchived: "Unarchived",
   membership_cancelled: "Cancelled membership",
+  membership_cancel_undone: "Undid cancellation",
 };
 
 /**

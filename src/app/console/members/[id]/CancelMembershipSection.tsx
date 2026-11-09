@@ -9,11 +9,14 @@ type Member = { id: string; status: string; billing_mode: string; cancel_request
  * The console member page's Cancel membership section (#90). What it shows
  * comes from `membershipCancelState`, the same rule the action enforces:
  * nothing for draft or lapsed members, a line for invoice billing, the Cancel
- * action for a card member with nothing pending, and the scheduled date once a
- * cancel is pending — where #92 adds Undo cancellation as a second
- * `ConfirmedMembershipAction`.
+ * action for a card member with nothing pending, and the scheduled date with
+ * the Undo cancellation action (#92) once a cancel is pending.
  */
-export function CancelMembershipSection({ member, cancel }: { member: Member; cancel: (fd: FormData) => Promise<void> }) {
+export function CancelMembershipSection({ member, cancel, undo }: {
+  member: Member;
+  cancel: (fd: FormData) => Promise<void>;
+  undo: (fd: FormData) => Promise<void>;
+}) {
   const state = membershipCancelState(member);
   if (state === "none") return null;
   return (
@@ -36,9 +39,22 @@ export function CancelMembershipSection({ member, cancel }: { member: Member; ca
         </>
       )}
       {state === "pending" && member.cancel_requested_at && (
-        <p className="mt-1 text-sm text-ink">
-          Cancellation scheduled on {scheduledOn(member.cancel_requested_at)}. Ends at the close of the paid period.
-        </p>
+        <>
+          <p className="mt-1 text-sm text-ink">
+            Cancellation scheduled on {scheduledOn(member.cancel_requested_at)}. Ends at the close of the paid period.
+          </p>
+          <p className="mt-2 text-sm text-graphite">
+            If the member has changed their mind, undo it: their card subscription keeps renewing, and they&apos;re
+            emailed that their membership will continue.
+          </p>
+          <ConfirmedMembershipAction
+            action={undo}
+            memberId={member.id}
+            confirmLabel="Yes, undo this cancellation"
+            buttonLabel="Undo cancellation"
+            pendingLabel="Undoing…"
+          />
+        </>
       )}
     </Card>
   );

@@ -45,7 +45,9 @@ import { resolveCoordinates } from "@/lib/member-geocode";
 import { membershipTypeIdsFromForm, membershipTypesError, replaceMemberIndustries, replaceMemberMembershipTypes, replaceMemberServices } from "@/lib/member-services";
 import { recordRename } from "@/lib/redirects";
 import { activationBlocked, MEMBER_STATUSES, membershipCancelState, type MemberStatus } from "@/lib/membership";
-import { CONFIRM_CANCEL, INVOICE_BILLING_LINE, membershipFailureMessage, NOT_CANCELLABLE } from "./membership-messages";
+import {
+  CONFIRM_CANCEL, CONFIRM_UNDO, INVOICE_BILLING_LINE, membershipFailureMessage, NOT_CANCELLABLE, NOT_PENDING,
+} from "./membership-messages";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { siteUrl } from "@/lib/site-url";
 import { missingChecks, PROOF_KEYS } from "@/lib/newsletter-proof";
@@ -3053,7 +3055,7 @@ export async function setMemberStatus(formData: FormData) {
   revalidatePath("/console");
 }
 
-/* ---------- members: cancel a membership (#90; #92 adds the undo) ---------- */
+/* ---------- members: cancel a membership, and undo it (#90, #92) ---------- */
 
 /**
  * Cancel a member's membership on their behalf — GLOSSARY "Cancel a
@@ -3085,6 +3087,37 @@ export async function cancelMemberMembership(formData: FormData) {
   revalidatePath(`/console/members/${id}`);
   revalidatePath("/dashboard/settings/billing");
   redirect(`/console/members/${id}?cancelled=1`);
+}
+
+/**
+ * Undo a pending cancellation for a member who changed their mind (#92):
+ * `undoCancellation` tells Stripe to keep renewing, clears the pending cancel
+ * and emails the member that their membership will continue. Offered only
+ * while a cancel is pending; each failure is shown in admin wording and
+ * changes nothing — a period Stripe has already closed means the member must
+ * rejoin.
+ */
+export async function undoMemberCancellation(formData: FormData) {
+  const admin = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const { data: member } = await serviceDb().from("members")
+    .select("status, billing_mode, cancel_requested_at").eq("id", id).maybeSingle();
+  if (!member) return;
+
+  if (formData.get("confirm") !== "1") return memberFail(id, CONFIRM_UNDO);
+  if (membershipCancelState(member) !== "pending") return memberFail(id, NOT_PENDING);
+
+  const { undoCancellation } = await import("@/lib/membership");
+  const result = await undoCancellation(id);
+  if (!result.ok) return memberFail(id, membershipFailureMessage("undo", result));
+  if (result.changed) {
+    await audit({ action: "membership_cancel_undone", actorUserId: admin.userId, actorRole: "admin", memberId: id });
+  }
+  revalidatePath("/console/members");
+  revalidatePath(`/console/members/${id}`);
+  revalidatePath("/dashboard/settings/billing");
+  redirect(`/console/members/${id}?undone=1`);
 }
 
 /* ---------- members: archive and delete (fix list 72) ---------- */

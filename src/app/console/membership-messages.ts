@@ -5,7 +5,7 @@ import type { MembershipChangeFailure } from "@/lib/membership";
  * one place so the page, the action and #92's undo all say the same thing.
  * The membership module states only a reason (`MembershipChangeFailure`);
  * this turns it into what an admin should do next. Keyed by the change being
- * made — #92 adds an `undo` entry beside `cancel`.
+ * made: `cancel` (#90) and `undo` (#92).
  *
  * Not in actions.ts: that file is "use server", where every export must be an
  * async server action.
@@ -16,6 +16,12 @@ const FAILURE_MESSAGES = {
     no_subscription:
       "This member's subscription wasn't created by this site, so it can't be cancelled here. Cancel it in Stripe; the membership will end when Stripe reports it.",
     period_ended: "This membership's paid period has already ended, so there is nothing left to cancel.",
+  },
+  undo: {
+    not_found: "That member no longer exists.",
+    no_subscription:
+      "This member's subscription wasn't created by this site, so its cancellation can't be undone here. Undo it in Stripe.",
+    period_ended: "This membership has already ended — the member needs to rejoin.",
   },
 } as const;
 
@@ -33,6 +39,11 @@ export const INVOICE_BILLING_LINE = "Invoice billing: stop raising invoices by h
 export const NOT_CANCELLABLE = "Only an active or grace member who pays by card can be cancelled here.";
 
 export const CONFIRM_CANCEL = "Tick the box to confirm — cancelling stops their membership renewing.";
+
+export const CONFIRM_UNDO = "Tick the box to confirm — undoing restarts their card payments at the next renewal.";
+
+/** Undo is only offered while a cancel is pending; this is only reached by a direct or stale POST. */
+export const NOT_PENDING = "No cancellation is pending for this member, so there is nothing to undo.";
 
 /** `iso` as "8 Nov 2026", London time — the date a cancel was scheduled. */
 export function scheduledOn(iso: string): string {
