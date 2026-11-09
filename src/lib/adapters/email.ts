@@ -157,12 +157,48 @@ export function newsletterFrom(): string {
   return process.env.NEWSLETTER_FROM?.trim() || process.env.EMAIL_FROM?.trim() || DEFAULT_FROM;
 }
 
+/**
+ * Staging sends real email, but only to admins (Luiza, 9 Nov 2026).
+ *
+ * Staging is a Vercel Preview deployment with the real Resend key and real
+ * member data, so without this its cron would email members: notifications,
+ * stats summaries, lead alerts, a whole newsletter. Vercel sets VERCEL_ENV
+ * itself, so there is nothing to configure; production and local development
+ * (Mailpit) are untouched.
+ */
+export function adminsOnlyEmail(): boolean {
+  return process.env.VERCEL_ENV === "preview";
+}
+
+/**
+ * Staging only (lib/staging-email): passes on mail addressed to admins, and
+ * holds back everything else with a log line. Held mail counts as handled, so
+ * a job doesn't retry it or dead-letter.
+ */
+class AdminsOnlySender implements EmailSender {
+  constructor(private inner: EmailSender) {}
+
+  async send(mail: OutgoingEmail, opts?: SendOptions): Promise<void> {
+    // Lazy, like the other adapters' DB reads: most callers never reach here.
+    const { allowedRecipients } = await import("../staging-email");
+    const allowed = await allowedRecipients(mail.to);
+    if (!allowed.length) {
+      console.log(`[email] staging: held back, not an admin: to=${maskEmail(mail.to)} subject="${mail.subject}"`);
+      return;
+    }
+    await this.inner.send({ ...mail, to: allowed.join(", ") }, opts);
+  }
+}
+
 export function getEmailSender(): EmailSender {
   const from = process.env.EMAIL_FROM?.trim() || DEFAULT_FROM;
   const replyTo = process.env.EMAIL_REPLY_TO?.trim() || undefined;
 
   const key = process.env.RESEND_API_KEY;
-  if (key) return new ResendSender(key, from, replyTo);
+  if (key) {
+    const resend = new ResendSender(key, from, replyTo);
+    return adminsOnlyEmail() ? new AdminsOnlySender(resend) : resend;
+  }
 
   const mailpit = process.env.MAILPIT_URL?.trim();
   return mailpit ? new MailpitSender(mailpit, from, replyTo) : new ConsoleSender();

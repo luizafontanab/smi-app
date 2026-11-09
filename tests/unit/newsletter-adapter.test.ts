@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getNewsletterSender, issueItemsNotLive, newsletterIsLive, renderIssueHtml } from "@/lib/adapters/newsletter";
+import { getNewsletterSender, issueItemsNotLive, newsletterIsLive, renderIssueHtml, STAGING_SEND_REFUSED } from "@/lib/adapters/newsletter";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -410,6 +410,32 @@ describe("getNewsletterSender / newsletterIsLive", () => {
     vi.stubEnv("RESEND_API_KEY", "re_123");
     vi.stubEnv("RESEND_SEGMENT_ID", "seg_1");
     expect(newsletterIsLive()).toBe(true);
+  });
+
+  it("on staging, refuses a full send without contacting Resend, and says why", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_123");
+    vi.stubEnv("RESEND_SEGMENT_ID", "seg_1");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const result = await getNewsletterSender().sendIssue("iss1", "key-1");
+
+    expect(result).toEqual({ ok: false, error: STAGING_SEND_REFUSED });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("in production, a full send still goes to Resend", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_123");
+    vi.stubEnv("RESEND_SEGMENT_ID", "seg_1");
+    vi.stubEnv("VERCEL_ENV", "production");
+    db({ newsletter_issues: () => queryBuilder(dbOk(null)) });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const result = await getNewsletterSender().sendIssue("missing");
+
+    // Gets as far as reading the issue: the real sender, not the staging refusal.
+    expect(result).toEqual({ ok: false, error: "Issue not found." });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

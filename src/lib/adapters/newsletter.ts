@@ -10,7 +10,7 @@ import { newsletterParams } from "../newsletter-tracking";
 import { isLiveContent } from "../newsletter-picker";
 import { addressLine, readNewsletterFooter } from "../newsletter-footer";
 import { SMI_SOCIAL_URLS, SOCIAL_CHANNELS } from "../social";
-import { EmailSendError, newsletterFrom } from "./email";
+import { adminsOnlyEmail, EmailSendError, newsletterFrom } from "./email";
 
 /**
  * NewsletterSender adapter (TECH-DECISIONS #7).
@@ -628,6 +628,27 @@ class ResendNewsletterSender implements NewsletterSender {
   }
 }
 
+/** Shown on the issue when a full send is refused on staging. */
+export const STAGING_SEND_REFUSED =
+  "This is staging, which emails admins only, so the newsletter can't be sent to the list from here. Use Send test to see it.";
+
+/**
+ * Staging (adminsOnlyEmail): a broadcast goes to the whole list, so it is
+ * refused outright; the issue shows the reason and the test send still works.
+ * The contact sync still runs: it only updates Resend's list, it emails nobody.
+ */
+class AdminsOnlyNewsletterSender implements NewsletterSender {
+  constructor(private inner: NewsletterSender) {}
+
+  async sendIssue(): Promise<SendResult> {
+    return { ok: false, error: STAGING_SEND_REFUSED };
+  }
+
+  syncContacts() {
+    return this.inner.syncContacts();
+  }
+}
+
 export function getNewsletterSender(): NewsletterSender {
   const key = process.env.RESEND_API_KEY;
   const segmentId = process.env.RESEND_SEGMENT_ID?.trim();
@@ -637,7 +658,8 @@ export function getNewsletterSender(): NewsletterSender {
     }
     return new LoggingNewsletterStub();
   }
-  return new ResendNewsletterSender(key, segmentId, newsletterFrom(), process.env.EMAIL_REPLY_TO?.trim() || undefined);
+  const resend = new ResendNewsletterSender(key, segmentId, newsletterFrom(), process.env.EMAIL_REPLY_TO?.trim() || undefined);
+  return adminsOnlyEmail() ? new AdminsOnlyNewsletterSender(resend) : resend;
 }
 
 /** True when a real provider is wired, so callers can tell a stub run apart. */

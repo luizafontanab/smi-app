@@ -14,6 +14,10 @@
 - The Terms, Membership terms and Advertising terms no longer show "SMI TO CONFIRM" notes to visitors. The open questions behind them (company details, liability wording, governing law, VAT, the advert artwork deadline and advert cancellations) are now in the list of questions for you.
 - The Membership terms now say no refund is given if SMI ends a membership, in place of refunding the unused part. A member who cancels isn't refunded either; their membership runs to the end of the period already paid for.
 
+## 2026-11-09 — Staging emails admins only
+- On staging, emails now go only to admins and the admin inbox. Emails to members and anyone else are held back and not sent, so testing on staging can't email real members. The live site isn't affected.
+- On staging, sending a newsletter to the list is refused, and the issue says why. Send test still works, so you can check an issue before it goes out from the live site.
+
 ## 2026-11-09 — Buffer channels show their names
 - Once saved, the Buffer channels on the Story Engine page are no longer an editable box of ids. Each channel shows its name, network and whether Buffer still has it connected, with a link to its page. Click Edit to change them, and Cancel to leave them as they were.
 - A channel that's disconnected in Buffer, or no longer in your Buffer organisation, is marked in red, because posts to it would fail.

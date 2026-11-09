@@ -7,7 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * sent. These tests exist to stop that regressing.
  */
 
-const ENV_KEYS = ["RESEND_API_KEY", "MAILPIT_URL", "EMAIL_FROM", "EMAIL_REPLY_TO", "NEWSLETTER_FROM"] as const;
+const ENV_KEYS = ["RESEND_API_KEY", "MAILPIT_URL", "EMAIL_FROM", "EMAIL_REPLY_TO", "NEWSLETTER_FROM", "VERCEL_ENV"] as const;
+
+// Who counts as an admin is lib/staging-email's job (tests/unit/staging-email.test.ts);
+// here it's a fixed list, so these tests are about what the adapter does with it.
+const { allowedRecipients } = vi.hoisted(() => ({
+  allowedRecipients: vi.fn(async (to: string) => to.split(",").map((s) => s.trim()).filter((a) => a.endsWith("@smi.test"))),
+}));
+vi.mock("@/lib/staging-email", () => ({ allowedRecipients }));
 const saved: Record<string, string | undefined> = {};
 
 async function freshSender() {
@@ -200,5 +207,47 @@ describe("newsletterFrom (gap review area 6)", () => {
     expect(await newsletterFrom()).toBe("SMI <noreply@smi.test>");
     delete process.env.EMAIL_FROM;
     expect(await newsletterFrom()).toBe("SMI <noreply@sheetmetalindustries.com>");
+  });
+});
+
+describe("staging: admins only (VERCEL_ENV=preview)", () => {
+  const ok = () => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+  const sentTo = (fetchMock: ReturnType<typeof ok>) => JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).to;
+
+  beforeEach(() => {
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.VERCEL_ENV = "preview";
+  });
+
+  it("sends mail addressed to an admin", async () => {
+    const fetchMock = ok();
+    await (await freshSender()).send({ ...MAIL, to: "jas@smi.test" });
+    expect(sentTo(fetchMock)).toBe("jas@smi.test");
+  });
+
+  it("holds back mail to anyone else: nothing reaches Resend, and it doesn't throw", async () => {
+    const fetchMock = ok();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect((await freshSender()).send(MAIL)).resolves.toBeUndefined();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(String(log.mock.calls[0][0])).toContain("held back");
+    expect(String(log.mock.calls[0][0])).not.toContain("member@example.test");
+  });
+
+  it("drops the non-admins from a mixed list and sends to the rest", async () => {
+    const fetchMock = ok();
+    await (await freshSender()).send({ ...MAIL, to: "member@example.test, jas@smi.test" });
+    expect(sentTo(fetchMock)).toBe("jas@smi.test");
+  });
+
+  it("is off in production: every address gets its mail", async () => {
+    process.env.VERCEL_ENV = "production";
+    allowedRecipients.mockClear();
+    const fetchMock = ok();
+    await (await freshSender()).send(MAIL);
+    expect(sentTo(fetchMock)).toBe("member@example.test");
+    expect(allowedRecipients).not.toHaveBeenCalled();
   });
 });
