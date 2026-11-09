@@ -58,6 +58,10 @@ filters rather than hiding them.
   currently runs once a day, which reaches only one batch, roughly 100–300
   sources depending on how many need discovery. With an hourly cron the whole
   list is covered daily.
+- **Staging gets no Vercel cron at all** (8 Nov 2026). Vercel Cron only fires
+  on Production deployments, and staging is a Preview one. The hourly GitHub
+  Action `.github/workflows/staging-cron.yml` calls staging's `/api/cron`
+  instead; its setup steps are in issue #94.
 - **"Check sources now" (issue #42, 5 Nov 2026)** on Command Centre and Story
   sources runs the same batch inside the click (up to 55 seconds; both pages
   allow 120s). It ignores the once-a-day rule (6 Nov 2026): a click reads

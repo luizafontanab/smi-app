@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-08 — Background tasks recover after being cut off
+- If a background task, such as checking story sources, scheduled publishing or member emails, is stopped partway through, it now starts again on its own about 15 minutes later. Before, it could stay stuck and that task would stop running altogether, with no message.
+- A task that is stopped partway three times in a row is marked as failed and shows in Needs You Today, like any other failed task.
+
 ## 2026-11-07 — Story titles in capitals, and company links from Bigin
 - A story's title now always shows in capitals, at the same size and colour, on the published page and in both story previews. The title is still saved as you typed it, so search results, link previews and newsletters are unchanged.
 - The company line at the end of a story now links each featured member to their SMI member page instead of their own website. Readers reach the member's website from the Website button on that page. Every featured member now gets a line, including members with no website on file.

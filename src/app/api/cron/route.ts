@@ -2,6 +2,14 @@ import { runDueJobs } from "@/lib/jobs";
 import { logError } from "@/lib/log";
 
 /**
+ * One tick runs up to 20 jobs in a row, and the story-source check alone can
+ * take about a minute. A tick stopped part-way leaves its current job
+ * 'running'; runDueJobs hands it back once it is STUCK_AFTER_MS old, which
+ * must stay well above this.
+ */
+export const maxDuration = 300;
+
+/**
  * Vercel Cron entrypoint (schedule in vercel.json); the local runner hits it too.
  *
  * Fails CLOSED. This used to be `if (secret && ...)`, which skipped the check

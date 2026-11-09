@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enqueue, runDueJobs, runJobById, type JobKind } from "@/lib/jobs";
+import { enqueue, releaseStuckJobs, runDueJobs, runJobById, STUCK_AFTER_MS, type JobKind } from "@/lib/jobs";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, sequence, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -292,6 +292,71 @@ describe("runDueJobs", () => {
 
     expect(result).toEqual({ ran: 1, failed: 1 });
     expect(crmSync).toHaveBeenCalled();
+  });
+
+  it("releases cut-off jobs before checking the periodic sweeps, so a stuck sweep can't block its own re-queue", async () => {
+    const from = vi.fn((table: string) => {
+      void table;
+      return queryBuilder(dbOk([]));
+    });
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from })));
+
+    await runDueJobs();
+
+    const first = from.mock.results[0].value as ReturnType<typeof queryBuilder>;
+    expect(from.mock.calls[0][0]).toBe("jobs");
+    expect(callsOf(first.eq)).toContainEqual(["status", "running"]);
+    expect(callsOf(first.lt)[0][0]).toBe("updated_at");
+  });
+});
+
+describe("releaseStuckJobs", () => {
+  const now = new Date("2026-11-08T12:00:00Z");
+  const stuckRow = (overrides: Partial<{ id: string; kind: string; attempts: number; max_attempts: number }> = {}) => ({
+    id: "s1", kind: "source_watch", attempts: 1, max_attempts: 3, updated_at: "2026-11-08T11:00:00Z", ...overrides,
+  });
+
+  it("looks only at jobs still 'running' longer than STUCK_AFTER_MS", async () => {
+    const select = queryBuilder(dbOk([]));
+    dbFor([select]);
+
+    expect(await releaseStuckJobs(serviceDb(), now)).toBe(0);
+
+    expect(callsOf(select.eq)).toContainEqual(["status", "running"]);
+    expect(callsOf(select.lt)).toEqual([["updated_at", new Date(now.getTime() - STUCK_AFTER_MS).toISOString()]]);
+  });
+
+  it("hands a cut-off job back to pending, due now, and logs it", async () => {
+    const update = queryBuilder(dbOk([{ id: "s1" }]));
+    dbFor([queryBuilder(dbOk([stuckRow()])), update]);
+
+    expect(await releaseStuckJobs(serviceDb(), now)).toBe(1);
+
+    expect(callsOf(update.update)[0][0]).toMatchObject({ status: "pending", due_at: now.toISOString() });
+    expect(callsOf(update.update)[0][0]).toHaveProperty("last_error", expect.stringContaining("Cut off"));
+    // only if nobody else changed the row since it was read
+    expect(callsOf(update.eq)).toEqual(expect.arrayContaining([
+      ["id", "s1"], ["status", "running"], ["updated_at", "2026-11-08T11:00:00Z"],
+    ]));
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "job:cut_off", context: expect.objectContaining({ kind: "source_watch" }) }));
+  });
+
+  it("marks a job dead when the cut-off run was its last attempt, keeping its due_at", async () => {
+    const update = queryBuilder(dbOk([{ id: "s1" }]));
+    dbFor([queryBuilder(dbOk([stuckRow({ attempts: 3, max_attempts: 3 })])), update]);
+
+    await releaseStuckJobs(serviceDb(), now);
+
+    const written = callsOf(update.update)[0][0] as Record<string, unknown>;
+    expect(written.status).toBe("dead");
+    expect(written).not.toHaveProperty("due_at");
+  });
+
+  it("doesn't count or log a row another runner released first", async () => {
+    dbFor([queryBuilder(dbOk([stuckRow()])), queryBuilder(dbOk([]))]);
+
+    expect(await releaseStuckJobs(serviceDb(), now)).toBe(0);
+    expect(logError).not.toHaveBeenCalled();
   });
 });
 
