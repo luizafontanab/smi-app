@@ -14,10 +14,11 @@ import { CompanyPageForm } from "@/components/member/CompanyPageForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import {
-  archiveMember, consoleUploadImage, createMember, decideRevision, deleteMember, recordMemberPayment,
-  saveMember, setMemberStatus, unarchiveMember,
+  archiveMember, cancelMemberMembership, consoleUploadImage, createMember, decideRevision, deleteMember, recordMemberPayment,
+  saveMember, setMemberStatus, unarchiveMember, undoMemberCancellation,
 } from "../../actions";
 import { DeleteMemberDialog } from "./DeleteMemberDialog";
+import { CancelMembershipSection } from "./CancelMembershipSection";
 import { parseRevisionPayload, revisionChanges } from "../../member-revision";
 import { RevisionChanges } from "@/components/console/RevisionChanges";
 
@@ -80,7 +81,7 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
     // maybeSingle, not single: a member id that does not exist is an ordinary
     // 404 below, not a query failure worth throwing over.
     must(db.from("members").select(
-      "id, slug, name, status, archived_at, industry_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account",
+      "id, slug, name, status, archived_at, industry_id, description, address, lat, lng, phone, website, logo_path, hero_path, video_url, social, billing_mode, stripe_customer_id, joined_at, grace_until, paid_at, comped_until, draft_submitted_at, contact_email, is_bundle_account, cancel_requested_at",
     ).eq("id", id).maybeSingle(), "console/members detail: member"),
     must(db.from("industries").select("id, name").order("sort_order"), "console/members detail: industries"),
     must(db.from("member_industries").select("industry_id").eq("member_id", id), "console/members detail: member industries"),
@@ -167,6 +168,16 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Member created — finish their details below.</p>
       )}
       {typeof sp.saved === "string" && <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">Saved.</p>}
+      {typeof sp.cancelled === "string" && (
+        <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">
+          Cancellation scheduled. The member has been emailed; their membership ends at the close of the paid period.
+        </p>
+      )}
+      {typeof sp.undone === "string" && (
+        <p className="mt-3 rounded bg-success/10 p-2 text-sm text-success">
+          Cancellation undone. The member has been emailed; their payments resume at the next renewal.
+        </p>
+      )}
       {error && <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{error}</p>}
 
       {pendingRevision && (
@@ -307,6 +318,8 @@ export default async function MemberEditor(props: PageProps<"/console/members/[i
         </div>
       </Card>
 
+      <CancelMembershipSection member={member} cancel={cancelMemberMembership} undo={undoMemberCancellation} />
+
       <Card className="mt-4">
         <SectionTitle>Activity</SectionTitle>
         <ul className="mt-2 space-y-1.5 text-sm">
@@ -403,6 +416,8 @@ const ACCESS_LABEL: Partial<Record<AuditRow["action"], string>> = {
   member_payment_recorded: "Recorded a payment",
   member_archived: "Archived",
   member_unarchived: "Unarchived",
+  membership_cancelled: "Cancelled membership",
+  membership_cancel_undone: "Undid cancellation",
 };
 
 /**

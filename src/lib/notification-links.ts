@@ -133,6 +133,7 @@ export function notificationHref(kind: string, payload: NotificationPayload, slu
     case "comp_applied":
     case "membership_lapsed":
     case "membership_cancel_requested":
+    case "membership_cancel_undone":
     case "membership_cancelled":
       return "/dashboard/settings/billing";
 

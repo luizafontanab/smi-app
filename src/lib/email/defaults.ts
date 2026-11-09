@@ -544,6 +544,15 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
     ],
     ctaLabel: DASHBOARD_CTA,
   }),
+  membership_cancel_undone: make({
+    subject: "Your SMI membership will continue",
+    label: "Your membership will continue",
+    paragraphs: [
+      "Your cancellation has been withdrawn, so your membership carries on as normal. Nothing changes on your page or your submissions.",
+      "Payments resume at your next renewal date, on the card you already have on file.",
+    ],
+    ctaLabel: DASHBOARD_CTA,
+  }),
   membership_cancelled: make({
     subject: "Your SMI membership has ended",
     label: "Your membership has ended",

@@ -21,6 +21,22 @@
 - In the story editor, a new box under the cover image, "Use the member's logo instead of the cover image", shows the logo even when the story has a cover, for a poor photo. The cover is kept, so unticking the box brings it back.
 - Social posts for stories with no cover will now go out with the member's logo. Any of these posts that were already confirmed before this change need confirming again, because the picture has changed. They show in Needs You Today until someone does.
 
+## 2026-11-08 — Cancel a membership, or undo it, from the console; members ask SMI to cancel
+- A member's console page has a new Cancel membership section, for carrying out a cancel the member asked SMI for. Tick the box and click Cancel membership.
+- Cancelling stops the member's card payments renewing at the end of the period they've paid for, never immediately. Their page and submissions carry on until then.
+- The member is emailed that their cancellation is scheduled, and the section then shows "Cancellation scheduled on" the date, in place of the button.
+- Each cancel is listed as "Cancelled membership" under Admin access on the member's page, with your name.
+- If the member's subscription was set up outside this site, you're told to cancel it in Stripe instead, and nothing changes. If Stripe refuses, its own message is shown.
+- Members who pay by invoice see "Invoice billing: stop raising invoices by hand" instead of the button. Draft and lapsed members have no section.
+- While a cancellation is pending, the section has an Undo cancellation action for a member who changed their mind. Tick the box and click Undo cancellation.
+- Undoing keeps the member's card payments renewing as normal, clears the pending cancellation, and emails the member that their membership will continue. The new "Your SMI membership will continue" email can be edited under Email templates.
+- Each undo is listed as "Undid cancellation" under Admin access on the member's page, with your name.
+- If the paid period has already ended, you're told the member needs to rejoin, and nothing changes.
+- A cancel or undo done in Stripe's own dashboard now shows in the console too, and the member gets the same email as if it had been done from the console. Nobody is emailed twice. This starts working once Stripe is set to send subscription updates to the site.
+- Members can no longer cancel for themselves. Settings → Billing has no Cancel membership button; it says "To change or end your membership, get in touch", linking to the Contact page.
+- A member whose cancellation was already scheduled still sees the date and that their membership runs to the end of the paid period, with a link to the Contact page if they change their mind.
+- The Membership Terms now say "You can cancel at any time by contacting us", and the FAQ says to contact SMI to cancel. Any of those sentences you had already reworded in the console are left as you wrote them. The Join page still says "cancel anytime".
+
 ## 2026-11-08 — Background tasks recover after being cut off
 - If a background task, such as checking story sources, scheduled publishing or member emails, is stopped partway through, it now starts again on its own about 15 minutes later. Before, it could stay stuck and that task would stop running altogether, with no message.
 - A task that is stopped partway three times in a row is marked as failed and shows in Needs You Today, like any other failed task.

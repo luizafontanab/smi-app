@@ -5,8 +5,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 
 /**
  * Typed confirmation for a permanent member delete, on the platform <dialog>
- * element — the same choice as CancelMembershipDialog under /dashboard/settings
- * (focus trap, Escape and an inert background for free), with the extra step
+ * element (focus trap, Escape and an inert background for free), with the extra step
  * that the company name has to be typed out.
  *
  * The typing is a speed bump, not a security control: `deleteMember` itself

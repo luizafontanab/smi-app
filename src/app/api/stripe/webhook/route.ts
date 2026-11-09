@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { applyPaymentFailure, applySubscriptionEnded, recordMembershipCheckout } from "@/lib/membership";
+import { applyPaymentFailure, applySubscriptionEnded, recordMembershipCheckout, syncCancellationFromStripe } from "@/lib/membership";
 import { mockBaseUrl } from "@/lib/adapters/mock-base-url";
 import { ADVERT_INVOICE_KIND } from "@/lib/adapters/advert-checkout";
 import { formatPounds, settleInvoice } from "@/lib/advert-payments";
@@ -57,6 +57,7 @@ type StripeEvent = {
     object?: {
       id?: string;
       client_reference_id?: string;
+      cancel_at_period_end?: boolean;
       payment_status?: string;
       amount_total?: number | null;
       currency?: string | null;
@@ -172,6 +173,20 @@ export async function POST(request: NextRequest) {
       message: `Check for a refund: a card payment of ${amount} (Stripe checkout ${object.id}) came in for an advertising invoice, but ${why}. Nothing was released — look it up in the Stripe dashboard.`,
     });
     return NextResponse.json({ ok: true, advert_invoice: invoiceId, settled: false, alerted: result.reason });
+  }
+
+  // #93: a cancel or undo done in Stripe's own dashboard. Here the event's
+  // object IS the subscription, so the member is matched on the subscription
+  // id this site stored (B1.6) — never on metadata or a Stripe lookup, unlike
+  // the events below. The app only follows Stripe; it never calls it back.
+  if (event.type === "customer.subscription.updated") {
+    const subscriptionId = object?.id;
+    if (!subscriptionId || typeof object?.cancel_at_period_end !== "boolean") {
+      return NextResponse.json({ ok: true, ignored: "no subscription state" });
+    }
+    const sync = await syncCancellationFromStripe(subscriptionId, object.cancel_at_period_end);
+    if (!sync.matched) return NextResponse.json({ ok: true, ignored: "unknown subscription" });
+    return NextResponse.json({ ok: true, changed: sync.changed });
   }
 
   let memberId = event.data?.object?.client_reference_id ?? event.data?.object?.metadata?.member_id ?? null;

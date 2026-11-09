@@ -112,7 +112,79 @@ describe("cancelSubscription", () => {
 
     const result = await getPayments().cancelSubscription("sub_bad");
 
-    expect(result).toEqual({ ok: false, error: expect.stringContaining("404") });
+    expect(result).toEqual({ ok: false, reason: "stripe_rejected", error: expect.stringContaining("404") });
+  });
+
+  it("StripePayments passes Stripe's own message through when it sends one", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_123");
+    vi.stubEnv("STRIPE_PRICE_ID", "price_123");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: "No such subscription: 'sub_bad'" } }),
+      { status: 404 },
+    ));
+
+    const result = await getPayments().cancelSubscription("sub_bad");
+
+    expect(result).toEqual({ ok: false, reason: "stripe_rejected", error: "Stripe rejected the cancellation (404): No such subscription: 'sub_bad'" });
+  });
+
+  it("StripePayments reports a subscription Stripe has already closed as the period having ended", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_123");
+    vi.stubEnv("STRIPE_PRICE_ID", "price_123");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: "A canceled subscription can only update its cancellation_details and metadata." } }),
+      { status: 400 },
+    ));
+
+    const result = await getPayments().cancelSubscription("sub_closed");
+
+    expect(result).toEqual({ ok: false, reason: "period_ended", error: expect.stringContaining("canceled subscription") });
+  });
+});
+
+describe("keepRenewing (#92)", () => {
+  it("LocalStubPayments succeeds — nothing real to change", async () => {
+    expect(await getPayments().keepRenewing("sub_1")).toEqual({ ok: true });
+  });
+
+  it("StripePayments turns cancel-at-period-end back off on that subscription", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_123");
+    vi.stubEnv("STRIPE_PRICE_ID", "price_123");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+
+    const result = await getPayments().keepRenewing("sub_1");
+
+    expect(result).toEqual({ ok: true });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.stripe.com/v1/subscriptions/sub_1");
+    expect(init?.method).toBe("POST");
+    expect(new URLSearchParams(String(init?.body)).get("cancel_at_period_end")).toBe("false");
+  });
+
+  it("StripePayments passes Stripe's own rejection message through", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_123");
+    vi.stubEnv("STRIPE_PRICE_ID", "price_123");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: "No such subscription: 'sub_bad'" } }),
+      { status: 404 },
+    ));
+
+    const result = await getPayments().keepRenewing("sub_bad");
+
+    expect(result).toEqual({ ok: false, reason: "stripe_rejected", error: "Stripe rejected the undo (404): No such subscription: 'sub_bad'" });
+  });
+
+  it("StripePayments reports a subscription Stripe has already closed as the period having ended", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_123");
+    vi.stubEnv("STRIPE_PRICE_ID", "price_123");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      JSON.stringify({ error: { type: "invalid_request_error", message: "A canceled subscription can only update its cancellation_details and metadata." } }),
+      { status: 400 },
+    ));
+
+    const result = await getPayments().keepRenewing("sub_closed");
+
+    expect(result).toEqual({ ok: false, reason: "period_ended", error: expect.stringContaining("canceled subscription") });
   });
 });
 
