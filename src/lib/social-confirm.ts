@@ -40,79 +40,38 @@ export function snapshotMatches(snap: ChannelSnapshot | null, post: Pick<Channel
   return snap.confirmed_text === post.text && (snap.confirmed_image ?? null) === (post.imagePath ?? null);
 }
 
-/**
- * When a confirmed channel posts: the latest of its post time (the item's own
- * `social_at`, or publication plus the global delay), the item going Live,
- * and the confirmation. Null when it can't post yet — not Live, or not
- * confirmed. Confirming never makes a post go out early.
- */
 /** The item's own post time, or publication plus the global delay. */
 export function postTimeOf(o: { socialAt: string | null; publishedAt: string; delayMinutes: number }): number {
   return o.socialAt ? new Date(o.socialAt).getTime() : new Date(o.publishedAt).getTime() + o.delayMinutes * 60_000;
 }
 
-export function channelDueAt(o: {
-  socialAt: string | null;
-  publishedAt: string | null;
-  confirmedAt: string | null;
-  delayMinutes: number;
-}): Date | null {
-  if (!o.publishedAt || !o.confirmedAt) return null;
-  const postTime = postTimeOf({ socialAt: o.socialAt, publishedAt: o.publishedAt, delayMinutes: o.delayMinutes });
-  return new Date(Math.max(postTime, new Date(o.publishedAt).getTime(), new Date(o.confirmedAt).getTime()));
-}
-
-/** One channel's stored state for an item. No row at all means unconfirmed. */
-export type ChannelRecord = ChannelSnapshot & { channel_id: string; skip: boolean; posted_at: string | null };
-
-export type SocialPushPlan = {
-  /** Post these now, each with exactly this text. */
-  send: ChannelPost[];
-  /** Changed since confirmed: clear the confirmation, so the channel waits again. */
-  unconfirm: string[];
-  /** Due, but the channel already had its daily limit today. */
-  overCap: string[];
-  /** The earliest confirmed channel still to come, if any. */
-  nextAt: Date | null;
-};
+/** Schedule (Buffer sends at the channel's post time) or Publish now — chosen with the confirmation (issue #101). */
+export type SendMode = "schedule" | "now";
 
 /**
- * What one run of the social_push job does for one item. Channels are
- * independent: one waiting for confirmation, marked Don't post or over its
- * own daily limit never holds back another. The snapshot is compared only once
- * a channel is due, just before it would post.
+ * One channel's stored state for an item. No row at all means unconfirmed.
+ * The fields after `posted_at` came with issue #101 and are optional so a
+ * record built before them still reads as "not handed over, no draft".
  */
-export function planSocialPush(o: {
-  now: Date;
-  item: { socialAt: string | null; publishedAt: string | null; skip: boolean };
-  delayMinutes: number;
-  perDay: number;
-  channels: { post: ChannelPost; record: ChannelRecord | null }[];
-  /** Posts each channel has had since London midnight. */
-  postedToday: Record<string, number>;
-}): SocialPushPlan {
-  const plan: SocialPushPlan = { send: [], unconfirm: [], overCap: [], nextAt: null };
-  if (o.item.skip || !o.item.publishedAt) return plan;
-  for (const { post, record } of o.channels) {
-    if (!record?.confirmed_at || record.skip || record.posted_at) continue;
-    const due = channelDueAt({
-      socialAt: o.item.socialAt,
-      publishedAt: o.item.publishedAt,
-      confirmedAt: record.confirmed_at,
-      delayMinutes: o.delayMinutes,
-    });
-    if (!due) continue;
-    // a minute's slack, so a run that starts a moment early doesn't re-queue itself
-    if (due.getTime() > o.now.getTime() + 60_000) {
-      if (!plan.nextAt || due < plan.nextAt) plan.nextAt = due;
-      continue;
-    }
-    if (!snapshotMatches(record, post)) plan.unconfirm.push(post.channelId);
-    else if ((o.postedToday[post.channelId] ?? 0) >= o.perDay) plan.overCap.push(post.channelId);
-    else plan.send.push(post);
-  }
-  return plan;
-}
+export type ChannelRecord = ChannelSnapshot & {
+  channel_id: string;
+  skip: boolean;
+  /** Buffer reported the post sent. */
+  posted_at: string | null;
+  /** This channel's own wording, and whether Claude wrote it. */
+  lead_text?: string | null;
+  lead_ai?: boolean;
+  send_mode?: SendMode | null;
+  /** Handed to Buffer, which holds it until `due_at`. */
+  handed_at?: string | null;
+  due_at?: string | null;
+  buffer_post_id?: string | null;
+  buffer_status?: string | null;
+  draft_post_id?: string | null;
+  draft_text?: string | null;
+  draft_image?: string | null;
+  draft_at?: string | null;
+};
 
 /** One channel as the editor shows it. */
 export type ChannelView = {
@@ -124,17 +83,25 @@ export type ChannelView = {
   confirmedBy: string | null;
 };
 
-/** Where this channel stands, for the editor and the confirm buttons. */
-export function channelState(v: Pick<ChannelView, "post" | "record">, itemSkip: boolean): "posted" | "skipped" | "confirmed" | "waiting" {
+export type ChannelState = "posted" | "handed" | "skipped" | "confirmed" | "waiting";
+
+/**
+ * Where this channel stands, for the editor and its buttons. "handed": Buffer
+ * holds the post and will send it (issue #101). "confirmed": scheduled or
+ * published-now, waiting for the item to go Live before it's handed over.
+ */
+export function channelState(v: Pick<ChannelView, "post" | "record">, itemSkip: boolean): ChannelState {
   if (v.record?.posted_at) return "posted";
+  if (v.record?.handed_at) return "handed";
   if (itemSkip || v.record?.skip) return "skipped";
   return snapshotMatches(v.record, v.post) ? "confirmed" : "waiting";
 }
 
 /**
- * One line per channel saying where its post stands, e.g.
- * "LinkedIn: confirmed by Jas 5 Nov 14:02, posts 15:00" / "X: waiting for
- * confirmation" / "Facebook: posted 5 Nov 15:00". UK times.
+ * One line per channel saying where its post stands, e.g. "LinkedIn:
+ * scheduled in Buffer for 5 Nov 15:00" / "X: waiting — Schedule or Publish
+ * now" / "Facebook: posted 5 Nov 15:00". UK times. (Issue #101: Buffer holds
+ * a scheduled post and sends it; the app hands it over once the item is Live.)
  */
 export function channelStatusLines(o: {
   now: Date;
@@ -150,21 +117,33 @@ export function channelStatusLines(o: {
     switch (channelState(v, o.item.skip)) {
       case "posted":
         return `${label}: posted ${at(record!.posted_at!)}`;
+      case "handed": {
+        if (record!.buffer_status === "error") return `${label}: Buffer couldn't send it. Check the post in Buffer.`;
+        // Changed since it was handed over, and Buffer refused the delete that should have followed.
+        if (!snapshotMatches(record, v.post)) {
+          return `${label}: ⚠ Buffer still holds an older version, which couldn't be taken back. Delete it in Buffer, then save again.`;
+        }
+        const due = record!.due_at;
+        return !due || new Date(due) <= o.now
+          ? `${label}: with Buffer, sending now`
+          : `${label}: scheduled in Buffer for ${upcoming(due)}`;
+      }
       case "skipped":
         return `${label}: won't be posted (“Don't post” is ticked)`;
       case "waiting":
         return record?.confirmed_at
-          ? `${label}: waiting for confirmation — the post changed after ${by} confirmed it`
-          : `${label}: waiting for confirmation`;
+          ? `${label}: waiting — the post changed after ${by} scheduled it`
+          : `${label}: waiting — Schedule or Publish now`;
       case "confirmed": {
-        const confirmed = `${label}: confirmed by ${by} ${at(record!.confirmed_at!)}`;
+        const what = record!.send_mode === "now" ? "to publish now" : "scheduled";
+        const confirmed = `${label}: ${what} by ${by} ${at(record!.confirmed_at!)}`;
         if (o.item.status !== "published") {
+          if (record!.send_mode === "now") return `${confirmed}, goes to Buffer as soon as it goes live`;
           return o.item.socialAt
             ? `${confirmed}, posts ${upcoming(o.item.socialAt)}, or as soon as it goes live if that's later`
             : `${confirmed}, posts ${o.delayMinutes} minutes after it goes live`;
         }
-        const due = channelDueAt({ socialAt: o.item.socialAt, publishedAt: o.item.publishedAt, confirmedAt: record!.confirmed_at, delayMinutes: o.delayMinutes });
-        return !due || due <= o.now ? `${confirmed}, posts on the next run` : `${confirmed}, posts ${upcoming(due)}`;
+        return `${confirmed}, going to Buffer`;
       }
     }
   });
@@ -176,13 +155,14 @@ export function waitingSummary(waiting: number, total: number): string {
 }
 
 /** The Publishing panel's one line about the social post, from each channel's state. */
-export function socialSummary(states: ReturnType<typeof channelState>[]): string {
+export function socialSummary(states: ChannelState[]): string {
   if (!states.length) return "No social channels connected.";
-  const n = (s: ReturnType<typeof channelState>) => states.filter((x) => x === s).length;
+  const n = (s: ChannelState) => states.filter((x) => x === s).length;
   const parts = [
     n("posted") && `${n("posted")} posted`,
-    n("confirmed") && `${n("confirmed")} confirmed`,
-    n("waiting") && `${n("waiting")} waiting for confirmation`,
+    n("handed") && `${n("handed")} with Buffer`,
+    n("confirmed") && `${n("confirmed")} scheduled`,
+    n("waiting") && `${n("waiting")} waiting`,
     n("skipped") && `${n("skipped")} not posted (“Don't post”)`,
   ].filter(Boolean);
   return `Social post: ${parts.join(", ")}.`;

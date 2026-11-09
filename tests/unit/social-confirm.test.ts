@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { channelDueAt, channelStatusLines, planSocialPush, snapshotMatches, socialNotes, socialSummary, waitingSummary, type ChannelRecord } from "@/lib/social-confirm";
+import { channelState, channelStatusLines, snapshotMatches, socialNotes, socialSummary, waitingSummary, type ChannelRecord } from "@/lib/social-confirm";
 
 const confirmed = (o: Partial<{ confirmed_text: string | null; confirmed_image: string | null; confirmed_at: string | null }> = {}) => ({
   confirmed_text: "Acme wins.\n\nhttps://smi.test/news/a\n\nlinkedin:acme",
@@ -39,100 +39,6 @@ describe("snapshotMatches", () => {
   });
 });
 
-describe("channelDueAt", () => {
-  const LIVE = "2026-11-05T12:00:00Z";
-  const due = (o: Partial<Parameters<typeof channelDueAt>[0]>) =>
-    channelDueAt({ socialAt: null, publishedAt: LIVE, confirmedAt: "2026-11-05T09:00:00Z", delayMinutes: 30, ...o })?.toISOString() ?? null;
-
-  it("is publication plus the delay when confirmed beforehand and no time is set", () => {
-    expect(due({})).toBe("2026-11-05T12:30:00.000Z");
-  });
-
-  it("is the item's own post time when that is the latest", () => {
-    expect(due({ socialAt: "2026-11-05T15:00:00Z" })).toBe("2026-11-05T15:00:00.000Z");
-  });
-
-  it("is the moment it went Live for a post time set before that", () => {
-    expect(due({ socialAt: "2026-11-05T08:00:00Z" })).toBe("2026-11-05T12:00:00.000Z");
-  });
-
-  it("is the confirmation, when that came after the post time", () => {
-    expect(due({ confirmedAt: "2026-11-07T10:00:00Z" })).toBe("2026-11-07T10:00:00.000Z");
-  });
-
-  it("is never set before the item is Live, or before anyone confirmed", () => {
-    expect(due({ publishedAt: null })).toBeNull();
-    expect(due({ confirmedAt: null })).toBeNull();
-  });
-});
-
-describe("planSocialPush", () => {
-  const NOW = new Date("2026-11-05T15:00:00Z");
-  const text = (ch: string) => `Acme wins.\n\nhttps://smi.test/news/a\n\n${ch}:acme`;
-  const channel = (id: string, record: Partial<ChannelRecord> | null = {}) => ({
-    post: { channelId: id, text: text(id), imagePath: "covers/a.jpg" },
-    record: record && {
-      channel_id: id, skip: false, posted_at: null,
-      confirmed_text: text(id), confirmed_image: "covers/a.jpg", confirmed_at: "2026-11-05T10:00:00Z",
-      ...record,
-    },
-  });
-  const plan = (o: Partial<Parameters<typeof planSocialPush>[0]> = {}) => planSocialPush({
-    now: NOW,
-    item: { socialAt: null, publishedAt: "2026-11-05T12:00:00Z", skip: false },
-    delayMinutes: 30,
-    perDay: 3,
-    channels: [channel("li")],
-    postedToday: {},
-    ...o,
-  });
-  const ids = (posts: { channelId: string }[]) => posts.map((p) => p.channelId);
-
-  it("posts a confirmed channel whose time has come, with exactly the confirmed text", () => {
-    const r = plan();
-    expect(r.send).toEqual([{ channelId: "li", text: text("li"), imagePath: "covers/a.jpg" }]);
-    expect(r.unconfirm).toEqual([]);
-  });
-
-  it("posts each confirmed channel while others still wait for confirmation", () => {
-    const r = plan({ channels: [channel("li"), channel("x", null), channel("fb", { confirmed_at: null, confirmed_text: null })] });
-    expect(ids(r.send)).toEqual(["li"]);
-    expect(r.nextAt).toBeNull(); // nobody confirmed the others; confirming queues them
-  });
-
-  it("holds back a channel whose post changed since it was confirmed, and only that one", () => {
-    const changed = channel("x");
-    changed.post.text = text("x").replace("x:acme", "x:acme_ltd"); // a member edited their X handle
-    const r = plan({ channels: [channel("li"), changed] });
-    expect(ids(r.send)).toEqual(["li"]);
-    expect(r.unconfirm).toEqual(["x"]);
-  });
-
-  it("never posts a channel already posted, or one marked Don't post", () => {
-    expect(plan({ channels: [channel("li", { posted_at: "2026-11-05T13:00:00Z" }), channel("x", { skip: true })] }).send).toEqual([]);
-  });
-
-  it("posts nothing when the whole item is marked Don't post", () => {
-    expect(plan({ item: { socialAt: null, publishedAt: "2026-11-05T12:00:00Z", skip: true } }).send).toEqual([]);
-  });
-
-  it("posts nothing before the item is Live", () => {
-    expect(plan({ item: { socialAt: null, publishedAt: null, skip: false } })).toEqual({ send: [], unconfirm: [], overCap: [], nextAt: null });
-  });
-
-  it("waits for a post time still to come, and says when to look again", () => {
-    const r = plan({ item: { socialAt: "2026-11-05T18:00:00Z", publishedAt: "2026-11-05T12:00:00Z", skip: false } });
-    expect(r.send).toEqual([]);
-    expect(r.nextAt?.toISOString()).toBe("2026-11-05T18:00:00.000Z");
-  });
-
-  it("counts the daily limit per channel: a full channel waits, the others still post", () => {
-    const r = plan({ channels: [channel("li"), channel("x")], postedToday: { li: 3, x: 2 } });
-    expect(ids(r.send)).toEqual(["x"]);
-    expect(r.overCap).toEqual(["li"]);
-  });
-});
-
 describe("channelStatusLines", () => {
   // 15:30 UK time (GMT in November)
   const NOW = new Date("2026-11-05T15:30:00Z");
@@ -143,7 +49,7 @@ describe("channelStatusLines", () => {
     post: { channelId: label, text, imagePath: null },
     record: record && { channel_id: label, skip: false, posted_at: null, confirmed_text: null, confirmed_image: null, confirmed_at: null, ...record },
   });
-  const confirmedAt = { confirmed_text: text, confirmed_at: "2026-11-05T14:02:00Z" };
+  const confirmedAt = { confirmed_text: text, confirmed_at: "2026-11-05T14:02:00Z", send_mode: "schedule" as const };
   const lines = (channels: ReturnType<typeof view>[], item: Partial<Parameters<typeof channelStatusLines>[0]["item"]> = {}) =>
     channelStatusLines({
       now: NOW,
@@ -152,21 +58,33 @@ describe("channelStatusLines", () => {
       channels,
     });
 
-  it("gives one line per channel: confirmed, waiting, posted", () => {
+  it("gives one line per channel: with Buffer, waiting, posted", () => {
     expect(lines([
-      view("LinkedIn", confirmedAt),
+      view("LinkedIn", { ...confirmedAt, handed_at: "2026-11-05T14:02:05Z", due_at: "2026-11-05T17:00:00Z" }),
       view("X", null),
-      view("Facebook", { ...confirmedAt, posted_at: "2026-11-05T15:00:00Z" }),
+      view("Facebook", { ...confirmedAt, handed_at: "2026-11-05T14:02:05Z", posted_at: "2026-11-05T15:00:00Z" }),
     ])).toEqual([
-      "LinkedIn: confirmed by Jas 5 Nov 14:02, posts 17:00",
-      "X: waiting for confirmation",
+      "LinkedIn: scheduled in Buffer for 17:00",
+      "X: waiting — Schedule or Publish now",
       "Facebook: posted 5 Nov 15:00",
     ]);
   });
 
-  it("says why a confirmed channel is waiting again", () => {
+  it("says a post whose time has come is going out, and when Buffer couldn't send it", () => {
+    expect(lines([view("X", { ...confirmedAt, handed_at: "2026-11-05T15:00:00Z", due_at: "2026-11-05T15:00:00Z" })]))
+      .toEqual(["X: with Buffer, sending now"]);
+    expect(lines([view("X", { ...confirmedAt, handed_at: "2026-11-05T15:00:00Z", due_at: "2026-11-05T15:00:00Z", buffer_status: "error" })]))
+      .toEqual(["X: Buffer couldn't send it. Check the post in Buffer."]);
+  });
+
+  it("warns when Buffer still holds an older version it couldn't take back", () => {
+    expect(lines([view("X", { ...confirmedAt, confirmed_text: "an older text", handed_at: "2026-11-05T14:00:00Z", due_at: "2026-11-05T17:00:00Z" })])[0])
+      .toMatch(/^X: ⚠ Buffer still holds an older version/);
+  });
+
+  it("says why a scheduled channel is waiting again", () => {
     expect(lines([view("X", { ...confirmedAt, confirmed_text: "an older text" })]))
-      .toEqual(["X: waiting for confirmation — the post changed after Jas confirmed it"]);
+      .toEqual(["X: waiting — the post changed after Jas scheduled it"]);
   });
 
   it("names Don't post, per channel or for the whole item", () => {
@@ -174,19 +92,32 @@ describe("channelStatusLines", () => {
     expect(lines([view("X", confirmedAt)], { skip: true })).toEqual(["X: won't be posted (“Don't post” is ticked)"]);
   });
 
-  it("before Live, says the post waits for it", () => {
+  it("before Live, says the post waits for it, and how it'll go", () => {
     expect(lines([view("LinkedIn", confirmedAt)], { status: "draft", publishedAt: null, socialAt: null }))
-      .toEqual(["LinkedIn: confirmed by Jas 5 Nov 14:02, posts 30 minutes after it goes live"]);
+      .toEqual(["LinkedIn: scheduled by Jas 5 Nov 14:02, posts 30 minutes after it goes live"]);
     expect(lines([view("LinkedIn", confirmedAt)], { status: "scheduled", publishedAt: null, socialAt: "2026-11-09T09:00:00Z" }))
-      .toEqual(["LinkedIn: confirmed by Jas 5 Nov 14:02, posts 9 Nov 09:00, or as soon as it goes live if that's later"]);
+      .toEqual(["LinkedIn: scheduled by Jas 5 Nov 14:02, posts 9 Nov 09:00, or as soon as it goes live if that's later"]);
+    expect(lines([view("LinkedIn", { ...confirmedAt, send_mode: "now" })], { status: "draft", publishedAt: null }))
+      .toEqual(["LinkedIn: to publish now by Jas 5 Nov 14:02, goes to Buffer as soon as it goes live"]);
   });
 
-  it("a confirmed channel whose time has passed posts on the next run", () => {
-    expect(lines([view("LinkedIn", confirmedAt)], { socialAt: null })).toEqual(["LinkedIn: confirmed by Jas 5 Nov 14:02, posts on the next run"]);
+  it("a Live item's scheduled channel not yet with Buffer is on its way there", () => {
+    expect(lines([view("LinkedIn", confirmedAt)])).toEqual(["LinkedIn: scheduled by Jas 5 Nov 14:02, going to Buffer"]);
   });
 
-  it("falls back to 'an admin' when the confirmer's name isn't known", () => {
-    expect(lines([view("LinkedIn", confirmedAt, null)])[0]).toMatch(/^LinkedIn: confirmed by an admin /);
+  it("falls back to 'an admin' when the scheduler's name isn't known", () => {
+    expect(lines([view("LinkedIn", confirmedAt, null)])[0]).toMatch(/^LinkedIn: scheduled by an admin /);
+  });
+});
+
+describe("channelState", () => {
+  const p = { channelId: "li", text: "Hi", imagePath: null };
+  const r = (o: Partial<ChannelRecord>): ChannelRecord => ({
+    channel_id: "li", skip: false, posted_at: null, confirmed_text: "Hi", confirmed_image: null, confirmed_at: "2026-11-05T14:00:00Z", ...o,
+  });
+  it("is handed while Buffer holds it, posted once Buffer sent it — whatever else changed", () => {
+    expect(channelState({ post: p, record: r({ handed_at: "2026-11-05T14:01:00Z" }) }, false)).toBe("handed");
+    expect(channelState({ post: p, record: r({ handed_at: "2026-11-05T14:01:00Z", posted_at: "2026-11-05T15:00:00Z" }) }, true)).toBe("posted");
   });
 });
 
@@ -200,7 +131,7 @@ describe("waitingSummary", () => {
 
 describe("socialSummary", () => {
   it("counts the channels by where they stand", () => {
-    expect(socialSummary(["posted", "confirmed", "waiting", "waiting"])).toBe("Social post: 1 posted, 1 confirmed, 2 waiting for confirmation.");
+    expect(socialSummary(["posted", "handed", "confirmed", "waiting", "waiting"])).toBe("Social post: 1 posted, 1 with Buffer, 1 scheduled, 2 waiting.");
     expect(socialSummary(["skipped", "skipped"])).toBe("Social post: 2 not posted (“Don't post”).");
   });
 

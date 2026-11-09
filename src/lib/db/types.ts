@@ -2622,14 +2622,24 @@ export type Database = {
       social_channel_posts: {
         Row: {
           buffer_post_id: string | null
+          buffer_status: string | null
           channel_id: string
           confirmed_at: string | null
           confirmed_by: string | null
           confirmed_image: string | null
           confirmed_text: string | null
           created_at: string
+          draft_at: string | null
+          draft_image: string | null
+          draft_post_id: string | null
+          draft_text: string | null
+          due_at: string | null
+          handed_at: string | null
           id: string
+          lead_ai: boolean
+          lead_text: string | null
           posted_at: string | null
+          send_mode: string | null
           skip: boolean
           story_id: string | null
           updated_at: string
@@ -2637,14 +2647,24 @@ export type Database = {
         }
         Insert: {
           buffer_post_id?: string | null
+          buffer_status?: string | null
           channel_id: string
           confirmed_at?: string | null
           confirmed_by?: string | null
           confirmed_image?: string | null
           confirmed_text?: string | null
           created_at?: string
+          draft_at?: string | null
+          draft_image?: string | null
+          draft_post_id?: string | null
+          draft_text?: string | null
+          due_at?: string | null
+          handed_at?: string | null
           id?: string
+          lead_ai?: boolean
+          lead_text?: string | null
           posted_at?: string | null
+          send_mode?: string | null
           skip?: boolean
           story_id?: string | null
           updated_at?: string
@@ -2652,14 +2672,24 @@ export type Database = {
         }
         Update: {
           buffer_post_id?: string | null
+          buffer_status?: string | null
           channel_id?: string
           confirmed_at?: string | null
           confirmed_by?: string | null
           confirmed_image?: string | null
           confirmed_text?: string | null
           created_at?: string
+          draft_at?: string | null
+          draft_image?: string | null
+          draft_post_id?: string | null
+          draft_text?: string | null
+          due_at?: string | null
+          handed_at?: string | null
           id?: string
+          lead_ai?: boolean
+          lead_text?: string | null
           posted_at?: string | null
+          send_mode?: string | null
           skip?: boolean
           story_id?: string | null
           updated_at?: string

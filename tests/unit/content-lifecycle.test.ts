@@ -93,10 +93,10 @@ function setup(o: { stories?: TableOpts; videos?: TableOpts; events?: TableOpts;
       members: () => queryBuilder(dbOk({ industry_id: o.memberIndustry ?? null })),
       approvals: () => keep(approvals, queryBuilder(dbOk(null))),
       jobs: () => keep(jobs, queryBuilder(dbOk(null))),
-      // One channel connected, confirmed before the item went Live (issue #43): going Live queues its post.
+      // One channel connected, scheduled before the item went Live (issues #43, #101): going Live queues its hand-off to Buffer.
       settings: () => keep(settings, queryBuilder(dbOk({ value: { delay_minutes: 30, channelIds: ["li"] } }))),
       social_channel_posts: () => queryBuilder(dbOk([
-        { channel_id: "li", skip: false, posted_at: null, confirmed_at: new Date(Date.now() - 3_600_000).toISOString() },
+        { channel_id: "li", skip: false, posted_at: null, handed_at: null, send_mode: "schedule", confirmed_at: new Date(Date.now() - 3_600_000).toISOString() },
       ])),
       story_members: () => queryBuilder(dbOk([])),
     }),

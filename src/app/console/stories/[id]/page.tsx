@@ -5,7 +5,7 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { renderableHtml } from "@/lib/sanitize";
-import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, searchBiginCompanies, setStoryStatus, confirmStorySocial } from "../../actions";
+import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, searchBiginCompanies, setStoryStatus, confirmStorySocial, storySocialTool } from "../../actions";
 import { CoverField } from "@/components/CoverField";
 import { storyImage } from "@/lib/story-image";
 import { parseFocus } from "@/lib/focus";
@@ -24,7 +24,8 @@ import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Badge } from "@/components/console/ui";
 import { STORY_STATUS_LABELS, isMemberDraft, parseStoryListFilters, storyListHref } from "@/lib/story-board";
-import { SocialConfirmForm, SocialPostFields } from "@/components/console/SocialPostFields";
+import { SocialConfirmForm, SocialPostFields, SocialToolForm } from "@/components/console/SocialPostFields";
+import { socialWriterLive } from "@/lib/adapters/social-writer";
 import { CountedInput } from "@/components/console/CountedInput";
 import { STORY_SUMMARY_WORDS } from "@/lib/newsletter-layout";
 import { latestSocialJob, readSocialCaps } from "@/lib/social-push";
@@ -250,6 +251,10 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           notes={socialNoteLines}
           confirmable={!!story}
           confirmed={typeof sp.confirmed === "string" ? sp.confirmed : undefined}
+          mode={typeof sp.mode === "string" ? sp.mode : undefined}
+          tools={story ? { writer: socialWriterLive(), buffer: isSocialLive() } : undefined}
+          written={typeof sp.written === "string" ? sp.written : undefined}
+          drafted={typeof sp.drafted === "string" ? sp.drafted : undefined}
         />
         {/* Jas 13/10 item 8: the story page links readers to SMI's own post of
             the story rather than offering share buttons. Filled from Buffer once
@@ -285,6 +290,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
       {story && <SocialConfirmForm action={confirmStorySocial} id={id} />}
+      {story && <SocialToolForm action={storySocialTool} id={id} />}
 
       {!isNew && story && (
         <>

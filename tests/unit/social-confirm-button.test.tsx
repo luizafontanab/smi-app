@@ -19,8 +19,8 @@ describe("SocialConfirmButton — pending (#48)", () => {
           <FormPendingSignal />
         </form>
         <form>
-          <SocialConfirmButton form="confirm-form" value="x">Confirm X</SocialConfirmButton>
-          <SocialConfirmButton form="confirm-form" value="all">Confirm all (2)</SocialConfirmButton>
+          <SocialConfirmButton form="confirm-form" value="schedule:x" pendingLabel="Confirming…">Confirm X</SocialConfirmButton>
+          <SocialConfirmButton form="confirm-form" value="schedule:all">Confirm all (2)</SocialConfirmButton>
         </form>
       </>,
     );
@@ -33,5 +33,17 @@ describe("SocialConfirmButton — pending (#48)", () => {
     await act(async () => finish());
     await waitFor(() => expect(screen.getByRole("button", { name: "Confirm X" })).not.toBeDisabled());
     expect(screen.getByRole("button", { name: "Confirm all (2)" })).not.toBeDisabled();
+  });
+
+  it("submits under the name and value it's given, so one form can carry several actions", () => {
+    const { container } = render(
+      <form>
+        <SocialConfirmButton form="tool-form" name="write_channel" value="li">Write with Claude</SocialConfirmButton>
+      </form>,
+    );
+    const button = container.querySelector("button")!;
+    expect(button.getAttribute("name")).toBe("write_channel");
+    expect(button.getAttribute("value")).toBe("li");
+    expect(button.getAttribute("form")).toBe("tool-form");
   });
 });

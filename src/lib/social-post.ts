@@ -3,13 +3,12 @@ import type { serviceDb } from "./db/server";
 import type { ChannelDetails, ChannelNetworks, SocialPost } from "./adapters/social";
 import { excerptFromHtml } from "./sanitize";
 import { isMemberLinkable } from "./member-visibility";
-import { londonDayStart } from "./london-time";
 import { readSocialChannels } from "./social-channels";
 import { siteUrl } from "./site-url";
 import { taggedMembers } from "./story-members";
 import { storyImage, type StoryImageSource } from "./story-image";
 import { composeSocialText } from "./social-text";
-import { channelState, channelStatusLines, type ChannelPost, type ChannelRecord, type ChannelView } from "./social-confirm";
+import { channelState, channelStatusLines, type ChannelPost, type ChannelRecord, type ChannelView, type SendMode } from "./social-confirm";
 import { logError } from "./log";
 
 /**
@@ -32,7 +31,7 @@ export function targetOf(t: SocialTarget): { table: "stories" | "videos"; key: "
 }
 
 /** The item's columns on a `social_channel_posts` row: its own id, the other null. */
-function ownerOf(t: SocialTarget): { story_id: string; video_id: null } | { story_id: null; video_id: string } {
+export function ownerOf(t: SocialTarget): { story_id: string; video_id: null } | { story_id: null; video_id: string } {
   return "story_id" in t ? { story_id: t.story_id, video_id: null } : { story_id: null, video_id: t.video_id };
 }
 
@@ -65,6 +64,7 @@ export function videoSocialItem(video: SocialVideoRow): SocialItem {
     published_at: video.published_at,
     post: {
       text: composeSocialText(video.social_text || excerptFromHtml(video.description) || video.title, `${siteUrl()}/video/${video.slug}`),
+      link: `${siteUrl()}/video/${video.slug}`,
       imagePath: video.thumbnail_path,
       // Same rule as a story's tags below: no tag for a member without a public page.
       tagHandles: (video.member && isMemberLinkable(video.member) ? video.member.social ?? {} : {}) as Record<string, string>,
@@ -99,6 +99,7 @@ export function storySocialItem(story: SocialStoryRow, tagged: { id: string; soc
     post: {
       // The editor's lead-in, else the summary (the excerpt, or the opening of the body), else the title.
       text: composeSocialText(story.social_text || story.summary || story.title, `${siteUrl()}/news/${story.slug}`),
+      link: `${siteUrl()}/news/${story.slug}`,
       // The member's logo when there's no cover, or when an admin chose it
       // (lib/story-image, which applies isMemberLinkable itself).
       imagePath: storyImage(story)?.path ?? null,
@@ -151,7 +152,8 @@ export async function readChannelRecords(db: Db, t: SocialTarget): Promise<Map<s
   const { key, id } = targetOf(t);
   const { data } = await db
     .from("social_channel_posts")
-    .select("channel_id, skip, confirmed_text, confirmed_image, confirmed_at, posted_at, confirmer:profiles(display_name)")
+    // One literal, so the generated types can follow the column list.
+    .select("channel_id, skip, confirmed_text, confirmed_image, confirmed_at, posted_at, lead_text, lead_ai, send_mode, handed_at, due_at, buffer_post_id, buffer_status, draft_post_id, draft_text, draft_image, draft_at, confirmer:profiles(display_name)")
     .eq(key, id);
   return new Map((data ?? []).map((r) => [r.channel_id, {
     channel_id: r.channel_id,
@@ -160,8 +162,24 @@ export async function readChannelRecords(db: Db, t: SocialTarget): Promise<Map<s
     confirmed_image: r.confirmed_image,
     confirmed_at: r.confirmed_at,
     posted_at: r.posted_at,
+    lead_text: r.lead_text,
+    lead_ai: r.lead_ai,
+    send_mode: r.send_mode === "schedule" || r.send_mode === "now" ? r.send_mode : null,
+    handed_at: r.handed_at,
+    due_at: r.due_at,
+    buffer_post_id: r.buffer_post_id,
+    buffer_status: r.buffer_status,
+    draft_post_id: r.draft_post_id,
+    draft_text: r.draft_text,
+    draft_image: r.draft_image,
+    draft_at: r.draft_at,
     confirmedBy: r.confirmer?.display_name ?? null,
   }]));
+}
+
+/** Each channel's own wording from its stored row, for channelPosts. */
+export function leadsOf(records: ReadonlyMap<string, Pick<ChannelRecord, "lead_text">>): Map<string, string | null> {
+  return new Map([...records].map(([id, r]) => [id, r.lead_text ?? null]));
 }
 
 /**
@@ -175,7 +193,7 @@ export async function readChannelRecords(db: Db, t: SocialTarget): Promise<Map<s
 export async function confirmChannels(
   db: Db,
   t: SocialTarget,
-  o: { posts: ChannelPost[]; only: string[] | "all"; userId: string; seen: Record<string, string> },
+  o: { posts: ChannelPost[]; only: string[] | "all"; userId: string; seen: Record<string, string>; mode?: SendMode },
 ): Promise<{ confirmed: string[]; stale: string[] }> {
   const { key } = targetOf(t);
   const records = await readChannelRecords(db, t);
@@ -193,6 +211,7 @@ export async function confirmChannels(
       confirmed_image: p.imagePath,
       confirmed_by: o.userId,
       confirmed_at: now,
+      send_mode: o.mode ?? "schedule",
       updated_at: now,
     }));
   if (!rows.length) return { confirmed: [], stale: [] };
@@ -206,65 +225,12 @@ export async function clearConfirmations(db: Db, t: SocialTarget, channelIds: st
   const { key, id } = targetOf(t);
   const { error } = await db
     .from("social_channel_posts")
-    .update({ confirmed_text: null, confirmed_image: null, confirmed_at: null, confirmed_by: null, updated_at: new Date().toISOString() })
+    // The choice goes with the confirmation (social_channel_posts_send_mode_confirmed).
+    .update({ confirmed_text: null, confirmed_image: null, confirmed_at: null, confirmed_by: null, send_mode: null, updated_at: new Date().toISOString() })
     .eq(key, id)
     .in("channel_id", channelIds);
   // Before anything is posted: failing here retries the job, so a changed post can't slip out.
   if (error) throw new Error(`[social] clearing a stale confirmation failed: ${error.message}`);
-}
-
-/**
- * Claim one channel just before it is sent to Buffer: posted_at is stamped
- * only if it is still empty, the channel is still confirmed with exactly this
- * text, and not marked Don't post — one atomic update. False means another
- * run took it first, or it changed since the plan; it is not sent.
- *
- * Stamping before sending, not after, is what stops a double post. Buffer has
- * no idempotency key, so a stamp that failed after a post went out would let
- * a later run post it again; this way a failure can only ever leave a channel
- * not posted. A failed claim throws, so nothing is sent.
- */
-export async function claimChannelPost(db: Db, t: SocialTarget, post: ChannelPost): Promise<boolean> {
-  const { key, id } = targetOf(t);
-  const now = new Date().toISOString();
-  const { data, error } = await db
-    .from("social_channel_posts")
-    .update({ posted_at: now, updated_at: now })
-    .eq(key, id)
-    .eq("channel_id", post.channelId)
-    .is("posted_at", null)
-    .eq("skip", false)
-    .eq("confirmed_text", post.text)
-    .select("channel_id");
-  if (error) throw new Error(`[social] couldn't claim ${post.channelId} before posting: ${error.message}`);
-  return !!data?.length;
-}
-
-/** Buffer refused the post: hand the claim back, so a retry can send it. */
-export async function releaseChannelPost(db: Db, t: SocialTarget, channelId: string): Promise<void> {
-  const { key, id } = targetOf(t);
-  const { error } = await db
-    .from("social_channel_posts")
-    .update({ posted_at: null, updated_at: new Date().toISOString() })
-    .eq(key, id)
-    .eq("channel_id", channelId);
-  if (error) {
-    // Shows as posted though it wasn't: never a double post, but someone needs to know.
-    logError({ source: "db", area: "job:social_push", error: `${channelId} wasn't posted but is marked posted: ${error.message}`, context: { [key]: id, channel_id: channelId } });
-  }
-}
-
-/** Buffer took it: keep its post id. Losing this only loses the id, so a failure is logged, not thrown. */
-export async function recordBufferPostId(db: Db, t: SocialTarget, channelId: string, bufferPostId: string): Promise<void> {
-  const { key, id } = targetOf(t);
-  const { error } = await db
-    .from("social_channel_posts")
-    .update({ buffer_post_id: bufferPostId, updated_at: new Date().toISOString() })
-    .eq(key, id)
-    .eq("channel_id", channelId);
-  if (error) {
-    logError({ source: "db", area: "job:social_push", error: `posted on ${channelId}, Buffer post id not recorded: ${error.message}`, context: { [key]: id, channel_id: channelId } });
-  }
 }
 
 /**
@@ -281,16 +247,38 @@ export async function saveChannelSkips(db: Db, t: SocialTarget, o: { shown: stri
   if (error) throw new Error(`[social] saving "Don't post" failed: ${error.message}`);
 }
 
-/** Posts each channel has had since London midnight, stories and videos together: the daily limit is per channel. */
-export async function postedTodayByChannel(db: Db, channelIds: string[]): Promise<Record<string, number>> {
-  const { data } = await db
+/**
+ * Save each channel's own wording from the editor. "Written by Claude" stays
+ * on while there's wording (an edit of Claude's text is still AI-assisted,
+ * which is what Buffer's `aiAssisted` asks), and goes when the box is emptied.
+ * Unchanged boxes aren't written.
+ */
+export async function saveChannelLeads(db: Db, t: SocialTarget, leads: ReadonlyMap<string, string>): Promise<void> {
+  if (!leads.size) return;
+  const { key } = targetOf(t);
+  const records = await readChannelRecords(db, t);
+  const now = new Date().toISOString();
+  const rows = [...leads]
+    .filter(([c, text]) => (records.get(c)?.lead_text ?? "") !== text)
+    .map(([channel_id, text]) => ({
+      ...ownerOf(t),
+      channel_id,
+      lead_text: text || null,
+      lead_ai: !!text && !!records.get(channel_id)?.lead_ai,
+      updated_at: now,
+    }));
+  if (!rows.length) return;
+  const { error } = await db.from("social_channel_posts").upsert(rows, { onConflict: `${key},channel_id` });
+  if (error) throw new Error(`[social] saving each channel's wording failed: ${error.message}`);
+}
+
+/** Claude wrote this channel's wording (the editor's "Write with Claude"). */
+export async function saveClaudeLead(db: Db, t: SocialTarget, channelId: string, text: string): Promise<void> {
+  const { key } = targetOf(t);
+  const { error } = await db
     .from("social_channel_posts")
-    .select("channel_id")
-    .in("channel_id", channelIds)
-    .gte("posted_at", londonDayStart(new Date()).toISOString());
-  const counts: Record<string, number> = {};
-  for (const r of data ?? []) counts[r.channel_id] = (counts[r.channel_id] ?? 0) + 1;
-  return counts;
+    .upsert({ ...ownerOf(t), channel_id: channelId, lead_text: text, lead_ai: true, updated_at: new Date().toISOString() }, { onConflict: `${key},channel_id` });
+  if (error) throw new Error(`[social] saving Claude's wording failed: ${error.message}`);
 }
 
 /** What the editor's "Social post" section shows for a saved item. */
@@ -325,7 +313,7 @@ export async function loadSocialPanel(
     deps.networks(),
     (deps.details ?? (() => adapter.cachedChannelDetails()))(),
   ]);
-  const channels = channelPosts(item.post, channelIds, networks).map(({ post, network }) => {
+  const channels = channelPosts(item.post, channelIds, networks, leadsOf(records)).map(({ post, network }) => {
     const record = records.get(post.channelId) ?? null;
     return {
       label: channelLabel(post.channelId, network, details.kind === "known" ? details.channels.get(post.channelId) : null),

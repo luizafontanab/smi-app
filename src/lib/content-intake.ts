@@ -25,9 +25,9 @@ import { MEMBER_CHANGED_ERROR, memberCanEdit } from "@/lib/member-content";
 import { resolveCoordinates, type Geocoder } from "@/lib/member-geocode";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { keepUntouchedPosts, parseStoryPosts } from "@/lib/social";
-import { channelSkipsFromForm, queueSocialPush, socialFieldsFromForm } from "@/lib/social-push";
+import { channelLeadsFromForm, channelSkipsFromForm, queueSocialPush, reconcileNow, socialFieldsFromForm } from "@/lib/social-push";
 import type { JobKind } from "@/lib/jobs";
-import { saveChannelSkips } from "@/lib/social-post";
+import { saveChannelLeads, saveChannelSkips } from "@/lib/social-post";
 import { isMemberDraft } from "@/lib/story-board";
 import { replaceStoryMembers, resolveStoryMembers } from "@/lib/story-members";
 import { YOUTUBE_ONLY_ERROR, youtubeId } from "@/lib/youtube";
@@ -510,6 +510,11 @@ export async function save(d: IntakeDeps, kind: IntakeKind, id: string | null, f
       const target = kind === "story" ? { story_id: id } : { video_id: id };
       const skips = channelSkipsFromForm(form);
       if (skips) await saveChannelSkips(d.db, target, skips);
+      // Issue #101: each channel's own wording, then whatever Buffer already
+      // holds brought in line — taken back out if it changed, moved if its time did.
+      const leads = channelLeadsFromForm(form);
+      if (leads) await saveChannelLeads(d.db, target, leads);
+      await reconcileNow(d.db, target, d.enqueue);
       await queueSocialPush(d.db, target, d.enqueue);
     }
   } else {

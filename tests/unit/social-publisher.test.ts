@@ -342,6 +342,14 @@ describe("channel networks and each channel's post", () => {
     }
   });
 
+  it("puts a channel's own wording in place of the item's lead-in, before the link and that network's tags", () => {
+    const known = { kind: "known" as const, services: new Map([["li", "linkedin"], ["x", "twitter"]]) };
+    const item = post({ text: "Item lead.\n\nhttps://smi.test/news/a", link: "https://smi.test/news/a", tagHandles: { linkedin: "acme-ltd", x: "acme" } });
+    const [li, x] = channelPosts(item, ["li", "x"], known, new Map([["li", "LinkedIn's own words."], ["x", "  "]]));
+    expect(li.post.text).toBe("LinkedIn's own words.\n\nhttps://smi.test/news/a\n\nlinkedin:acme-ltd");
+    expect(x.post.text).toBe("Item lead.\n\nhttps://smi.test/news/a\n\nx:@acme"); // blank wording: the item's lead-in
+  });
+
   it("labels a channel by its network, or by its id when that isn't known", () => {
     expect(channelLabel("li-1", "linkedin")).toBe("LinkedIn");
     expect(channelLabel("x-1", "twitter")).toBe("X");
@@ -473,5 +481,70 @@ describe("channel details", () => {
     clearChannelDetailsCache();
     await cachedChannelDetails(t + 60_000);
     expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+});
+
+// Issue #101: a draft to check in Buffer, a post Buffer sends at a time, and taking one back out.
+describe("Buffer — drafts, scheduled posts and deleting", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
+  beforeEach(() => vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token"));
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetDbServerMocks();
+    fetchSpy?.mockRestore();
+  });
+
+  const created = (status: string) =>
+    new Response(JSON.stringify({ data: { createPost: { __typename: "PostActionSuccess", post: { id: "p1", status, channelService: "linkedin" } } } }));
+  const deleted = () => new Response(JSON.stringify({ data: { deletePost: { __typename: "DeletePostSuccess", id: "p1" } } }));
+
+  it("makes a draft the way Buffer's own example does, and returns it", async () => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(created("draft"));
+
+    const post = await getSocialPublisher().publishChannel(send(), { kind: "draft" }, { aiAssisted: true });
+
+    const input = inputOf(fetchSpy);
+    expect(input).toMatchObject({ mode: "addToQueue", saveToDraft: true, schedulingType: "automatic", needsApproval: false, aiAssisted: true });
+    expect(input.dueAt).toBeUndefined();
+    expect(post?.id).toBe("p1");
+  });
+
+  it("takes a 'draft' straight back out of Buffer if it came back as anything else, and says so", async () => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(created("scheduled")).mockResolvedValueOnce(deleted());
+
+    await expect(getSocialPublisher().publishChannel(send(), { kind: "draft" })).rejects.toThrow(/not a draft — it was deleted again/);
+    expect(JSON.parse(fetchSpy.mock.calls[1][1]?.body as string).variables.input).toEqual({ id: "p1" });
+  });
+
+  it("hands a scheduled post to Buffer with its time in UTC, and nothing about drafts or AI unless asked", async () => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(created("scheduled"));
+
+    await getSocialPublisher().publishChannel(send(), { kind: "scheduled", dueAt: new Date("2026-11-10T09:30:00Z") });
+
+    const input = inputOf(fetchSpy);
+    expect(input).toMatchObject({ mode: "customScheduled", dueAt: "2026-11-10T09:30:00.000Z" });
+    expect(input.saveToDraft).toBeUndefined();
+    expect(input.aiAssisted).toBeUndefined();
+  });
+
+  it("deletes a post by id, and reports a failure as false rather than throwing", async () => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(deleted())
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { deletePost: { __typename: "VoidMutationError", message: "Something broke" } } })))
+      .mockResolvedValueOnce(new Response("down", { status: 503 }));
+
+    await expect(getSocialPublisher().deletePost("p1")).resolves.toBe(true);
+    expect(JSON.parse(fetchSpy.mock.calls[0][1]?.body as string).query).toContain("deletePost");
+    await expect(getSocialPublisher().deletePost("p1")).resolves.toBe(false);
+    await expect(getSocialPublisher().deletePost("p1")).resolves.toBe(false);
+    expect(logError).toHaveBeenCalledTimes(2);
+  });
+
+  it("the local stub drafts and deletes nothing", async () => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await expect(getSocialPublisher().publishChannel(send(), { kind: "draft" })).resolves.toBeNull();
+    await expect(getSocialPublisher().deletePost("p1")).resolves.toBe(true);
+    expect(log.mock.calls[0][0]).toContain("would draft");
+    log.mockRestore();
   });
 });

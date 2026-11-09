@@ -1,13 +1,15 @@
 import type { serviceDb } from "./db/server";
 import type { ChannelNetworks, SentPost } from "./adapters/social";
+import type { HandOffResult, ReconcileResult } from "./social-handoff";
+import type { SendMode } from "./social-confirm";
+import { logError } from "./log";
 import type { JobKind } from "./jobs";
 import { storyPostUrl, type StoryPostChannel } from "./social";
 import { parseLondonInput } from "./london-time";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "./social-caps";
 import { SOCIAL_LEAD_MAX } from "./social-text";
-import { channelDueAt } from "./social-confirm";
 export { seenFromForm } from "./social-confirm";
-import { confirmChannels, connectedChannelIds, loadSocialItem, targetOf, type SocialTarget } from "./social-post";
+import { confirmChannels, connectedChannelIds, leadsOf, loadSocialItem, readChannelRecords, targetOf, type SocialTarget } from "./social-post";
 
 export { SOCIAL_LEAD_MAX, composeSocialText, trimLead } from "./social-text";
 export type { SocialTarget } from "./social-post";
@@ -80,51 +82,97 @@ export function channelSkipsFromForm(formData: FormData): { shown: string[]; ski
   return { shown, skipped };
 }
 
-/** The earliest moment a confirmed channel of this item is due, leaving out `hold`; null when none will post. */
-async function earliestChannelDue(db: Db, t: SocialTarget, caps: SocialCaps | undefined, hold: string[]): Promise<Date | null> {
-  const { table, key, id } = targetOf(t);
-  const { data: row } = await db.from(table).select("status, social_at, social_skip, published_at").eq("id", id).maybeSingle();
-  if (!row || row.status !== "published" || row.social_skip) return null;
-  const [channels, { data: records }, { delay_minutes }] = await Promise.all([
-    connectedChannelIds(db),
-    db.from("social_channel_posts").select("channel_id, skip, confirmed_at, posted_at").eq(key, id),
-    caps ? Promise.resolve(caps) : readSocialCaps(db),
-  ]);
-  let due: Date | null = null;
-  for (const r of records ?? []) {
-    if (!channels.includes(r.channel_id) || hold.includes(r.channel_id) || r.skip || r.posted_at) continue;
-    const at = channelDueAt({ socialAt: row.social_at, publishedAt: row.published_at, confirmedAt: r.confirmed_at, delayMinutes: delay_minutes });
-    if (at && (!due || at < due)) due = at;
+/** The editor's per-channel wording box (issue #101), named this plus the channel id. */
+export const LEAD_FIELD = "social_lead:";
+
+/**
+ * Each listed channel's wording from the editor form. Only channels the form
+ * listed (`social_channel`) are read, so a channel it didn't show is left as
+ * it is; an empty box means the item's own lead-in.
+ */
+export function channelLeadsFromForm(formData: FormData): Map<string, string> | undefined {
+  const shown = formData.getAll("social_channel").map(String).filter(Boolean);
+  if (!shown.length) return undefined;
+  const leads = new Map<string, string>();
+  for (const c of shown) {
+    const v = formData.get(`${LEAD_FIELD}${c}`);
+    if (typeof v === "string") leads.set(c, v.replace(/\r\n/g, "\n").trim());
   }
-  return due;
+  return leads;
 }
 
 /**
- * Bring the item's pending push in line with its channels: replaced by one
- * at the earliest confirmed channel's time (never in the past), or dropped
- * when no confirmed channel is left to post. Returns when it will run.
- *
- * The social_push job calls it too when it finishes, so a save or Confirm
- * made while it was running never leaves a second job behind. From there,
- * `hold` leaves out channels the job knows can't go now (over the daily
- * limit, or failed and covered by its own retry), and `also` is another time
- * to run at if earlier (the overflow slot).
+ * Whether a Live item has a channel scheduled or published-now that isn't
+ * with Buffer yet (issue #101). Its time no longer matters here: Buffer is
+ * told the time at hand-off and holds the post until then.
+ */
+async function hasChannelToHandOver(db: Db, t: SocialTarget, hold: string[]): Promise<boolean> {
+  const { table, key, id } = targetOf(t);
+  const { data: row } = await db.from(table).select("status, social_skip").eq("id", id).maybeSingle();
+  if (!row || row.status !== "published" || row.social_skip) return false;
+  const [channels, { data: records }] = await Promise.all([
+    connectedChannelIds(db),
+    db.from("social_channel_posts").select("channel_id, skip, confirmed_at, send_mode, handed_at, posted_at").eq(key, id),
+  ]);
+  return (records ?? []).some((r) =>
+    channels.includes(r.channel_id) && !hold.includes(r.channel_id) && r.confirmed_at && r.send_mode && !r.skip && !r.handed_at && !r.posted_at);
+}
+
+/**
+ * Bring the item's pending push in line with its channels: one job now when a
+ * Live item has a channel to hand to Buffer, none otherwise. The clicks that
+ * cause a hand-off also try it straight away (handOffNow); this job is the
+ * backstop and the retry. `hold` leaves out channels a failed run is already
+ * retrying. `_caps` is unused since Buffer applies the time; kept so callers
+ * needn't change.
  */
 export async function queueSocialPush(
   db: Db,
   t: SocialTarget,
   enqueue: Enqueue,
-  caps?: SocialCaps,
-  o: { hold?: string[]; also?: Date | null } = {},
+  _caps?: SocialCaps,
+  o: { hold?: string[] } = {},
 ): Promise<Date | null> {
   const { key, id } = targetOf(t);
-  let due = await earliestChannelDue(db, t, caps, o.hold ?? []);
-  if (o.also && (!due || o.also < due)) due = o.also;
+  const due = (await hasChannelToHandOver(db, t, o.hold ?? [])) ? new Date() : null;
   await cancelSocialPush(db, t);
   if (!due) return null;
-  const at = due.getTime() > Date.now() ? due : new Date();
-  await enqueue("social_push", { [key]: id }, at);
-  return at;
+  await enqueue("social_push", { [key]: id }, due);
+  return due;
+}
+
+/**
+ * Hand the item's ready channels to Buffer now, from a click (Schedule,
+ * Publish now, Publish, Approve) rather than waiting for the job runner.
+ * Never throws: a failure is logged and the queued social_push job retries.
+ */
+export async function handOffNow(db: Db, t: SocialTarget, enqueue: Enqueue): Promise<HandOffResult | null> {
+  try {
+    const [{ getSocialPublisher, isSocialLive }, { handOffChannels }] = await Promise.all([import("./adapters/social"), import("./social-handoff")]);
+    return await handOffChannels(db, t, { publisher: getSocialPublisher(), live: isSocialLive(), enqueue });
+  } catch (e) {
+    logError({ source: "server", area: "social:hand-off", error: e, context: { ...t } });
+    return null;
+  }
+}
+
+/**
+ * The item was saved, or left Live: take back out of Buffer anything that no
+ * longer matches (issue #101, ADR 0003). Never throws; the result says what
+ * happened so the caller can tell the admin.
+ */
+export async function reconcileNow(db: Db, t: SocialTarget, enqueue: Enqueue): Promise<ReconcileResult | null> {
+  try {
+    const [{ getSocialPublisher, isSocialLive }, { reconcileHeldPosts }] = await Promise.all([import("./adapters/social"), import("./social-handoff")]);
+    const result = await reconcileHeldPosts(db, t, { publisher: getSocialPublisher(), live: isSocialLive(), enqueue });
+    if (result.failed.length) {
+      logError({ source: "server", area: "social:pull-back", error: `Buffer couldn't delete the held post for ${result.failed.join(", ")}: it may still go out`, context: { ...t } });
+    }
+    return result;
+  } catch (e) {
+    logError({ source: "server", area: "social:pull-back", error: e, context: { ...t } });
+    return null;
+  }
 }
 
 /** The item left "published": drop its pending push, so the editor doesn't show a post that won't happen. */
@@ -153,8 +201,8 @@ export const CONFIRM_MESSAGES = {
 export async function confirmSocialPost(
   db: Db,
   t: SocialTarget,
-  o: { only: string[] | "all"; userId: string; seen: Record<string, string> },
-  deps: { networks: () => Promise<ChannelNetworks>; enqueue: Enqueue },
+  o: { only: string[] | "all"; userId: string; seen: Record<string, string>; mode?: SendMode },
+  deps: { networks: () => Promise<ChannelNetworks>; enqueue: Enqueue; handOff?: (t: SocialTarget) => Promise<unknown> },
 ): Promise<{ ok: true; confirmed: string[] } | { ok: false; error: string }> {
   const [item, channelIds] = await Promise.all([loadSocialItem(db, t), connectedChannelIds(db)]);
   if (!item) return { ok: false, error: CONFIRM_MESSAGES.notFound };
@@ -164,12 +212,14 @@ export async function confirmSocialPost(
   const networks = await deps.networks();
   if (networks.kind === "failed") return { ok: false, error: CONFIRM_MESSAGES.lookupFailed };
   if (item.social_skip) return { ok: false, error: CONFIRM_MESSAGES.nothingWaiting };
-  const { channelPosts } = await import("./adapters/social");
-  const posts = channelPosts(item.post, channelIds, networks).map((c) => c.post);
-  const { confirmed, stale } = await confirmChannels(db, t, { posts, only: o.only, userId: o.userId, seen: o.seen });
+  const [{ channelPosts }, records] = await Promise.all([import("./adapters/social"), readChannelRecords(db, t)]);
+  const posts = channelPosts(item.post, channelIds, networks, leadsOf(records)).map((c) => c.post);
+  const { confirmed, stale } = await confirmChannels(db, t, { posts, only: o.only, userId: o.userId, seen: o.seen, mode: o.mode ?? "schedule" });
   if (stale.length) return { ok: false, error: CONFIRM_MESSAGES.changed };
   if (!confirmed.length) return { ok: false, error: CONFIRM_MESSAGES.nothingWaiting };
   await queueSocialPush(db, t, deps.enqueue);
+  // A Live item goes to Buffer now rather than at the next job run (issue #101).
+  if (item.status === "published") await (deps.handOff ?? ((x) => handOffNow(db, x, deps.enqueue)))(t);
   return { ok: true, confirmed };
 }
 

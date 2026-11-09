@@ -14,7 +14,7 @@
  */
 import type { serviceDb } from "@/lib/db/server";
 import type { JobKind } from "@/lib/jobs";
-import { cancelSocialPush, queueSocialPush, readSocialCaps, type SocialTarget } from "@/lib/social-push";
+import { cancelSocialPush, handOffNow, queueSocialPush, readSocialCaps, reconcileNow, type SocialTarget } from "@/lib/social-push";
 import type { SocialCaps } from "@/lib/social-caps";
 import { enqueueStoryLive } from "@/lib/story-members";
 import { canMoveStory, canScheduleStory, isMemberDraft, STORY_STATUS_LABELS } from "@/lib/story-board";
@@ -234,7 +234,11 @@ async function publishRow(d: LifecycleDeps, kind: ContentKind, row: Row, actor: 
   if (p.publishedAt) values.published_at = new Date().toISOString();
   const refused = writeRefusal(await writeFrom(d, kind, row.id, row.status, values), LIFECYCLE_MESSAGES.publishFailed(kind));
   if (refused) return refused;
-  if (kind !== "event") await queueSocialPush(d.db, socialTarget(kind, row.id), d.enqueue);
+  if (kind !== "event") {
+    await queueSocialPush(d.db, socialTarget(kind, row.id), d.enqueue);
+    // Channels already scheduled go to Buffer now, not at the next job run (issue #101).
+    await handOffNow(d.db, socialTarget(kind, row.id), d.enqueue);
+  }
   await notifyLive(d, kind, row);
   await recordApproval(d, kind, row.id, row.status, "approved", approvalReason, actor);
   return OK;
@@ -330,8 +334,13 @@ export async function move(d: LifecycleDeps, kind: ContentKind, id: string, to: 
   if (row.status === "scheduled") values.scheduled_at = null;
   const refused = writeRefusal(await writeFrom(d, kind, id, row.status, values), LIFECYCLE_MESSAGES.moveFailed(kind));
   if (refused) return refused;
-  // Taken down before its post went out: drop the post (the job re-checks too).
-  if (leavingLive && kind !== "event") await cancelSocialPush(d.db, socialTarget(kind, id));
+  // Taken down before its post went out: drop the pending hand-off, and take
+  // back out of Buffer any post it holds (kept scheduled, so re-publishing
+  // hands it over again). Buffer would otherwise send a link to a page that's gone.
+  if (leavingLive && kind !== "event") {
+    await cancelSocialPush(d.db, socialTarget(kind, id));
+    await reconcileNow(d.db, socialTarget(kind, id), d.enqueue);
+  }
   return OK;
 }
 

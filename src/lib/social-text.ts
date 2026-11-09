@@ -10,7 +10,18 @@ export function trimLead(text: string, max = SOCIAL_LEAD_MAX): string {
   return `${(space > 0 ? cut.slice(0, space) : cut).replace(/[\s,;:.–—-]+$/, "")}…`;
 }
 
+/**
+ * How long one channel's own wording may be (issue #101). X, and a channel
+ * whose network isn't known, keep the item lead-in's budget: room for the
+ * link and a few tags in 280. Elsewhere the wording can say more; this stays
+ * well inside LinkedIn's and Facebook's own limits.
+ */
+export function leadMaxFor(network: string | null): number {
+  const n = network?.toLowerCase();
+  return !n || n === "twitter" || n === "x" ? SOCIAL_LEAD_MAX : 1500;
+}
+
 /** The post: the lead-in, then the link. Each channel's tags are appended after this (adapters/social channelText). */
-export function composeSocialText(lead: string, url: string): string {
-  return `${trimLead(lead)}\n\n${url}`;
+export function composeSocialText(lead: string, url: string, max = SOCIAL_LEAD_MAX): string {
+  return `${trimLead(lead, max)}\n\n${url}`;
 }

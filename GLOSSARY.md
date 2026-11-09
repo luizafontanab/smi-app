@@ -115,9 +115,20 @@ _Avoid_: share, push, tweet; never "post" alone, which is easily confused with a
 **Lead-in**:
 The short text a social post opens with, before the link. It follows the story's summary or the video's description unless an admin writes one.
 
-**Confirm a social post**:
-An admin's sign-off, for one social channel, after seeing exactly what that channel will receive. Each channel is confirmed separately, and nothing goes out on a channel without one. Any change to what that channel would receive cancels its confirmation, which then has to be given again. It never makes a post go out before the item is Live.
-_Avoid_: approve (that is the decision about the content item itself)
+**Channel wording**:
+One social channel's own text for a social post, written by Claude ("Write with Claude") or typed by an admin, in place of the lead-in. The link and that network's member tags still follow it. Empty means the lead-in.
+_Avoid_: caption, copy
+
+**Buffer draft**:
+A copy of exactly what one social channel would receive, put into Buffer for an admin to check there. It is never published from Buffer's drafts, and it is deleted once the real post is with Buffer.
+
+**Schedule / Publish now**:
+An admin's sign-off, for one social channel, after seeing exactly what that channel will receive, with the choice of when it goes: at the item's post time (Schedule) or straight away (Publish now). Each channel is signed off separately, and nothing goes out on a channel without it. Once the item is Live the post is handed to Buffer, which holds it and sends it at its time; never before the item is Live. Any change to what that channel would receive cancels the sign-off, and takes the post back out of Buffer if Buffer already holds it. Until November 2026 this was called "Confirm".
+_Avoid_: approve (that is the decision about the content item itself), confirm (the old name)
+
+**With Buffer**:
+A social channel's post that Buffer holds and will send at its time, not yet sent.
+_Avoid_: queued, pending (both are used for the app's own job queue)
 
 **Don't post**:
 An admin's decision that a story or video gets no social post, either on one social channel or on all of them. It is a decision, not a missing confirmation, so a channel marked this way is never listed as waiting.

@@ -47,7 +47,7 @@ const ALLOWED: Record<string, string> = {
   "components/ContactForm.tsx#{pending ? \"Sending…\" : \"Send\"}": "own pending state",
   "components/NewsletterSignup.tsx#{pending ? \"…\" : \"Subscribe\"}": "own pending state",
   // Submits another form (form=), whose pending state SubmitButton can't see; it listens to FormPendingSignal.
-  "components/console/SocialConfirmButton.tsx#{pending && pressed ? \"Confirming…\" : children}": "own pending state",
+  "components/console/SocialConfirmButton.tsx#{pending && pressed ? pendingLabel : children}": "own pending state",
 };
 
 const BUTTON = /<button\b([\s\S]*?)>([\s\S]*?)<\/button>/g;

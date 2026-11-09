@@ -8,6 +8,13 @@ import { isLocalSupabaseUrl } from "../scripts/lib/target-guard";
 // explicitly instead. Inert for the existing node-environment .ts suites.
 afterEach(cleanup);
 
+// No unit test reaches a real outside service. vitest.config.ts loads
+// .env.local, so a real key there would otherwise let publishing in a test
+// hand a post to SMI's Buffer (issue #101), or spend on Claude. A test that
+// wants the live adapter stubs its own fake key with vi.stubEnv.
+delete process.env.BUFFER_ACCESS_TOKEN;
+delete process.env.ANTHROPIC_API_KEY;
+
 /*
  * Two browser APIs jsdom doesn't implement, stubbed rather than guarded at
  * every call site — a `typeof ResizeObserver === "undefined"` check in a

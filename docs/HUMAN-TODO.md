@@ -172,7 +172,7 @@ connected to SMI's real account: Self Client, refresh token with the four
 scopes, and the `BIGIN_*` variables in Vercel Production only (never Preview:
 Bigin has no test mode). **Done (9 Nov):** 1.16 Buffer API key created and
 `BUFFER_ACCESS_TOKEN` set in Production *and* Preview. Preview is safe since
-#43: nothing posts until an admin confirms each channel in the editor.
+#43 and #101: nothing goes to Buffer until an admin schedules or publishes each channel in the editor.
 
 ---
 
@@ -312,32 +312,34 @@ through Proof and approval first.
       `/console/crm`, click **Preview import**, read the counts, then **Run first
       import**. Imported contacts are subscribed unless they opted out in Bigin,
       so the next issue goes to them.
-- [ ] **3.5 — Buffer.**
-      - Confirm the first post is accepted. `"shareNow"` / `"automatic"` and
-        the required `needsApproval` / `assets` now follow Buffer's reference
-        (9 Nov), but no post has been sent yet. A rejection shows in the
-        error log as "Buffer publish failed".
-      - Check the first post's image rendered.
-      - Check the story's LinkedIn / Facebook / X post links fill in on their own
-        within a few cron runs (GAPS B4.6). They come from Buffer's
-        `externalLink`, which is in its API reference but has never been seen on a
-        live response. If they stay empty, look at the `social_links` jobs; a link
-        can still be pasted by hand meanwhile.
-      - Check that the organisation id is filled in next to the channel ids on
-        `/console/stories`. Then open any story's editor: under "Social post"
-        each channel's preview should be named by its network (LinkedIn, X, …)
-        and carry only that network's tags (GAPS B4.5, issue #43). The network
-        comes from Buffer's `channels(input: { organizationId })` → `service`,
-        which is in its API reference but untested. Previews named "Channel …"
-        mean there is no organisation id (every channel then gets one shared
-        text cut to fit X's 280); a red "confirming is off" note means the
-        lookup itself is failing.
-      - Nothing posts until a channel is confirmed in the editor (issue #43).
-        Confirm one channel on the first live story and check it went out on
-        that channel only.
-      - Confirm X really refuses a post over 280 through Buffer (as a
-        `MutationError`) rather than truncating it. Our counting treats every
-        link as 23 characters.
+- [ ] **3.5 — Buffer (issue #101: Claude drafts, Buffer drafts, Buffer schedules).**
+      None of this has run against a live Buffer account yet; every call
+      follows Buffer's reference (read 9 Nov).
+      - Open any story's editor. Under "Social post" each channel should be
+        named like "LinkedIn · Sheet Metal Industries" and carry only that
+        network's tags. "Channel …" names mean the organisation id is missing
+        on `/console/stories`; a red "scheduling is off" note means Buffer's
+        channel lookup is failing.
+      - **Write with Claude** on a LinkedIn and an X channel: the wording should
+        fit (1,500 / 200 characters), with no link or @handle in it.
+      - **Send draft to Buffer**: the post should appear in Buffer's drafts and
+        *not* in its queue. If Buffer ever takes it as anything but a draft,
+        the app deletes it at once and shows an error; check that it did.
+      - **Schedule** one channel on a Live story with a "Post at" time an hour
+        ahead: it should appear in Buffer's queue at that time, the editor
+        should say "scheduled in Buffer for …", and its draft should be gone.
+        Then change the lead-in and save: the post should disappear from
+        Buffer's queue and the channel go back to waiting. If a deletion fails
+        with Buffer saying the post doesn't exist, send the exact message to
+        the developer: the "already gone" check in `deletePost` guesses its
+        wording.
+      - **Publish now** on another channel: it should go out within a minute,
+        and once the next cron run asks Buffer, the editor should say "posted"
+        and the story's post links fill in (GAPS B4.6: `externalLink` has
+        never been seen on a live response; links can still be pasted).
+      - Check the first post's image rendered, with its alt text.
+      - Confirm X refuses a post over 280 (a `MutationError`) rather than
+        truncating it. Our counting treats every link as 23 characters.
 - [ ] **3.6 — Login-email change.** Do one end to end after 1.7. Check whether
       one link or both are needed, and that the member lands back in Settings.
       *Locally (29 Oct): either link alone switches the address and lands on

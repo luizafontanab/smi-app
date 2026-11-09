@@ -5,14 +5,15 @@ import { requireConsole } from "@/lib/auth";
 import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
-import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus, confirmVideoSocial } from "../../actions";
+import { consoleUploadVideoImage, decideVideo, pinVideo, returnToDraft, saveVideo, scheduleVideo, setVideoStatus, confirmVideoSocial, videoSocialTool } from "../../actions";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { YoutubePreview } from "@/components/YoutubePreview";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { MirrorInput } from "@/components/console/MirrorInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { UploadField } from "@/components/UploadField";
-import { SocialConfirmForm, SocialPostFields } from "@/components/console/SocialPostFields";
+import { SocialConfirmForm, SocialPostFields, SocialToolForm } from "@/components/console/SocialPostFields";
+import { socialWriterLive } from "@/lib/adapters/social-writer";
 import { latestSocialJob, readSocialCaps } from "@/lib/social-push";
 import { cachedChannelNetworks, isSocialLive } from "@/lib/adapters/social";
 import { loadSocialPanel, videoSocialItem } from "@/lib/social-post";
@@ -128,10 +129,15 @@ export default async function VideoEditor(props: PageProps<"/console/videos/[id]
           notes={socialNoteLines}
           confirmable={!!video}
           confirmed={typeof sp.confirmed === "string" ? sp.confirmed : undefined}
+          mode={typeof sp.mode === "string" ? sp.mode : undefined}
+          tools={video ? { writer: socialWriterLive(), buffer: isSocialLive() } : undefined}
+          written={typeof sp.written === "string" ? sp.written : undefined}
+          drafted={typeof sp.drafted === "string" ? sp.drafted : undefined}
         />
         <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-5 py-2.5 text-white disabled:opacity-50">Save</SubmitButton>
       </form>
       {video && <SocialConfirmForm action={confirmVideoSocial} id={id} />}
+      {video && <SocialToolForm action={videoSocialTool} id={id} />}
 
       {!isNew && video && (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">

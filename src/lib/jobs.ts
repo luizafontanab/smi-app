@@ -2,14 +2,10 @@ import { serviceDb } from "./db/server";
 import type { Json } from "./db/types";
 import { notifyConsole } from "./notify-admin";
 import { siteUrl } from "./site-url";
-import { londonAt } from "./london-time";
-import { fillStoryPostLinks, queueSocialPush, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
+import { fillStoryPostLinks, readSocialCaps, SOCIAL_LINK_BACKOFF } from "./social-push";
 import type { SentPost } from "./adapters/social";
-import { planSocialPush, waitingSummary } from "./social-confirm";
-import {
-  claimChannelPost, clearConfirmations, connectedChannelIds, loadSocialItem, postedTodayByChannel, readChannelRecords,
-  recordBufferPostId, releaseChannelPost, socialWaiting, type SocialTarget,
-} from "./social-post";
+import { waitingSummary } from "./social-confirm";
+import { socialWaiting, type SocialTarget } from "./social-post";
 import { graceUntilFrom } from "./grace-period";
 import { publishDue } from "./content-lifecycle";
 import { logError } from "./log";
@@ -294,28 +290,6 @@ async function ensurePeriodic(kind: JobKind, everySeconds: number) {
   }
 }
 
-/**
- * Space an overflow social push across tomorrow instead of stacking every
- * overflow item on the same 09:00 slot — counts what's already pending
- * tomorrow and offsets by one more delay increment per item ahead of it.
- * "Tomorrow" and 09:00 are London time, not the server's (UTC on Vercel).
- * Deliberately simple: no cap on how late a day can run if many items
- * overflow onto it, that's an accepted limit, not a bug.
- */
-async function nextOverflowSlot(db: ReturnType<typeof serviceDb>, delayMinutes: number): Promise<Date> {
-  const now = new Date();
-  const slot = londonAt(now, 1, 9);
-  const dayEnd = londonAt(now, 2, 0);
-  const { count } = await db
-    .from("jobs")
-    .select("*", { count: "exact", head: true })
-    .eq("kind", "social_push")
-    .eq("status", "pending")
-    .gte("due_at", slot.toISOString())
-    .lt("due_at", dayEnd.toISOString());
-  return new Date(slot.getTime() + (count ?? 0) * delayMinutes * 60_000);
-}
-
 async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: string) {
   const db = serviceDb();
   switch (kind) {
@@ -331,102 +305,50 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       break;
     }
     case "social_push": {
-      // Issue #43: each channel posts on its own, only once an admin has
-      // confirmed exactly what it receives. Everything is re-checked here, when
-      // the job runs, not when it was queued.
+      // Issue #101: hand every channel an admin scheduled or published-now to
+      // Buffer, once the item is Live. Buffer then holds it and sends it at
+      // its time. The clicks that cause a hand-off try it straight away; this
+      // is the backstop (a scheduled publish) and the retry.
       const target: SocialTarget = payload.video_id ? { video_id: String(payload.video_id) } : { story_id: String(payload.story_id) };
-      const item = await loadSocialItem(db, target);
-      // taken down, or "Don't post" for the whole item: no post
-      if (!item || item.status !== "published" || item.social_skip) return;
-      const channelIds = await connectedChannelIds(db);
-      const records = await readChannelRecords(db, target);
-      // Nobody confirmed anything still to post: nothing to do, and no need to ask Buffer anything.
-      if (!channelIds.some((c) => { const r = records.get(c); return r?.confirmed_at && !r.skip && !r.posted_at; })) return;
-
-      const { channelPosts, getSocialPublisher, isSocialLive } = await import("./adapters/social");
-      const publisher = getSocialPublisher();
-      const networks = await publisher.channelNetworks();
-      // A passing lookup failure must not change every channel's text (the
-      // fallback is one X-fitted text) and so cancel its confirmation. Retry.
-      if (networks.kind === "failed") throw new Error("[social] couldn't look up which network each Buffer channel is; retrying rather than posting");
-
-      const caps = await readSocialCaps(db);
-      const plan = planSocialPush({
-        now: new Date(),
-        item: { socialAt: item.social_at, publishedAt: item.published_at, skip: item.social_skip },
-        delayMinutes: caps.delay_minutes,
-        perDay: caps.per_day,
-        channels: channelPosts(item.post, channelIds, networks).map(({ post }) => ({
-          post,
-          record: records.get(post.channelId) ?? null,
-        })),
-        postedToday: await postedTodayByChannel(db, channelIds),
-      });
-      // Changed since confirmed: those wait for confirmation again (and show in Needs You Today).
-      if (plan.unconfirm.length) await clearConfirmations(db, target, plan.unconfirm);
-
-      // Every due channel is attempted: one bad channel must not stop the
-      // others. Each is claimed (posted_at stamped, atomically) just before
-      // it goes to Buffer, and the claim handed back if Buffer refuses it:
-      // Buffer has no idempotency key, so the claim is what stops a second run
-      // — or a retry — posting it twice. Only for a real post: the logging
-      // stub must not make the editor say "posted".
-      const live = isSocialLive();
-      const sent: SentPost[] = [];
-      const failed: { channelId: string; error: string }[] = [];
-      for (const post of plan.send) {
-        if (live && !(await claimChannelPost(db, target, post))) continue;
-        try {
-          const accepted = await publisher.publishChannel(post);
-          if (live && accepted?.id) await recordBufferPostId(db, target, post.channelId, accepted.id);
-          if (accepted) sent.push(accepted);
-        } catch (e) {
-          if (live) await releaseChannelPost(db, target, post.channelId);
-          failed.push({ channelId: post.channelId, error: e instanceof Error ? e.message : String(e) });
-        }
-      }
-
-      // The story page links to SMI's own posts (Jas 13/10 item 8), filled
-      // from Buffer: straight away if it has them, otherwise once it has sent
-      // the post. Videos have no post-link fields.
-      if ("story_id" in target && sent.length) {
-        const waiting = await fillStoryPostLinks(db, target.story_id, sent);
-        if (waiting.length) {
-          await enqueue("social_links", { story_id: target.story_id, post_ids: waiting.map((p) => p.id), tries: 0 },
-            new Date(Date.now() + SOCIAL_LINK_BACKOFF[0] * 60_000));
-        }
-      }
-
-      // Run again for the next channel, re-read from the database so a save or
-      // Confirm made while this ran is included and leaves one job, not two:
-      // a channel whose time is still to come, or one over its daily limit —
-      // spaced across tomorrow, not stacked on one slot. Queued before a
-      // failure is thrown, so channels that didn't fail aren't left without a
-      // job when this one's retries run out; the failed ones are this job's
-      // own retry.
-      const overflow = plan.overCap.length ? await nextOverflowSlot(db, caps.delay_minutes) : null;
-      // With the stub nothing is stamped, so what it just "sent" is held too, or it would run again at once.
-      const hold = [...plan.overCap, ...failed.map((f) => f.channelId), ...(live ? [] : plan.send.map((p) => p.channelId))];
-      await queueSocialPush(db, target, enqueue, caps, { hold, also: overflow });
-      if (failed.length) {
-        throw new Error(`[social] Buffer publish failed for ${failed.length} of ${plan.send.length} channel(s) — ${failed.map((f) => f.error).join("; ")}`);
+      const { getSocialPublisher, isSocialLive } = await import("./adapters/social");
+      const { handOffChannels } = await import("./social-handoff");
+      const result = await handOffChannels(db, target, { publisher: getSocialPublisher(), live: isSocialLive(), enqueue });
+      if (result.failed.length) {
+        throw new Error(`[social] Buffer refused ${result.failed.length} channel(s) — ${result.failed.map((f) => `${f.channelId}: ${f.error}`).join("; ")}`);
       }
       break;
     }
     case "social_links": {
+      // Buffer's word on posts it was handed: "sent" stamps posted_at (and a
+      // story's post links fill in), "error" is recorded for the editor and
+      // Needs You Today. Not sent yet: asked again, no sooner than its time.
       const ids = Array.isArray(payload.post_ids) ? payload.post_ids.filter((x): x is string => typeof x === "string") : [];
       if (!ids.length) return;
       const { getSocialPublisher } = await import("./adapters/social");
       const found = await getSocialPublisher().postLinks(ids);
-      const waiting = await fillStoryPostLinks(db, String(payload.story_id), found);
+      const now = new Date().toISOString();
+      for (const p of found) {
+        const update = p.status === "sent"
+          ? { buffer_status: p.status, posted_at: now, updated_at: now }
+          : { buffer_status: p.status || null, updated_at: now };
+        // posted_at only once: a second check of a sent post keeps the first time.
+        let q = db.from("social_channel_posts").update(update).eq("buffer_post_id", p.id);
+        if (p.status === "sent") q = q.is("posted_at", null);
+        const { error } = await q;
+        if (error) logError({ source: "db", area: "job:social_links", error: error.message, context: { post_id: p.id } });
+      }
+      const waiting = payload.story_id ? await fillStoryPostLinks(db, String(payload.story_id), found) : [];
+      const settled = (p: SentPost) => p.status === "error" || (p.status === "sent" && !waiting.some((w) => w.id === p.id));
       // Ids Buffer didn't return this time are asked about again, too.
-      const retry = [...waiting.map((p) => p.id), ...ids.filter((id) => !found.some((p) => p.id === id))];
+      const retry = ids.filter((id) => !found.some((p) => p.id === id && settled(p)));
       const tries = Number(payload.tries ?? 0) + 1;
-      // Gives up quietly after the last look: the fields stay editable, so a
-      // missing link can still be pasted.
+      // Gives up quietly after the last look: the link fields stay editable.
       if (retry.length && tries < SOCIAL_LINK_BACKOFF.length) {
-        await enqueue("social_links", { story_id: payload.story_id, post_ids: retry, tries },
-          new Date(Date.now() + SOCIAL_LINK_BACKOFF[tries] * 60_000));
+        const { data: rows } = await db.from("social_channel_posts").select("due_at").in("buffer_post_id", retry);
+        const latestDue = Math.max(0, ...(rows ?? []).map((r) => (r.due_at ? new Date(r.due_at).getTime() : 0)));
+        // A post still scheduled is asked about after its time, not on the backoff alone.
+        const next = Math.max(Date.now() + SOCIAL_LINK_BACKOFF[tries] * 60_000, latestDue + 2 * 60_000);
+        await enqueue("social_links", { ...payload, post_ids: retry, tries }, new Date(next));
       }
       break;
     }

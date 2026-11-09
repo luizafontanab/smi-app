@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { leadMaxFor } from "@/lib/social-text";
 import {
+  channelLeadsFromForm,
   channelSkipsFromForm,
   composeSocialText,
   CONFIRM_MESSAGES,
@@ -26,6 +28,35 @@ describe("composeSocialText", () => {
     const lead = composeSocialText("word ".repeat(80), "u").split("\n\n")[0];
     expect(lead.length).toBeLessThanOrEqual(SOCIAL_LEAD_MAX);
     expect(lead.endsWith("word…")).toBe(true);
+  });
+
+  it("gives a channel's own wording its network's budget: X keeps 200, LinkedIn and Facebook can say more", () => {
+    expect(leadMaxFor("twitter")).toBe(SOCIAL_LEAD_MAX);
+    expect(leadMaxFor(null)).toBe(SOCIAL_LEAD_MAX); // unknown: every channel might be X
+    expect(leadMaxFor("linkedin")).toBe(1500);
+    const long = "word ".repeat(80).trim();
+    expect(composeSocialText(long, "u", leadMaxFor("linkedin"))).toBe(`${long}\n\nu`);
+  });
+});
+
+describe("channelLeadsFromForm", () => {
+  const form = (entries: [string, string][]) => {
+    const f = new FormData();
+    for (const [k, v] of entries) f.append(k, v);
+    return f;
+  };
+
+  it("reads each listed channel's wording, trimmed, with an empty box as empty", () => {
+    const leads = channelLeadsFromForm(form([
+      ["social_channel", "li"], ["social_channel", "x"],
+      ["social_lead:li", "  Acme took the prize.\r\nIt matters.  "], ["social_lead:x", ""],
+      ["social_lead:gone", "not listed"],
+    ]));
+    expect(leads).toEqual(new Map([["li", "Acme took the prize.\nIt matters."], ["x", ""]]));
+  });
+
+  it("leaves everything alone when the form listed no channels", () => {
+    expect(channelLeadsFromForm(form([["social_lead:li", "x"]]))).toBeUndefined();
   });
 });
 
@@ -90,33 +121,33 @@ function liveItemDb(o: { story?: Record<string, unknown>; rows?: unknown[]; chan
 }
 
 describe("queueSocialPush", () => {
-  const confirmed = (channel_id: string, confirmed_at: string, extra: Record<string, unknown> = {}) =>
-    ({ channel_id, skip: false, posted_at: null, confirmed_at, ...extra });
+  // Issue #101: Buffer is told the time at hand-off, so a Live item with a
+  // channel to hand over is queued now, whatever its post time.
+  const scheduled = (channel_id: string, extra: Record<string, unknown> = {}) =>
+    ({ channel_id, skip: false, posted_at: null, handed_at: null, send_mode: "schedule", confirmed_at: "2026-06-30T08:00:00Z", ...extra });
 
-  it("replaces any pending push, then queues one for the earliest confirmed channel still to post", async () => {
-    const { db, jobs } = liveItemDb({
-      story: { social_at: "2099-01-01T10:00:00Z" },
-      rows: [
-        confirmed("li", "2099-01-02T08:00:00Z"),
-        confirmed("x", "2026-06-30T08:00:00Z"),
-        confirmed("gone", "2026-06-30T08:00:00Z"), // no longer connected
-        confirmed("fb", "2026-06-30T08:00:00Z", { posted_at: "2026-07-01T09:00:00Z" }),
-      ],
-      channels: ["li", "x", "fb"],
-    });
+  it("replaces any pending push, then queues one now for a channel still to hand to Buffer", async () => {
+    const { db, jobs } = liveItemDb({ story: { social_at: "2099-01-01T10:00:00Z" }, rows: [scheduled("li")] });
     const enqueue = vi.fn(async () => {});
+    const before = Date.now();
 
     const due = await queueSocialPush(db, { story_id: "s1" }, enqueue, caps);
 
     expect(jobs.delete).toHaveBeenCalled();
     expect(jobs.filter).toHaveBeenCalledWith("payload->>story_id", "eq", "s1");
-    // x: its post time; li waits for its later confirmation
-    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, new Date("2099-01-01T10:00:00Z"));
-    expect(due?.toISOString()).toBe("2099-01-01T10:00:00.000Z");
+    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, due);
+    // now, not the 2099 post time: Buffer holds it until then
+    expect(due!.getTime()).toBeGreaterThanOrEqual(before);
+    expect(due!.getTime()).toBeLessThan(before + 60_000);
   });
 
-  it("queues nothing, and drops a pending push, when no channel is confirmed", async () => {
-    const { db, jobs } = liveItemDb({ rows: [{ channel_id: "li", skip: false, posted_at: null, confirmed_at: null }] });
+  it.each([
+    ["nobody scheduled", { send_mode: null, confirmed_at: null }],
+    ["is already with Buffer", { handed_at: "2026-07-01T09:00:00Z" }],
+    ["Buffer already sent", { handed_at: "2026-07-01T09:00:00Z", posted_at: "2026-07-01T10:00:00Z" }],
+    ["is marked Don't post", { skip: true }],
+  ])("queues nothing, and drops a pending push, for a channel %s", async (_why, extra) => {
+    const { db, jobs } = liveItemDb({ rows: [scheduled("li", extra)] });
     const enqueue = vi.fn(async () => {});
 
     expect(await queueSocialPush(db, { story_id: "s1" }, enqueue, caps)).toBeNull();
@@ -128,51 +159,22 @@ describe("queueSocialPush", () => {
     ["isn't Live", { status: "scheduled", published_at: null }],
     ["is marked Don't post", { social_skip: true }],
   ])("queues nothing for an item that %s", async (_why, story) => {
-    const { db } = liveItemDb({ story, rows: [confirmed("li", "2026-06-30T08:00:00Z")] });
+    const { db } = liveItemDb({ story, rows: [scheduled("li")] });
     const enqueue = vi.fn(async () => {});
 
     expect(await queueSocialPush(db, { story_id: "s1" }, enqueue, caps)).toBeNull();
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it("queues a channel confirmed for a time already past for now, never earlier", async () => {
-    const { db } = liveItemDb({ story: { published_at: "2026-01-01T09:00:00Z" }, rows: [confirmed("li", "2026-01-02T09:00:00Z")] });
-    const enqueue = vi.fn(async () => {});
-    const before = Date.now();
-
-    const due = await queueSocialPush(db, { story_id: "s1" }, enqueue, caps);
-
-    expect(due!.getTime()).toBeGreaterThanOrEqual(before);
-  });
-});
-
-describe("queueSocialPush from the job's own run", () => {
-  const confirmed = (channel_id: string, confirmed_at: string) => ({ channel_id, skip: false, posted_at: null, confirmed_at });
-
-  it("leaves out held channels (over the limit, or failed and retrying), and runs at `also` when that is sooner", async () => {
-    const { db } = liveItemDb({
-      story: { social_at: "2026-06-30T10:00:00Z" },
-      rows: [confirmed("li", "2026-06-30T08:00:00Z"), confirmed("x", "2099-01-02T08:00:00Z")],
-    });
+  it("ignores a channel that's no longer connected, and one a failed run is already retrying", async () => {
+    const { db } = liveItemDb({ rows: [scheduled("gone"), scheduled("li")], channels: ["li", "x"] });
     const enqueue = vi.fn(async () => {});
 
-    // li is due now but held; x is confirmed for 2099
-    expect((await queueSocialPush(db, { story_id: "s1" }, enqueue, caps, { hold: ["li"] }))?.toISOString()).toBe("2099-01-02T08:00:00.000Z");
-
-    const slot = new Date("2098-06-01T09:00:00Z");
-    expect(await queueSocialPush(db, { story_id: "s1" }, enqueue, caps, { hold: ["li"], also: slot })).toEqual(slot);
+    expect(await queueSocialPush(db, { story_id: "s1" }, enqueue, caps, { hold: ["li"] })).toBeNull();
+    expect(await queueSocialPush(db, { story_id: "s1" }, enqueue, caps)).not.toBeNull();
   });
 
-  it("still queues the overflow slot when every channel is held", async () => {
-    const { db } = liveItemDb({ rows: [confirmed("li", "2026-06-30T08:00:00Z")] });
-    const enqueue = vi.fn(async () => {});
-    const slot = new Date("2099-01-01T09:00:00Z");
-
-    expect(await queueSocialPush(db, { story_id: "s1" }, enqueue, caps, { hold: ["li"], also: slot })).toEqual(slot);
-    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, slot);
-  });
-
-  it("never queues a long-published story nobody confirmed", async () => {
+  it("never queues a long-published story nobody scheduled", async () => {
     const { db } = liveItemDb({ story: { published_at: "2020-01-01T09:00:00Z" }, rows: [] });
     const enqueue = vi.fn(async () => {});
 
@@ -218,17 +220,19 @@ describe("confirmSocialPost", () => {
         stories: () => queryBuilder(dbOk(o.story === null ? null : { ...story, ...o.story })),
         story_members: () => queryBuilder(dbOk([])),
         settings: () => queryBuilder(dbOk({ value: { channelIds: o.channels ?? ["li", "x"] } })),
-        social_channel_posts: () => (reads++ < 2 ? rows : readBack),
+        // the records (wording, then confirmChannels' own read) and the upsert, on `rows`; the push's read after that sees `after`
+        social_channel_posts: () => (reads++ < 3 ? rows : readBack),
         jobs: () => jobs,
       }) })),
     };
   }
 
   it("stores what each waiting channel would receive from the saved item, by whom, and queues the post", async () => {
-    const { db: d, rows } = db({ after: [{ channel_id: "li", skip: false, posted_at: null, confirmed_at: NOW.toISOString() }] });
+    const { db: d, rows } = db({ after: [{ channel_id: "li", skip: false, posted_at: null, handed_at: null, send_mode: "schedule", confirmed_at: NOW.toISOString() }] });
     const enqueue = vi.fn(async () => {});
+    const handOff = vi.fn(async () => {});
 
-    const res = await confirmSocialPost(d, { story_id: "s1" }, { only: "all", userId: "admin-1", seen: shown() }, { networks: known, enqueue });
+    const res = await confirmSocialPost(d, { story_id: "s1" }, { only: "all", userId: "admin-1", seen: shown() }, { networks: known, enqueue, handOff });
 
     expect(res).toEqual({ ok: true, confirmed: ["li", "x"] });
     const [upserted, opts] = (rows.upsert as ReturnType<typeof vi.fn>).mock.calls[0] as unknown as [Record<string, unknown>[], unknown];
@@ -237,8 +241,24 @@ describe("confirmSocialPost", () => {
       story_id: "s1", channel_id: "li", confirmed_by: "admin-1", confirmed_image: "c.jpg",
       confirmed_text: expect.stringMatching(/^Acme took the top prize\.\n\nhttps?:\/\/.*\/news\/acme-wins-award$/),
       confirmed_at: expect.any(String),
+      send_mode: "schedule",
     }));
     expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, expect.any(Date));
+    // Live: straight to Buffer, not left for the next job run
+    expect(handOff).toHaveBeenCalledWith({ story_id: "s1" });
+  });
+
+  it("stores Publish now as the choice, and hands nothing over before the item is Live", async () => {
+    const { db: d, rows } = db({ story: { status: "draft", published_at: null } });
+    const handOff = vi.fn(async () => {});
+
+    const res = await confirmSocialPost(d, { story_id: "s1" }, { only: ["li"], userId: "a", seen: shown({ status: "draft", published_at: null }), mode: "now" },
+      { networks: known, enqueue: vi.fn(async () => {}), handOff });
+
+    expect(res).toEqual({ ok: true, confirmed: ["li"] });
+    const [upserted] = (rows.upsert as ReturnType<typeof vi.fn>).mock.calls[0] as unknown as [Record<string, unknown>[]];
+    expect(upserted[0]).toEqual(expect.objectContaining({ channel_id: "li", send_mode: "now" }));
+    expect(handOff).not.toHaveBeenCalled();
   });
 
   it("confirms just the one channel asked for, leaving one already posted alone", async () => {
@@ -258,7 +278,7 @@ describe("confirmSocialPost", () => {
     const { db: d, rows } = db({ story: { social_text: "A newer lead-in." } });
     const enqueue = vi.fn(async () => {});
 
-    const res = await confirmSocialPost(d, { story_id: "s1" }, { only: ["x"], userId: "a", seen: shown() }, { networks: known, enqueue });
+    const res = await confirmSocialPost(d, { story_id: "s1" }, { only: ["x"], userId: "a", seen: shown() }, { networks: known, enqueue, handOff: vi.fn(async () => {}) });
 
     expect(res).toEqual({ ok: false, error: CONFIRM_MESSAGES.changed });
     expect(rows.upsert).not.toHaveBeenCalled();

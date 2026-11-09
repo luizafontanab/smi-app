@@ -9,6 +9,7 @@ import { getLeadGenSource, isProspectAction } from "@/lib/adapters/leadgen";
 import { AD_FORMAT_KEYS, type AdFormat } from "@/lib/advert-formats";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
 import { CONFIRM_MESSAGES, confirmSocialPost, seenFromForm } from "@/lib/social-push";
+import { sendChannelDraft, TOOL_MESSAGES, writeChannelWording } from "@/lib/social-tools";
 import { parseLondonInput } from "@/lib/london-time";
 import type { SocialChannels } from "@/lib/social-channels";
 import { clearChannelDetailsCache } from "@/lib/adapters/social";
@@ -222,21 +223,26 @@ export async function setStoryStatus(formData: FormData) {
   redirect(back);
 }
 
-/* ---------- social posts (issue #43) ---------- */
+/* ---------- social posts (issues #43, #101) ---------- */
 
 /**
- * The editor's Confirm / Confirm all under "Social post": snapshots what each
- * channel would receive from the saved item (lib/social-push
- * confirmSocialPost) and queues the post, refusing if it is no longer what
- * the page showed. The buttons submit their own small form (SocialConfirmForm),
- * not the editor's, and are disabled while the editor has unsaved changes. A
- * failure comes back as ?error=, like every other path here. Not exported:
- * "use server".
+ * The editor's Schedule / Publish now (and "… all") under "Social post":
+ * snapshots what each channel would receive from the saved item (lib/social-push
+ * confirmSocialPost) with the choice, and on a Live item hands it to Buffer
+ * straight away; refuses if it is no longer what the page showed. The button's
+ * value is "<schedule|now>:<channel id|all>". The buttons submit their own
+ * small form (SocialConfirmForm), not the editor's, and are disabled while the
+ * editor has unsaved changes. A failure comes back as ?error=, like every
+ * other path here. Not exported: "use server".
  */
 async function confirmSocial(kind: "story" | "video", formData: FormData) {
   const user = await requireConsole();
   const id = String(formData.get("id") ?? "");
-  const which = String(formData.get("confirm_channel") ?? "");
+  const raw = String(formData.get("confirm_channel") ?? "");
+  const [modePart, ...rest] = raw.split(":");
+  const mode = modePart === "now" ? "now" : "schedule";
+  // A bare channel id (an editor page loaded before #101) still schedules.
+  const which = modePart === "now" || modePart === "schedule" ? rest.join(":") : raw;
   const list = `/console/${kind === "story" ? "stories" : "videos"}`;
   if (!UUID_RE.test(id)) redirect(`${list}?error=${encodeURIComponent(CONFIRM_MESSAGES.notFound)}`);
   const editor = `${list}/${id}`;
@@ -247,7 +253,7 @@ async function confirmSocial(kind: "story" | "video", formData: FormData) {
     res = await confirmSocialPost(
       serviceDb(),
       kind === "story" ? { story_id: id } : { video_id: id },
-      { only: which === "all" ? "all" : [which], userId: user.userId, seen: seenFromForm(formData) },
+      { only: which === "all" ? "all" : [which], userId: user.userId, seen: seenFromForm(formData), mode },
       // the same remembered answer the editor's preview was built from
       { networks: () => cachedChannelNetworks(), enqueue },
     );
@@ -258,7 +264,7 @@ async function confirmSocial(kind: "story" | "video", formData: FormData) {
   revalidatePath(editor);
   revalidatePath("/console");
   if (!res.ok) redirect(`${editor}?error=${encodeURIComponent(res.error)}#social`);
-  redirect(`${editor}?confirmed=${res.confirmed.length}#social`);
+  redirect(`${editor}?confirmed=${res.confirmed.length}${mode === "now" ? "&mode=now" : ""}#social`);
 }
 
 export async function confirmStorySocial(formData: FormData) {
@@ -267,6 +273,50 @@ export async function confirmStorySocial(formData: FormData) {
 
 export async function confirmVideoSocial(formData: FormData) {
   await confirmSocial("video", formData);
+}
+
+/**
+ * The per-channel "Write with Claude" and "Send draft to Buffer" (issue #101,
+ * lib/social-tools). Same small form as Schedule; the button's name says which
+ * tool, its value which channel. Not exported: "use server".
+ */
+async function socialTool(kind: "story" | "video", formData: FormData) {
+  await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  const list = `/console/${kind === "story" ? "stories" : "videos"}`;
+  if (!UUID_RE.test(id)) redirect(`${list}?error=${encodeURIComponent(TOOL_MESSAGES.notFound)}`);
+  const editor = `${list}/${id}`;
+  const target = kind === "story" ? { story_id: id } : { video_id: id };
+  const writeFor = String(formData.get("write_channel") ?? "");
+  const draftFor = String(formData.get("draft_channel") ?? "");
+  const channel = writeFor || draftFor;
+  if (!channel) redirect(`${editor}#social`);
+  const [{ cachedChannelNetworks, getSocialPublisher, isSocialLive }, { getSocialWriter }] = await Promise.all([
+    import("@/lib/adapters/social"),
+    import("@/lib/adapters/social-writer"),
+  ]);
+  let res: Awaited<ReturnType<typeof writeChannelWording>>;
+  try {
+    res = writeFor
+      ? await writeChannelWording(serviceDb(), target, writeFor, { writer: getSocialWriter(), networks: () => cachedChannelNetworks() })
+      : await sendChannelDraft(serviceDb(), target, draftFor, seenFromForm(formData)[draftFor], {
+        publisher: getSocialPublisher(), live: isSocialLive(), networks: () => cachedChannelNetworks(),
+      });
+  } catch (e) {
+    logError({ source: "server", area: "console:social-tool", error: e, context: { kind, id, channel, tool: writeFor ? "write" : "draft" } });
+    res = { ok: false, error: writeFor ? "Claude's wording didn't save. Try again." : "The draft didn't save. Check Buffer before trying again." };
+  }
+  revalidatePath(editor);
+  if (!res.ok) redirect(`${editor}?error=${encodeURIComponent(res.error)}#social`);
+  redirect(`${editor}?${writeFor ? "written" : "drafted"}=${encodeURIComponent(channel)}#social`);
+}
+
+export async function storySocialTool(formData: FormData) {
+  await socialTool("story", formData);
+}
+
+export async function videoSocialTool(formData: FormData) {
+  await socialTool("video", formData);
 }
 
 /* ---------- videos ---------- */

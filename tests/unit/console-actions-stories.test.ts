@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  confirmStorySocial, consoleUploadImage, decideStory, moveStory, pinStory, saveSocialCaps, saveStory, scheduleStory, setStoryStatus,
+  confirmStorySocial, storySocialTool, consoleUploadImage, decideStory, moveStory, pinStory, saveSocialCaps, saveStory, scheduleStory, setStoryStatus,
   saveSiteVariant, clearMyVariantOverride, saveHomeSections, setErrorStatus, saveFeatureFlag,
 } from "@/app/console/actions";
 import { serviceDb } from "@/lib/db/server";
@@ -29,6 +29,12 @@ const { requireConsole, uploadImage, removeMedia, removeMediaIfUnused, enqueue }
 vi.mock("@/lib/auth", () => ({ requireConsole }));
 vi.mock("@/lib/media", () => ({ uploadImage, removeMedia, removeMediaIfUnused }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
+// Issue #101's per-channel tools: what they do is tested in social-tools.test.ts; here, only that the action routes to them.
+const { writeChannelWording, sendChannelDraft } = vi.hoisted(() => ({
+  writeChannelWording: vi.fn(async (): Promise<{ ok: true } | { ok: false; error: string }> => ({ ok: true })),
+  sendChannelDraft: vi.fn(async (): Promise<{ ok: true } | { ok: false; error: string }> => ({ ok: true })),
+}));
+vi.mock("@/lib/social-tools", async (orig) => ({ ...(await orig<typeof import("@/lib/social-tools")>()), writeChannelWording, sendChannelDraft }));
 
 afterEach(() => {
   resetDbServerMocks();
@@ -824,7 +830,7 @@ describe("per-story social posts", () => {
     db({
       stories: () => ((before.update as ReturnType<typeof vi.fn>).mock.calls.length ? after : before),
       settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45, channelIds: ["li"] } })),
-      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, confirmed_at: "2026-07-01T09:00:00Z" }])),
+      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, handed_at: null, send_mode: "schedule", confirmed_at: "2026-07-01T09:00:00Z" }])),
     });
   }
 
@@ -832,24 +838,26 @@ describe("per-story social posts", () => {
     ["Publish now", () => scheduleStory(form({ id: "s1", mode: "now" })).catch(() => {})],
     ["Approve & publish now", () => decideStory(form({ id: "s1", decision: "approve" }))],
     ["dragging to Live", () => moveStory({ id: "s1", to: "published" })],
-  ])("%s queues a confirmed post at the configured delay — the 30 minutes is no longer hard-coded", async (_how, act) => {
+  ])("%s queues the hand-off of a scheduled channel to Buffer straight away (issue #101)", async (_how, act) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     goingLive({});
 
     await act();
 
-    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, at("2026-07-01T12:45:00Z"));
+    // now, not publication + 45 minutes: Buffer is told the time and holds the post until then
+    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, NOW);
   });
 
-  it("approving queues a confirmed post for the story's own time", async () => {
+  it("approving queues the hand-off now even with the story's own later post time", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     goingLive({ social_at: "2026-07-01T16:00:00Z" });
 
     await decideStory(form({ id: "s1", decision: "approve" }));
 
-    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, at("2026-07-01T16:00:00Z"));
+    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, NOW);
+    expect(enqueue).not.toHaveBeenCalledWith("social_push", expect.anything(), at("2026-07-01T16:00:00Z"));
   });
 
   it.each([
@@ -895,20 +903,23 @@ describe("per-story social posts", () => {
     expect(uploadImage).not.toHaveBeenCalled();
   });
 
-  it("saving moves a confirmed post to the edited time", async () => {
+  it("saving a Live story with a channel scheduled but not yet with Buffer queues its hand-off", async () => {
     const jobs = queryBuilder(dbOk(null));
     db({
       stories: () => readThenUpdate({ id: "s1", cover_path: null, member_draft: false, status: "published", social_skip: false, social_at: "2099-01-01T10:00:00Z", published_at: NOW.toISOString() }),
       jobs: () => jobs,
       settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45, channelIds: ["li"] } })),
-      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, confirmed_at: "2026-07-01T09:00:00Z" }])),
+      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, handed_at: null, send_mode: "schedule", confirmed_at: "2026-07-01T09:00:00Z" }])),
     });
 
     await expect(saveStory(form({ id: "s1", title: "T", social_at: "2099-01-01T10:00" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(jobs.delete).toHaveBeenCalled();
-    // through the real job queue, as Confirm does, so a due post runs at once in development too
-    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, new Date("2099-01-01T10:00:00.000Z"));
+    // through the real job queue, as Schedule does, so it runs at once in development too; Buffer is told the 2099 time
+    expect(enqueue).toHaveBeenCalledWith("social_push", { story_id: "s1" }, expect.any(Date));
+    const call = (enqueue.mock.calls as unknown as [string, unknown, Date][]).find(([k]) => k === "social_push");
+    const due = call![2].getTime();
+    expect(due).toBeLessThan(Date.now() + 60_000);
   });
 
   it("saving queues no post for a Live story nobody confirmed", async () => {
@@ -1044,5 +1055,56 @@ describe("confirmStorySocial", () => {
     const from = db({});
     await expect(confirmStorySocial(form({ id: "nope", confirm_channel: "all" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories?error=");
     expect(from).not.toHaveBeenCalled();
+  });
+
+  it("stores Schedule or Publish now from the button, and says which on the way back", async () => {
+    const rows = queryBuilder(dbOk([]));
+    confirmDb(rows);
+
+    await expect(confirmStorySocial(form({ id: ID, confirm_channel: "now:x", ...seen() })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?confirmed=1&mode=now#social`);
+    const [upserted] = (rows.upsert as ReturnType<typeof vi.fn>).mock.calls[0] as unknown as [{ channel_id: string; send_mode: string }[]];
+    expect(upserted).toEqual([expect.objectContaining({ channel_id: "x", send_mode: "now" })]);
+
+    const again = queryBuilder(dbOk([]));
+    confirmDb(again);
+    await expect(confirmStorySocial(form({ id: ID, confirm_channel: "schedule:all", ...seen() })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?confirmed=2#social`);
+    const [both] = (again.upsert as ReturnType<typeof vi.fn>).mock.calls[0] as unknown as [{ send_mode: string }[]];
+    expect(both.map((r) => r.send_mode)).toEqual(["schedule", "schedule"]);
+  });
+});
+
+describe("storySocialTool", () => {
+  const ID = "11111111-1111-4111-8111-111111111111";
+  afterEach(() => {
+    writeChannelWording.mockClear();
+    sendChannelDraft.mockClear();
+  });
+
+  it("Write with Claude goes to the writer for that channel, and comes back saying so", async () => {
+    db({});
+    await expect(storySocialTool(form({ id: ID, write_channel: "li" }))).rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?written=li#social`);
+    expect(writeChannelWording).toHaveBeenCalledWith(expect.anything(), { story_id: ID }, "li", expect.objectContaining({ writer: expect.anything() }));
+    expect(sendChannelDraft).not.toHaveBeenCalled();
+  });
+
+  it("Send draft goes to Buffer with the fingerprint the page showed for that channel", async () => {
+    db({});
+    await expect(storySocialTool(form({ id: ID, draft_channel: "x", "social_seen:x": "fp-x", "social_seen:li": "fp-li" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?drafted=x#social`);
+    expect(sendChannelDraft).toHaveBeenCalledWith(expect.anything(), { story_id: ID }, "x", "fp-x", expect.objectContaining({ live: false }));
+  });
+
+  it("comes back with the tool's message when it couldn't do it", async () => {
+    db({});
+    writeChannelWording.mockResolvedValueOnce({ ok: false, error: "Claude declined to write this post. Write it yourself." });
+    await expect(storySocialTool(form({ id: ID, write_channel: "li" })))
+      .rejects.toThrow(`NEXT_REDIRECT:/console/stories/${ID}?error=${encodeURIComponent("Claude declined to write this post. Write it yourself.")}#social`);
+  });
+
+  it("refuses a malformed id", async () => {
+    await expect(storySocialTool(form({ id: "nope", write_channel: "li" }))).rejects.toThrow("NEXT_REDIRECT:/console/stories?error=");
+    expect(writeChannelWording).not.toHaveBeenCalled();
   });
 });

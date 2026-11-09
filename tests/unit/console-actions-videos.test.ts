@@ -461,7 +461,7 @@ describe("setVideoStatus", () => {
 describe("per-video social posts", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("publishing now queues a confirmed post at the configured delay, not a hard-coded 30 minutes", async () => {
+  it("publishing now queues the hand-off of a scheduled channel to Buffer straight away (issue #101)", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-07-01T12:00:00Z"));
     // as the lifecycle reads it, then — once written Live — as the push reads it back
@@ -470,12 +470,12 @@ describe("per-video social posts", () => {
     db({
       videos: () => ((before.update as ReturnType<typeof vi.fn>).mock.calls.length ? after : before),
       settings: () => queryBuilder(dbOk({ value: { delay_minutes: 45, channelIds: ["li"] } })),
-      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, confirmed_at: "2026-07-01T09:00:00Z" }])),
+      social_channel_posts: () => queryBuilder(dbOk([{ channel_id: "li", skip: false, posted_at: null, handed_at: null, send_mode: "schedule", confirmed_at: "2026-07-01T09:00:00Z" }])),
     });
 
     await expect(scheduleVideo(form({ id: "v1", mode: "now" }))).rejects.toThrow(/^NEXT_REDIRECT:\/console\/videos$/);
 
-    expect(enqueue).toHaveBeenCalledWith("social_push", { video_id: "v1" }, new Date("2026-07-01T12:45:00Z"));
+    expect(enqueue).toHaveBeenCalledWith("social_push", { video_id: "v1" }, new Date("2026-07-01T12:00:00Z"));
   });
 
   it("reads the publish time as UK time", async () => {

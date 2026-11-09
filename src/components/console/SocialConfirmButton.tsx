@@ -15,14 +15,20 @@ import { FORM_PENDING_EVENT } from "@/components/FormPendingSignal";
  */
 export function SocialConfirmButton({
   form,
+  name = "confirm_channel",
   value,
   disabled = false,
+  pendingLabel = "Working…",
   children,
 }: {
-  /** The id of the SocialConfirmForm. */
+  /** The id of the form it submits: SocialConfirmForm, or SocialToolForm for Write with Claude / Send draft. */
   form: string;
-  /** A channel id, or "all". */
+  /** Which action of that form: "confirm_channel" (Schedule / Publish now), "write_channel", "draft_channel". */
+  name?: string;
+  /** "<schedule|now>:<channel id|all>" for confirm_channel; a channel id for the tools. */
   value: string;
+  /** Shown while this button's request runs. */
+  pendingLabel?: string;
   /** Off for another reason, already explained next to it (Buffer couldn't be reached). */
   disabled?: boolean;
   children: ReactNode;
@@ -73,14 +79,14 @@ export function SocialConfirmButton({
         ref={ref}
         type="submit"
         form={form}
-        name="confirm_channel"
+        name={name}
         value={value}
         disabled={dirty || disabled || pending}
         aria-busy={(pending && pressed) || undefined}
         aria-describedby={dirty ? hintId : undefined}
         className="rounded border border-ink px-3 py-1 text-sm font-medium text-ink hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {pending && pressed ? "Confirming…" : children}
+        {pending && pressed ? pendingLabel : children}
       </button>
       {dirty && <span id={hintId} className="text-xs text-graphite">Save first</span>}
     </span>

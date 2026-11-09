@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadSocialPanel, postFingerprint, socialWaiting, storySocialItem } from "@/lib/social-post";
+import { loadSocialPanel, postFingerprint, saveChannelLeads, socialWaiting, storySocialItem } from "@/lib/social-post";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 
 const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
@@ -100,5 +100,34 @@ describe("loadSocialPanel", () => {
     expect(postFingerprint(base)).toBe(postFingerprint({ ...base }));
     expect(postFingerprint(base)).not.toBe(postFingerprint({ ...base, text: "Hello!" }));
     expect(postFingerprint(base)).not.toBe(postFingerprint({ ...base, imagePath: null }));
+  });
+});
+
+describe("saveChannelLeads", () => {
+  const rows = (records: unknown[]) => {
+    const b = queryBuilder(dbOk(records));
+    return { b, db: asDb(mockDb({ from: fromByTable({ social_channel_posts: () => b }) })) };
+  };
+
+  it("saves only the boxes that changed; an edit of Claude's wording stays AI-assisted, an emptied box doesn't", async () => {
+    const { b, db } = rows([
+      { channel_id: "li", skip: false, posted_at: null, lead_text: "Claude's words.", lead_ai: true },
+      { channel_id: "fb", skip: false, posted_at: null, lead_text: "Same.", lead_ai: false },
+      { channel_id: "x", skip: false, posted_at: null, lead_text: "Claude's X words.", lead_ai: true },
+    ]);
+
+    await saveChannelLeads(db, { story_id: "s1" }, new Map([["li", "Claude's words, edited."], ["fb", "Same."], ["x", ""], ["ig", "Typed by hand."]]));
+
+    expect(b.upsert).toHaveBeenCalledWith([
+      expect.objectContaining({ story_id: "s1", channel_id: "li", lead_text: "Claude's words, edited.", lead_ai: true }),
+      expect.objectContaining({ channel_id: "x", lead_text: null, lead_ai: false }),
+      expect.objectContaining({ channel_id: "ig", lead_text: "Typed by hand.", lead_ai: false }),
+    ], { onConflict: "story_id,channel_id" });
+  });
+
+  it("writes nothing when no box changed", async () => {
+    const { b, db } = rows([{ channel_id: "li", skip: false, posted_at: null, lead_text: null, lead_ai: false }]);
+    await saveChannelLeads(db, { story_id: "s1" }, new Map([["li", ""]]));
+    expect(b.upsert).not.toHaveBeenCalled();
   });
 });

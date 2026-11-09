@@ -31,35 +31,49 @@ import { logError } from "../log";
 import { mediaUrl, serviceDb } from "../db/server";
 import { readSocialChannels } from "../social-channels";
 import type { ChannelPost } from "../social-confirm";
+import { composeSocialText, leadMaxFor } from "../social-text";
 
 const BUFFER_API = "https://api.buffer.com";
 
 /**
- * Our own queue owns the timing: every publish path queues `social_push` for
- * the item's own `social_at`, or publication + caps.delay_minutes
- * (`social-push.ts`), and `social_push` defers past the daily cap itself
- * (`jobs.ts`). Buffer must therefore post at the moment we call and add no
- * schedule of its own — a queue-shaped mode would stack Buffer's delay on top
- * of ours, make the time the editor shows untrue, and make the cap accounting
- * fiction (it counts each channel's `social_channel_posts.posted_at`, stamped
- * when this call returns).
- * For the same reason we send no `dueAt`.
+ * How a post goes to Buffer (issue #101, ADR 0003): a draft to check it in
+ * Buffer, handed over for Buffer to send at a time, or sent now. The app
+ * hands a post over only once the item is Live; Buffer then holds it and
+ * sends it at `dueAt`.
  *
- * Both values are in Buffer's reference (developers.buffer.com, read 9 Nov
- * 2026): ShareMode is addToQueue | customScheduled | shareNext | shareNow,
- * SchedulingType is automatic | notification. "automatic" means Buffer's
- * workers send it with nobody having to act. This used to send "custom",
- * which isn't a SchedulingType, so Buffer would have rejected every post.
- * Not yet tried on a live account.
+ * Values from Buffer's reference and examples (developers.buffer.com, read
+ * 9 Nov 2026): ShareMode is addToQueue | customScheduled | shareNext |
+ * shareNow; SchedulingType is automatic | notification ("automatic": Buffer's
+ * workers send it, nobody has to act). A draft is Buffer's own example:
+ * addToQueue with saveToDraft. `dueAt` is ISO 8601 UTC. This used to send
+ * schedulingType "custom", which Buffer would have rejected. Not yet tried on
+ * a live account.
  */
-const SHARE_MODE = "shareNow";
+export type SendAs = { kind: "draft" } | { kind: "scheduled"; dueAt: Date } | { kind: "now" };
+
 const SCHEDULING_TYPE = "automatic";
+
+function modeFor(as: SendAs): { mode: string; dueAt?: string; saveToDraft?: true } {
+  if (as.kind === "draft") return { mode: "addToQueue", saveToDraft: true };
+  if (as.kind === "scheduled") return { mode: "customScheduled", dueAt: as.dueAt.toISOString() };
+  return { mode: "shareNow" };
+}
+
+/** Buffer's reference: deletePost(input: DeletePostInput!) → DeletePostSuccess { id } | VoidMutationError. */
+const DELETE_POST = `
+  mutation DeletePost($input: DeletePostInput!) {
+    deletePost(input: $input) {
+      __typename
+      ... on DeletePostSuccess { id }
+      ... on VoidMutationError { message }
+    }
+  }`;
 
 const CREATE_POST = `
   mutation CreatePost($input: CreatePostInput!) {
     createPost(input: $input) {
       __typename
-      ... on PostActionSuccess { post { id channelService status externalLink } }
+      ... on PostActionSuccess { post { id channelService status externalLink dueAt } }
       ... on MutationError { message }
     }
   }`;
@@ -79,7 +93,10 @@ const GET_POST = `
 export type SentPost = { id: string; service: string; status: string; link: string | null };
 
 export type SocialPost = {
+  /** The item's own lead-in and link: what a channel without its own wording receives, before tags. */
   text: string;
+  /** The item's public URL, for building a channel's own wording into a post. */
+  link?: string;
   imagePath: string | null;
   tagHandles: Record<string, string>; // { linkedin: "company/x", x: "handle", ... }
   /** The other members a story features (Jas 13/10 item 12), after the primary. */
@@ -107,11 +124,14 @@ export interface SocialPublisher {
    */
   channelDetails(): Promise<ChannelDetails>;
   /**
-   * Posts exactly this text and image to one channel — the text an admin
-   * confirmed (issue #43), so nothing here reshapes it. Throws on any failure.
-   * The post is null when Buffer took it without returning one.
+   * Hands exactly this text and image to Buffer for one channel — the text an
+   * admin confirmed (issue #43), so nothing here reshapes it — as a draft, to
+   * send at a time, or now (default). Throws on any failure. The post is null
+   * when Buffer took it without returning one, and always from the stub.
    */
-  publishChannel(send: ChannelPost): Promise<SentPost | null>;
+  publishChannel(send: ChannelPost, as?: SendAs, o?: { aiAssisted?: boolean }): Promise<SentPost | null>;
+  /** Removes a post or draft from Buffer. True once it's gone, including when Buffer no longer had it. */
+  deletePost(id: string): Promise<boolean>;
   /** Re-reads posts by id for their status and live URL. Ids Buffer can't find are left out. */
   postLinks(ids: string[]): Promise<SentPost[]>;
 }
@@ -230,10 +250,18 @@ export function channelText(post: SocialPost, service: string | null): string {
  * A network not known — nothing to look up, or the lookup failed — gets the
  * one X-fitted text every channel falls back to.
  */
-export function channelPosts(post: SocialPost, channelIds: string[], networks: ChannelNetworks): { post: ChannelPost; network: string | null }[] {
+export function channelPosts(
+  post: SocialPost,
+  channelIds: string[],
+  networks: ChannelNetworks,
+  /** Each channel's own wording (issue #101), by channel id; none means the item's lead-in. */
+  leads?: ReadonlyMap<string, string | null>,
+): { post: ChannelPost; network: string | null }[] {
   return channelIds.map((channelId) => {
     const network = networks.kind === "known" ? networks.services.get(channelId) ?? null : null;
-    return { post: { channelId, text: channelText(post, network), imagePath: post.imagePath }, network };
+    const lead = leads?.get(channelId)?.trim();
+    const base = lead && post.link ? { ...post, text: composeSocialText(lead, post.link, leadMaxFor(network)) } : post;
+    return { post: { channelId, text: channelText(base, network), imagePath: post.imagePath }, network };
   });
 }
 
@@ -267,9 +295,14 @@ class LoggingSocialStub implements SocialPublisher {
     return { kind: "unknown", reason: "no-key" };
   }
 
-  async publishChannel(send: ChannelPost): Promise<null> {
-    console.log(`[social] would post to ${send.channelId}: ${send.text.split("\n")[0].slice(0, 80)}`);
+  async publishChannel(send: ChannelPost, as: SendAs = { kind: "now" }): Promise<null> {
+    console.log(`[social] would ${as.kind === "draft" ? "draft" : "post"} to ${send.channelId}: ${send.text.split("\n")[0].slice(0, 80)}`);
     return null;
+  }
+
+  async deletePost(id: string): Promise<boolean> {
+    console.log(`[social] would delete Buffer post ${id}`);
+    return true;
   }
 
   async postLinks(): Promise<SentPost[]> {
@@ -295,6 +328,9 @@ type ChannelInput = {
   schedulingType: string;
   needsApproval: boolean;
   assets: { image: { url: string; metadata: { altText: string } } }[];
+  dueAt?: string;
+  saveToDraft?: true;
+  aiAssisted?: true;
 };
 
 /** Alt text for the post's image: its opening line, which says what the story is. */
@@ -306,19 +342,52 @@ function imageAltText(text: string): string {
 class BufferPublisher implements SocialPublisher {
   constructor(private token: string) {}
 
-  async publishChannel(send: ChannelPost): Promise<SentPost | null> {
+  async publishChannel(send: ChannelPost, as: SendAs = { kind: "now" }, o: { aiAssisted?: boolean } = {}): Promise<SentPost | null> {
     const image = mediaUrl(send.imagePath);
     const input: ChannelInput = {
       text: send.text,
       channelId: send.channelId,
-      mode: SHARE_MODE,
       schedulingType: SCHEDULING_TYPE,
       needsApproval: false,
       assets: image ? [{ image: { url: image, metadata: { altText: imageAltText(send.text) } } }] : [],
+      ...modeFor(as),
+      ...(o.aiAssisted ? { aiAssisted: true as const } : {}),
     };
     const result = await this.publishToChannel(input);
-    if (!result.ok) throw new Error(`[social] Buffer publish failed for channel ${send.channelId} — ${result.error}`);
+    if (!result.ok) throw new Error(`[social] Buffer ${as.kind === "draft" ? "draft" : "publish"} failed for channel ${send.channelId} — ${result.error}`);
+    // A draft must come back as one. Anything else would be queued to go out,
+    // so it's taken straight back out of Buffer.
+    if (as.kind === "draft" && result.post && result.post.status !== "draft") {
+      const removed = await this.deletePost(result.post.id).catch(() => false);
+      throw new Error(
+        `[social] Buffer took the draft for channel ${send.channelId} as "${result.post.status}", not a draft — ` +
+        (removed ? "it was deleted again." : `deleting it failed: delete post ${result.post.id} in Buffer by hand.`),
+      );
+    }
     return result.post;
+  }
+
+  async deletePost(id: string): Promise<boolean> {
+    try {
+      const res = await fetch(BUFFER_API, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: DELETE_POST, variables: { input: { id } } }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as { data?: { deletePost?: { __typename?: string; message?: string } }; errors?: { message?: string }[] };
+      if (body.errors?.length) throw new Error(body.errors.map((e) => e.message ?? "unknown").join("; "));
+      const payload = body.data?.deletePost;
+      if (payload?.__typename === "DeletePostSuccess") return true;
+      // Already gone (deleted in Buffer by hand) is the outcome we wanted. ⚠ The
+      // wording is a guess: Buffer's docs don't say what this error says. A miss
+      // only means a harmless "couldn't delete" is reported.
+      if (payload?.message && /not found|does not exist|no post/i.test(payload.message)) return true;
+      throw new Error(payload?.message ?? `unexpected payload (${payload?.__typename ?? "no data"})`);
+    } catch (e) {
+      logError({ source: "adapter", area: "social:buffer-delete", error: e, context: { post_id: id } });
+      return false;
+    }
   }
 
   /**
