@@ -2717,6 +2717,7 @@ export type Database = {
       stories: {
         Row: {
           body: string
+          closing_links: Json
           cover_focus: Json | null
           cover_path: string | null
           created_at: string
@@ -2746,6 +2747,7 @@ export type Database = {
         }
         Insert: {
           body?: string
+          closing_links?: Json
           cover_focus?: Json | null
           cover_path?: string | null
           created_at?: string
@@ -2774,6 +2776,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          closing_links?: Json
           cover_focus?: Json | null
           cover_path?: string | null
           created_at?: string

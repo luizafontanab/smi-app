@@ -76,7 +76,8 @@ export type SyncResult = {
 /** What /console/crm shows about the most recent run — `settings` key crm_sync_last. */
 export type LastRun = { at: string; preview: boolean } & SyncResult;
 
-export type BiginCompany = { id: string; name: string };
+/** website: Bigin's Website field as typed, when the read returned it (the story closing-link picker). */
+export type BiginCompany = { id: string; name: string; website?: string | null };
 
 /**
  * A Bigin company's story-source address (src/lib/sources/bigin.ts): its News
@@ -511,8 +512,11 @@ class BiginCrmSync implements CrmSync {
   async searchCompanies(q: string): Promise<BiginCompany[]> {
     const word = q.trim();
     if (word.length < 2) return [];
-    const body = await this.request<ListResponse<{ id?: string; Account_Name?: string }>>(`/Accounts/search?word=${encodeURIComponent(word)}`);
-    return (body?.data ?? []).filter((a) => a.id && a.Account_Name).map((a) => ({ id: a.id!, name: a.Account_Name! }));
+    const body = await this.request<ListResponse<{ id?: string; Account_Name?: string; [WEBSITE_FIELD]?: unknown }>>(`/Accounts/search?word=${encodeURIComponent(word)}`);
+    return (body?.data ?? []).filter((a) => a.id && a.Account_Name).map((a) => {
+      const site = a[WEBSITE_FIELD];
+      return { id: a.id!, name: a.Account_Name!, website: typeof site === "string" && site.trim() ? site.trim() : null };
+    });
   }
 
   /**

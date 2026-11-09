@@ -105,6 +105,12 @@
     member's line is added underneath. Is that right, or should other closing links
     be styled as company lines too?
 
+    *Note (7 Nov): the member's line now links to their SMI member page, not their
+    website (Jas 13/10: "if they are member than i prefer to link to their membership
+    page"), and every featured member gets one, website or not. Non-member companies
+    are picked from Bigin in the story editor. An imported story whose own last line
+    links to the member's website keeps that link as written.*
+
 22. **"All-time story views" for a co-featured member.** A member's all-time figure
     now counts every story they've been the main member of, plus every story that
     features them today, published or not, so it no longer drops when a story is

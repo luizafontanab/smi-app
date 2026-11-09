@@ -10,6 +10,12 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-07 — Story titles in capitals, and company links from Bigin
+- A story's title now always shows in capitals, at the same size and colour, on the published page and in both story previews. The title is still saved as you typed it, so search results, link previews and newsletters are unchanged.
+- The company line at the end of a story now links each featured member to their SMI member page instead of their own website. Readers reach the member's website from the Website button on that page. Every featured member now gets a line, including members with no website on file.
+- In the story editor, a new "Company links at the end of the story" section lets you add companies that aren't members. Search for them in Bigin and pick one or several; each gets a line with its name, linking to its website. If Bigin has no website for a company, type one in. You can also add a company by hand.
+- Members editing their own story can't change or remove the company links you added.
+
 ## 2026-11-06 — A second design option, Classic
 - There is now a second complete look for the public website, called Classic, to choose between alongside the current design. It follows SMI's existing website, sheetmetalindustries.com: a grey page with diagonal stripes, white panels, blue links and buttons, orange accents and League Spartan type throughout.
 - Classic is shown on its own preview address, so the two can be compared side by side. Nothing changes here: this site, the console and the member area look the same as before.

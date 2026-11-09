@@ -173,9 +173,9 @@ export async function previewStoryBody(html: string): Promise<string> {
   // Read-only, so an admin viewing as the member (fix-list 94) gets a faithful
   // preview too — the one member action allowed requireMemberView (view-as-wiring test).
   const user = await requireMemberView();
-  // closes with the member's own name + website line, as the published page will
+  // closes with the member's own line (to their member page), as the published page will
   const { data: member } = await serviceDb()
-    .from("members").select("id, name, website, status, archived_at").eq("id", user.memberId).maybeSingle();
+    .from("members").select("id, name, slug, website, status, archived_at").eq("id", user.memberId).maybeSingle();
   const links = member && isMemberLinkable(member) ? companyLinksFor([member], member.id) : [];
   return withCompanyLines(renderableHtml(String(html ?? "").slice(0, 200_000)), links);
 }

@@ -14,6 +14,15 @@ describe("StoryArticle pieces", () => {
     expect(screen.getByText(/13 October 2026/)).toBeInTheDocument();
   });
 
+  // Jas 13/10: the story heading always shows in capitals. Display only: the
+  // stored title keeps its case for search, link previews and the newsletter.
+  it("title: capitals by CSS, text kept as written", () => {
+    render(<StoryHeader story={story} categories={[]} />);
+    const title = screen.getByRole("heading", { level: 1 });
+    expect(title).toHaveClass("uppercase", "text-3xl", "text-ink");
+    expect(title).toHaveTextContent("BLM new show room");
+  });
+
   it("hero renders nothing without a cover", () => {
     const { container } = render(<StoryHero cover={null} focus={null} />);
     expect(container).toBeEmptyDOMElement();

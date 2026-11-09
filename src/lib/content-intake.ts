@@ -17,6 +17,7 @@
  * post links) are read only for the console, so a crafted member post can't
  * set them.
  */
+import { closingLinksFromForm } from "@/lib/company-link";
 import { LIFECYCLE_MESSAGES, type CountedUpdate } from "@/lib/content-lifecycle";
 import type { serviceDb } from "@/lib/db/server";
 import { isEventType } from "@/lib/event-types";
@@ -174,8 +175,18 @@ function parseStory(form: FormData, mode: Mode, opts: { draftAllowed: boolean })
   if ("error" in posts) return { error: posts.error };
   const social = adminSocial(form);
   if ("error" in social) return { error: social.error as string };
+  // Companies picked from Bigin to close the story (Jas 13/10). Console only:
+  // a member save never sends the picker, so it keeps what Jas set.
+  const closing = closingLinksFromForm(form);
+  if ("error" in closing) return { error: closing.error };
   return {
-    values: { ...values, ...ownership, is_member_news: form.get("is_member_news") === "on", ...social },
+    values: {
+      ...values,
+      ...ownership,
+      is_member_news: form.get("is_member_news") === "on",
+      ...social,
+      ...(closing.value ? { closing_links: closing.value } : {}),
+    },
     title,
     tagged: tagged.ids,
     posts: posts.value,

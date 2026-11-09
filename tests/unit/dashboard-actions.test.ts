@@ -810,15 +810,15 @@ describe("member story drafts", () => {
 describe("previewStoryBody", () => {
   it("cleans the body exactly as the published page will", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL ??= "http://127.0.0.1:54321";
-    db({ members: () => queryBuilder(dbOk({ id: "mem1", name: "Acme", website: null, status: "active", archived_at: null })) });
+    db({ members: () => queryBuilder(dbOk(null)) });
     const out = await previewStoryBody(`<p>Hi</p><script>alert(1)</script><img src="https://evil.example/x.jpg">`);
     expect(out).toBe("<p>Hi</p>");
   });
 
-  it("closes with the member's own website line, as the published page will", async () => {
-    db({ members: () => queryBuilder(dbOk({ id: "mem1", name: "Acme", website: "https://acme.example", status: "active", archived_at: null })) });
+  it("closes with the member's own line to their member page, as the published page will", async () => {
+    db({ members: () => queryBuilder(dbOk({ id: "mem1", name: "Acme", slug: "acme", website: null, status: "active", archived_at: null })) });
     expect(await previewStoryBody("<p>Hi</p>")).toBe(
-      `<p>Hi</p><p data-company-link=""><a href="/go/mem1?kind=website" target="_blank" rel="noopener" aria-label="Acme">Acme</a></p>`,
+      `<p>Hi</p><p data-company-link=""><a href="/member/acme" aria-label="Acme">Acme</a></p>`,
     );
   });
 
@@ -831,8 +831,8 @@ describe("previewStoryBody", () => {
   // same preview the member would — closing with the viewed member's line.
   it("previews as the viewed member for an admin viewing as them", async () => {
     requireMemberView.mockResolvedValueOnce({ memberId: "mem2", email: "ops@beta.example", viewingAs: { adminUserId: "a1", adminName: "Jas" } });
-    const from = db({ members: () => queryBuilder(dbOk({ id: "mem2", name: "Beta", website: "https://beta.example", status: "active", archived_at: null })) });
-    expect(await previewStoryBody("<p>Hi</p>")).toContain('href="/go/mem2?kind=website"');
+    const from = db({ members: () => queryBuilder(dbOk({ id: "mem2", name: "Beta", slug: "beta", website: "https://beta.example", status: "active", archived_at: null })) });
+    expect(await previewStoryBody("<p>Hi</p>")).toContain('href="/member/beta"');
     expect(from).toHaveBeenCalledWith("members");
     expect(requireMember).not.toHaveBeenCalled();
   });

@@ -35,7 +35,9 @@ export function StoryHeader({ story, categories }: { story: StoryArticleStory; c
           <Link key={c.slug} href={`/news?category=${c.slug}`} data-part="story-category" className="rounded-full bg-graphite/10 px-3 py-1 text-graphite hover:bg-graphite/20">{c.name}</Link>
         ))}
       </div>
-      <h1 data-part="page-title" className="mt-3 text-3xl font-bold leading-tight text-ink">{story.title}</h1>
+      {/* Jas 13/10: one standard heading, always in capitals. CSS only, so the
+          stored title keeps its case for search, link previews and newsletters. */}
+      <h1 data-part="page-title" className="mt-3 text-3xl font-bold uppercase leading-tight tracking-[0.04em] text-ink">{story.title}</h1>
       <p data-part="story-meta" className="mt-2 text-sm text-graphite">
         Sheet Metal Industries
         {story.published_at && ` · ${new Date(story.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" })}`}

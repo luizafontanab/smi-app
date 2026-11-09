@@ -686,6 +686,23 @@ describe("BiginCrmSync.pull", () => {
   });
 });
 
+// The story closing-link picker (Jas 13/10) fills each row's URL from Bigin's Website.
+describe("searchCompanies", () => {
+  it("returns each company's Website, trimmed, or null when it has none", async () => {
+    liveEnv();
+    const fetchSpy = fetchRoutes((url) =>
+      url.startsWith(`${API}/Accounts/search`)
+        ? json({ data: [{ id: "1", Account_Name: "Acme", Website: " https://acme.test " }, { id: "2", Account_Name: "Blank", Website: null }, { id: "3" }] })
+        : undefined,
+    );
+    expect(await (await freshCrm()).getCrmSync().searchCompanies("ac")).toEqual([
+      { id: "1", name: "Acme", website: "https://acme.test" },
+      { id: "2", name: "Blank", website: null },
+    ]);
+    expect(calls(fetchSpy)).toEqual([`GET ${API}/Accounts/search?word=ac`]);
+  });
+});
+
 describe("listCompanyNewsPages (story sources from Bigin)", () => {
   const accounts = (data: Record<string, unknown>[], info: Record<string, unknown> = { more_records: false }) => json({ data, info });
 

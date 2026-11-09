@@ -147,7 +147,7 @@ export async function storyBySlug(slug: string) {
   const db = publicDb();
   const { data } = await db
     .from("stories")
-    .select(`${STORY_CARD}, member_id, body, social_posts, categories:story_categories(category:categories(slug, name))`)
+    .select(`${STORY_CARD}, member_id, body, social_posts, closing_links, categories:story_categories(category:categories(slug, name))`)
     .eq("status", "published")
     .eq("slug", slug)
     .single();
@@ -186,7 +186,7 @@ export async function storyForPreview(id: string) {
   const { data } = await serviceDb()
     .from("stories")
     // one literal, not a concatenation: supabase-js infers the row type from it
-    .select("id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member_id, body, social_posts, status, source, member_draft, member:members!stories_member_id_fkey(slug, name, logo_path, status, archived_at), categories:story_categories(category:categories(slug, name))")
+    .select("id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member_id, body, social_posts, closing_links, status, source, member_draft, member:members!stories_member_id_fkey(slug, name, logo_path, status, archived_at), categories:story_categories(category:categories(slug, name))")
     .eq("id", id)
     .maybeSingle();
   return data;

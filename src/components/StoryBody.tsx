@@ -25,7 +25,7 @@ export function StoryBody({ segments: given, breaks, className, companyLinks = [
   /** One node per gap; a gap with no node collapses (nothing booked, no placeholder). */
   breaks: React.ReactNode[];
   className?: string;
-  /** Each featured member's name + website link, closing the story (lib/company-link). */
+  /** The closing company lines: featured members to their pages, then companies picked from Bigin (lib/company-link). */
   companyLinks?: readonly CompanyLink[];
 }) {
   // an empty body still closes with the members' lines

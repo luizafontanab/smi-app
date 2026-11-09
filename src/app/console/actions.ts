@@ -2773,7 +2773,7 @@ export async function addContact(formData: FormData) {
 }
 
 /** Console picker: existing Bigin companies matching `q`. Never creates one. */
-export async function searchBiginCompanies(q: string): Promise<{ id: string; name: string }[]> {
+export async function searchBiginCompanies(q: string): Promise<{ id: string; name: string; website?: string | null }[]> {
   await requireConsole();
   const { getCrmSync } = await import("@/lib/adapters/crm");
   try {

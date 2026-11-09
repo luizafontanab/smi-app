@@ -7,7 +7,7 @@ import { isMemberLinkable } from "@/lib/member-visibility";
 import { publishedStories, storyIndustrySlug, storyMembers, type StoryCard } from "@/lib/queries";
 import { splitAtAdBreaks } from "@/lib/sanitize";
 import { taggedMembers } from "@/lib/story-members";
-import { companyLinksFor, type CompanyLink } from "@/lib/company-link";
+import { companyLinksFor, readClosingLinks, type CompanyLink } from "@/lib/company-link";
 
 export type StoryPageData = {
   layout: PageLayout;
@@ -21,8 +21,8 @@ export type StoryPageData = {
   /** Every member the story features that may be linked, primary first (Jas 13/10 item 12). */
   members: { name: string; slug: string; logoUrl: string | null }[];
   /**
-   * A name + website line per featured member with a website, primary first,
-   * closing the story (Luiza, 15 Oct; lib/company-link).
+   * The closing company lines: each featured member's page, primary first, then
+   * the companies picked from Bigin (Luiza, 15 Oct and 7 Nov; lib/company-link).
    */
   companyLinks: CompanyLink[];
 };
@@ -42,7 +42,7 @@ export type StoryPageData = {
  * layout-conditional fetches stay in round two.
  */
 export async function loadStoryPageData(
-  story: { id: string; slug: string; body: string | null; member_id: string | null },
+  story: { id: string; slug: string; body: string | null; member_id: string | null; closing_links?: unknown },
   { preview = false }: { preview?: boolean } = {},
 ): Promise<StoryPageData> {
   const [banners, placeholders, layout, featured] = await Promise.all([
@@ -82,6 +82,6 @@ export async function loadStoryPageData(
     showPlaceholders: placeholders,
     industrySlug,
     members: featured.map((m) => ({ name: m.name, slug: m.slug, logoUrl: mediaUrl(m.logo_path) })),
-    companyLinks: companyLinksFor(featured, story.member_id),
+    companyLinks: companyLinksFor(featured, story.member_id, readClosingLinks(story.closing_links)),
   };
 }

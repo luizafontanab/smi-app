@@ -73,14 +73,20 @@ describe("loadStoryPageData", () => {
     expect(storyMembers).toHaveBeenCalledWith("s1", "m1");
     expect(taggedMembers).not.toHaveBeenCalled();
     expect(data.members).toEqual([{ name: "BLM", slug: "blm", logoUrl: null }]);
-    // the subject member's website closes the story, through the tracked click-through
-    expect(data.companyLinks).toEqual([{ name: "BLM", href: "/go/m1?kind=website", website: "https://blm.example", primary: true }]);
+    // the subject member closes the story with a line to their member page (Jas 13/10, Luiza 7 Nov)
+    expect(data.companyLinks).toEqual([{ name: "BLM", href: "/member/blm", website: "https://blm.example", primary: true, external: false }]);
   });
 
-  it("no company line when the subject member has no website on file", async () => {
+  it("a member with no website on file still gets their member-page line", async () => {
     getLayout.mockResolvedValue(DEFAULT_LAYOUTS.story);
     const data = await loadStoryPageData(story, { preview: true });
-    expect(data.companyLinks).toEqual([]);
+    expect(data.companyLinks.map((l) => l.href)).toEqual(["/member/blm"]);
+  });
+
+  it("companies picked from Bigin follow the member lines", async () => {
+    getLayout.mockResolvedValue(DEFAULT_LAYOUTS.story);
+    const data = await loadStoryPageData({ ...story, closing_links: [{ bigin_id: "b1", name: "Trumpf", url: "https://www.trumpf.com" }] });
+    expect(data.companyLinks.map((l) => [l.name, l.href])).toEqual([["BLM", "/member/blm"], ["Trumpf", "https://www.trumpf.com"]]);
   });
 
   it("preview: the service-role read, with archived members dropped by hand", async () => {

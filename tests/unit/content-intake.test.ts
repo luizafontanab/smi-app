@@ -510,6 +510,12 @@ describe("story", () => {
       expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ message: "Resubmitted their story “Fixed” after changes." }));
     });
 
+    it("a member's save never writes the company links Jas picked, even if the form carries them", async () => {
+      const h = setup({ stories: { row: story() } });
+      await resubmit(h.deps, "story", "x1", form({ title: "t", closing_links_sent: "1", closing_link_name: "Evil", closing_link_url: "https://evil.example" }), MEMBER);
+      expect(h.updates("stories")[0].values).not.toHaveProperty("closing_links");
+    });
+
     it("a new cover frees the one it replaced, through the in-use check", async () => {
       const h = setup({ stories: { row: story() } });
       h.store.mockResolvedValue({ path: "stories/new.jpg" });
@@ -625,6 +631,31 @@ describe("story", () => {
       const h = setup({ stories: { row: { cover_path: null, member_draft: false } }, rpc: async () => dbError("fk violation") });
       await save(h.deps, "story", "s1", form({ title: "T", member_id: A, categories_sent: "1", categories: ["5"] }), ADMIN);
       expect(h.sideInserts("story_categories")).toEqual([[{ story_id: "s1", category_id: 5 }]]);
+    });
+
+    // Jas 13/10: companies picked from Bigin close the story. Only the console writes them.
+    it("stores the picked company links; a form without the picker leaves them alone", async () => {
+      const row = { stories: { row: { cover_path: null, member_draft: false } } };
+      const picked = setup(row);
+      await save(picked.deps, "story", "s1", form({
+        title: "T", closing_links_sent: "1",
+        closing_link_bigin_id: ["b1", ""], closing_link_name: ["Trumpf", "Acme"], closing_link_url: ["trumpf.com", "https://acme.example"],
+      }), ADMIN);
+      expect(picked.updates("stories")[0].values.closing_links).toEqual([
+        { bigin_id: "b1", name: "Trumpf", url: "https://trumpf.com" },
+        { bigin_id: null, name: "Acme", url: "https://acme.example" },
+      ]);
+
+      const untouched = setup(row);
+      await save(untouched.deps, "story", "s1", form({ title: "T" }), ADMIN);
+      expect(untouched.updates("stories")[0].values).not.toHaveProperty("closing_links");
+    });
+
+    it("a picked company without a website is refused before anything is read", async () => {
+      const h = setup();
+      const res = await save(h.deps, "story", "s1", form({ title: "T", closing_links_sent: "1", closing_link_bigin_id: "b1", closing_link_name: "Trumpf", closing_link_url: "" }), ADMIN);
+      expect(res).toEqual(expect.objectContaining({ ok: false, code: "invalid" }));
+      expect(h.db.from).not.toHaveBeenCalled();
     });
 
     it("no box ticked clears the categories; a form without the box leaves them alone", async () => {

@@ -5,14 +5,16 @@ import { mediaUrl, serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { UUID_RE } from "@/lib/validate";
 import { renderableHtml } from "@/lib/sanitize";
-import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, setStoryStatus, confirmStorySocial } from "../../actions";
+import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, searchBiginCompanies, setStoryStatus, confirmStorySocial } from "../../actions";
 import { CoverField } from "@/components/CoverField";
 import { parseFocus } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { InlineStoryPreview } from "@/components/story/InlineStoryPreview";
 import { MemberTagPicker } from "@/components/console/MemberTagPicker";
+import { ClosingLinksPicker } from "@/components/console/ClosingLinksPicker";
+import { getCrmSync } from "@/lib/adapters/crm";
 import { taggedMembers } from "@/lib/story-members";
-import { companyLinksFor } from "@/lib/company-link";
+import { companyLinksFor, readClosingLinks } from "@/lib/company-link";
 import { StorySocialLinks } from "@/components/StorySocialLinks";
 import { socialChannel, STORY_POST_CHANNELS } from "@/lib/social";
 import { isMemberLinkable } from "@/lib/member-visibility";
@@ -207,6 +209,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           selected={[...taggedIds].filter((mid) => mid !== story?.member_id)}
           primarySelectId="member_id"
         />
+        <ClosingLinksPicker initial={readClosingLinks(story?.closing_links)} search={searchBiginCompanies} live={getCrmSync().live} />
         <fieldset>
           <legend className="text-sm font-medium">Categories</legend>
           {/* Unticked boxes send nothing: this tells the save the box was here, so none ticked clears them. */}
@@ -432,7 +435,7 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
                 cover={cover}
                 body={story.body}
                 share={<StorySocialLinks posts={story.social_posts} />}
-                companyLinks={companyLinksFor(tagged.filter((m) => isMemberLinkable(m)), story.member_id)}
+                companyLinks={companyLinksFor(tagged.filter((m) => isMemberLinkable(m)), story.member_id, readClosingLinks(story.closing_links))}
                 members={tagged.filter((m) => isMemberLinkable(m)).map((m) => ({ name: m.name, slug: m.slug, logoUrl: mediaUrl(m.logo_path) }))}
               />
             </div>
