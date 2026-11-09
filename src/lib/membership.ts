@@ -359,15 +359,7 @@ export async function requestCancellation(memberId: string): Promise<MembershipC
     }
   }
 
-  // Only where still unstamped: two cancels racing past the read above must
-  // not both stamp and both email.
-  const { data: stamped } = await db.from("members")
-    .update({ cancel_requested_at: new Date().toISOString() })
-    .eq("id", memberId).is("cancel_requested_at", null)
-    .select("id");
-  if (!stamped?.length) return { ok: true, changed: false };
-  await notifyQuietly(memberId, { kind: "membership_cancel_requested" });
-  return { ok: true, changed: true };
+  return { ok: true, changed: await stampCancellation(memberId) };
 }
 
 /**
@@ -402,15 +394,77 @@ export async function undoCancellation(memberId: string): Promise<MembershipChan
     }
   }
 
-  // Only where still stamped: two undos racing past the read above must not
-  // both clear and both email.
-  const { data: cleared } = await db.from("members")
+  return { ok: true, changed: await clearCancellation(memberId) };
+}
+
+/**
+ * The app-side half of a cancel: stamp the pending cancel and queue the
+ * "cancellation scheduled" email. Shared by `requestCancellation` (after
+ * Stripe agreed) and `syncCancellationFromStripe` (Stripe already did it).
+ *
+ * Only where still unstamped, so two writers racing past their own reads —
+ * a console cancel and Stripe's event about it, or two cancels — can't both
+ * stamp and both email. Returns whether this call stamped.
+ */
+async function stampCancellation(memberId: string): Promise<boolean> {
+  const { data: stamped } = await serviceDb().from("members")
+    .update({ cancel_requested_at: new Date().toISOString() })
+    .eq("id", memberId).is("cancel_requested_at", null)
+    .select("id");
+  if (!stamped?.length) return false;
+  await notifyQuietly(memberId, { kind: "membership_cancel_requested" });
+  return true;
+}
+
+/**
+ * The app-side half of an undo: clear the pending cancel and queue the
+ * "membership will continue" email — only where still stamped, for the same
+ * race reason as `stampCancellation`. Returns whether this call cleared.
+ */
+async function clearCancellation(memberId: string): Promise<boolean> {
+  const { data: cleared } = await serviceDb().from("members")
     .update({ cancel_requested_at: null })
     .eq("id", memberId).not("cancel_requested_at", "is", null)
     .select("id");
-  if (!cleared?.length) return { ok: true, changed: false };
+  if (!cleared?.length) return false;
   await notifyQuietly(memberId, { kind: "membership_cancel_undone" });
-  return { ok: true, changed: true };
+  return true;
+}
+
+/**
+ * Stripe's `customer.subscription.updated` (#93): a cancel or undo done in
+ * Stripe's own dashboard, brought into the app exactly as if the console had
+ * done it — same stamp/clear, same email. It only follows what Stripe reports
+ * and never calls Stripe back.
+ *
+ * - The member is the one whose stored subscription id is this subscription
+ *   (B1.6); any other subscription is ignored.
+ * - Flag true and no cancel pending → stamp + "scheduled" email; flag false
+ *   and a cancel pending → clear + "will continue" email; anything else —
+ *   including the echo of a console cancel/undo, which already updated the
+ *   row, and a repeated event — changes nothing and sends nothing.
+ * - Only an active or grace membership is touched: a lapsed one has already
+ *   ended (`applySubscriptionEnded`), and a late update must not re-stamp it.
+ */
+export async function syncCancellationFromStripe(
+  subscriptionId: string,
+  cancelAtPeriodEnd: boolean,
+): Promise<{ matched: boolean; changed: boolean }> {
+  const { data: member } = await serviceDb()
+    .from("members")
+    .select("id, status, cancel_requested_at")
+    .eq("stripe_subscription_id", subscriptionId)
+    .maybeSingle();
+  if (!member) return { matched: false, changed: false };
+  if (member.status !== "active" && member.status !== "grace") return { matched: true, changed: false };
+
+  if (cancelAtPeriodEnd && !member.cancel_requested_at) {
+    return { matched: true, changed: await stampCancellation(member.id) };
+  }
+  if (!cancelAtPeriodEnd && member.cancel_requested_at) {
+    return { matched: true, changed: await clearCancellation(member.id) };
+  }
+  return { matched: true, changed: false };
 }
 
 /**

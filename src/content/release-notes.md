@@ -21,6 +21,7 @@
 - Undoing keeps the member's card payments renewing as normal, clears the pending cancellation, and emails the member that their membership will continue. The new "Your SMI membership will continue" email can be edited under Email templates.
 - Each undo is listed as "Undid cancellation" under Admin access on the member's page, with your name.
 - If the paid period has already ended, you're told the member needs to rejoin, and nothing changes.
+- A cancel or undo done in Stripe's own dashboard now shows in the console too, and the member gets the same email as if it had been done from the console. Nobody is emailed twice. This starts working once Stripe is set to send subscription updates to the site.
 - Members can no longer cancel for themselves. Settings → Billing has no Cancel membership button; it says "To change or end your membership, get in touch", linking to the Contact page.
 - A member whose cancellation was already scheduled still sees the date and that their membership runs to the end of the paid period, with a link to the Contact page if they change their mind.
 - The Membership Terms now say "You can cancel at any time by contacting us", and the FAQ says to contact SMI to cancel. Any of those sentences you had already reworded in the console are left as you wrote them. The Join page still says "cancel anytime".
