@@ -95,6 +95,11 @@ export function formatLondon(iso: string | Date): string {
   });
 }
 
+/** "5 Nov 2026" in London time; "—" for none. */
+export function formatLondonDate(iso: string | Date | null): string {
+  return iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: ZONE }) : "—";
+}
+
 /**
  * A compact UK time for a status line: "5 Nov 15:00". Given `now`, a time on
  * the same London day is just "15:00" — for something still to come. No

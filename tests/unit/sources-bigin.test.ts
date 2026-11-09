@@ -1,13 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { matchMembers, planBiginSources, syncBiginSources, type LinkedRow, type UrlRow } from "@/lib/sources/bigin";
-import type { CrmSync } from "@/lib/adapters/crm";
-import { serviceDb } from "@/lib/db/server";
-import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
-import { resetDbServerMocks } from "../stubs/db-server";
-
-vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
-
-afterEach(() => resetDbServerMocks());
+import { describe, expect, it } from "vitest";
+import { companyNewsPages, matchMembers, planBiginSources, type LinkedRow, type UrlRow } from "@/lib/sources/bigin";
+import type { CrmCompanyRecord } from "@/lib/adapters/crm";
 
 const company = (id: string, url: string, name = `Co ${id}`, fromWebsite = false) => ({ id, name, url, fromWebsite });
 const linkedRow = (over: Partial<LinkedRow> & { id: string; url: string; bigin_account_id: string }): LinkedRow =>
@@ -85,6 +78,18 @@ describe("planBiginSources", () => {
     const plan = planBiginSources(
       { complete: false, companies: [company("1", "https://a.test/blog")] },
       [linkedRow({ id: "s1", url: "https://a.test/news", bigin_account_id: "1", bigin_only: true })],
+      [],
+    );
+    expect(plan.unlink).toEqual([{ id: "s1", pause: true }]);
+  });
+
+  it("a company an admin just cleared is unlinked even on a partial read; others it didn't see stay (issue #55)", () => {
+    const plan = planBiginSources(
+      { complete: false, companies: [], cleared: ["1"] },
+      [
+        linkedRow({ id: "s1", url: "https://a.test/news", bigin_account_id: "1", bigin_only: true }),
+        linkedRow({ id: "s2", url: "https://b.test/news", bigin_account_id: "2", bigin_only: true }),
+      ],
       [],
     );
     expect(plan.unlink).toEqual([{ id: "s1", pause: true }]);
@@ -235,126 +240,49 @@ describe("matchMembers", () => {
     const result = matchMembers([{ accountId: "1", domain: "acme.test" }], [{ bigin_company_id: "1", member_id: "m-lapsed" }], members);
     expect(result.get("1")).toBe("m-acme");
   });
+
+  it("an admin's override wins over the contacts, the domain and ambiguity, for that company only", () => {
+    const result = matchMembers(
+      [{ accountId: "1", domain: "acme.test" }, { accountId: "2", domain: "twin.test" }, { accountId: "3", domain: "brightsteel.test" }],
+      [{ bigin_company_id: "1", member_id: "m-acme" }],
+      members,
+      new Map([["1", "m-bright"], ["2", "m-picked"]]),
+    );
+    expect(result.get("1")).toBe("m-bright");
+    expect(result.get("2")).toBe("m-picked");
+    expect(result.get("3")).toBe("m-bright");
+  });
 });
 
-describe("syncBiginSources", () => {
-  const crm = (read: Awaited<ReturnType<CrmSync["listCompanyNewsPages"]>>) =>
-    ({ listCompanyNewsPages: vi.fn(async () => read) }) as unknown as CrmSync;
+describe("companyNewsPages (Website fallback, 5 Nov 2026)", () => {
+  const rec = (id: string, newsPageUrl: string | null, website: string | null, name = `Co ${id}`): CrmCompanyRecord =>
+    ({ id, name, newsPageUrl, website, fields: {} });
 
-  it("returns null and touches nothing when Bigin isn't connected", async () => {
-    expect(await syncBiginSources({ crm: crm(null) })).toBeNull();
-    expect(serviceDb).not.toHaveBeenCalled();
-  });
-
-  it("adds the new page, tags its member, and saves the run for the console", async () => {
-    const builders: Record<string, ReturnType<typeof queryBuilder>[]> = {};
-    let sourceReads = 0;
-    const track = (table: string, b: ReturnType<typeof queryBuilder>) => ((builders[table] ??= []).push(b), b);
-    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
-      from: fromByTable({
-        content_sources: () => {
-          sourceReads++;
-          // 1: linked rows, 2: rows by URL, 3: insert, 4: linked rows for members, 5: member update
-          if (sourceReads === 4) return track("content_sources", queryBuilder(dbOk([{ id: "new-1", domain: "acme.test", bigin_account_id: "1", member_id: null }])));
-          if (sourceReads === 3) return track("content_sources", queryBuilder(dbOk([{ id: "new-1" }])));
-          return track("content_sources", queryBuilder(dbOk([])));
-        },
-        contacts: () => track("contacts", queryBuilder(dbOk([]))),
-        members: () => track("members", queryBuilder(dbOk([{ id: "m-acme", website: "acme.test" }]))),
-        settings: () => track("settings", queryBuilder(dbOk(null))),
-      }),
-    })));
-
-    const run = await syncBiginSources({
-      crm: crm({ complete: true, companies: [{ id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false }] }),
-      now: () => new Date("2026-10-27T03:00:00Z"),
+  it("uses the News Page URL, else the Website (marked), and leaves out companies with neither", () => {
+    expect(companyNewsPages({ complete: true, companies: [
+      rec("1", "https://acme.test/news", "https://acme.test", "Acme"),
+      rec("2", null, "https://bright.test", "Bright"),
+      rec("3", null, null, "Nothing"),
+    ] })).toEqual({
+      complete: true,
+      companies: [
+        { id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false },
+        { id: "2", name: "Bright", url: "https://bright.test", fromWebsite: true },
+      ],
     });
-
-    expect(run).toEqual({ at: "2026-10-27T03:00:00.000Z", complete: true, companies: 1, fromWebsite: 0, added: 1, linked: 0, unlinked: 0, paused: 0, skipped: [], membersSet: 1 });
-    const inserted = vi.mocked(builders.content_sources[2].insert as (...a: unknown[]) => unknown).mock.calls[0][0];
-    expect(inserted).toEqual(expect.objectContaining({ url: "https://acme.test/news", bigin_only: true, bigin_account_id: "1", active: true, label: "Acme" }));
-    const memberUpdate = vi.mocked(builders.content_sources[4].update as (...a: unknown[]) => unknown).mock.calls[0][0];
-    expect(memberUpdate).toEqual(expect.objectContaining({ member_id: "m-acme" }));
-    const saved = vi.mocked(builders.settings[0].upsert as (...a: unknown[]) => unknown).mock.calls[0][0];
-    expect(saved).toEqual(expect.objectContaining({ key: "bigin_sources_last" }));
   });
 
-  it("marks a source added from a Website, and counts it in the run", async () => {
-    const builders: Record<string, ReturnType<typeof queryBuilder>[]> = {};
-    const track = (table: string, b: ReturnType<typeof queryBuilder>) => ((builders[table] ??= []).push(b), b);
-    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
-      from: fromByTable({
-        content_sources: () => track("content_sources", queryBuilder(dbOk([]))),
-        contacts: () => track("contacts", queryBuilder(dbOk([]))),
-        members: () => track("members", queryBuilder(dbOk([]))),
-        settings: () => track("settings", queryBuilder(dbOk(null))),
-      }),
-    })));
-
-    const run = await syncBiginSources({
-      crm: crm({ complete: true, companies: [company("1", "https://acme.test/news"), company("2", "https://bright.test", "Bright", true)] }),
-      now: () => new Date("2026-11-05T03:00:00Z"),
-    });
-
-    expect(run).toMatchObject({ companies: 2, fromWebsite: 1 });
-    expect(run).not.toHaveProperty("websiteFallbackWithheld");
-    const inserts = builders.content_sources
-      .flatMap((b) => vi.mocked(b.insert as (...a: unknown[]) => unknown).mock.calls.map((c) => c[0]));
-    expect(inserts).toEqual([
-      expect.objectContaining({ url: "https://acme.test/news", bigin_from_website: false }),
-      expect.objectContaining({ url: "https://bright.test/", bigin_from_website: true }),
-    ]);
+  it("withholds every Website when no company has a News Page URL — most likely a misnamed field", () => {
+    expect(companyNewsPages({ complete: true, companies: [rec("1", null, "https://acme.test"), rec("2", null, "https://bright.test")] }))
+      .toEqual({ complete: true, companies: [], websiteFallbackWithheld: true });
   });
 
-  it("an unlink clears the Website mark along with the company link", async () => {
-    const builders: Record<string, ReturnType<typeof queryBuilder>[]> = {};
-    let sourceReads = 0;
-    const track = (table: string, b: ReturnType<typeof queryBuilder>) => ((builders[table] ??= []).push(b), b);
-    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
-      from: fromByTable({
-        content_sources: () => {
-          sourceReads++;
-          if (sourceReads === 1) {
-            return track("content_sources", queryBuilder(dbOk([
-              { id: "s1", url: "https://acme.test/", bigin_account_id: "1", bigin_account_name: "Co 1", bigin_only: true, bigin_from_website: true },
-            ])));
-          }
-          return track("content_sources", queryBuilder(dbOk([])));
-        },
-        contacts: () => track("contacts", queryBuilder(dbOk([]))),
-        members: () => track("members", queryBuilder(dbOk([]))),
-        settings: () => track("settings", queryBuilder(dbOk(null))),
-      }),
-    })));
-
-    await syncBiginSources({ crm: crm({ complete: true, companies: [company("1", "https://acme.test/news")] }) });
-
-    const updates = builders.content_sources
-      .flatMap((b) => vi.mocked(b.update as (...a: unknown[]) => unknown).mock.calls.map((c) => c[0]));
-    expect(updates).toContainEqual(expect.objectContaining({ bigin_account_id: null, bigin_from_website: false, active: false }));
+  it("withholds them on a partial read too", () => {
+    expect(companyNewsPages({ complete: false, companies: [rec("1", null, "https://acme.test")] }))
+      .toEqual({ complete: false, companies: [], websiteFallbackWithheld: true });
   });
 
-  it("saves the warning when the Website fallback was withheld, and changes nothing", async () => {
-    const builders: Record<string, ReturnType<typeof queryBuilder>[]> = {};
-    const track = (table: string, b: ReturnType<typeof queryBuilder>) => ((builders[table] ??= []).push(b), b);
-    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
-      from: fromByTable({
-        content_sources: () => track("content_sources", queryBuilder(dbOk([
-          { id: "s1", url: "https://a.test/news", bigin_account_id: "1", bigin_account_name: "Co 1", bigin_only: true, bigin_from_website: false },
-        ]))),
-        contacts: () => track("contacts", queryBuilder(dbOk([]))),
-        members: () => track("members", queryBuilder(dbOk([]))),
-        settings: () => track("settings", queryBuilder(dbOk(null))),
-      }),
-    })));
-
-    const run = await syncBiginSources({ crm: crm({ complete: true, companies: [], websiteFallbackWithheld: true }) });
-
-    expect(run).toMatchObject({ companies: 0, added: 0, linked: 0, unlinked: 0, paused: 0, websiteFallbackWithheld: true });
-    const writes = builders.content_sources.flatMap((b) => [
-      ...vi.mocked(b.insert as (...a: unknown[]) => unknown).mock.calls,
-      ...vi.mocked(b.update as (...a: unknown[]) => unknown).mock.calls.filter((c) => "bigin_account_id" in (c[0] as object)),
-    ]);
-    expect(writes).toEqual([]);
+  it("an org with no addresses at all is just empty, not a warning", () => {
+    expect(companyNewsPages({ complete: true, companies: [rec("1", null, null)] })).toEqual({ complete: true, companies: [] });
   });
 });

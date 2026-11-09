@@ -1,4 +1,4 @@
-import { getCrmSync, type CompanyNewsPage, type CrmSync } from "../adapters/crm";
+import type { CompanyNewsPage, CompanyNewsPages, CrmCompanies } from "../adapters/crm";
 import { allRows } from "../db/all-rows";
 import { serviceDb } from "../db/server";
 import type { Json, Tables } from "../db/types";
@@ -23,10 +23,17 @@ import { normalizeSourceUrl } from "./extract";
  *
  * Each linked source is matched to one member — through a contact linked to
  * both the company and a member, else by website domain — so "Start story"
- * on its suggestion opens a draft already tagged. Ambiguous → nobody.
+ * on its suggestion opens a draft already tagged. Ambiguous → nobody. An
+ * admin's member override on the CRM company (crm_companies.member_override_id,
+ * issue #53) beats both, on every sync.
  *
- * The decisions are pure functions (planBiginSources, matchMembers) so they
- * can be tested without a database; syncBiginSources only reads and writes.
+ * Since 6 Nov 2026 (issue #50) the entry point is the company sync
+ * (lib/crm-companies/sync.ts): it stores every CRM company first, then hands
+ * the companies to companyNewsPages and applyBiginSources here.
+ *
+ * The decisions are pure functions (companyNewsPages, planBiginSources,
+ * matchMembers) so they can be tested without a database; applyBiginSources
+ * only reads and writes.
  */
 
 export const BIGIN_SOURCES_LAST_KEY = "bigin_sources_last";
@@ -44,7 +51,7 @@ export type BiginSourcesRun = {
   linked: number;
   unlinked: number;
   paused: number;
-  /** URLs that aren't an address, or claimed by two companies — listed on /console/sources for fixing in Bigin */
+  /** URLs that aren't an address, or claimed by two companies — listed in CRM's Companies box for fixing in Bigin */
   skipped: { company: string; url: string; reason: "invalid_url" | "clash" }[];
   /** sources whose member changed this run */
   membersSet: number;
@@ -72,11 +79,33 @@ export type SourcePlan = {
 };
 
 /**
+ * Each company's story-source address: its News Page URL, else its Website
+ * (`fromWebsite`); a company with neither has no source.
+ *
+ * The Website stands in only in a read where at least one company has a News
+ * Page URL. If none does, the field is most likely misnamed (no field
+ * labelled "News Page URL", or the field list unreadable and NEWS_PAGE_FIELD
+ * wrong, HUMAN-TODO 1.15a, issue #88), and falling back would quietly swap
+ * every news page already linked for a homepage. So that read gives no
+ * companies at all, flagged `websiteFallbackWithheld`, which the source sync
+ * treats as "nothing to change" (planBiginSources' trustAbsence).
+ */
+export function companyNewsPages(read: CrmCompanies): CompanyNewsPages {
+  const companies: CompanyNewsPage[] = [];
+  for (const c of read.companies) {
+    const url = c.newsPageUrl ?? c.website;
+    if (url) companies.push({ id: c.id, name: c.name, url, fromWebsite: !c.newsPageUrl });
+  }
+  if (companies.length === 0 || companies.some((c) => !c.fromWebsite)) return { complete: read.complete, companies };
+  return { complete: read.complete, companies: [], websiteFallbackWithheld: true };
+}
+
+/**
  * What the sync should do. `linked` is every row currently linked to a
  * company; `byUrl` the existing rows for the URLs Bigin lists (linked or not).
  */
 export function planBiginSources(
-  read: { complete: boolean; companies: CompanyNewsPage[] },
+  read: { complete: boolean; companies: CompanyNewsPage[]; cleared?: string[] },
   linked: readonly LinkedRow[],
   byUrl: readonly UrlRow[],
 ): SourcePlan {
@@ -121,6 +150,11 @@ export function planBiginSources(
   if (trustAbsence) {
     for (const row of linkedByAccount.values()) if (!wanted.has(row.bigin_account_id!)) unlink(row);
   }
+  // A company known to have no address now (an admin cleared it), partial read or not.
+  for (const id of read.cleared ?? []) {
+    const row = linkedByAccount.get(id);
+    if (row && !wanted.has(id)) unlink(row);
+  }
   // A company whose URL changed — that much a partial read does know.
   for (const [accountId, w] of wanted) {
     const current = linkedByAccount.get(accountId);
@@ -161,15 +195,19 @@ export function planBiginSources(
 }
 
 /**
- * The member each company's source belongs to. A contact linked to both the
- * company and an eligible member wins; with no such contact, a single
- * eligible member whose website is on the source's domain. Two candidates
- * either way → null: a wrong tag is worse than none.
+ * The member each company's source belongs to. An admin's override for the
+ * company (`overrides`, by Bigin id — issue #53) wins outright: it was chosen
+ * by hand, so it isn't second-guessed by the eligibility rule below.
+ * Otherwise a contact linked to both the company and an eligible member wins;
+ * with no such contact, a single eligible member whose website is on the
+ * source's domain. Two candidates either way → null: a wrong tag is worse
+ * than none.
  */
 export function matchMembers(
   sources: readonly { accountId: string; domain: string }[],
   contacts: readonly { bigin_company_id: string | null; member_id: string | null }[],
   members: readonly { id: string; website: string | null }[],
+  overrides: ReadonlyMap<string, string> = new Map(),
 ): Map<string, string | null> {
   const eligible = new Set(members.map((m) => m.id));
   const byCompany = new Map<string, Set<string>>();
@@ -190,6 +228,11 @@ export function matchMembers(
   const only = (set: Set<string> | undefined) => (set?.size === 1 ? [...set][0] : null);
   const result = new Map<string, string | null>();
   for (const s of sources) {
+    const chosen = overrides.get(s.accountId);
+    if (chosen) {
+      result.set(s.accountId, chosen);
+      continue;
+    }
     const viaContacts = byCompany.get(s.accountId);
     result.set(s.accountId, viaContacts?.size ? only(viaContacts) : only(byDomain.get(s.domain)));
   }
@@ -204,13 +247,17 @@ function chunks<T>(items: readonly T[]): T[][] {
 }
 
 /**
- * The `source_bigin_sync` job and the console's "Sync from Bigin now".
- * Null when Bigin isn't connected. Throws on a database error; the run's
- * counts are saved to settings.bigin_sources_last for the console.
+ * Story sources from one read of Bigin's companies (already turned into
+ * addresses by companyNewsPages). Called by the company sync
+ * (lib/crm-companies/sync.ts) — the `source_bigin_sync` job and "Sync
+ * companies" on CRM. Throws on a database error; the run's counts are saved to settings.bigin_sources_last for the
+ * console — unless `record: false`, for a one-company update (a News Page
+ * URL edit, lib/crm-companies/news-page.ts) that isn't a sync run.
  */
-export async function syncBiginSources({ crm = getCrmSync(), now = () => new Date() }: { crm?: CrmSync; now?: () => Date } = {}): Promise<BiginSourcesRun | null> {
-  const read = await crm.listCompanyNewsPages();
-  if (!read) return null;
+export async function applyBiginSources(
+  read: CompanyNewsPages,
+  { now = () => new Date(), record = true }: { now?: () => Date; record?: boolean } = {},
+): Promise<BiginSourcesRun> {
   const db = serviceDb();
   const fail = (what: string, error: { message: string }) => { throw new Error(`source_bigin_sync: ${what}: ${error.message}`); };
 
@@ -274,13 +321,18 @@ export async function syncBiginSources({ crm = getCrmSync(), now = () => new Dat
     skipped: plan.skipped.slice(0, 50).map((x) => ({ company: x.name || x.accountId, url: x.url, reason: x.reason })),
     membersSet,
   };
+  if (!record) return run;
   const { error: saveError } = await db.from("settings").upsert({ key: BIGIN_SOURCES_LAST_KEY, value: run as unknown as Json });
   if (saveError) fail("saving the run", saveError);
   return run;
 }
 
-/** Re-match every Bigin-linked source to its member; returns how many changed. */
-async function refreshMembers(db: ReturnType<typeof serviceDb>): Promise<number> {
+/**
+ * Re-match every Bigin-linked source to its member, the admin's override
+ * winning; returns how many changed. Run by each source sync, and straight
+ * after the member override is set or cleared in CRM (console/crm/actions).
+ */
+export async function refreshMembers(db: ReturnType<typeof serviceDb> = serviceDb()): Promise<number> {
   const { data: sources, error } = await db.from("content_sources")
     .select("id, domain, bigin_account_id, member_id")
     .not("bigin_account_id", "is", null);
@@ -289,16 +341,20 @@ async function refreshMembers(db: ReturnType<typeof serviceDb>): Promise<number>
 
   const accountIds = sources.map((s) => s.bigin_account_id!);
   const contacts: { bigin_company_id: string | null; member_id: string | null }[] = [];
+  const overrides = new Map<string, string>();
   for (const part of chunks(accountIds)) {
     const { data, error: e } = await db.from("contacts").select("bigin_company_id, member_id").in("bigin_company_id", part).not("member_id", "is", null);
     if (e) throw new Error(`source_bigin_sync: reading contacts: ${e.message}`);
     contacts.push(...(data ?? []));
+    const { data: chosen, error: oe } = await db.from("crm_companies").select("bigin_id, member_override_id").in("bigin_id", part).not("member_override_id", "is", null);
+    if (oe) throw new Error(`source_bigin_sync: reading member overrides: ${oe.message}`);
+    for (const c of chosen ?? []) if (c.member_override_id) overrides.set(c.bigin_id, c.member_override_id);
   }
   // Only members with a live page: the same rule a story's byline uses (member-visibility).
   const members = await allRows<{ id: string; website: string | null }>((from, to) =>
     db.from("members").select("id, website").is("archived_at", null).in("status", [...PUBLIC_MEMBER_STATUSES]).order("id").range(from, to));
 
-  const matched = matchMembers(sources.map((s) => ({ accountId: s.bigin_account_id!, domain: s.domain })), contacts, members);
+  const matched = matchMembers(sources.map((s) => ({ accountId: s.bigin_account_id!, domain: s.domain })), contacts, members, overrides);
   let changed = 0;
   for (const s of sources) {
     const memberId = matched.get(s.bigin_account_id!) ?? null;

@@ -541,6 +541,45 @@ async function main() {
     };
   })));
 
+  console.log("— CRM companies (Bigin mirror)");
+  // Every Bigin company the contacts above link to, plus the one the seeded
+  // story source is linked to, so CRM's Companies box shows linked-contact
+  // counts, a matched member, and each address state its filters pick out:
+  // a News Page URL, a Website standing in, and no address at all. The first
+  // has its member chosen by hand (#53), the one its seeded source is tagged
+  // with, so the box shows both "chosen by hand" and "matched automatically".
+  const { data: linkedContacts } = await must("contacts (companies)", db.from("contacts")
+    .select("bigin_company_id, bigin_company_name").not("bigin_company_id", "is", null));
+  const seen = new Set<string>(["seed-bigin-company-1"]);
+  // The first company has its member chosen by hand (#53) and a News Page URL
+  // edit not yet accepted by Bigin ("push pending" in CRM's Companies box, #55).
+  const crmCompanies: { bigin_id: string; name: string; website: string | null; news_page_url: string | null; deleted_in_bigin_at?: string; member_override_id?: string | null; news_page_pending_at?: string }[] = [
+    { bigin_id: "seed-bigin-company-1", name: "Example Fabrication Ltd", website: "https://example-fabrication.test", news_page_url: "https://example-fabrication.test/news/", member_override_id: activeMembers[0]?.id ?? null, news_page_pending_at: new Date().toISOString() },
+  ];
+  for (const c of linkedContacts ?? []) {
+    if (!c.bigin_company_id || seen.has(c.bigin_company_id)) continue;
+    seen.add(c.bigin_company_id);
+    const n = crmCompanies.length;
+    const domain = `${(c.bigin_company_name ?? "company").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.test`;
+    crmCompanies.push({
+      bigin_id: c.bigin_company_id, name: c.bigin_company_name ?? "",
+      website: n % 3 === 2 ? null : `https://${domain}`,
+      news_page_url: n % 3 === 0 ? `https://${domain}/news/` : null,
+    });
+  }
+  // One company deleted in Bigin since (#52): kept, marked, and shown only
+  // under the box's "Deleted in Bigin" filter. No source links to it.
+  crmCompanies.push({ bigin_id: "seed-bigin-company-deleted", name: "Former Plating Co", website: "https://former-plating.test", news_page_url: null, deleted_in_bigin_at: new Date(Date.now() - 3 * 864e5).toISOString() });
+  // The JSON copy of every Bigin field (#54) the Companies box's detail view
+  // lists, as a sync would store it: the known fields, a phone and one custom field.
+  await must("crm_companies", db.from("crm_companies").insert(crmCompanies.map((c, i) => ({
+    ...c,
+    fields: {
+      id: c.bigin_id, Account_Name: c.name, Website: c.website, News_Page_URL: c.news_page_url,
+      Phone: i % 2 ? null : `01234 5678${String(i).padStart(2, "0")}`, Machine_Brands: i % 2 ? null : "Trumpf, Amada",
+    },
+  }))));
+
   console.log("— analytics (~90 days) + engagement audit + rollups");
   const { data: allPub } = await db.from("stories").select("id, member_id, slug").eq("status", "published");
   const { data: allAds } = await db.from("adverts").select("id").eq("format", "banner");

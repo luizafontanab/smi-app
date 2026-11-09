@@ -61,18 +61,22 @@ Each service is independent; do them in any order.
 
 ### CRM — Bigin
 
-- [ ] **1.15a — After the first Bigin sync, check the "From Bigin" box on
-      `/console/sources`.** The story crawler reads the Companies field "News
-      Page URL" as `News_Page_URL` (`NEWS_PAGE_FIELD` in
-      `src/lib/adapters/crm.ts`), and falls back to the company's Website when
-      it's blank. Bigin shows no API names in its settings (checked 5 Nov), so
-      the name can only be confirmed by a sync. If the box shows the red "No
-      Bigin company came back with a News Page URL" warning, the name is
-      probably wrong: nothing is added or paused, and the real name has to be
-      found through Bigin's field API, which needs a settings-read scope added
-      to the token. Otherwise, read the count "using their Website": every one
-      is a homepage checked daily, so expect more suggestions than from news
-      pages alone (3.7 covers the first-week review).
+- [ ] **1.15a — After the first Bigin sync, check the "Story sources from
+      Bigin" panel in CRM's Companies box (`/console/crm#companies`; it moved
+      there from Story sources on 6 Nov).** The company sync now finds the Companies field
+      "News Page URL" by its label in Bigin's field list (#54), so its API name
+      no longer has to be guessed — **once the token can read that list
+      (1.15b)**. Until then it reads `News_Page_URL` (`NEWS_PAGE_FIELD` in
+      `src/lib/adapters/crm.ts`), and the Companies box on `/console/crm` says
+      only the known fields are kept. After 1.15b, that box says nothing about
+      fields if the label was found, or names the field it fell back to if not.
+      If the panel shows the red "No Bigin company came back with a News
+      Page URL" warning, check the label in Bigin reads exactly "News Page URL":
+      nothing is added or paused until it does. Otherwise, read the count
+      "using their Website": every one is a homepage checked daily, so expect
+      more suggestions than from news pages alone (3.7 covers the first-week
+      review).
+- **1.15b — Bigin token: two more scopes for CRM Companies.** Moved to [#88](https://github.com/luizafontanab/smi-app/issues/88) on 7 Nov 2026.
 
 ### Social — Buffer
 
@@ -304,6 +308,7 @@ through Proof and approval first.
       - A PUT to a deleted contact fails safely.
       - Deleting a race-created duplicate (`?wf_trigger=false`) works with the
         granted scopes.
+      - **Companies (spec #49).** Moved to [#88](https://github.com/luizafontanab/smi-app/issues/88) on 7 Nov 2026.
 - [ ] **3.4 — First Bigin import, with Jas, before the next newsletter.** In
       `/console/crm`, click **Preview import**, read the counts, then **Run first
       import**. Imported contacts are subscribed unless they opted out in Bigin,
