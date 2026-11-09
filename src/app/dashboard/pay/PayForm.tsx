@@ -32,8 +32,8 @@ export function PayForm({ embed = null }: { embed?: EmbedConfig | null }) {
 
 /**
  * GAPS B1.7 / V13: Stripe's embedded Checkout in a modal, so the member never
- * leaves the site. Platform <dialog>, like CancelMembershipDialog: focus trap,
- * Escape and an inert background for free. A click on the backdrop does NOT
+ * leaves the site. Platform <dialog>, like DeleteMemberDialog in the console:
+ * focus trap, Escape and an inert background for free. A click on the backdrop does NOT
  * close it, so a stray click can't throw away half-entered card details.
  * Closing unmounts the form (Stripe's instance is destroyed with it). Once
  * the payment goes through, Stripe sends the whole page to the return URL.

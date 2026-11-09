@@ -10,13 +10,16 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
-## 2026-11-08 — Cancel a membership from the console
+## 2026-11-08 — Cancel a membership from the console; members ask SMI to cancel
 - A member's console page has a new Cancel membership section, for carrying out a cancel the member asked SMI for. Tick the box and click Cancel membership.
 - Cancelling stops the member's card payments renewing at the end of the period they've paid for, never immediately. Their page and submissions carry on until then.
 - The member is emailed that their cancellation is scheduled, and the section then shows "Cancellation scheduled on" the date, in place of the button.
 - Each cancel is listed as "Cancelled membership" under Admin access on the member's page, with your name.
 - If the member's subscription was set up outside this site, you're told to cancel it in Stripe instead, and nothing changes. If Stripe refuses, its own message is shown.
 - Members who pay by invoice see "Invoice billing: stop raising invoices by hand" instead of the button. Draft and lapsed members have no section.
+- Members can no longer cancel for themselves. Settings → Billing has no Cancel membership button; it says "To change or end your membership, get in touch", linking to the Contact page.
+- A member whose cancellation was already scheduled still sees the date and that their membership runs to the end of the paid period, with a link to the Contact page if they change their mind.
+- The Membership Terms now say "You can cancel at any time by contacting us", and the FAQ says to contact SMI to cancel. Any of those sentences you had already reworded in the console are left as you wrote them. The Join page still says "cancel anytime".
 
 ## 2026-11-07 — Story titles in capitals, and company links from Bigin
 - A story's title now always shows in capitals, at the same size and colour, on the published page and in both story previews. The title is still saved as you typed it, so search results, link previews and newsletters are unchanged.

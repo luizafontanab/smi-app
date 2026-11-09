@@ -49,3 +49,20 @@ it("Policies and Membership terms open collapsible, like the FAQ", () => {
   expect(page("policies").collapsible).toBe(true);
   expect(page("membership-terms").collapsible).toBe(true);
 });
+
+// #91 (Jas item 24): members ask SMI to cancel, so nothing published may point
+// them at a cancel button in the member area.
+describe("cancelling goes through SMI", () => {
+  it("the membership terms say to cancel by contacting us", () => {
+    const terms = page("membership-terms").body;
+    expect(terms).toContain("You can cancel at any time by contacting us. Cancelling stops the next payment;");
+    expect(terms).not.toContain("from your member area");
+  });
+
+  it("the FAQ sends cancelling to SMI and keeps self-service for the rest", () => {
+    const faq = page("faq").body;
+    expect(faq).toContain("update your details, change your password or view invoices. To cancel, contact us.");
+    expect(faq).not.toContain("view invoices, or cancel.");
+    expect(faq).not.toContain("or cancel from the same page");
+  });
+});

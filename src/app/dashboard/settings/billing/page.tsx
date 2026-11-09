@@ -4,16 +4,13 @@ import { signedInvoiceUrl } from "@/lib/invoice-pdf";
 import Link from "next/link";
 import { advertPaymentsMode } from "@/lib/adapters/advert-checkout";
 import { isPayableOnline } from "@/lib/invoicing";
-import { cancelMembership } from "../../actions";
 import { SettingsTabs } from "../SettingsTabs";
-import { CancelMembershipDialog } from "./CancelMembershipDialog";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Billing" };
 
-export default async function BillingSettingsPage(props: PageProps<"/dashboard/settings/billing">) {
+export default async function BillingSettingsPage() {
   const user = await requireMemberView();
-  const sp = await props.searchParams;
   const db = serviceDb();
   const [{ data: invoices }, { data: member }] = await Promise.all([
     db.from("invoices").select("id, number, description, amount_pennies, issued_on, status, pdf_path").eq("member_id", user.memberId).order("issued_on", { ascending: false }),
@@ -41,12 +38,6 @@ export default async function BillingSettingsPage(props: PageProps<"/dashboard/s
         Advertising invoices are listed here too, and can be paid by card.
       </p>
       <SettingsTabs active="billing" />
-      {sp.cancelled === "1" && (
-        <p className="mt-3 rounded bg-brand/10 p-2 text-sm text-ink">Cancellation scheduled — see below.</p>
-      )}
-      {typeof sp.cerror === "string" && (
-        <p className="mt-3 rounded bg-danger/10 p-2 text-sm text-danger">{sp.cerror}</p>
-      )}
 
       <section className="mt-5 rounded-xl bg-white p-5 shadow-sm">
         <h2 className="font-bold text-ink">Invoices</h2>
@@ -91,24 +82,23 @@ export default async function BillingSettingsPage(props: PageProps<"/dashboard/s
         </div>
       </section>
 
+      {/* #91 (Jas item 24): members can't cancel for themselves — they ask SMI,
+          and an admin cancels from the console. */}
       {member?.status === "active" && (
-        <section className="mt-5 rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="font-bold text-ink">Cancel membership</h2>
-          {member.cancel_requested_at ? (
+        member.cancel_requested_at ? (
+          <section className="mt-5 rounded-xl bg-white p-5 shadow-sm">
+            <h2 className="font-bold text-ink">Cancellation</h2>
             <p className="mt-2 text-sm text-graphite">
               Cancellation requested on {member.cancel_requested_at.slice(0, 10)} — your membership stays active for
-              the rest of the current billing period and won&apos;t renew after that. Contact SMI if you&apos;ve
-              changed your mind.
+              the rest of the current billing period and won&apos;t renew after that.{" "}
+              <Link href="/contact" className="underline">Contact SMI</Link> if you&apos;ve changed your mind.
             </p>
-          ) : (
-            <>
-              <p className="mt-1 text-sm text-graphite">
-                You&apos;ll keep access through the end of your current billing period — nothing is cut off immediately.
-              </p>
-              <CancelMembershipDialog action={cancelMembership} joinedAt={member?.joined_at ?? null} />
-            </>
-          )}
-        </section>
+          </section>
+        ) : (
+          <p className="mt-5 text-sm text-graphite">
+            To change or end your membership, <Link href="/contact" className="underline">get in touch</Link>.
+          </p>
+        )
       )}
     </div>
   );

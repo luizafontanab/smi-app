@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  cancelMembership, deleteStoryDraft, editEvent, previewStoryBody, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
+  deleteStoryDraft, editEvent, previewStoryBody, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
   memberUploadImage, memberUploadVideoImage, proposeOwnArtworkSwap, renewAdvertBooking, requestVisibility,
   resubmitAdvert, savePrefs, submitAdvert, submitEvent, submitMachine, submitProfileEdit, submitStory, submitVideo,
   markProspectFollowUp, unmarkProspect,
@@ -10,7 +10,6 @@ import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder, type DbResult } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
 import { revalidatePath } from "next/cache";
-import type { MembershipChangeResult } from "@/lib/membership";
 import type { CurrentUser, MemberView } from "@/lib/auth";
 import { IMAGE_TOO_LARGE, UPLOAD_EXPIRED, UploadRejectedError } from "@/lib/upload-limits";
 import { MEMBER_CHANGED_ERROR, STORY_CHANGED_ERROR } from "@/lib/member-content";
@@ -55,16 +54,6 @@ const { getLeadGenSource } = vi.hoisted(() => ({ getLeadGenSource: vi.fn() }));
 vi.mock("@/lib/adapters/leadgen", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getLeadGenSource,
-}));
-
-// cancelMembership loads @/lib/membership dynamically; keep the module's other
-// exports real so anything else in this graph (statuses, slugify) still works.
-const { requestCancellation } = vi.hoisted(() => ({
-  requestCancellation: vi.fn<(memberId: string) => Promise<MembershipChangeResult>>(),
-}));
-vi.mock("@/lib/membership", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  requestCancellation,
 }));
 
 afterEach(() => {
@@ -528,23 +517,6 @@ describe("submitProfileEdit", () => {
     await expect(submitProfileEdit(form({ name: "Acme", address: "1 Old Rd" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(geocodeAddress).not.toHaveBeenCalled();
-  });
-});
-
-describe("cancelMembership", () => {
-  it("requests cancellation for the signed-in member and confirms", async () => {
-    requestCancellation.mockResolvedValue({ ok: true, changed: true });
-
-    await expect(cancelMembership()).rejects.toThrow("NEXT_REDIRECT:/dashboard/settings/billing?cancelled=1");
-
-    expect(requestCancellation).toHaveBeenCalledWith("mem1");
-    expect(revalidatePath).toHaveBeenCalledWith("/dashboard/settings/billing");
-  });
-
-  it("surfaces a failed cancellation via the cerror param", async () => {
-    requestCancellation.mockResolvedValue({ ok: false, reason: "no_subscription" });
-
-    await expect(cancelMembership()).rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/settings\/billing\?cerror=.*contact%20SMI%20to%20cancel/);
   });
 });
 
