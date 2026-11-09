@@ -2,12 +2,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { CancelMembershipSection } from "@/app/console/members/[id]/CancelMembershipSection";
+import type { MemberStatus } from "@/lib/membership";
 
 /** The console member page's Cancel membership section: which action it offers (#90, #92). */
 afterEach(() => cleanup());
 
 const noop = async () => {};
-const card = { id: "m1", status: "active", billing_mode: "card", cancel_requested_at: null as string | null };
+const card = { id: "m1", status: "active" as MemberStatus, billing_mode: "card", cancel_requested_at: null as string | null };
 const show = (member: typeof card) => render(<CancelMembershipSection member={member} cancel={noop} undo={noop} />);
 
 describe("CancelMembershipSection", () => {

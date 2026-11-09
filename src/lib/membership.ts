@@ -5,7 +5,7 @@ import { notifyConsole } from "./notify-admin";
 import { invoiceNumber } from "./invoicing";
 import { websiteUrl } from "./website-url";
 import { graceUntilFrom } from "./grace-period";
-import type { CheckoutResult } from "./adapters/payments";
+import type { CheckoutResult, Payments, RenewalChangeResult } from "./adapters/payments";
 
 export const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
@@ -299,9 +299,11 @@ export type MembershipChangeFailure =
   | { ok: false; reason: "stripe_rejected"; detail: string };
 
 /**
- * The result of a cancel and of its undo (#92). `changed` is false when the
- * membership was already in the asked-for state, so a repeat is harmless and a
- * caller can skip its audit row.
+ * The result of a cancel and of its undo (#92). `changed` is false only when
+ * the membership was already in the asked-for state and nothing was done, so
+ * a repeat is harmless and a caller can skip its audit row. When payments are
+ * live and Stripe agreed, `changed` is true even if Stripe's own webhook got
+ * to the row first: this call is what changed the subscription.
  */
 export type MembershipChangeResult = { ok: true; changed: boolean } | MembershipChangeFailure;
 
@@ -317,10 +319,15 @@ export type MembershipChangeResult = { ok: true; changed: boolean } | Membership
  */
 export type MembershipCancelState = "none" | "invoice" | "pending" | "cancellable";
 
+/** A membership still running — active or in grace — so its renewal can still be changed. */
+function isRunning(status: MemberStatus): boolean {
+  return status === "active" || status === "grace";
+}
+
 export function membershipCancelState(member: {
-  status: string; billing_mode: string; cancel_requested_at: string | null;
+  status: MemberStatus; billing_mode: string; cancel_requested_at: string | null;
 }): MembershipCancelState {
-  if (member.status !== "active" && member.status !== "grace") return "none";
+  if (!isRunning(member.status)) return "none";
   if (member.billing_mode === "invoice") return "invoice";
   return member.cancel_requested_at ? "pending" : "cancellable";
 }
@@ -336,30 +343,11 @@ export function membershipCancelState(member: {
  * Stamps once: a repeat finds the cancel pending and changes nothing.
  */
 export async function requestCancellation(memberId: string): Promise<MembershipChangeResult> {
-  const db = serviceDb();
-  const { data: member } = await db
-    .from("members")
-    .select("status, stripe_subscription_id, cancel_requested_at")
-    .eq("id", memberId)
-    .maybeSingle();
-  if (!member) return { ok: false, reason: "not_found" };
-  if (member.cancel_requested_at) return { ok: true, changed: false }; // already pending — idempotent
-  if (member.status === "lapsed") return { ok: false, reason: "period_ended" };
-
-  const { paymentsAreLive, getPayments } = await import("./adapters/payments");
-  if (paymentsAreLive()) {
-    // B1.6: only ever act on the subscription id this app itself wrote —
-    // never derive or guess one another way.
-    if (!member.stripe_subscription_id) return { ok: false, reason: "no_subscription" };
-    const result = await getPayments().cancelSubscription(member.stripe_subscription_id);
-    if (!result.ok) {
-      return result.reason === "period_ended"
-        ? { ok: false, reason: "period_ended" }
-        : { ok: false, reason: "stripe_rejected", detail: result.error };
-    }
-  }
-
-  return { ok: true, changed: await stampCancellation(memberId) };
+  return changeRenewal(memberId, {
+    alreadyDone: (pending) => pending,
+    onStripe: (payments, subscriptionId) => payments.cancelSubscription(subscriptionId),
+    onRow: stampCancellation,
+  });
 }
 
 /**
@@ -373,28 +361,54 @@ export async function requestCancellation(memberId: string): Promise<MembershipC
  * pending it changes nothing (`changed: false`), so a repeat is harmless.
  */
 export async function undoCancellation(memberId: string): Promise<MembershipChangeResult> {
-  const db = serviceDb();
-  const { data: member } = await db
+  return changeRenewal(memberId, {
+    alreadyDone: (pending) => !pending,
+    onStripe: (payments, subscriptionId) => payments.keepRenewing(subscriptionId),
+    onRow: clearCancellation,
+  });
+}
+
+/**
+ * The shape shared by a cancel and its undo: look the member up, change
+ * nothing if the renewal is already as asked (`alreadyDone`, given whether a
+ * cancel is pending), refuse a lapsed membership, then — if payments are
+ * live — make the change on the stored subscription only (B1.6), and finally
+ * update the row and email the member (`onRow`, guarded so only one writer
+ * does it).
+ *
+ * In live mode Stripe's agreement is the change: its own
+ * `customer.subscription.updated` webhook may update the row first, leaving
+ * `onRow` nothing to do, but this call still changed the subscription and is
+ * reported as `changed` so the console audits it.
+ */
+async function changeRenewal(memberId: string, change: {
+  alreadyDone: (cancelPending: boolean) => boolean;
+  onStripe: (payments: Payments, subscriptionId: string) => Promise<RenewalChangeResult>;
+  onRow: (memberId: string) => Promise<boolean>;
+}): Promise<MembershipChangeResult> {
+  const { data: member } = await serviceDb()
     .from("members")
     .select("status, stripe_subscription_id, cancel_requested_at")
     .eq("id", memberId)
     .maybeSingle();
   if (!member) return { ok: false, reason: "not_found" };
-  if (!member.cancel_requested_at) return { ok: true, changed: false }; // nothing pending — idempotent
+  if (change.alreadyDone(Boolean(member.cancel_requested_at))) return { ok: true, changed: false }; // idempotent
   if (member.status === "lapsed") return { ok: false, reason: "period_ended" };
 
   const { paymentsAreLive, getPayments } = await import("./adapters/payments");
-  if (paymentsAreLive()) {
-    if (!member.stripe_subscription_id) return { ok: false, reason: "no_subscription" };
-    const result = await getPayments().keepRenewing(member.stripe_subscription_id);
-    if (!result.ok) {
-      return result.reason === "period_ended"
-        ? { ok: false, reason: "period_ended" }
-        : { ok: false, reason: "stripe_rejected", detail: result.error };
-    }
-  }
+  if (!paymentsAreLive()) return { ok: true, changed: await change.onRow(memberId) };
 
-  return { ok: true, changed: await clearCancellation(memberId) };
+  // B1.6: only ever act on the subscription id this app itself wrote —
+  // never derive or guess one another way.
+  if (!member.stripe_subscription_id) return { ok: false, reason: "no_subscription" };
+  const result = await change.onStripe(getPayments(), member.stripe_subscription_id);
+  if (!result.ok) {
+    return result.reason === "period_ended"
+      ? { ok: false, reason: "period_ended" }
+      : { ok: false, reason: "stripe_rejected", detail: result.error };
+  }
+  await change.onRow(memberId);
+  return { ok: true, changed: true };
 }
 
 /**
@@ -456,7 +470,7 @@ export async function syncCancellationFromStripe(
     .eq("stripe_subscription_id", subscriptionId)
     .maybeSingle();
   if (!member) return { matched: false, changed: false };
-  if (member.status !== "active" && member.status !== "grace") return { matched: true, changed: false };
+  if (!isRunning(member.status)) return { matched: true, changed: false };
 
   if (cancelAtPeriodEnd && !member.cancel_requested_at) {
     return { matched: true, changed: await stampCancellation(member.id) };

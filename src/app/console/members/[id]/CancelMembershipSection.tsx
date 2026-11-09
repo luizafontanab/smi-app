@@ -1,9 +1,9 @@
 import { Card, SectionTitle } from "@/components/console/ui";
 import { SubmitButton } from "@/components/SubmitButton";
-import { membershipCancelState } from "@/lib/membership";
+import { membershipCancelState, type MemberStatus } from "@/lib/membership";
 import { INVOICE_BILLING_LINE, scheduledOn } from "../../membership-messages";
 
-type Member = { id: string; status: string; billing_mode: string; cancel_requested_at: string | null };
+type Member = { id: string; status: MemberStatus; billing_mode: string; cancel_requested_at: string | null };
 
 /**
  * The console member page's Cancel membership section (#90). What it shows
@@ -65,7 +65,7 @@ export function CancelMembershipSection({ member, cancel, undo }: {
  * CancelPlacementForm: a required confirm box, and the action refuses (and says
  * why) if the form is posted without it anyway.
  */
-export function ConfirmedMembershipAction({ action, memberId, confirmLabel, buttonLabel, pendingLabel }: {
+function ConfirmedMembershipAction({ action, memberId, confirmLabel, buttonLabel, pendingLabel }: {
   action: (fd: FormData) => Promise<void>;
   memberId: string;
   confirmLabel: string;
