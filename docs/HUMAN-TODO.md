@@ -313,9 +313,10 @@ through Proof and approval first.
       import**. Imported contacts are subscribed unless they opted out in Bigin,
       so the next issue goes to them.
 - [ ] **3.5 — Buffer.**
-      - Confirm `SHARE_MODE` / `SCHEDULING_TYPE` (`"shareNow"` / `"custom"` in
-        `src/lib/adapters/social.ts`) mean *post now*: introspect the schema,
-        or make one test post.
+      - Confirm the first post is accepted. `"shareNow"` / `"automatic"` and
+        the required `needsApproval` / `assets` now follow Buffer's reference
+        (9 Nov), but no post has been sent yet. A rejection shows in the
+        error log as "Buffer publish failed".
       - Check the first post's image rendered.
       - Check the story's LinkedIn / Facebook / X post links fill in on their own
         within a few cron runs (GAPS B4.6). They come from Buffer's

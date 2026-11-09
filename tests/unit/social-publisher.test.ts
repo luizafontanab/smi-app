@@ -134,8 +134,20 @@ describe("getSocialPublisher — Buffer", () => {
     // A queue-shaped mode or a dueAt would stack Buffer's delay on top of our own.
     const input = inputOf(fetchSpy);
     expect(input.mode).toBe("shareNow");
-    expect(input.schedulingType).toBe("custom");
     expect(input.dueAt).toBeUndefined();
+  });
+
+  it("sends only values Buffer's schema accepts, including its required fields", async () => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ok());
+
+    await getSocialPublisher().publishChannel(send());
+
+    // SchedulingType is automatic | notification: "custom" was rejected.
+    const input = inputOf(fetchSpy);
+    expect(input.schedulingType).toBe("automatic");
+    // Both non-null in CreatePostInput: no image is an empty list, not a missing field.
+    expect(input.needsApproval).toBe(false);
+    expect(input.assets).toEqual([]);
   });
 
   it("attaches the image by public URL when imagePath resolves", async () => {
@@ -144,6 +156,7 @@ describe("getSocialPublisher — Buffer", () => {
     await getSocialPublisher().publishChannel(send({ imagePath: "stories/cover.jpg" }));
 
     expect(inputOf(fetchSpy).assets[0].image.url).toContain("stories/cover.jpg");
+    expect(inputOf(fetchSpy).assets[0].image.metadata).toEqual({ altText: "Hello world" });
   });
 
   it("throws with the channel and the response detail when Buffer rejects the request", async () => {

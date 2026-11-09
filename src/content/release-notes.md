@@ -18,6 +18,9 @@
 - On staging, emails now go only to admins and the admin inbox. Emails to members and anyone else are held back and not sent, so testing on staging can't email real members. The live site isn't affected.
 - On staging, sending a newsletter to the list is refused, and the issue says why. Send test still works, so you can check an issue before it goes out from the live site.
 
+## 2026-11-09 — Social posts no longer rejected by Buffer
+- Fixed a setting that would have made Buffer refuse every social post once a channel was confirmed. Confirmed posts now go to Buffer as intended.
+
 ## 2026-11-09 — Buffer channels show their names
 - Once saved, the Buffer channels on the Story Engine page are no longer an editable box of ids. Each channel shows its name, network and whether Buffer still has it connected, with a link to its page. Click Edit to change them, and Cancel to leave them as they were.
 - A channel that's disconnected in Buffer, or no longer in your Buffer organisation, is marked in red, because posts to it would fail.

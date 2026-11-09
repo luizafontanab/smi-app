@@ -45,12 +45,15 @@ const BUFFER_API = "https://api.buffer.com";
  * when this call returns).
  * For the same reason we send no `dueAt`.
  *
- * ⚠ UNVERIFIED: these two enum literals have not been checked against a live
- * schema — no API key exists yet (HUMAN-TODO). Confirm by introspection on the
- * first real key. They are consts so there is exactly one place to correct.
+ * Both values are in Buffer's reference (developers.buffer.com, read 9 Nov
+ * 2026): ShareMode is addToQueue | customScheduled | shareNext | shareNow,
+ * SchedulingType is automatic | notification. "automatic" means Buffer's
+ * workers send it with nobody having to act. This used to send "custom",
+ * which isn't a SchedulingType, so Buffer would have rejected every post.
+ * Not yet tried on a live account.
  */
 const SHARE_MODE = "shareNow";
-const SCHEDULING_TYPE = "custom";
+const SCHEDULING_TYPE = "automatic";
 
 const CREATE_POST = `
   mutation CreatePost($input: CreatePostInput!) {
@@ -280,21 +283,39 @@ async function bufferOrganizationId(): Promise<string | undefined> {
   return readSocialChannels(data?.value).organizationId;
 }
 
+/**
+ * Buffer's CreatePostInput. `assets` and `needsApproval` are required by its
+ * schema (`[AssetInput!]!`, `Boolean!`): an empty list when there's no image,
+ * and false because SMI's channels have no approval policy in Buffer.
+ */
 type ChannelInput = {
   text: string;
   channelId: string;
   mode: string;
   schedulingType: string;
-  assets?: { image: { url: string } }[];
+  needsApproval: boolean;
+  assets: { image: { url: string; metadata: { altText: string } } }[];
 };
+
+/** Alt text for the post's image: its opening line, which says what the story is. */
+function imageAltText(text: string): string {
+  const first = text.split("\n")[0].trim();
+  return first.length > 120 ? `${first.slice(0, 119).trimEnd()}…` : first;
+}
 
 class BufferPublisher implements SocialPublisher {
   constructor(private token: string) {}
 
   async publishChannel(send: ChannelPost): Promise<SentPost | null> {
-    const input: ChannelInput = { text: send.text, channelId: send.channelId, mode: SHARE_MODE, schedulingType: SCHEDULING_TYPE };
     const image = mediaUrl(send.imagePath);
-    if (image) input.assets = [{ image: { url: image } }];
+    const input: ChannelInput = {
+      text: send.text,
+      channelId: send.channelId,
+      mode: SHARE_MODE,
+      schedulingType: SCHEDULING_TYPE,
+      needsApproval: false,
+      assets: image ? [{ image: { url: image, metadata: { altText: imageAltText(send.text) } } }] : [],
+    };
     const result = await this.publishToChannel(input);
     if (!result.ok) throw new Error(`[social] Buffer publish failed for channel ${send.channelId} — ${result.error}`);
     return result.post;
