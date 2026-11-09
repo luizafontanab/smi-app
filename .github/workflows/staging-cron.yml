@@ -1,0 +1,60 @@
+# Runs staging's job queue on a schedule.
+#
+# Vercel Cron only fires on Production deployments, and staging is a Preview
+# deployment, so vercel.json's cron never reaches it. This calls /api/cron the
+# way Vercel Cron would: with `Authorization: Bearer <CRON_SECRET>`.
+#
+# GitHub runs scheduled workflows only from the repository's DEFAULT branch,
+# so this file has to be on that branch before the schedule fires.
+#
+# Setup (repo Settings → Secrets and variables → Actions):
+#   variable STAGING_URL             e.g. https://staging.example.com (no trailing slash)
+#   secret   STAGING_CRON_SECRET     the CRON_SECRET set on staging's Vercel environment
+#   secret   STAGING_VERCEL_BYPASS   only if staging is behind Vercel Deployment
+#                                    Protection: its "Protection Bypass for Automation" key
+# Until STAGING_URL is set, every run skips with a notice instead of failing.
+name: Staging cron
+
+on:
+  schedule:
+    # Hourly, off the top of the hour (GitHub delays :00 runs most). Hourly
+    # matches source_watch, which spreads the story sources across the day.
+    - cron: "7 * * * *"
+  workflow_dispatch: {}
+
+# A tick that overruns waits for the previous one rather than running beside it.
+concurrency:
+  group: staging-cron
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Call staging's /api/cron
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+          CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
+          BYPASS: ${{ secrets.STAGING_VERCEL_BYPASS }}
+        run: |
+          if [ -z "$STAGING_URL" ]; then
+            echo "::notice::STAGING_URL is not set; skipping. See the setup notes at the top of this workflow."
+            exit 0
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::STAGING_CRON_SECRET is not set; /api/cron would refuse the call."
+            exit 1
+          fi
+          headers=(-H "Authorization: Bearer $CRON_SECRET")
+          if [ -n "$BYPASS" ]; then headers+=(-H "x-vercel-protection-bypass: $BYPASS"); fi
+          # The route's maxDuration is 300s; allow a little over that.
+          status=$(curl -sS -o body.json -w '%{http_code}' --max-time 330 "${headers[@]}" "$STAGING_URL/api/cron")
+          echo "HTTP $status"
+          head -c 500 body.json; echo
+          if [ "$status" != "200" ]; then
+            echo "::error::/api/cron answered $status (401: wrong secret; 503: CRON_SECRET unset on staging; 401/403 HTML page: Deployment Protection, set STAGING_VERCEL_BYPASS)."
+            exit 1
+          fi

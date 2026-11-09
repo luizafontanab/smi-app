@@ -99,6 +99,11 @@ export interface SocialPublisher {
    */
   channelNetworks(): Promise<ChannelNetworks>;
   /**
+   * Every channel in the stored Buffer organisation, with its name, network and
+   * whether it's connected: what the console shows. Never used to shape a post.
+   */
+  channelDetails(): Promise<ChannelDetails>;
+  /**
    * Posts exactly this text and image to one channel — the text an admin
    * confirmed (issue #43), so nothing here reshapes it. Throws on any failure.
    * The post is null when Buffer took it without returning one.
@@ -111,6 +116,29 @@ export interface SocialPublisher {
 export type ChannelNetworks =
   | { kind: "known"; services: Map<string, string> }
   | { kind: "unknown" }
+  | { kind: "failed" };
+
+/** One Buffer channel as the console shows it. */
+export type ChannelDetail = {
+  id: string;
+  /** Buffer's service name: "linkedin", "twitter", … */
+  service: string;
+  /** Buffer's display name, else the channel's handle. */
+  name: string;
+  disconnected: boolean;
+  locked: boolean;
+  /** The channel's own page on the network, when Buffer gives one. */
+  profileUrl: string | null;
+};
+
+/**
+ * "unknown" says why there is nothing to show: no Buffer key on this
+ * deployment, or no organisation id stored. "failed" when Buffer was asked
+ * and the answer was unusable.
+ */
+export type ChannelDetails =
+  | { kind: "known"; channels: Map<string, ChannelDetail> }
+  | { kind: "unknown"; reason: "no-key" | "no-organisation" }
   | { kind: "failed" };
 
 /*
@@ -210,14 +238,30 @@ const NETWORK_LABEL: Partial<Record<string, string>> = {
   linkedin: "LinkedIn", twitter: "X", x: "X", facebook: "Facebook", instagram: "Instagram", youtube: "YouTube", tiktok: "TikTok",
 };
 
-/** "LinkedIn", "X", … for a Buffer service name; the channel id when the network isn't known. */
-export function channelLabel(channelId: string, network: string | null): string {
-  return (network && NETWORK_LABEL[network.toLowerCase()]) ?? `Channel ${channelId}`;
+/** "LinkedIn", "X", … for a Buffer service name; the service name itself for one we haven't named. */
+export function networkLabel(service: string): string {
+  return NETWORK_LABEL[service.toLowerCase()] ?? service;
+}
+
+/**
+ * How the console names a channel: "LinkedIn · Sheet Metal Industries" when
+ * Buffer's details are known, "LinkedIn" with only the network, and the
+ * channel id when neither is.
+ */
+export function channelLabel(channelId: string, network: string | null, detail?: ChannelDetail | null): string {
+  const service = network ?? detail?.service ?? null;
+  const net = service ? networkLabel(service) : null;
+  if (detail?.name) return net ? `${net} · ${detail.name}` : detail.name;
+  return net ?? `Channel ${channelId}`;
 }
 
 class LoggingSocialStub implements SocialPublisher {
   async channelNetworks(): Promise<ChannelNetworks> {
     return { kind: "unknown" };
+  }
+
+  async channelDetails(): Promise<ChannelDetails> {
+    return { kind: "unknown", reason: "no-key" };
   }
 
   async publishChannel(send: ChannelPost): Promise<null> {
@@ -286,6 +330,52 @@ class BufferPublisher implements SocialPublisher {
       return { kind: "known", services };
     } catch (e) {
       logError({ source: "adapter", area: "social:buffer-channels", error: e });
+      return { kind: "failed" };
+    }
+  }
+
+  /**
+   * Its own query, separate from channelNetworks: that one decides what each
+   * channel's post says, so a field Buffer turns out to name differently here
+   * can only blank the console's details, never block confirming or posting.
+   *
+   * ⚠ UNVERIFIED against a live account: the fields follow Buffer's
+   * Channel reference (developers.buffer.com), as channelNetworks does.
+   */
+  async channelDetails(): Promise<ChannelDetails> {
+    try {
+      const organizationId = await bufferOrganizationId();
+      if (!organizationId) return { kind: "unknown", reason: "no-organisation" };
+      const res = await fetch(BUFFER_API, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `query { channels(input: { organizationId: ${JSON.stringify(organizationId)} }) { id name displayName service isDisconnected isLocked externalLink } }`,
+        }),
+      });
+      if (!res.ok) return { kind: "failed" };
+      const body = (await res.json()) as { data?: { channels?: Record<string, unknown>[] }; errors?: unknown[] };
+      if (body.errors?.length || !Array.isArray(body.data?.channels)) return { kind: "failed" };
+      const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+      const channels = new Map<string, ChannelDetail>();
+      for (const c of body.data.channels) {
+        const id = text(c.id);
+        const service = text(c.service);
+        if (!id || !service) continue;
+        const link = text(c.externalLink);
+        channels.set(id, {
+          id,
+          service,
+          name: text(c.displayName) ?? text(c.name) ?? "",
+          disconnected: c.isDisconnected === true,
+          locked: c.isLocked === true,
+          // Rendered as a link: only ever a web address.
+          profileUrl: link && /^https?:\/\//i.test(link) ? link : null,
+        });
+      }
+      return { kind: "known", channels };
+    } catch (e) {
+      logError({ source: "adapter", area: "social:buffer-channel-details", error: e });
       return { kind: "failed" };
     }
   }
@@ -418,4 +508,22 @@ export async function cachedChannelNetworks(now = Date.now()): Promise<ChannelNe
 /** For tests. */
 export function clearChannelNetworksCache() {
   networksCache = null;
+}
+
+let detailsCache: { at: number; value: ChannelDetails } | null = null;
+
+/**
+ * Channel details, remembered for a few minutes like the networks above: the
+ * stories page and every editor ask on each load. A failed lookup is never
+ * remembered. Saving the channel settings clears it.
+ */
+export async function cachedChannelDetails(now = Date.now()): Promise<ChannelDetails> {
+  if (detailsCache && now - detailsCache.at < NETWORKS_TTL_MS) return detailsCache.value;
+  const value = await getSocialPublisher().channelDetails();
+  detailsCache = value.kind === "failed" ? null : { at: now, value };
+  return value;
+}
+
+export function clearChannelDetailsCache() {
+  detailsCache = null;
 }

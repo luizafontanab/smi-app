@@ -10,6 +10,11 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-09 — Buffer channels show their names
+- Once saved, the Buffer channels on the Story Engine page are no longer an editable box of ids. Each channel shows its name, network and whether Buffer still has it connected, with a link to its page. Click Edit to change them, and Cancel to leave them as they were.
+- A channel that's disconnected in Buffer, or no longer in your Buffer organisation, is marked in red, because posts to it would fail.
+- In the story and video editors, each social post preview is now named after its channel, such as "LinkedIn · Sheet Metal Industries", instead of a long id.
+
 ## 2026-11-08 — Cancel a membership, or undo it, from the console; members ask SMI to cancel
 - A member's console page has a new Cancel membership section, for carrying out a cancel the member asked SMI for. Tick the box and click Cancel membership.
 - Cancelling stops the member's card payments renewing at the end of the period they've paid for, never immediately. Their page and submissions carry on until then.
@@ -25,6 +30,10 @@
 - Members can no longer cancel for themselves. Settings → Billing has no Cancel membership button; it says "To change or end your membership, get in touch", linking to the Contact page.
 - A member whose cancellation was already scheduled still sees the date and that their membership runs to the end of the paid period, with a link to the Contact page if they change their mind.
 - The Membership Terms now say "You can cancel at any time by contacting us", and the FAQ says to contact SMI to cancel. Any of those sentences you had already reworded in the console are left as you wrote them. The Join page still says "cancel anytime".
+
+## 2026-11-08 — Background tasks recover after being cut off
+- If a background task, such as checking story sources, scheduled publishing or member emails, is stopped partway through, it now starts again on its own about 15 minutes later. Before, it could stay stuck and that task would stop running altogether, with no message.
+- A task that is stopped partway three times in a row is marked as failed and shows in Needs You Today, like any other failed task.
 
 ## 2026-11-07 — Story titles in capitals, and company links from Bigin
 - A story's title now always shows in capitals, at the same size and colour, on the published page and in both story previews. The title is still saved as you typed it, so search results, link previews and newsletters are unchanged.

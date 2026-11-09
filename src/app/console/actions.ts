@@ -11,6 +11,8 @@ import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
 import { CONFIRM_MESSAGES, confirmSocialPost, seenFromForm } from "@/lib/social-push";
 import { parseLondonInput } from "@/lib/london-time";
 import type { SocialChannels } from "@/lib/social-channels";
+import { clearChannelDetailsCache } from "@/lib/adapters/social";
+import { parseStoryView } from "@/lib/story-board";
 import { applyOptIn, NEWSLETTER_CHOICES, type NewsletterChoice } from "@/lib/contacts";
 import { optInEvidence } from "@/lib/newsletter-consent";
 import { NEWSLETTER_FOOTER_KEY, newsletterFooterFromForm } from "@/lib/newsletter-footer";
@@ -2092,9 +2094,19 @@ export async function saveSocialChannels(formData: FormData) {
     .map((id) => id.trim())
     .filter(Boolean);
   const organizationId = String(formData.get("organization_id") ?? "").trim();
-  const value: SocialChannels = { channelIds, ...(organizationId ? { organizationId } : {}) };
-  await serviceDb().from("settings").upsert({ key: "social_channels", value });
+  const value: SocialChannels = { channelIds: [...new Set(channelIds)], ...(organizationId ? { organizationId } : {}) };
+  // Back to the same tab of the stories page, at the channels section.
+  const view = parseStoryView(formData.get("view"));
+  const back = (query: string) => `/console/stories?${view === "board" ? "" : `view=${view}&`}${query}#buffer-channels`;
+  const { error } = await serviceDb().from("settings").upsert({ key: "social_channels", value });
+  if (error) {
+    logError({ source: "db", area: "action:saveSocialChannels", error: error.message, context: { code: error.code ?? null } });
+    redirect(back("channels=edit&channels_error=1"));
+  }
+  // A new organisation id must show its own channels, not the cached ones.
+  clearChannelDetailsCache();
   revalidatePath("/console/stories");
+  redirect(back("saved=channels"));
 }
 
 /**

@@ -396,11 +396,13 @@ describe("deleteIndustry", () => {
 });
 
 describe("saveSocialChannels", () => {
-  it("stores channel ids from either separator, trimmed, blanks dropped", async () => {
+  const SAVED = "NEXT_REDIRECT:/console/stories?saved=channels#buffer-channels";
+
+  it("stores channel ids from either separator, trimmed, blanks and repeats dropped, then shows them as saved", async () => {
     const builder = queryBuilder(dbOk(null));
     db({ settings: () => builder });
 
-    await saveSocialChannels(form({ channel_ids: "c-1\n c-2 ,,c-3\n\n" }));
+    await expect(saveSocialChannels(form({ channel_ids: "c-1\n c-2 ,,c-3\n\nc-1" }))).rejects.toThrow(SAVED);
 
     expect(builder.upsert).toHaveBeenCalledWith({
       key: "social_channels",
@@ -412,7 +414,7 @@ describe("saveSocialChannels", () => {
     const builder = queryBuilder(dbOk(null));
     db({ settings: () => builder });
 
-    await saveSocialChannels(form({ channel_ids: "c-1", organization_id: "  " }));
+    await expect(saveSocialChannels(form({ channel_ids: "c-1", organization_id: "  " }))).rejects.toThrow(SAVED);
 
     expect(builder.upsert).toHaveBeenCalledWith({ key: "social_channels", value: { channelIds: ["c-1"] } });
   });
@@ -421,7 +423,7 @@ describe("saveSocialChannels", () => {
     const builder = queryBuilder(dbOk(null));
     db({ settings: () => builder });
 
-    await saveSocialChannels(form({ channel_ids: "c-1", organization_id: "org-1" }));
+    await expect(saveSocialChannels(form({ channel_ids: "c-1", organization_id: "org-1" }))).rejects.toThrow(SAVED);
 
     expect(builder.upsert).toHaveBeenCalledWith({
       key: "social_channels",
@@ -433,11 +435,26 @@ describe("saveSocialChannels", () => {
     const builder = queryBuilder(dbOk(null));
     db({ settings: () => builder });
 
-    await saveSocialChannels(form({ channel_ids: "c-1" }));
+    await expect(saveSocialChannels(form({ channel_ids: "c-1" }))).rejects.toThrow(SAVED);
 
     // Exact match, so the absence of a `profileIds` key is part of the assertion:
     // the upsert writes a whole new value rather than merging into the old one.
     expect(builder.upsert).toHaveBeenCalledWith({ key: "social_channels", value: { channelIds: ["c-1"] } });
+  });
+
+  it("returns to the tab it was saved from; an unknown tab falls back to the board", async () => {
+    db({ settings: () => queryBuilder(dbOk(null)) });
+    await expect(saveSocialChannels(form({ channel_ids: "c-1", view: "list" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/stories?view=list&saved=channels#buffer-channels");
+    await expect(saveSocialChannels(form({ channel_ids: "c-1", view: "https://evil.example" }))).rejects.toThrow(SAVED);
+  });
+
+  it("stays in edit mode and says so when the save fails, rather than claiming it saved", async () => {
+    db({ settings: () => queryBuilder(dbError("boom")) });
+
+    await expect(saveSocialChannels(form({ channel_ids: "c-1" })))
+      .rejects.toThrow("NEXT_REDIRECT:/console/stories?channels=edit&channels_error=1#buffer-channels");
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "action:saveSocialChannels" }));
   });
 });
 

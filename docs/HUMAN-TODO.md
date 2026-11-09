@@ -80,11 +80,13 @@ Each service is independent; do them in any order.
 
 ### Social — Buffer
 
-- [ ] **1.16 — Create a Buffer API key** (organisation owners only) and set
-      `BUFFER_ACCESS_TOKEN` in the **Production scope only**. On Preview it
-      would post preview links to SMI's real accounts.
-- [ ] **1.17 — Enter the Buffer channel ids** at `/console/stories` → "Buffer
-      channels". Until then, every post fails closed.
+- [ ] **1.17 — Check the Buffer channels on production's `/console/stories`.**
+      They were saved on staging on 9 Nov. If production has its own database,
+      the section there is still an empty form: enter the same channel ids and
+      organisation id. Until then, production posts fail closed. Once saved,
+      the section should list each channel by name with "Connected". A
+      "Couldn't load channel details" note means the details query needs
+      checking against Buffer (it is unverified, like the rest of 3.5).
 
 ### Social reach — follower counts ([#4](https://github.com/luizafontanab/smi-app/issues/4))
 
@@ -168,7 +170,9 @@ account and £40/month Price created, `STRIPE_PRICE_ID` set. Staging-only items
 1.3, 1.11, 1.12 and 1.19 moved to §7. **Done (5 Nov):** 1.13–1.15 Bigin
 connected to SMI's real account: Self Client, refresh token with the four
 scopes, and the `BIGIN_*` variables in Vercel Production only (never Preview:
-Bigin has no test mode).
+Bigin has no test mode). **Done (9 Nov):** 1.16 Buffer API key created and
+`BUFFER_ACCESS_TOKEN` set in Production *and* Preview. Preview is safe since
+#43: nothing posts until an admin confirms each channel in the editor.
 
 ---
 
@@ -176,13 +180,8 @@ Bigin has no test mode).
 
 `supabase db push` applies every pending migration in one go; you can't push
 just one. Deploy the `staging` code at the same moment: old code against the new
-schema breaks member profiles, the directory and the CRM page. Nothing is
-pending, as far as this repo knows. Everything through `20261027000004` was
-pushed to `bvyxeujhecxulzwvpxfr` on 28 Oct, without the backup or pre-checks
-below; `20261028000001` and `20261029000001` followed on 4 Nov, and
-`20261105000001`–`04` (Bigin Website fallback; issue #43's per-channel social
-confirm, which marked every story and video already Live "Don't post") on
-5 Nov. Push from a checkout of `staging`: a push from an older branch only
+schema breaks member profiles, the directory and the CRM page. Push from a
+checkout of `staging`: a push from an older branch only
 sees that branch's migrations. The "failed to cache migrations catalog"
 warning at the end of a push comes after the migrations apply and is harmless.
 Confirm with `supabase migration list --linked`. From `20261020000005` on, nothing sends

@@ -19,6 +19,8 @@ import { allRows } from "./db/all-rows";
  * Postgres-backed job queue (TECH-DECISIONS #13).
  * Prod: Vercel Cron hits /api/cron — once a day at 03:00 today (vercel.json;
  * GAPS A3.1), though everything here is written for frequent ticks.
+ * Staging: Vercel Cron never fires on a Preview deployment, so the hourly
+ * GitHub Action .github/workflows/staging-cron.yml calls /api/cron (issue #94).
  * Local: scripts/job-runner.ts loop.
  * Failed jobs go 'dead' after max_attempts and surface in "Needs You Today" —
  * publishing must never silently fail.
@@ -145,9 +147,65 @@ async function claimAndRun(db: ReturnType<typeof serviceDb>, job: JobRow): Promi
   return true;
 }
 
+/**
+ * A job still 'running' this long after it was claimed was cut off: the
+ * request running it was stopped (the server's time limit, a crash, a deploy).
+ * Well past /api/cron's maxDuration, so a job that is really still running is
+ * never touched.
+ */
+export const STUCK_AFTER_MS = 15 * 60 * 1000;
+
+/**
+ * Hand cut-off jobs back to the queue. Without this a job stopped mid-run
+ * stays 'running' for ever, and for a periodic sweep that is silent and
+ * permanent: ensurePeriodic sees it and never queues another.
+ *
+ * The cut-off run already counted as an attempt (the claim increments it), so
+ * a job that is cut off every time still goes 'dead' after max_attempts and
+ * surfaces in "Needs You Today" instead of looping. Each row is released only
+ * if it is still exactly as read, so two runners can't both release it.
+ */
+export async function releaseStuckJobs(db: ReturnType<typeof serviceDb>, now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - STUCK_AFTER_MS).toISOString();
+  const { data: stuck } = await db
+    .from("jobs")
+    .select("id, kind, attempts, max_attempts, updated_at")
+    .eq("status", "running")
+    .lt("updated_at", cutoff)
+    .limit(50);
+  let released = 0;
+  for (const job of stuck ?? []) {
+    const dead = job.attempts >= job.max_attempts;
+    const { data } = await db
+      .from("jobs")
+      .update({
+        status: dead ? "dead" : "pending",
+        ...(dead ? {} : { due_at: now.toISOString() }),
+        last_error: `Cut off: still running ${STUCK_AFTER_MS / 60_000} minutes after it started (the request running it was stopped).`,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", job.id)
+      .eq("status", "running")
+      .eq("updated_at", job.updated_at)
+      .select("id");
+    if (!data?.length) continue;
+    released++;
+    logError({
+      source: "job",
+      area: "job:cut_off",
+      error: new Error(`${job.kind} job was cut off mid-run; ${dead ? "out of attempts, marked dead" : "queued to run again"}`),
+      context: { id: job.id, kind: job.kind, attempts: job.attempts },
+    });
+  }
+  return released;
+}
+
 export async function runDueJobs(): Promise<{ ran: number; failed: number }> {
   const db = serviceDb();
   let ran = 0, failed = 0;
+
+  // First, so a periodic sweep that was cut off counts as pending again below.
+  await releaseStuckJobs(db);
 
   // periodic sweeps enqueue themselves if none pending (cheap idempotent upkeep)
   await ensurePeriodic("publish_scheduled", 60);

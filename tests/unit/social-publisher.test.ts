@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  cachedChannelNetworks, channelLabel, channelPosts, channelText, clearChannelNetworksCache, fitTagsToX, getSocialPublisher, isSocialLive, MAX_EXTRA_TAGGED_MEMBERS, X_MAX_LENGTH, xLength,
+  cachedChannelDetails, cachedChannelNetworks, channelLabel, clearChannelDetailsCache, channelPosts, channelText, clearChannelNetworksCache, fitTagsToX, getSocialPublisher, isSocialLive, MAX_EXTRA_TAGGED_MEMBERS, X_MAX_LENGTH, xLength,
   type SocialPost,
 } from "@/lib/adapters/social";
 import { serviceDb } from "@/lib/db/server";
@@ -334,6 +334,14 @@ describe("channel networks and each channel's post", () => {
     expect(channelLabel("x-1", "twitter")).toBe("X");
     expect(channelLabel("abc123", null)).toBe("Channel abc123");
   });
+
+  it("labels a channel by network and name once Buffer's details are known", () => {
+    const detail = { id: "li-1", service: "linkedin", name: "Sheet Metal Industries", disconnected: false, locked: false, profileUrl: null };
+    expect(channelLabel("li-1", "linkedin", detail)).toBe("LinkedIn · Sheet Metal Industries");
+    // The network lookup failed, the details didn't: the details still name it.
+    expect(channelLabel("li-1", null, detail)).toBe("LinkedIn · Sheet Metal Industries");
+    expect(channelLabel("li-1", "linkedin", { ...detail, name: "" })).toBe("LinkedIn");
+  });
 });
 
 describe("xLength / fitTagsToX", () => {
@@ -371,6 +379,86 @@ describe("cachedChannelNetworks", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
 
     await cachedChannelNetworks(t + 6 * 60_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+});
+
+// The console's names and details for each channel: a lookup of its own, so
+// it can never change what a post says.
+describe("channel details", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetDbServerMocks();
+    fetchSpy?.mockRestore();
+    vi.restoreAllMocks();
+    clearChannelDetailsCache();
+  });
+
+  const reply = (channels: Record<string, unknown>[]) =>
+    new Response(JSON.stringify({ data: { channels } }), { status: 200 });
+
+  it("reads each channel's name, network, connection and profile link from the stored organisation", async () => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
+    withSettings({ channelIds: ["li-1"], organizationId: "org-1" });
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(reply([
+      { id: "li-1", service: "linkedin", name: "smi", displayName: "Sheet Metal Industries", isDisconnected: false, isLocked: false, externalLink: "https://www.linkedin.com/company/smi" },
+      { id: "x-1", service: "twitter", name: "SheetMetalInd", displayName: null, isDisconnected: true, isLocked: false, externalLink: "javascript:alert(1)" },
+    ]));
+
+    const details = await getSocialPublisher().channelDetails();
+
+    const query = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string).query as string;
+    expect(query).toContain('organizationId: "org-1"');
+    expect(query).toContain("displayName");
+    expect(details).toEqual({
+      kind: "known",
+      channels: new Map([
+        ["li-1", { id: "li-1", service: "linkedin", name: "Sheet Metal Industries", disconnected: false, locked: false, profileUrl: "https://www.linkedin.com/company/smi" }],
+        // Falls back to the handle, and a link that isn't a web address is dropped.
+        ["x-1", { id: "x-1", service: "twitter", name: "SheetMetalInd", disconnected: true, locked: false, profileUrl: null }],
+      ]),
+    });
+  });
+
+  it("says why there's nothing to show: no key, or no organisation id", async () => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "");
+    await expect(getSocialPublisher().channelDetails()).resolves.toEqual({ kind: "unknown", reason: "no-key" });
+
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
+    withSettings({ channelIds: ["li-1"] });
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expect(getSocialPublisher().channelDetails()).resolves.toEqual({ kind: "unknown", reason: "no-organisation" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reports a GraphQL error as failed, so the console never shows a half answer", async () => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
+    withSettings({ channelIds: ["li-1"], organizationId: "org-1" });
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ errors: [{ message: "Cannot query field" }] }), { status: 200 }),
+    );
+
+    await expect(getSocialPublisher().channelDetails()).resolves.toEqual({ kind: "failed" });
+  });
+
+  it("is remembered for a few minutes; a failed answer is never kept", async () => {
+    vi.stubEnv("BUFFER_ACCESS_TOKEN", "buffer-token");
+    withSettings({ channelIds: ["li"], organizationId: "org-1" });
+    fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("down", { status: 503 }))
+      .mockResolvedValueOnce(reply([{ id: "li", service: "linkedin", name: "smi" }]))
+      .mockResolvedValueOnce(reply([{ id: "li", service: "linkedin", name: "smi" }]));
+    const t = Date.now();
+
+    expect((await cachedChannelDetails(t)).kind).toBe("failed");
+    expect((await cachedChannelDetails(t)).kind).toBe("known");
+    expect((await cachedChannelDetails(t + 60_000)).kind).toBe("known");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    clearChannelDetailsCache();
+    await cachedChannelDetails(t + 60_000);
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 });
