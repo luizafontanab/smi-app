@@ -3,9 +3,11 @@ import { serviceDb } from "@/lib/db/server";
 import { must } from "@/lib/db/must";
 import { pagedList } from "../paged-list";
 import { requireConsole } from "@/lib/auth";
-import { saveSocialCaps, saveSocialChannels } from "../actions";
+import { saveSocialCaps } from "../actions";
 import { DEFAULT_SOCIAL_CAPS, type SocialCaps } from "@/lib/social-caps";
 import { readSocialChannels } from "@/lib/social-channels";
+import { cachedChannelDetails } from "@/lib/adapters/social";
+import { BufferChannels } from "./BufferChannels";
 import { CalendarView, monthGrid, parseMonth, type CalendarStory } from "./CalendarView";
 import { StoryBoard } from "./StoryBoard";
 import { StoryList, type ListStory } from "./StoryList";
@@ -73,6 +75,8 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
   ]);
   const caps: SocialCaps = { ...DEFAULT_SOCIAL_CAPS, ...(capsSetting?.value as Partial<SocialCaps> | null) };
   const channels = readSocialChannels(channelsSetting?.value);
+  // Only asks Buffer once there are channels to name (cached for a few minutes).
+  const details = channels.channelIds.length ? await cachedChannelDetails() : ({ kind: "unknown", reason: "no-organisation" } as const);
 
   return (
     <div>
@@ -123,37 +127,14 @@ export default async function StoriesPage(props: PageProps<"/console/stories">) 
           <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-4 py-2 text-white">Save</SubmitButton>
         </form>
 
-        <h2 className="mt-5 text-sm font-bold text-ink">Buffer channels</h2>
-        <p className="mt-1 text-xs text-graphite">
-          Which connected Buffer channels social posts go to — Buffer sends one post per channel, with no &quot;post everywhere&quot; default, so this must be set before any post can send.
-        </p>
-        {channels.legacyProfileIds.length > 0 && (
-          <p className="mt-2 rounded bg-danger/10 p-2 text-xs text-danger">
-            The saved ids ({channels.legacyProfileIds.join(", ")}) are Buffer v1 <em>profile</em> ids. The current
-            Buffer API does not accept them — re-enter them as channel ids, or no post will send.
-          </p>
-        )}
-        <form action={saveSocialChannels} className="mt-2 flex flex-wrap items-end gap-3 text-sm">
-          <label className="flex flex-1 flex-col">
-            Channel IDs (one per line, or comma-separated)
-            <textarea
-              name="channel_ids"
-              rows={2}
-              defaultValue={channels.channelIds.join("\n")}
-              className="mt-1 w-full rounded border px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col">
-            Organisation ID (optional)
-            <input
-              type="text"
-              name="organization_id"
-              defaultValue={channels.organizationId ?? ""}
-              className="mt-1 w-56 rounded border px-2 py-1"
-            />
-          </label>
-          <SubmitButton pendingLabel="Saving…" className="rounded bg-ink px-4 py-2 text-white">Save</SubmitButton>
-        </form>
+        <BufferChannels
+          channels={channels}
+          details={details}
+          view={view}
+          editing={sp.channels === "edit"}
+          saved={sp.saved === "channels"}
+          saveFailed={sp.channels_error === "1"}
+        />
       </section>
     </div>
   );

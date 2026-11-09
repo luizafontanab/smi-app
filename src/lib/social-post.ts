@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { serviceDb } from "./db/server";
-import type { ChannelNetworks, SocialPost } from "./adapters/social";
+import type { ChannelDetails, ChannelNetworks, SocialPost } from "./adapters/social";
 import { excerptFromHtml } from "./sanitize";
 import { isMemberLinkable } from "./member-visibility";
 import { londonDayStart } from "./london-time";
@@ -303,20 +303,29 @@ export type SocialPanel = {
 export async function loadSocialPanel(
   db: Db,
   t: SocialTarget,
-  deps: { networks: () => Promise<ChannelNetworks>; delayMinutes: number; now?: Date; item?: SocialItem },
+  deps: {
+    networks: () => Promise<ChannelNetworks>;
+    /** Names for the labels only; defaults to the cached Buffer lookup. */
+    details?: () => Promise<ChannelDetails>;
+    delayMinutes: number;
+    now?: Date;
+    item?: SocialItem;
+  },
 ): Promise<SocialPanel | null> {
   const [item, channelIds] = await Promise.all([deps.item ?? loadSocialItem(db, t), connectedChannelIds(db)]);
   if (!item) return null;
   if (!channelIds.length) return { networks: "unknown", channels: [], lines: [] };
-  const [records, networks, { channelPosts, channelLabel }] = await Promise.all([
+  const adapter = await import("./adapters/social");
+  const { channelPosts, channelLabel } = adapter;
+  const [records, networks, details] = await Promise.all([
     readChannelRecords(db, t),
     deps.networks(),
-    import("./adapters/social"),
+    (deps.details ?? (() => adapter.cachedChannelDetails()))(),
   ]);
   const channels = channelPosts(item.post, channelIds, networks).map(({ post, network }) => {
     const record = records.get(post.channelId) ?? null;
     return {
-      label: channelLabel(post.channelId, network),
+      label: channelLabel(post.channelId, network, details.kind === "known" ? details.channels.get(post.channelId) : null),
       network,
       post,
       record,

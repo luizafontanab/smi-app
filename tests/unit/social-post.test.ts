@@ -54,12 +54,26 @@ describe("loadSocialPanel", () => {
     const db = asDb(mockDb({ from }));
 
     const panel = await loadSocialPanel(db, { story_id: "s1" }, {
-      networks: async () => ({ kind: "unknown" }), delayMinutes: 30, now: NOW, item: storySocialItem(story, []),
+      networks: async () => ({ kind: "unknown" }), details: async () => ({ kind: "unknown", reason: "no-key" }),
+      delayMinutes: 30, now: NOW, item: storySocialItem(story, []),
     });
 
     expect(from).not.toHaveBeenCalledWith("stories");
     expect(panel?.channels.map((c) => c.state)).toEqual(["waiting", "waiting"]);
     expect(panel?.channels[0].fingerprint).toBe(postFingerprint(panel!.channels[0].post));
+  });
+
+  it("names each channel from Buffer's details, without changing what it posts", async () => {
+    const db = asDb(mockDb({ from: fromByTable({ settings, social_channel_posts: () => queryBuilder(dbOk([])) }) }));
+    const detail = { id: "li", service: "linkedin", name: "Sheet Metal Industries", disconnected: false, locked: false, profileUrl: null };
+    const deps = { networks: async () => ({ kind: "unknown" as const }), delayMinutes: 30, now: NOW, item: storySocialItem(story, []) };
+
+    const named = await loadSocialPanel(db, { story_id: "s1" }, { ...deps, details: async () => ({ kind: "known", channels: new Map([["li", detail]]) }) });
+    const plain = await loadSocialPanel(db, { story_id: "s1" }, { ...deps, details: async () => ({ kind: "failed" }) });
+
+    expect(named?.channels.map((c) => c.label)).toEqual(["LinkedIn · Sheet Metal Industries", "Channel x"]);
+    expect(plain?.channels.map((c) => c.label)).toEqual(["Channel li", "Channel x"]);
+    expect(named?.channels.map((c) => c.fingerprint)).toEqual(plain?.channels.map((c) => c.fingerprint));
   });
 
   it("gives a different fingerprint when the text or the image changes", () => {
