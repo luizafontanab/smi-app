@@ -8,6 +8,10 @@ Sheet Metal Industries: a trade-association site where member companies publish 
 A company that belongs to SMI and has a public page on the site.
 _Avoid_: client, customer, account
 
+**Cancel a membership**:
+Stop a member's membership from renewing. A member asks SMI and an admin does it; members can't do it themselves. The membership carries on until the end of the period already paid for, then ends and the member's page comes off the site. Until then an admin can undo the cancel, and the membership renews as normal.
+_Avoid_: unsubscribe (that is the newsletter), delete or archive (those remove the member record or hide it)
+
 **Admin**:
 Someone on SMI's own team (Jas and anyone working the console) who approves, writes and publishes content.
 _Avoid_: the desk, operator, staff
