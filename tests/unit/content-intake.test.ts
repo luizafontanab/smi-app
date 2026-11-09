@@ -510,6 +510,12 @@ describe("story", () => {
       expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ message: "Resubmitted their story “Fixed” after changes." }));
     });
 
+    it("a member's save never writes the use-the-logo box, even if the form carries it", async () => {
+      const h = setup({ stories: { row: story() } });
+      await resubmit(h.deps, "story", "x1", form({ title: "t", cover_use_logo: "on" }), MEMBER);
+      expect(h.updates("stories")[0].values).not.toHaveProperty("cover_use_logo");
+    });
+
     it("a member's save never writes the company links Jas picked, even if the form carries them", async () => {
       const h = setup({ stories: { row: story() } });
       await resubmit(h.deps, "story", "x1", form({ title: "t", closing_links_sent: "1", closing_link_name: "Evil", closing_link_url: "https://evil.example" }), MEMBER);
@@ -649,6 +655,18 @@ describe("story", () => {
       const untouched = setup(row);
       await save(untouched.deps, "story", "s1", form({ title: "T" }), ADMIN);
       expect(untouched.updates("stories")[0].values).not.toHaveProperty("closing_links");
+    });
+
+    // Jas 28/10 (open items #6): show the member's logo instead of a poor cover.
+    it("stores the use-the-logo box, ticked or not", async () => {
+      const row = { stories: { row: { cover_path: null, member_draft: false } } };
+      const ticked = setup(row);
+      await save(ticked.deps, "story", "s1", form({ title: "T", cover_use_logo: "on" }), ADMIN);
+      expect(ticked.updates("stories")[0].values.cover_use_logo).toBe(true);
+
+      const unticked = setup(row);
+      await save(unticked.deps, "story", "s1", form({ title: "T" }), ADMIN);
+      expect(unticked.updates("stories")[0].values.cover_use_logo).toBe(false);
     });
 
     it("a picked company without a website is refused before anything is read", async () => {

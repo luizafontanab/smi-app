@@ -1,5 +1,6 @@
 import { mediaUrl } from "./db/server";
 import { DEFAULT_FOCUS, parseFocus, type Focus } from "./focus";
+import { storyImage } from "./story-image";
 import type { StoryCard } from "./queries";
 import { excerptFromHtml } from "./sanitize";
 import { youtubeId } from "./youtube";
@@ -36,6 +37,13 @@ type HeroBase = {
   image: string | null;
   /** Crop box for the image, already parsed. Videos use the centred default. */
   focus: Focus;
+  /**
+   * The image is the member's logo standing in for a story cover
+   * (lib/story-image). The stage lays text over its picture behind a scrim,
+   * which a logo can't take, so the stage shows it whole in a white panel
+   * beside the copy (wide screens); the rail card shows it whole on white.
+   */
+  logo: boolean;
   eyebrow: string;
   /** "12 August 2026 · Acme Fabrications" — formatted server-side. */
   meta: string | null;
@@ -68,12 +76,14 @@ function dateGB(iso: string | null): string | null {
 }
 
 function storyItem(story: StoryCard, eyebrow: string): HeroItem {
+  const pic = storyImage(story);
   return {
     kind: "story",
     key: `s:${story.id}`,
     title: story.title,
-    image: mediaUrl(story.cover_path),
-    focus: parseFocus(story.cover_focus),
+    image: mediaUrl(pic?.path),
+    focus: parseFocus(pic?.focus),
+    logo: pic?.logo ?? false,
     eyebrow,
     meta: [dateGB(story.published_at), story.member?.name].filter(Boolean).join(" · ") || null,
     href: `/news/${story.slug}`,
@@ -93,6 +103,7 @@ function videoItem(video: HeroVideo): HeroItem {
     title: video.title,
     image: mediaUrl(video.thumbnail_path) ?? (yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : null),
     focus: DEFAULT_FOCUS,
+    logo: false,
     eyebrow: "Video",
     meta: video.member?.name ?? null,
     href: video.url,

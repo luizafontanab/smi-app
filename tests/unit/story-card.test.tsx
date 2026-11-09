@@ -19,6 +19,7 @@ function story(overrides: Partial<StoryCardType> = {}): StoryCardType {
     excerpt: "The opening line.",
     cover_path: null,
     cover_focus: null,
+    cover_use_logo: false,
     published_at: "2026-03-05T00:00:00Z",
     is_member_news: false,
     member: null,
@@ -36,6 +37,24 @@ describe("StoryCard", () => {
   it("renders a real image when a cover is set", () => {
     const { container } = render(<StoryCard story={story({ cover_path: "stories/a.jpg" })} />);
     expect(container.querySelector("img")).toHaveAttribute("src", expect.stringContaining("stories/a.jpg"));
+  });
+
+  it("shows the member's logo whole, not cropped, when the story has no cover (Jas 28/10)", () => {
+    const { container } = render(
+      <StoryCard story={story({ member: { slug: "acme", name: "Acme", logo_path: "members/acme.png", status: "active" } })} />,
+    );
+    const img = container.querySelector("img");
+    expect(img).toHaveAttribute("src", expect.stringContaining("members/acme.png"));
+    expect(img?.className).toContain("object-contain");
+    expect(img?.className).not.toContain("object-cover");
+    expect(screen.queryByText("⚙")).not.toBeInTheDocument();
+  });
+
+  it("shows the logo over the cover when the admin chose it", () => {
+    const { container } = render(
+      <StoryCard story={story({ cover_path: "stories/a.jpg", cover_use_logo: true, member: { slug: "acme", name: "Acme", logo_path: "members/acme.png", status: "active" } })} />,
+    );
+    expect(container.querySelector("img")).toHaveAttribute("src", expect.stringContaining("members/acme.png"));
   });
 
   it("shows the member badge only for member news", () => {

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { mediaUrl } from "@/lib/db/server";
+import { storyImage } from "@/lib/story-image";
 import { storyForPreview } from "@/lib/queries";
 import { loadStoryPageData } from "@/lib/story-page";
 import { canPreviewStory, previewBackHref, redirectsToLiveStory } from "@/lib/story-preview";
@@ -51,6 +52,7 @@ export default async function StoryPreviewPage(props: PageProps<"/preview/story/
 
   const data = await loadStoryPageData(story, { preview: true });
   const cats = (story.categories ?? []).map((c) => c.category).filter(Boolean) as { slug: string; name: string }[];
+  const pic = storyImage(story);
 
   const statusLabel = isMemberDraft(story)
     ? "Draft — only you can see it"
@@ -72,7 +74,8 @@ export default async function StoryPreviewPage(props: PageProps<"/preview/story/
         <StoryView
           story={story}
           categories={cats}
-          cover={mediaUrl(story.cover_path)}
+          cover={mediaUrl(pic?.path)}
+          coverIsLogo={pic?.logo}
           members={data.members}
           socialPosts={story.social_posts}
           data={data}

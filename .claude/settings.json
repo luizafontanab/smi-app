@@ -26,7 +26,8 @@
       "Bash(pnpm vitest run *)",
       "Bash(pnpm exec vitest *)",
       "Bash(pnpm exec eslint *)",
-      "Bash(pnpm exec tsc *)"
+      "Bash(pnpm exec tsc *)",
+      "Bash(git stash list *)"
     ],
     "deny": [
       "Bash(rm -rf:*)",

@@ -7,6 +7,7 @@ import { UUID_RE } from "@/lib/validate";
 import { renderableHtml } from "@/lib/sanitize";
 import { consoleUploadImage, decideStory, pinStory, returnToDraft, saveStory, scheduleStory, searchBiginCompanies, setStoryStatus, confirmStorySocial } from "../../actions";
 import { CoverField } from "@/components/CoverField";
+import { storyImage } from "@/lib/story-image";
 import { parseFocus } from "@/lib/focus";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { InlineStoryPreview } from "@/components/story/InlineStoryPreview";
@@ -93,6 +94,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
     }));
   const cover = mediaUrl(story?.cover_path);
   const focus = parseFocus(story?.cover_focus);
+  // What the story actually shows, logo fallback included (lib/story-image).
+  const pic = story ? storyImage(story) : null;
   const isPinned = !!story?.pinned_until && new Date(story.pinned_until) > new Date();
   // Same rule the video editor uses: an industry set on the row wins, otherwise
   // fall back to the subject member's — which is what migration 20260909000002
@@ -224,6 +227,20 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
           </div>
         </fieldset>
         <CoverField cover={cover} focus={focus} hint="Landscape works best: at least 1200×675px (16:9), JPG/PNG/WebP, max 8MB. Leaving this empty keeps the current image. The crop fixes lost heads — it applies on the story page, the news cards and the homepage." />
+        {/* Jas 28/10 (open items #6): the member's logo is the last-resort
+            picture for any story with a member and no cover; this shows it instead of
+            a poor one. The cover is kept, so unticking brings it back. */}
+        <label className="-mt-2 flex items-start gap-2 text-sm">
+          <input type="checkbox" name="cover_use_logo" defaultChecked={story?.cover_use_logo ?? false} className="mt-0.5" aria-describedby="cover-use-logo-hint" />
+          <span>
+            Use the member&apos;s logo instead of the cover image
+            <span id="cover-use-logo-hint" className="block text-xs text-graphite">
+              {story?.member?.logo_path
+                ? "For a poor photo. A story with a member and no cover already shows the logo."
+                : "Only works once the story has a member with a logo. A story with a member and no cover already shows the logo."}
+            </span>
+          </span>
+        </label>
         <SocialPostFields
           item={story}
           fallback={story?.summary ?? story?.title ?? ""}
@@ -432,7 +449,8 @@ export default async function StoryEditor(props: PageProps<"/console/stories/[id
               <InlineStoryPreview
                 story={story}
                 categories={(story.categories ?? []).map((c) => c.category).filter(Boolean) as { slug: string; name: string }[]}
-                cover={cover}
+                cover={mediaUrl(pic?.path)}
+                coverIsLogo={pic?.logo}
                 body={story.body}
                 share={<StorySocialLinks posts={story.social_posts} />}
                 companyLinks={companyLinksFor(tagged.filter((m) => isMemberLinkable(m)), story.member_id, readClosingLinks(story.closing_links))}

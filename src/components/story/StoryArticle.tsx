@@ -46,8 +46,19 @@ export function StoryHeader({ story, categories }: { story: StoryArticleStory; c
   );
 }
 
-export function StoryHero({ cover, focus }: { cover: string | null; focus: unknown }) {
+export function StoryHero({ cover, focus, logo = false }: {
+  cover: string | null;
+  focus: unknown;
+  /** `cover` is the member's logo standing in (lib/story-image): drawn whole, on white, in a shorter box. */
+  logo?: boolean;
+}) {
   if (!cover) return null;
+  if (logo)
+    return (
+      <div data-testid="story-cover" data-part="story-cover" data-logo="" className="relative mt-4 h-40 overflow-hidden rounded-lg border border-line bg-white sm:h-48">
+        <Image src={cover} alt="" fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-contain p-6 sm:p-8" preload unoptimized />
+      </div>
+    );
   return (
     // Shorter below md: a 384px cover on a 390px-wide phone was taller than it
     // was wide and pushed the article off the first screen (#33 C1).
@@ -120,11 +131,13 @@ export function storyAnchors(parts: {
   story: StoryArticleStory;
   categories: { slug: string; name: string }[];
   cover: string | null;
+  /** The cover is the member's logo standing in (lib/story-image). */
+  coverIsLogo?: boolean;
   main: React.ReactNode;
 }): Record<"story_header" | "story_hero" | "story_body", React.ReactNode> {
   return {
     story_header: <StoryHeader story={parts.story} categories={parts.categories} />,
-    story_hero: <StoryHero cover={parts.cover} focus={parts.story.cover_focus} />,
+    story_hero: <StoryHero cover={parts.cover} focus={parts.story.cover_focus} logo={parts.coverIsLogo} />,
     story_body: parts.main,
   };
 }

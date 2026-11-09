@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { issueFromLink, newsletterLinkParams } from "@/lib/newsletter-tracking";
 import { newsletterClick, record, requestContext } from "@/lib/analytics";
 import { mediaUrl } from "@/lib/db/server";
+import { storyImage } from "@/lib/story-image";
 import { breadcrumbLd, newsArticleLd } from "@/lib/jsonld";
 import { storyBySlug } from "@/lib/queries";
 import { loadStoryPageData } from "@/lib/story-page";
@@ -16,7 +17,9 @@ export async function generateMetadata(props: PageProps<"/news/[slug]">) {
   const story = await storyBySlug(slug);
   const title = story?.title ?? "Story";
   const description = story?.excerpt ?? undefined;
-  const cover = mediaUrl(story?.cover_path);
+  // The member's logo when there's no cover (lib/story-image): a share card
+  // with the company's logo beats one with no picture at all.
+  const cover = mediaUrl(story ? storyImage(story)?.path : null);
   // Stories are distributed by sharing (see ShareButtons), so the card a
   // scraper renders is the story's shop window — without these it fell back to
   // the site-wide description and no image at all.
@@ -48,7 +51,8 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
   // From a newsletter link it counts without consent too, anonymously (lib/analytics newsletterClick).
   record([{ kind: "story_view", story_id: story.id, member_id: story.member_id, path, newsletter_issue_id: issue?.id ?? null, ...newsletterClick(ctx, newsletterLinkParams(sp).src) }]);
 
-  const cover = mediaUrl(story.cover_path);
+  const pic = storyImage(story);
+  const cover = mediaUrl(pic?.path);
   const cats = (story.categories ?? []).map((c) => c.category).filter(Boolean) as { slug: string; name: string }[];
 
   return (
@@ -66,7 +70,7 @@ export default async function StoryPage(props: PageProps<"/news/[slug]">) {
           ]),
         ]}
       />
-      <StoryView story={story} categories={cats} cover={cover} members={data.members} socialPosts={story.social_posts} data={data} path={path} />
+      <StoryView story={story} categories={cats} cover={cover} coverIsLogo={pic?.logo} members={data.members} socialPosts={story.social_posts} data={data} path={path} />
     </div>
   );
 }

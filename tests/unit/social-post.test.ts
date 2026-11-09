@@ -43,6 +43,25 @@ describe("socialWaiting", () => {
   });
 });
 
+describe("storySocialItem image (Jas 28/10, open items #6)", () => {
+  const base = {
+    id: "s1", title: "T", slug: "t", cover_path: null, member_id: "m1", status: "published",
+    social_at: null, social_text: null, social_skip: false, published_at: null, summary: null,
+  };
+  const live = { social: {}, status: "active", archived_at: null, logo_path: "members/acme.png" };
+
+  it("posts the member's logo when the story has no cover, or when the admin chose it", () => {
+    expect(storySocialItem({ ...base, member: live }, []).post.imagePath).toBe("members/acme.png");
+    expect(storySocialItem({ ...base, cover_path: "c.jpg", cover_use_logo: true, member: live }, []).post.imagePath).toBe("members/acme.png");
+    expect(storySocialItem({ ...base, cover_path: "c.jpg", member: live }, []).post.imagePath).toBe("c.jpg");
+  });
+
+  it("never posts the logo of a member it wouldn't tag", () => {
+    const archived = { ...live, archived_at: "2026-10-01T00:00:00Z" };
+    expect(storySocialItem({ ...base, member: archived }, []).post.imagePath).toBeNull();
+  });
+});
+
 describe("loadSocialPanel", () => {
   const story = {
     id: "s1", title: "Acme wins award", slug: "acme-wins-award", cover_path: "c.jpg", member_id: null, status: "draft",

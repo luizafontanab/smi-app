@@ -32,6 +32,7 @@ function story(overrides: Partial<StoryCardType> = {}): StoryCardType {
     excerpt: null,
     cover_path: null,
     cover_focus: null,
+    cover_use_logo: false,
     published_at: null,
     is_member_news: false,
     member: null,

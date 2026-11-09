@@ -2,6 +2,7 @@ import { allRows } from "../db/all-rows";
 import { logError } from "../log";
 import { serviceDb } from "../db/server";
 import { mediaUrl } from "../db/server";
+import { storyImage } from "../story-image";
 import { siteUrl } from "../site-url";
 import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "../newsletter-layout";
 import { issueExtras } from "../newsletter-extras";
@@ -101,12 +102,18 @@ const CARD_IMAGE_WIDTH = 264;
 /** Gap review area 5: the SOP's label for paid placements. */
 const AD_LABEL = "Sponsored";
 
-type IssueCard = { href: string; title: string; summary: string | null; image: string | null; kicker: string | null; cta: string };
+type IssueCard = {
+  href: string; title: string; summary: string | null; image: string | null; kicker: string | null; cta: string;
+  /** The image is the member's logo standing in for a story cover (lib/story-image): drawn at half width, centred, on white. */
+  logo?: boolean;
+};
 
 /** One story or video: image, uppercase headline, summary, link — the live issues' card. */
 function cardHtml(card: IssueCard, imageWidth: number, titleSize: number): string {
   const href = escapeHtml(card.href);
-  const image = card.image
+  const image = card.image && card.logo
+    ? `<a href="${href}" style="display:block;padding:16px 0;text-align:center;background:#ffffff;border:1px solid #e4e6e9;border-radius:4px;"><img src="${escapeHtml(card.image)}" width="${Math.round(imageWidth / 2)}" alt="${escapeHtml(card.title)}" style="display:inline-block;width:50%;max-width:${Math.round(imageWidth / 2)}px;height:auto;border:0;"></a>`
+    : card.image
     ? `<a href="${href}"><img src="${escapeHtml(card.image)}" width="${imageWidth}" alt="${escapeHtml(card.title)}" style="display:block;width:100%;max-width:${imageWidth}px;height:auto;border:0;border-radius:4px;"></a>`
     : "";
   return `${image}
@@ -147,7 +154,7 @@ export async function renderIssueHtml(
   const [{ data: items }, { data: ads }] = await Promise.all([
     db.from("newsletter_items")
       // excerpt = the story_summary computed field: the author's summary, else the body's opening
-      .select("position, story:stories(slug, title, status, excerpt:story_summary, cover_path), video:videos(slug, title, status, thumbnail_path)")
+      .select("position, story:stories(slug, title, status, excerpt:story_summary, cover_path, cover_use_logo, member:members!stories_member_id_fkey(logo_path, status, archived_at)), video:videos(slug, title, status, thumbnail_path)")
       .eq("issue_id", issueId).order("position"),
     db.from("newsletter_ads")
       .select("position, after_item, advert:adverts(id, name, format, desktop_path, mobile_path, headline, body)")
@@ -166,7 +173,8 @@ export async function renderIssueHtml(
     // keeps the preview showing what the list would actually get.
     if (item.story && isLiveContent(item.story.status)) {
       const s = item.story;
-      return [{ href: `${base}/news/${s.slug}?${tracked}`, title: s.title, summary: s.excerpt, image: mediaUrl(s.cover_path), kicker: null, cta: "Read article" }];
+      const pic = storyImage(s);
+      return [{ href: `${base}/news/${s.slug}?${tracked}`, title: s.title, summary: s.excerpt, image: mediaUrl(pic?.path), logo: pic?.logo, kicker: null, cta: "Read article" }];
     }
     if (item.video && isLiveContent(item.video.status)) {
       const v = item.video;

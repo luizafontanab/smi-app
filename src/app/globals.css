@@ -532,6 +532,31 @@ h1, h2, h3 {
 
 .hero-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 
+/* A member's logo standing in for a story cover (lib/story-image, HomeHero
+   StageCopy). Whole, on white, right of the copy, vertically centred in the
+   stage; the stage behind is the plain background. Wide screens only: below
+   lg the copy takes the full width and the logo would sit under it, so there
+   the rail card is where the logo shows. Centred with insets and flex, not a
+   transform: `.hero-copy-layer > *` owns transform for the stagger. */
+.hero-logo-panel {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  display: none;
+  align-items: center;
+}
+@media (min-width: 1024px) { .hero-logo-panel { display: flex; } }
+.hero-logo-panel-box {
+  position: relative;
+  display: block;
+  width: clamp(12rem, 22vw, 18rem);
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.7);
+}
+
 /* White on near-black is 21:1 whatever the tokens do, and it's the play-button
    look. Deliberately not the accent colour: on the client's orange this pairing
    would fall to roughly 3:1, below AA for anything but large text. */

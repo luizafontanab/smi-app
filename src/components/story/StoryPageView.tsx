@@ -14,12 +14,14 @@ import type { StoryPageData } from "@/lib/story-page";
  * Live-site structure: single column — title/meta, ad below meta, hero, body,
  * then post-article blocks. Order comes from the (admin-arranged) layout.
  */
-export function StoryPageView({ story, categories, cover, members, socialPosts, data, path }: {
+export function StoryPageView({ story, categories, cover, coverIsLogo = false, members, socialPosts, data, path }: {
   story: StoryArticleStory;
   /** stories.social_posts — SMI's own posts of this story (Jas 13/10 item 8). */
   socialPosts: unknown;
   categories: { slug: string; name: string }[];
   cover: string | null;
+  /** `cover` is the member's logo standing in for one (lib/story-image). */
+  coverIsLogo?: boolean;
   /** Tagged members, primary first, already gated by isMemberLinkable — none, no sidebar. */
   members: StoryArticleMember[];
   data: StoryPageData;
@@ -57,6 +59,7 @@ export function StoryPageView({ story, categories, cover, members, socialPosts, 
         story,
         categories,
         cover,
+        coverIsLogo,
         main: <StoryMain body={body} share={<StorySocialLinks posts={socialPosts} />} members={members} />,
       })}
     />

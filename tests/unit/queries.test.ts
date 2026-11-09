@@ -254,6 +254,35 @@ describe("story summaries", () => {
   });
 });
 
+// Jas 28/10 (open items #6): every read that draws a story's picture carries
+// the admin's logo switch and the member's logo (lib/story-image).
+describe("story picture columns", () => {
+  it("story cards carry cover_use_logo and the member's logo", async () => {
+    const stories = queryBuilder(dbOk({ slug: "s" }));
+    db({ stories: () => stories });
+    await storyBySlug("s");
+    expect(stories.select).toHaveBeenCalledWith(expect.stringMatching(/\bcover_use_logo\b.*members!stories_member_id_fkey\([^)]*logo_path/));
+  });
+
+  it("the preview carries them too, with the member's status for the archived/lapsed gate", async () => {
+    const stories = queryBuilder(dbOk({ id: "s1" }));
+    vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({ from: fromByTable({ stories: () => stories }, () => queryBuilder(dbOk(null))) })));
+    await storyForPreview("s1");
+    expect(stories.select).toHaveBeenCalledWith(expect.stringMatching(/\bcover_use_logo\b.*members!stories_member_id_fkey\([^)]*logo_path[^)]*status[^)]*archived_at/));
+  });
+
+  it("the newsletter web copy carries them on each story", async () => {
+    const items = queryBuilder(dbOk([]));
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 4 })),
+      newsletter_items: () => items,
+      newsletter_ads: () => queryBuilder(dbOk([])),
+    });
+    await newsletterBySlug("aug-2026");
+    expect(items.select).toHaveBeenCalledWith(expect.stringMatching(/stories\([^]*\bcover_use_logo\b[^]*members!stories_member_id_fkey\(logo_path/));
+  });
+});
+
 describe("storyMembers", () => {
   it("only linkable members, primary first then by name", async () => {
     db({

@@ -184,6 +184,9 @@ function parseStory(form: FormData, mode: Mode, opts: { draftAllowed: boolean })
       ...values,
       ...ownership,
       is_member_news: form.get("is_member_news") === "on",
+      // Show the member's logo instead of a poor cover (Jas 28/10, open items
+      // #6; lib/story-image). Console only, like the box beside it.
+      cover_use_logo: form.get("cover_use_logo") === "on",
       ...social,
       ...(closing.value ? { closing_links: closing.value } : {}),
     },

@@ -15,6 +15,12 @@
 - A channel that's disconnected in Buffer, or no longer in your Buffer organisation, is marked in red, because posts to it would fail.
 - In the story and video editors, each social post preview is now named after its channel, such as "LinkedIn · Sheet Metal Industries", instead of a long id.
 
+## 2026-11-08 — Member logo when a story has no picture
+- A story with no cover image now shows its member's logo wherever the story's picture appears: news cards, the top of the story page, the newsletter, social posts and link previews. This covers SMI's own stories about a member as well as member stories. The logo is shown whole on a white background rather than cropped. The logo of an archived member, or one whose membership has lapsed, is never shown.
+- On the large homepage banner, a story showing a logo has it in a white panel to the right of the headline, on wide screens. On phones the logo shows in the story's small card below the banner. The "More news" tiles leave the logo out, because they lay text over the picture.
+- In the story editor, a new box under the cover image, "Use the member's logo instead of the cover image", shows the logo even when the story has a cover, for a poor photo. The cover is kept, so unticking the box brings it back.
+- Social posts for stories with no cover will now go out with the member's logo. Any of these posts that were already confirmed before this change need confirming again, because the picture has changed. They show in Needs You Today until someone does.
+
 ## 2026-11-08 — Background tasks recover after being cut off
 - If a background task, such as checking story sources, scheduled publishing or member emails, is stopped partway through, it now starts again on its own about 15 minutes later. Before, it could stay stuck and that task would stop running altogether, with no message.
 - A task that is stopped partway three times in a row is marked as failed and shows in Needs You Today, like any other failed task.

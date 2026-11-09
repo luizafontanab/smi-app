@@ -27,6 +27,23 @@ describe("HomeHero", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  // Jas 28/10 (open items #6): a logo can't sit under the stage copy, so it
+  // goes whole in a white panel beside it, and the rail card skips its zoom.
+  it("shows a member's logo standing in for a cover in the stage's white panel", () => {
+    const logo = storyItem({ image: "https://x/members/acme.png", logo: true });
+    const cover = storyItem({ key: "story-2", title: "Covered", image: "https://x/c.jpg", logo: false });
+    const { container } = render(<HomeHero items={[logo, cover]} />);
+    const panel = screen.getByTestId("hero-logo-panel");
+    expect(panel.querySelector("img")?.getAttribute("src")).toContain("members/acme.png");
+    // only the logo story gets a panel; its stage layer has no picture and no ⚙
+    expect(container.querySelectorAll(".hero-logo-panel")).toHaveLength(1);
+    expect(container.querySelector(".hero-media-layer")?.textContent).toBe("");
+    // the logo's rail card has no zoom class; the cover's keeps it
+    const [logoCard, coverCard] = screen.getAllByTestId("hero-card");
+    expect(logoCard.querySelector(".hero-card-img")).toBeNull();
+    expect(coverCard.querySelector(".hero-card-img")).not.toBeNull();
+  });
+
   it("shows the headline story on the stage on load, with no rail for a single item", () => {
     render(<HomeHero items={[storyItem()]} />);
     expect(screen.getByTestId("hero-stage-title")).toHaveTextContent("Headline Story");

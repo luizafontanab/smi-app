@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { focusVars } from "@/lib/focus";
+import { LOGO_BOX, LOGO_FIT } from "@/lib/story-image";
 import type { HeroItem } from "@/lib/hero";
 
 /**
@@ -53,7 +54,7 @@ export function HomeHero({ items }: { items: HeroItem[] }) {
       <div className="hero-media-stack absolute inset-0" aria-hidden="true">
         {items.map((item, i) => (
           <div key={item.key} className="hero-media-layer" data-active={i === active}>
-            {item.image ? (
+            {item.image && !item.logo ? (
               <Image
                 src={item.image}
                 alt=""
@@ -64,13 +65,16 @@ export function HomeHero({ items }: { items: HeroItem[] }) {
                 // `transform` here and an animation outranks inline styles.
                 style={focusVars(item.focus)}
                 className="hero-media object-cover"
-                // Layer 0 is the LCP element and is always a story cover.
-                // loading="lazy" would not defer 1-4 (they are in-viewport at
-                // opacity 0), so fetchPriority is what keeps them behind it.
+                // Layer 0 is the LCP element when it's a cover (a logo goes in
+                // StageCopy's panel instead). loading="lazy" would not defer 1-4
+                // (they are in-viewport at opacity 0), so fetchPriority is what
+                // keeps them behind it.
                 {...(i === 0 ? { preload: true } : { fetchPriority: "low" as const })}
               />
             ) : (
-              <div className="hero-media hero-media--empty">⚙</div>
+              // A logo story gets the plain background without the ⚙: its logo
+              // shows in StageCopy's white panel, to the right of the copy.
+              <div className="hero-media hero-media--empty">{item.logo ? null : "⚙"}</div>
             )}
           </div>
         ))}
@@ -121,6 +125,25 @@ function StageCopy({ item, active, initial }: { item: HeroItem; active: boolean;
         <span className="hero-cta">{item.kind === "video" ? "▶ Watch" : "Read the story"}</span>
         <span className="hero-meta">{item.meta}</span>
       </p>
+      {/* A member's logo standing in for the cover (lib/story-image) can't go
+          behind this copy: cropped to fill the stage it loses its edges, and
+          the scrim greys it. It sits whole on white, right of the copy. Last
+          child, so the stagger above keeps its order. */}
+      {item.logo && item.image && (
+        <span className="hero-logo-panel" data-testid={active ? "hero-logo-panel" : undefined}>
+          <span className="hero-logo-panel-box">
+            <Image
+              src={item.image}
+              alt=""
+              fill
+              sizes="18rem"
+              unoptimized
+              className={LOGO_FIT}
+              {...(initial ? { preload: true } : { fetchPriority: "low" as const })}
+            />
+          </span>
+        </span>
+      )}
     </>
   );
   const props = {
@@ -150,7 +173,12 @@ function RailCard({ item, active, onActivate }: { item: HeroItem; active: boolea
     <>
       <div className="hero-card-media">
         {item.image ? (
-          <Image src={item.image} alt="" fill sizes="220px" unoptimized style={focusVars(item.focus)} className="hero-card-img object-cover" />
+          item.logo ? (
+            // Not hero-card-img: its active-card zoom would clip a contained logo's edges.
+            <Image src={item.image} alt="" fill sizes="220px" unoptimized className={`${LOGO_FIT} ${LOGO_BOX}`} />
+          ) : (
+            <Image src={item.image} alt="" fill sizes="220px" unoptimized style={focusVars(item.focus)} className="hero-card-img object-cover" />
+          )
         ) : (
           <div className="hero-card-img hero-media--empty">⚙</div>
         )}

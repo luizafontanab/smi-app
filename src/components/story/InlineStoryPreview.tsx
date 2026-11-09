@@ -13,10 +13,12 @@ import { bodyAdSlotKeys } from "@/lib/blocks/schema";
  * them) rather than the dashed authoring marker. The layout's own blocks
  * (top/foot adverts, latest news) are left to the full-page preview.
  */
-export function InlineStoryPreview({ story, categories, cover, body, members, share, companyLinks = [] }: {
+export function InlineStoryPreview({ story, categories, cover, coverIsLogo = false, body, members, share, companyLinks = [] }: {
   story: StoryArticleStory;
   categories: { slug: string; name: string }[];
   cover: string | null;
+  /** `cover` is the member's logo standing in for one (lib/story-image). */
+  coverIsLogo?: boolean;
   body: string | null;
   members: StoryArticleMember[];
   share?: React.ReactNode;
@@ -27,7 +29,7 @@ export function InlineStoryPreview({ story, categories, cover, body, members, sh
   return (
     <div data-testid="story-preview">
       <StoryHeader story={story} categories={categories} />
-      <StoryHero cover={cover} focus={story.cover_focus} />
+      <StoryHero cover={cover} focus={story.cover_focus} logo={coverIsLogo} />
       <StoryMain
         body={
           <StoryBody

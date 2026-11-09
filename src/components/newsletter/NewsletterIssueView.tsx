@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { mediaUrl } from "@/lib/db/server";
-import { focusStyle } from "@/lib/focus";
+import { storyImage, storyImageFit } from "@/lib/story-image";
 import { diaryDate, DIARY_HEADING, DIRECTORY_HEADING, issueBlocks, splitMastheadSponsor, STORY_SECTION_HEADING } from "@/lib/newsletter-layout";
 import type { issueExtras } from "@/lib/newsletter-extras";
 import type { newsletterBySlug } from "@/lib/queries";
@@ -12,7 +12,11 @@ export type NewsletterIssue = NonNullable<Awaited<ReturnType<typeof newsletterBy
 export type NewsletterIssueExtras = Awaited<ReturnType<typeof issueExtras>>;
 
 /** One story, video or sponsored-story card of an issue, as the web copy draws it. */
-export type IssueCardData = { key: string; href: string; title: string; summary: string | null; image: string | null; focus: unknown; kicker: string | null; cta: string };
+export type IssueCardData = {
+  key: string; href: string; title: string; summary: string | null; image: string | null; focus: unknown; kicker: string | null; cta: string;
+  /** The image is the member's logo standing in for a story cover (lib/story-image). */
+  logo?: boolean;
+};
 
 /**
  * What an issue page draws, read from the loaded issue: its story and video
@@ -23,7 +27,10 @@ export type IssueCardData = { key: string; href: string; title: string; summary:
 export function issueContent(issue: NewsletterIssue) {
   // A story or video withdrawn since the send is hidden by RLS and comes back null; it is skipped.
   const cards = issue.items.flatMap(({ story, video, position }): IssueCardData[] => {
-    if (story) return [{ key: `s${position}`, href: `/news/${story.slug}`, title: story.title, summary: story.excerpt, image: mediaUrl(story.cover_path), focus: story.cover_focus, kicker: null, cta: "Read article" }];
+    if (story) {
+      const pic = storyImage(story);
+      return [{ key: `s${position}`, href: `/news/${story.slug}`, title: story.title, summary: story.excerpt, image: mediaUrl(pic?.path), focus: pic?.focus ?? null, logo: pic?.logo, kicker: null, cta: "Read article" }];
+    }
     if (video) return [{ key: `v${position}`, href: `/video/${video.slug}`, title: video.title, summary: null, image: mediaUrl(video.thumbnail_path), focus: null, kicker: "Video", cta: "Watch video" }];
     return [];
   });
@@ -34,11 +41,12 @@ export function issueContent(issue: NewsletterIssue) {
 }
 
 function IssueCard({ card, lead = false }: { card: IssueCardData; lead?: boolean }) {
+  const fit = storyImageFit({ logo: !!card.logo, focus: card.focus }, { coverBox: "" });
   return (
     <Link href={card.href} data-part="newsletter-card" className="group block">
       {card.image && (
-        <div data-part="card-image" className={`relative overflow-hidden rounded ${lead ? "aspect-[2/1]" : "aspect-[264/176]"}`}>
-          <Image src={card.image} alt={card.title} fill sizes={lead ? "(max-width: 768px) 100vw, 720px" : "(max-width: 640px) 100vw, 360px"} style={focusStyle(card.focus)} className="object-cover" unoptimized />
+        <div data-part="card-image" className={`relative overflow-hidden rounded ${lead ? "aspect-[2/1]" : "aspect-[264/176]"} ${fit.box} ${card.logo ? "border border-line" : ""}`}>
+          <Image src={card.image} alt={card.title} fill sizes={lead ? "(max-width: 768px) 100vw, 720px" : "(max-width: 640px) 100vw, 360px"} style={fit.style} className={fit.img} unoptimized />
         </div>
       )}
       {card.kicker && <p data-part="card-meta" className="mt-2 text-xs uppercase tracking-wide text-graphite">{card.kicker}</p>}

@@ -17,6 +17,7 @@ const story = (id: string, over: Partial<StoryCard> = {}): StoryCard => ({
   excerpt: "excerpt",
   cover_path: `stories/${id}/cover.jpg`,
   cover_focus: null,
+  cover_use_logo: false,
   published_at: "2026-08-12T09:00:00Z",
   is_member_news: false,
   member: { slug: "acme", name: "Acme Fabrications", logo_path: null, status: "active" },
@@ -74,6 +75,13 @@ describe("optionalYoutubeUrl", () => {
 });
 
 describe("buildHero", () => {
+  it("marks a story whose picture is its member's logo, so the stage shows it in its white panel (Jas 28/10)", () => {
+    const head = story("head", { cover_path: null, member: { slug: "acme", name: "Acme", logo_path: "members/acme.png", status: "active" } });
+    const [item] = buildHero(head, [], []).items;
+    expect(item).toEqual(expect.objectContaining({ logo: true, image: expect.stringContaining("members/acme.png") }));
+    expect(buildHero(story("x", { cover_path: "c.jpg" }), [], []).items[0].logo).toBe(false);
+  });
+
   it("puts the headline first even when it is not the newest story", () => {
     // the pinned case: headlineStory() returns a story that isn't stories[0]
     const pinned = story("pinned");

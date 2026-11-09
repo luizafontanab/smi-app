@@ -23,6 +23,26 @@ function db(map: Record<string, () => ReturnType<typeof queryBuilder>>) {
 }
 
 describe("renderIssueHtml", () => {
+  it("draws a member's logo standing in for a missing cover at half width, centred (Jas 28/10)", async () => {
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 4, subject: "S", intro: null, web_slug: null })),
+      newsletter_items: () => queryBuilder(dbOk([{ position: 1, story: { slug: "a", title: "A", status: "published", excerpt: null, cover_path: null, cover_use_logo: false, member: { logo_path: "members/acme.png" } } }])),
+      newsletter_ads: () => queryBuilder(dbOk([])),
+    });
+    const { html } = (await renderIssueHtml("iss1"))!;
+    expect(html).toMatch(/text-align:center[^>]*><img src="[^"]*members\/acme\.png"[^>]*width:50%/);
+  });
+
+  it("leaves out the logo of an archived member: the email reads through serviceDb, which doesn't hide them", async () => {
+    db({
+      newsletter_issues: () => queryBuilder(dbOk({ id: "iss1", number: 4, subject: "S", intro: null, web_slug: null })),
+      newsletter_items: () => queryBuilder(dbOk([{ position: 1, story: { slug: "a", title: "A", status: "published", excerpt: null, cover_path: null, cover_use_logo: false, member: { logo_path: "members/acme.png", status: "active", archived_at: "2026-10-01T00:00:00Z" } } }])),
+      newsletter_ads: () => queryBuilder(dbOk([])),
+    });
+    const { html } = (await renderIssueHtml("iss1"))!;
+    expect(html).not.toContain("members/acme.png");
+  });
+
   it("returns null for an issue that doesn't exist", async () => {
     db({ newsletter_issues: () => queryBuilder(dbOk(null)) });
     expect(await renderIssueHtml("missing")).toBeNull();

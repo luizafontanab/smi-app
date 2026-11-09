@@ -6,6 +6,14 @@ import { StoryHeader, StoryHero, StoryMain, storyAnchors } from "@/components/st
 const story = { title: "BLM new show room", published_at: "2026-10-13T09:00:00Z", is_member_news: true, cover_focus: null };
 
 describe("StoryArticle pieces", () => {
+  it("hero: a member's logo standing in for the cover is drawn whole on white (Jas 28/10)", () => {
+    const { container } = render(<StoryHero cover="/media/members/acme.png" focus={null} logo />);
+    const box = screen.getByTestId("story-cover");
+    expect(box).toHaveAttribute("data-logo");
+    expect(box.className).toContain("bg-white");
+    expect(container.querySelector("img")?.className).toContain("object-contain");
+  });
+
   it("header: member-news badge, category pills and the dated byline", () => {
     render(<StoryHeader story={story} categories={[{ slug: "news", name: "News" }]} />);
     expect(screen.getByRole("heading", { level: 1, name: "BLM new show room" })).toBeInTheDocument();

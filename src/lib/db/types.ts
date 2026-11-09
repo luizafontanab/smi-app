@@ -2773,6 +2773,7 @@ export type Database = {
           closing_links: Json
           cover_focus: Json | null
           cover_path: string | null
+          cover_use_logo: boolean
           created_at: string
           excerpt: string | null
           id: string
@@ -2803,6 +2804,7 @@ export type Database = {
           closing_links?: Json
           cover_focus?: Json | null
           cover_path?: string | null
+          cover_use_logo?: boolean
           created_at?: string
           excerpt?: string | null
           id?: string
@@ -2832,6 +2834,7 @@ export type Database = {
           closing_links?: Json
           cover_focus?: Json | null
           cover_path?: string | null
+          cover_use_logo?: boolean
           created_at?: string
           excerpt?: string | null
           id?: string

@@ -7,6 +7,7 @@ import { londonDayStart } from "./london-time";
 import { readSocialChannels } from "./social-channels";
 import { siteUrl } from "./site-url";
 import { taggedMembers } from "./story-members";
+import { storyImage, type StoryImageSource } from "./story-image";
 import { composeSocialText } from "./social-text";
 import { channelState, channelStatusLines, type ChannelPost, type ChannelRecord, type ChannelView } from "./social-confirm";
 import { logError } from "./log";
@@ -73,9 +74,9 @@ export function videoSocialItem(video: SocialVideoRow): SocialItem {
 
 /** A story row as social posting reads it. `summary` is the story_summary column. */
 export type SocialStoryRow = {
-  id: string; title: string; slug: string; cover_path: string | null; member_id: string | null; status: string;
+  id: string; title: string; slug: string; cover_path: string | null; cover_use_logo?: boolean | null; member_id: string | null; status: string;
   social_at: string | null; social_text: string | null; social_skip: boolean; published_at: string | null;
-  summary: string | null; member: LinkableMember;
+  summary: string | null; member: (NonNullable<LinkableMember> & NonNullable<StoryImageSource["member"]>) | null;
 };
 
 /**
@@ -98,7 +99,9 @@ export function storySocialItem(story: SocialStoryRow, tagged: { id: string; soc
     post: {
       // The editor's lead-in, else the summary (the excerpt, or the opening of the body), else the title.
       text: composeSocialText(story.social_text || story.summary || story.title, `${siteUrl()}/news/${story.slug}`),
-      imagePath: story.cover_path,
+      // The member's logo when there's no cover, or when an admin chose it
+      // (lib/story-image, which applies isMemberLinkable itself).
+      imagePath: storyImage(story)?.path ?? null,
       // @-tag from the CRM-stored handle — never hand-typed
       tagHandles: (story.member && isMemberLinkable(story.member) ? story.member.social ?? {} : {}) as Record<string, string>,
       extraTagHandles: extras.map((m) => (m.social ?? {}) as Record<string, string>),
@@ -118,7 +121,7 @@ export async function loadSocialItem(db: Db, t: SocialTarget): Promise<SocialIte
   const { data: story } = await db
     .from("stories")
     // FK named: story_members makes a bare `members` embed ambiguous here.
-    .select("id, title, slug, cover_path, member_id, status, social_at, social_text, social_skip, published_at, summary:story_summary, member:members!stories_member_id_fkey(name, social, status, archived_at)")
+    .select("id, title, slug, cover_path, cover_use_logo, member_id, status, social_at, social_text, social_skip, published_at, summary:story_summary, member:members!stories_member_id_fkey(name, social, status, archived_at, logo_path)")
     .eq("id", t.story_id)
     .maybeSingle();
   if (!story) return null;

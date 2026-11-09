@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { mediaUrl } from "@/lib/db/server";
-import { focusStyle } from "@/lib/focus";
+import { storyImage, storyImageFit } from "@/lib/story-image";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
 
 // MemberBadge moved to its own module so client components (the member's
@@ -17,7 +17,9 @@ export function StoryCard({
   /** Off on the news page (fix list) — image, title and date only, no summary text. */
   showExcerpt?: boolean;
 }) {
-  const img = mediaUrl(story.cover_path);
+  const pic = storyImage(story);
+  const img = mediaUrl(pic?.path);
+  const fit = storyImageFit(pic);
   // 16:9 boxes rather than fixed heights for the card sizes (#33 E10): about
   // two-thirds of covers are ~16:9 (measured on /news), often with lettering in
   // the artwork, and a 256×176 crop cut the words off at both sides. Near the
@@ -27,9 +29,9 @@ export function StoryCard({
     <Link href={`/news/${story.slug}`} data-part="story-card" className="group block overflow-hidden rounded-lg bg-white shadow-sm transition hover:shadow-md">
       {/* overflow-hidden clips the crop zoom (and the hover grow) to the media
           box — without it a zoomed cover spills over the headline below. */}
-      <div data-part="card-image" className={`relative ${heights[size]} overflow-hidden bg-graphite/10`}>
+      <div data-part="card-image" className={`relative ${heights[size]} overflow-hidden ${fit.box}`}>
         {img ? (
-          <Image src={img} alt="" fill sizes={size === "lg" ? "100vw" : "(max-width: 768px) 100vw, 33vw"} style={focusStyle(story.cover_focus)} className="object-cover transition group-hover:scale-[1.02]" unoptimized />
+          <Image src={img} alt="" fill sizes={size === "lg" ? "100vw" : "(max-width: 768px) 100vw, 33vw"} style={fit.style} className={`${fit.img} transition group-hover:scale-[1.02]`} unoptimized />
         ) : (
           <div className="flex h-full items-center justify-center text-4xl text-graphite/30">⚙</div>
         )}

@@ -18,6 +18,8 @@ export type StoryCard = {
   cover_path: string | null;
   /** {x, y, scale} crop box — jsonb, so read it through parseFocus(). */
   cover_focus: unknown;
+  /** Admin switch: show the member's logo instead of the cover (lib/story-image). */
+  cover_use_logo: boolean;
   published_at: string | null;
   is_member_news: boolean;
   member: { slug: string; name: string; logo_path: string | null; status: string } | null;
@@ -31,7 +33,7 @@ export type StoryCard = {
 // `excerpt` here is the story_summary computed field (migration
 // 20261015000004): the author's summary, else the opening of the body — so every
 // card, link preview and newsletter has one. The forms read the raw column.
-const STORY_CARD = "id, slug, title, excerpt:story_summary, cover_path, cover_focus, published_at, is_member_news, member:members!stories_member_id_fkey(slug, name, logo_path, status)";
+const STORY_CARD = "id, slug, title, excerpt:story_summary, cover_path, cover_focus, cover_use_logo, published_at, is_member_news, member:members!stories_member_id_fkey(slug, name, logo_path, status)";
 
 /**
  * Industry slug → industries.id, for the listing filters below.
@@ -186,7 +188,7 @@ export async function storyForPreview(id: string) {
   const { data } = await serviceDb()
     .from("stories")
     // one literal, not a concatenation: supabase-js infers the row type from it
-    .select("id, slug, title, excerpt, cover_path, cover_focus, published_at, is_member_news, member_id, body, social_posts, closing_links, status, source, member_draft, member:members!stories_member_id_fkey(slug, name, logo_path, status, archived_at), categories:story_categories(category:categories(slug, name))")
+    .select("id, slug, title, excerpt, cover_path, cover_focus, cover_use_logo, published_at, is_member_news, member_id, body, social_posts, closing_links, status, source, member_draft, member:members!stories_member_id_fkey(slug, name, logo_path, status, archived_at), categories:story_categories(category:categories(slug, name))")
     .eq("id", id)
     .maybeSingle();
   return data;
@@ -927,7 +929,7 @@ export async function newsletterBySlug(slug: string) {
   const [{ data: items }, { data: ads }] = await Promise.all([
     publicDb()
       .from("newsletter_items")
-      .select("position, story:stories(slug, title, excerpt:story_summary, cover_path, cover_focus), video:videos(slug, title, thumbnail_path)")
+      .select("position, story:stories(slug, title, excerpt:story_summary, cover_path, cover_focus, cover_use_logo, member:members!stories_member_id_fkey(logo_path)), video:videos(slug, title, thumbnail_path)")
       .eq("issue_id", issue.id)
       .order("position"),
     // Gap review area 5: the web version carries the issue's adverts too.

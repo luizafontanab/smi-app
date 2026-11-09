@@ -3,6 +3,7 @@ import Link from "next/link";
 import { advertHref, type LiveAdvert } from "@/lib/adverts";
 import { mediaUrl } from "@/lib/db/server";
 import { focusStyle } from "@/lib/focus";
+import { storyImage, storyImageFit } from "@/lib/story-image";
 import { youtubeId } from "@/lib/hero";
 import type { StoryCard as StoryCardType } from "@/lib/queries";
 import type { MachineCardData, VideoCardData } from "@/components/cards";
@@ -51,19 +52,21 @@ export function GhStoryCard({ story, size = "md", eyebrow = "News" }: {
   /** null drops the label entirely — the fold's two highlights run without one. */
   eyebrow?: string | null;
 }) {
-  const img = mediaUrl(story.cover_path);
+  const pic = storyImage(story);
+  const img = mediaUrl(pic?.path);
+  const fit = storyImageFit(pic);
   return (
     <Panel part="story-card" className="group flex h-full flex-col overflow-hidden">
       <Link href={`/news/${story.slug}`} className="flex h-full flex-col">
-        <div data-part="card-image" className={`relative ${STORY_MEDIA[size]} flex-1 overflow-hidden bg-graphite/10`}>
+        <div data-part="card-image" className={`relative ${STORY_MEDIA[size]} flex-1 overflow-hidden ${fit.box}`}>
           {img ? (
             <Image
               src={img}
               alt=""
               fill
               sizes="(max-width: 768px) 100vw, 33vw"
-              style={focusStyle(story.cover_focus)}
-              className="object-cover transition duration-500 group-hover:scale-[1.03]"
+              style={fit.style}
+              className={`${fit.img} transition duration-500 group-hover:scale-[1.03]`}
               unoptimized
             />
           ) : (
@@ -339,12 +342,14 @@ export function GhFeaturedMembers({ members, className = "" }: { members: GhFeat
 
 /** Comp v2's member-news row: square thumbnail left, byline and date right. */
 export function GhMemberRow({ story }: { story: StoryCardType }) {
-  const img = mediaUrl(story.cover_path);
+  const pic = storyImage(story);
+  const img = mediaUrl(pic?.path);
+  const fit = storyImageFit(pic);
   return (
     <Link href={`/news/${story.slug}`} data-part="member-news-card" className="group flex gap-4">
-      <div data-part="card-image" className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[var(--gh-radius)] bg-graphite/10 sm:h-24 sm:w-24">
+      <div data-part="card-image" className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-[var(--gh-radius)] sm:h-24 sm:w-24 ${fit.box} ${pic?.logo ? "border border-line" : ""}`}>
         {img ? (
-          <Image src={img} alt="" fill sizes="96px" style={focusStyle(story.cover_focus)} className="object-cover" unoptimized />
+          <Image src={img} alt="" fill sizes="96px" style={fit.style} className={fit.img} unoptimized />
         ) : (
           PLACEHOLDER
         )}
@@ -385,7 +390,11 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
        as children. */
     <MoreNewsScroller className="carousel flex h-full gap-3 overflow-x-auto pb-1.5">
       {stories.map((s) => {
-        const img = mediaUrl(s.cover_path);
+        // Covers only: this tile lays white type over the picture behind a
+        // dark scrim, which a logo can't take. A logo story rests as the plain
+        // headline tile, as a story with no picture always has.
+        const pic = storyImage(s);
+        const img = pic && !pic.logo ? mediaUrl(pic.path) : null;
         return (
           /*
            * Fixed height, elastic width. Resting state is a plain bordered
@@ -417,7 +426,7 @@ export function GhMoreNews({ stories }: { stories: StoryCardType[] }) {
                   alt=""
                   fill
                   sizes="320px"
-                  style={focusStyle(s.cover_focus)}
+                  style={focusStyle(pic?.focus)}
                   className="object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
                   unoptimized
                 />
