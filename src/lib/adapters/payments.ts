@@ -23,7 +23,16 @@ export type CheckoutResult =
   | { kind: "comped"; months: number }  // valid promo code
   | { kind: "error"; message: string };
 
-export type CancelResult = { ok: true } | { ok: false; error: string };
+/**
+ * A change to a subscription's renewal (cancel-at-period-end; #92 adds the
+ * "keep renewing" call beside it, returning this same type). The failure
+ * carries a reason, so the membership module can tell "Stripe has already
+ * closed this subscription" (`period_ended`) from any other refusal; `error`
+ * is Stripe's own message, for an admin, never for a member.
+ */
+export type CancelResult =
+  | { ok: true }
+  | { ok: false; reason: "period_ended" | "stripe_rejected"; error: string };
 
 export interface Payments {
   /** Create a £40/mo subscription checkout; promo codes (managed at /console/promo-codes) apply here. */
@@ -195,12 +204,32 @@ class StripePayments implements Payments {
       },
       body: new URLSearchParams({ cancel_at_period_end: "true" }),
     });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      return { ok: false, error: `Stripe rejected the cancellation (${res.status}): ${detail.slice(0, 300)}` };
-    }
+    if (!res.ok) return subscriptionRefusal(res, "the cancellation");
     return { ok: true };
   }
+}
+
+/**
+ * Stripe's answer to a refused subscription update, as a CancelResult. Shared
+ * by every renewal change (cancel now; keep-renewing in #92). Stripe's own
+ * `error.message` is passed through when the body is its usual JSON, trimmed
+ * to 300 characters as before; a subscription Stripe has already closed
+ * ("A canceled subscription can only update its cancellation_details and
+ * metadata.") becomes `period_ended`, since there is nothing left to change.
+ */
+async function subscriptionRefusal(res: Response, what: string): Promise<CancelResult> {
+  const body = await res.text().catch(() => "");
+  let message = body;
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown } };
+    if (typeof parsed.error?.message === "string") message = parsed.error.message;
+  } catch {
+    // not JSON — keep the raw text
+  }
+  const error = `Stripe rejected ${what} (${res.status}): ${message.slice(0, 300)}`;
+  return /canceled subscription/i.test(message)
+    ? { ok: false, reason: "period_ended", error }
+    : { ok: false, reason: "stripe_rejected", error };
 }
 
 /**

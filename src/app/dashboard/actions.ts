@@ -662,7 +662,11 @@ export async function cancelMembership() {
   const { requestCancellation } = await import("@/lib/membership");
   const result = await requestCancellation(user.memberId);
   revalidatePath("/dashboard/settings/billing");
-  redirect(result.ok ? "/dashboard/settings/billing?cancelled=1" : `/dashboard/settings/billing?cerror=${encodeURIComponent(result.error)}`);
+  // The module states a reason, not wording (#90); a member gets one plain line
+  // whatever it was. This action goes in #91, when members stop cancelling here.
+  redirect(result.ok
+    ? "/dashboard/settings/billing?cancelled=1"
+    : `/dashboard/settings/billing?cerror=${encodeURIComponent("Your membership couldn't be cancelled online — contact SMI to cancel.")}`);
 }
 
 export async function savePrefs(formData: FormData) {

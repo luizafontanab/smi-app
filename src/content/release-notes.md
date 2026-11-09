@@ -10,6 +10,14 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-08 — Cancel a membership from the console
+- A member's console page has a new Cancel membership section, for carrying out a cancel the member asked SMI for. Tick the box and click Cancel membership.
+- Cancelling stops the member's card payments renewing at the end of the period they've paid for, never immediately. Their page and submissions carry on until then.
+- The member is emailed that their cancellation is scheduled, and the section then shows "Cancellation scheduled on" the date, in place of the button.
+- Each cancel is listed as "Cancelled membership" under Admin access on the member's page, with your name.
+- If the member's subscription was set up outside this site, you're told to cancel it in Stripe instead, and nothing changes. If Stripe refuses, its own message is shown.
+- Members who pay by invoice see "Invoice billing: stop raising invoices by hand" instead of the button. Draft and lapsed members have no section.
+
 ## 2026-11-07 — Story titles in capitals, and company links from Bigin
 - A story's title now always shows in capitals, at the same size and colour, on the published page and in both story previews. The title is still saved as you typed it, so search results, link previews and newsletters are unchanged.
 - The company line at the end of a story now links each featured member to their SMI member page instead of their own website. Readers reach the member's website from the Website button on that page. Every featured member now gets a line, including members with no website on file.

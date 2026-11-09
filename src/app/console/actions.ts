@@ -44,7 +44,8 @@ import {
 import { resolveCoordinates } from "@/lib/member-geocode";
 import { membershipTypeIdsFromForm, membershipTypesError, replaceMemberIndustries, replaceMemberMembershipTypes, replaceMemberServices } from "@/lib/member-services";
 import { recordRename } from "@/lib/redirects";
-import { activationBlocked, MEMBER_STATUSES, type MemberStatus } from "@/lib/membership";
+import { activationBlocked, MEMBER_STATUSES, membershipCancelState, type MemberStatus } from "@/lib/membership";
+import { CONFIRM_CANCEL, INVOICE_BILLING_LINE, membershipFailureMessage, NOT_CANCELLABLE } from "./membership-messages";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { siteUrl } from "@/lib/site-url";
 import { missingChecks, PROOF_KEYS } from "@/lib/newsletter-proof";
@@ -3050,6 +3051,40 @@ export async function setMemberStatus(formData: FormData) {
   await audit({ action: "member_status_changed", actorUserId: user.userId, actorRole: "admin", memberId: id, detail: { from: member.status, to: status } });
   revalidatePath("/console/members");
   revalidatePath("/console");
+}
+
+/* ---------- members: cancel a membership (#90; #92 adds the undo) ---------- */
+
+/**
+ * Cancel a member's membership on their behalf — GLOSSARY "Cancel a
+ * membership": the member asked SMI, an admin carries it out. Stops renewal
+ * at the end of the paid period (never now) through `requestCancellation`,
+ * which also stamps the pending cancel and emails the member. Each failure the
+ * module reports is shown in admin wording and changes nothing.
+ */
+export async function cancelMemberMembership(formData: FormData) {
+  const admin = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const { data: member } = await serviceDb().from("members")
+    .select("status, billing_mode, cancel_requested_at").eq("id", id).maybeSingle();
+  if (!member) return;
+
+  if (formData.get("confirm") !== "1") return memberFail(id, CONFIRM_CANCEL);
+  const state = membershipCancelState(member);
+  if (state === "invoice") return memberFail(id, INVOICE_BILLING_LINE);
+  if (state === "none") return memberFail(id, NOT_CANCELLABLE);
+
+  const { requestCancellation } = await import("@/lib/membership");
+  const result = await requestCancellation(id);
+  if (!result.ok) return memberFail(id, membershipFailureMessage("cancel", result));
+  if (result.changed) {
+    await audit({ action: "membership_cancelled", actorUserId: admin.userId, actorRole: "admin", memberId: id });
+  }
+  revalidatePath("/console/members");
+  revalidatePath(`/console/members/${id}`);
+  revalidatePath("/dashboard/settings/billing");
+  redirect(`/console/members/${id}?cancelled=1`);
 }
 
 /* ---------- members: archive and delete (fix list 72) ---------- */

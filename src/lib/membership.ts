@@ -282,40 +282,92 @@ export async function applyPaymentFailure(memberId: string): Promise<void> {
   });
 }
 
-export type CancelRequestResult = { ok: true } | { ok: false; error: string };
+/**
+ * Why a change to a membership's renewal — cancel now, undo (#92) next — did
+ * not happen. The module states the reason only; wording is the caller's
+ * (the console's admin wording lives in `app/console/membership-messages.ts`).
+ *
+ * - `not_found`: no such member.
+ * - `no_subscription`: payments are live and there is no subscription id this
+ *   site stored itself, so there is nothing it may act on (B1.6).
+ * - `period_ended`: the paid period is already over — the member has lapsed
+ *   here, or Stripe has already closed the subscription.
+ * - `stripe_rejected`: Stripe refused; `detail` is Stripe's own message.
+ */
+export type MembershipChangeFailure =
+  | { ok: false; reason: "not_found" | "no_subscription" | "period_ended" }
+  | { ok: false; reason: "stripe_rejected"; detail: string };
 
 /**
- * GAPS B1.5 — member-side cancellation. Schedules a cancel-at-period-end on
- * Stripe's side (if live) and records the request locally; the membership
- * itself doesn't actually end here — `applySubscriptionEnded` does that when
- * Stripe's own `customer.subscription.deleted` webhook confirms the period
- * is over, the same "webhook completes the transition" shape as
- * `applyPaymentFailure`/grace.
+ * The result of a cancel (and of #92's undo). `changed` is false when the
+ * membership was already in the asked-for state, so a repeat is harmless and a
+ * caller can skip its audit row.
  */
-export async function requestCancellation(memberId: string): Promise<CancelRequestResult> {
+export type MembershipChangeResult = { ok: true; changed: boolean } | MembershipChangeFailure;
+
+/**
+ * What the console's Cancel membership section offers a member (#90):
+ * - `none`: draft or lapsed — no section at all.
+ * - `invoice`: invoice billing has no card subscription to stop; the admin
+ *   stops raising invoices by hand.
+ * - `pending`: a card member whose cancel is scheduled (#92 offers Undo here).
+ * - `cancellable`: a card member, active or in grace, with no cancel pending.
+ * The page renders from it and the console action refuses anything else, so
+ * the two can't disagree.
+ */
+export type MembershipCancelState = "none" | "invoice" | "pending" | "cancellable";
+
+export function membershipCancelState(member: {
+  status: string; billing_mode: string; cancel_requested_at: string | null;
+}): MembershipCancelState {
+  if (member.status !== "active" && member.status !== "grace") return "none";
+  if (member.billing_mode === "invoice") return "invoice";
+  return member.cancel_requested_at ? "pending" : "cancellable";
+}
+
+/**
+ * Cancel a membership (GLOSSARY "Cancel a membership"; GAPS B1.5, #90): stop
+ * renewal at the end of the paid period on Stripe's side (if live), stamp the
+ * pending cancel, and queue the "cancellation scheduled" email. The membership
+ * itself doesn't end here — `applySubscriptionEnded` does that when Stripe's
+ * own `customer.subscription.deleted` webhook confirms the period is over, the
+ * same "webhook completes the transition" shape as `applyPaymentFailure`/grace.
+ *
+ * Stamps once: a repeat finds the cancel pending and changes nothing.
+ */
+export async function requestCancellation(memberId: string): Promise<MembershipChangeResult> {
   const db = serviceDb();
   const { data: member } = await db
     .from("members")
-    .select("stripe_subscription_id, cancel_requested_at")
+    .select("status, stripe_subscription_id, cancel_requested_at")
     .eq("id", memberId)
-    .single();
-  if (!member) return { ok: false, error: "Could not load your membership — please sign in again." };
-  if (member.cancel_requested_at) return { ok: true }; // already requested — idempotent
+    .maybeSingle();
+  if (!member) return { ok: false, reason: "not_found" };
+  if (member.cancel_requested_at) return { ok: true, changed: false }; // already pending — idempotent
+  if (member.status === "lapsed") return { ok: false, reason: "period_ended" };
 
   const { paymentsAreLive, getPayments } = await import("./adapters/payments");
   if (paymentsAreLive()) {
     // B1.6: only ever act on the subscription id this app itself wrote —
     // never derive or guess one another way.
-    if (!member.stripe_subscription_id) {
-      return { ok: false, error: "No active subscription on record — contact SMI to cancel." };
-    }
+    if (!member.stripe_subscription_id) return { ok: false, reason: "no_subscription" };
     const result = await getPayments().cancelSubscription(member.stripe_subscription_id);
-    if (!result.ok) return result;
+    if (!result.ok) {
+      return result.reason === "period_ended"
+        ? { ok: false, reason: "period_ended" }
+        : { ok: false, reason: "stripe_rejected", detail: result.error };
+    }
   }
 
-  await db.from("members").update({ cancel_requested_at: new Date().toISOString() }).eq("id", memberId);
+  // Only where still unstamped: two cancels racing past the read above must
+  // not both stamp and both email.
+  const { data: stamped } = await db.from("members")
+    .update({ cancel_requested_at: new Date().toISOString() })
+    .eq("id", memberId).is("cancel_requested_at", null)
+    .select("id");
+  if (!stamped?.length) return { ok: true, changed: false };
   await notifyQuietly(memberId, { kind: "membership_cancel_requested" });
-  return { ok: true };
+  return { ok: true, changed: true };
 }
 
 /**

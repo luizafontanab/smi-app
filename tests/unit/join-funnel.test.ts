@@ -146,39 +146,97 @@ describe.skipIf(!KEY)("join funnel", () => {
     vi.restoreAllMocks();
   });
 
-  it("requestCancellation (GAPS B1.5) stamps cancel_requested_at in stub mode, idempotently", async () => {
-    const name = `Cancel Test Ltd ${ts}`;
-    const { data: member } = await db.from("members").insert({
-      slug: `cancel-test-${ts}`, name, status: "active", contact_email: `cancel-${ts}@test.local`,
+  // ── Cancel a membership (#90): the module's result separates its failures,
+  // and the console turns each into admin wording.
+  async function cancelMember(label: string, extra: Record<string, unknown> = {}) {
+    const { data: member, error } = await db.from("members").insert({
+      slug: `cancel-${label}-${ts}`, name: `Cancel ${label} Ltd ${ts}`, status: "active",
+      contact_email: `cancel-${label}-${ts}@test.local`, ...extra,
     }).select("id").single();
+    if (error || !member) throw new Error(`could not seed member: ${error?.message}`);
+    return member.id as string;
+  }
+  async function queuedEmails(memberId: string) {
+    const { data } = await db.from("jobs").select("payload").eq("kind", "notify_member").eq("payload->>member_id", memberId);
+    return (data ?? []).map((j) => (j.payload as { kind?: string }).kind);
+  }
+  async function pendingCancel(memberId: string) {
+    const { data } = await db.from("members").select("status, cancel_requested_at").eq("id", memberId).single();
+    return data;
+  }
+  /** Stripe answers for the subscription calls; everything else (Supabase) goes through untouched. */
+  function stubStripe(answer: () => Response) {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_123");
+    const realFetch = globalThis.fetch;
+    return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      String(input instanceof Request ? input.url : input).includes("/v1/subscriptions/")
+        ? Promise.resolve(answer())
+        : realFetch(input, init));
+  }
 
+  it("requestCancellation (GAPS B1.5) stamps the pending cancel once and queues the scheduled email once", async () => {
+    const memberId = await cancelMember("stub");
     const { requestCancellation } = await import("@/lib/membership");
-    const first = await requestCancellation(member!.id);
-    expect(first).toEqual({ ok: true });
 
-    const { data: after } = await db.from("members").select("status, cancel_requested_at").eq("id", member!.id).single();
+    expect(await requestCancellation(memberId)).toEqual({ ok: true, changed: true });
+    const after = await pendingCancel(memberId);
     expect(after?.status).toBe("active"); // stays active — cancel-at-period-end, not immediate
     expect(after?.cancel_requested_at).not.toBeNull();
+    expect(await queuedEmails(memberId)).toEqual(["membership_cancel_requested"]);
 
-    const second = await requestCancellation(member!.id);
-    expect(second).toEqual({ ok: true });
-    const { data: unchanged } = await db.from("members").select("cancel_requested_at").eq("id", member!.id).single();
-    expect(unchanged?.cancel_requested_at).toBe(after?.cancel_requested_at); // never re-stamped
+    expect(await requestCancellation(memberId)).toEqual({ ok: true, changed: false });
+    expect((await pendingCancel(memberId))?.cancel_requested_at).toBe(after?.cancel_requested_at); // never re-stamped
+    expect(await queuedEmails(memberId)).toEqual(["membership_cancel_requested"]); // never re-sent
   });
 
-  it("requestCancellation refuses when live and no stripe_subscription_id is on record", async () => {
-    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_123");
-    const name = `Cancel NoSub Ltd ${ts}`;
-    const { data: member } = await db.from("members").insert({
-      slug: `cancel-nosub-${ts}`, name, status: "active", contact_email: `cancel-nosub-${ts}@test.local`,
-    }).select("id").single();
-
+  it("requestCancellation refuses when live and no stripe_subscription_id is on record (B1.6)", async () => {
+    const memberId = await cancelMember("nosub");
+    const fetchSpy = stubStripe(() => new Response("{}", { status: 200 }));
     const { requestCancellation } = await import("@/lib/membership");
-    const result = await requestCancellation(member!.id);
 
-    expect(result).toEqual({ ok: false, error: expect.stringContaining("No active subscription") });
-    const { data: after } = await db.from("members").select("cancel_requested_at").eq("id", member!.id).single();
-    expect(after?.cancel_requested_at).toBeNull();
+    expect(await requestCancellation(memberId)).toEqual({ ok: false, reason: "no_subscription" });
+    expect((await pendingCancel(memberId))?.cancel_requested_at).toBeNull();
+    expect(await queuedEmails(memberId)).toEqual([]);
+    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes("/v1/subscriptions/"))).toBe(false);
+  });
+
+  it("requestCancellation in live mode stops renewal on the stored subscription id only", async () => {
+    const memberId = await cancelMember("live", { stripe_subscription_id: `sub_cancel_${ts}` });
+    const fetchSpy = stubStripe(() => new Response("{}", { status: 200 }));
+    const { requestCancellation } = await import("@/lib/membership");
+
+    expect(await requestCancellation(memberId)).toEqual({ ok: true, changed: true });
+    const stripeCalls = fetchSpy.mock.calls.filter(([u]) => String(u).includes("/v1/subscriptions/"));
+    expect(stripeCalls).toHaveLength(1);
+    expect(String(stripeCalls[0][0])).toMatch(new RegExp(`/v1/subscriptions/sub_cancel_${ts}$`));
+    expect(new URLSearchParams(String(stripeCalls[0][1]?.body)).get("cancel_at_period_end")).toBe("true");
+    expect((await pendingCancel(memberId))?.cancel_requested_at).not.toBeNull();
+  });
+
+  it("requestCancellation passes Stripe's rejection through and changes nothing", async () => {
+    const memberId = await cancelMember("rejected", { stripe_subscription_id: `sub_rej_${ts}` });
+    stubStripe(() => new Response(JSON.stringify({ error: { message: "No such subscription" } }), { status: 404 }));
+    const { requestCancellation } = await import("@/lib/membership");
+
+    expect(await requestCancellation(memberId)).toEqual({ ok: false, reason: "stripe_rejected", detail: expect.stringContaining("No such subscription") });
+    expect((await pendingCancel(memberId))?.cancel_requested_at).toBeNull();
+    expect(await queuedEmails(memberId)).toEqual([]);
+  });
+
+  it("requestCancellation reports a period that has already ended and leaves the row unchanged", async () => {
+    // Stripe has already closed the subscription…
+    const closedId = await cancelMember("closed", { stripe_subscription_id: `sub_closed_${ts}` });
+    stubStripe(() => new Response(JSON.stringify({ error: { message: "A canceled subscription can only update its cancellation_details and metadata." } }), { status: 400 }));
+    const { requestCancellation } = await import("@/lib/membership");
+    expect(await requestCancellation(closedId)).toEqual({ ok: false, reason: "period_ended" });
+    expect(await pendingCancel(closedId)).toEqual({ status: "active", cancel_requested_at: null });
+    expect(await queuedEmails(closedId)).toEqual([]);
+
+    // …or the membership has already lapsed here.
+    vi.unstubAllEnvs();
+    const lapsedId = await cancelMember("lapsed", { status: "lapsed" });
+    expect(await requestCancellation(lapsedId)).toEqual({ ok: false, reason: "period_ended" });
+    expect(await pendingCancel(lapsedId)).toEqual({ status: "lapsed", cancel_requested_at: null });
   });
 
   it("comp_expiry sweep moves an expired comp to grace and notes it for Jas", async () => {
