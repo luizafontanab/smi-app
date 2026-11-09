@@ -10,8 +10,9 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
-## 2026-11-09 — No refund note left in the Membership terms
-- The Membership terms no longer carry an "SMI TO CONFIRM" note about pro-rata refunds under Cancelling. No refund is offered when a member cancels, so there was nothing left to confirm.
+## 2026-11-09 — No placeholders on the Terms pages; no refunds
+- The Terms, Membership terms and Advertising terms no longer show "SMI TO CONFIRM" notes to visitors. The open questions behind them (company details, liability wording, governing law, VAT, the advert artwork deadline and advert cancellations) are now in the list of questions for you.
+- The Membership terms now say no refund is given if SMI ends a membership, in place of refunding the unused part. A member who cancels isn't refunded either; their membership runs to the end of the period already paid for.
 
 ## 2026-11-09 — Buffer channels show their names
 - Once saved, the Buffer channels on the Story Engine page are no longer an editable box of ids. Each channel shows its name, network and whether Buffer still has it connected, with a link to its page. Click Edit to change them, and Cancel to leave them as they were.

@@ -261,6 +261,32 @@
     login pages, the newsletter) ".com" shows in black instead of white so it
     stays visible. Nothing else in the artwork is changed.*
 
+35. **Six gaps in the Terms pages (9 Nov).** Until 9 Nov these showed on the
+    public pages as "[SMI TO CONFIRM …]" notes. They're gone now, and each page
+    says only what's true today. Your answers go into the pages as new wording:
+    - **Your company details.** The Terms say only "operated by Sheet Metal
+      Industries". What are the registered company name, company number and
+      registered office address?
+    - **Limitation of liability.** The Terms have a short clause (we don't
+      guarantee the site is uninterrupted; nothing limits liability for death,
+      injury or fraud). Do you want a solicitor to settle the full wording?
+    - **Governing law.** The Terms say England and Wales law and courts. Is that
+      right?
+    - **VAT.** Is the £40 a month membership inclusive of VAT, or plus VAT? It
+      appears in the Membership terms, the FAQ and at checkout, and all three
+      need to say the same.
+    - **Advert artwork deadline.** The Advertising terms say artwork is due
+      before the run starts. How many days before? The site doesn't enforce a
+      deadline, so it needs to be one you're happy to hold advertisers to.
+    - **Cancelling an advert booking.** Up to when can an advertiser cancel a
+      confirmed booking, and is any part of a cancelled run refunded?
+
+    *Decided 9 Nov: no refund is given when a member cancels or when SMI ends
+    a membership. The Membership terms now say so. Separately, the Advertising
+    terms still say that if an advert fails to run through SMI's fault, the
+    advertiser chooses between a longer run and a refund for the time lost.
+    That was left as it is.*
+
 ## Data validation
 
 - sent to Jas on oct 4th

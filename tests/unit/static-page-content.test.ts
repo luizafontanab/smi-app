@@ -9,6 +9,15 @@ const page = (slug: string) => {
   return p;
 };
 
+// These pages are public. Open questions for SMI go in docs/ask-jas.md, never
+// into the copy (placeholders shipped on the Terms pages until 9 Nov 2026).
+it.each(AUTHORED_STATIC_PAGES.map((p) => [p.slug, p.body]))(
+  "%s carries no internal placeholder",
+  (_slug, body) => {
+    expect(body).not.toMatch(/SMI TO CONFIRM|TO CONFIRM|\bTBC\b|\bTODO\b|PLACEHOLDER/i);
+  },
+);
+
 // Both seeds upsert these rows on slug; a repeated slug is a primary-key
 // violation that silently drops every static page (it did, in seed.ts).
 it("authors each slug once", () => {
@@ -59,10 +68,12 @@ describe("cancelling goes through SMI", () => {
     expect(terms).not.toContain("from your member area");
   });
 
-  // Decided 9 Nov 2026: no refund is offered when a member cancels, so the
-  // pro-rata placeholder goes rather than waiting on SMI.
-  it("the membership terms carry no placeholder about pro-rata refunds", () => {
-    expect(page("membership-terms").body).not.toMatch(/pro-rata refund/);
+  // Decided 9 Nov 2026: no refund is offered, whether the member cancels or SMI
+  // ends the membership.
+  it("the membership terms promise no refund", () => {
+    const terms = page("membership-terms").body;
+    expect(terms).toContain("No refund is given for the rest of the period you have paid for.");
+    expect(terms).not.toMatch(/we will refund|pro-rata refund/);
   });
 
   it("the FAQ sends cancelling to SMI and keeps self-service for the rest", () => {

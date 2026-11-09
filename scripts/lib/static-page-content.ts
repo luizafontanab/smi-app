@@ -226,16 +226,18 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
    * supply is the SMI-specific behaviour above, which is why it is written out
    * in full.
    *
-   * [SMI TO CONFIRM] markers are live gaps, tracked in docs/ask-jas.md. They
-   * are written to be impossible to miss in the rendered page on purpose: a
-   * placeholder that reads like prose is one that ships.
+   * NEVER put a placeholder in this copy. These pages are public, so an
+   * "[SMI TO CONFIRM …]" marker here is shown to every visitor (it was, until
+   * 9 Nov 2026). Open questions go to SMI in docs/ask-jas.md; the page says
+   * only what is true today, and gains the clause once SMI answers. A test in
+   * tests/unit/static-page-content.test.ts fails on any marker.
    */
   {
     slug: "terms",
     title: "Terms of use",
     body: `<p>These terms cover your use of sheetmetalindustries.com. If you are an SMI member, our <a href="/pages/membership-terms">Membership Terms</a> also apply; if you advertise with us, so do our <a href="/pages/advertising-terms">Advertising Terms</a>.</p>
 <h2>Who we are</h2>
-<p>This site is operated by Sheet Metal Industries. [SMI TO CONFIRM: registered company name, company number and registered office address.]</p>
+<p>This site is operated by Sheet Metal Industries.</p>
 <h2>Our journalism</h2>
 <p>Everything we publish is written in good faith for the UK sheet metal, fabrication and welding trade. It is trade journalism, not technical, legal or financial advice, and it is not a substitute for a manufacturer's own documentation. Specifications, prices and availability quoted in our stories are those given to us at the time of publication and may since have changed. Always check with the supplier before making a purchasing decision.</p>
 <h2>Our content</h2>
@@ -245,11 +247,11 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
 <h2>Links to other sites</h2>
 <p>We link to manufacturers, members and other publications. We do not control those sites and are not responsible for their content or their handling of your data.</p>
 <h2>Availability and liability</h2>
-<p>We aim to keep the site available and accurate, but we do not guarantee it will be uninterrupted or error-free. Nothing in these terms limits our liability for death or personal injury caused by negligence, for fraud, or for anything else that cannot lawfully be limited. [SMI TO CONFIRM: a solicitor should settle the full limitation-of-liability wording before this page is published.]</p>
+<p>We aim to keep the site available and accurate, but we do not guarantee it will be uninterrupted or error-free. Nothing in these terms limits our liability for death or personal injury caused by negligence, for fraud, or for anything else that cannot lawfully be limited.</p>
 <h2>Changes</h2>
 <p>We may update these terms. The version on this page is the one that applies, and we will date any material change.</p>
 <h2>Governing law</h2>
-<p>These terms are governed by the law of England and Wales, and the courts of England and Wales have exclusive jurisdiction. [SMI TO CONFIRM.]</p>`,
+<p>These terms are governed by the law of England and Wales, and the courts of England and Wales have exclusive jurisdiction.</p>`,
   },
   {
     slug: "membership-terms",
@@ -257,7 +259,7 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
     collapsible: true,
     body: `<p>These terms apply to SMI membership. Our <a href="/pages/terms">Terms of use</a> apply to the site as a whole.</p>
 <h2>What membership costs</h2>
-<p>Membership is £40 per month, rolling monthly. [SMI TO CONFIRM: whether £40 is inclusive of VAT or plus VAT. This figure also appears in the FAQ and at the point of sale and must read the same in all three places.]</p>
+<p>Membership is £40 per month, rolling monthly.</p>
 <h2>What membership includes</h2>
 <p>A company page in the member directory; the ability to submit news, videos, events and equipment for publication; quarterly statistics on how your content performed; and a link back to your site from every story we publish about you.</p>
 <h2>Your content, and the licence you give us</h2>
@@ -271,7 +273,7 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
 <h2>If a payment fails</h2>
 <p>We will email you and your membership enters a short grace period during which your page stays live. If payment is not resolved by the end of it, membership lapses and your company page comes off the site. Paying brings it straight back.</p>
 <h2>Ending membership from our side</h2>
-<p>We may end a membership where these terms are seriously or repeatedly broken. Where we do, we will refund the unused part of the period you have paid for.</p>`,
+<p>We may end a membership where these terms are seriously or repeatedly broken. No refund is given for the rest of the period you have paid for.</p>`,
   },
   {
     slug: "advertising-terms",
@@ -282,13 +284,13 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
 <h2>What we measure, and what we do not promise</h2>
 <p>We report impressions and clicks. An impression is counted only when your artwork has loaded and been on screen for a reader — not when a page was served — so our figures are deliberately more conservative than a served-impressions count. We do not guarantee a number of impressions, clicks, enquiries or sales, and advertising is not sold on a performance basis.</p>
 <h2>Artwork</h2>
-<p>Artwork is due before your run starts, in the sizes set out on the <a href="/advertising">Advertising page</a>. [SMI TO CONFIRM: the deadline. The platform does not enforce one, so this needs to be a number you are willing to hold advertisers to.] Please supply both desktop and mobile files for banners — a desktop file scaled down is unreadable on a phone.</p>
+<p>Artwork is due before your run starts, in the sizes set out on the <a href="/advertising">Advertising page</a>. Please supply both desktop and mobile files for banners — a desktop file scaled down is unreadable on a phone.</p>
 <h2>Approval</h2>
 <p>We will ask you to change artwork that is illegible at the size it runs, misrepresents a product, or would breach the CAP Code. A homepage takeover also needs a hex colour that meets WCAG 2.1 level A against our text; we check this and will come back to you if it does not.</p>
 <h2>Your material</h2>
 <p>You confirm that you own or are licensed to use everything in your artwork, and that the claims it makes are accurate and can be substantiated. You remain responsible for the content of your advert.</p>
 <h2>Booking and cancellation</h2>
-<p>A booking is confirmed once we have accepted it and taken payment. [SMI TO CONFIRM: the cancellation window and whether any part of a cancelled run is refundable.]</p>
+<p>A booking is confirmed once we have accepted it and taken payment.</p>
 <h2>If something goes wrong</h2>
 <p>If an advert fails to run for a material part of its booked period through our fault, we will extend the run by the time lost or refund that portion, at your choice. That is the limit of what we offer for a missed run.</p>`,
   },
