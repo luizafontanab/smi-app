@@ -10,6 +10,9 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-09 — Fewer false "background jobs" warnings
+- The Command Centre now warns that background jobs are overdue only when a scheduled run has been missed. On staging, where jobs run hourly, that means a job waiting over two hours. On the live site, where they run daily, it means over 25 hours. It used to warn after 15 minutes, which is a normal wait between hourly runs.
+
 ## 2026-11-09 — No placeholders on the Terms pages; no refunds
 - The Terms, Membership terms and Advertising terms no longer show "SMI TO CONFIRM" notes to visitors. The open questions behind them (company details, liability wording, governing law, VAT, the advert artwork deadline and advert cancellations) are now in the list of questions for you.
 - The Membership terms now say no refund is given if SMI ends a membership, in place of refunding the unused part. A member who cancels isn't refunded either; their membership runs to the end of the period already paid for.

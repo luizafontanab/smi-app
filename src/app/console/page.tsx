@@ -15,6 +15,7 @@ import { waitingSummary } from "@/lib/social-confirm";
 import { SourceCheckPanel } from "@/components/console/SourceCheckPanel";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { readSourceCheckRun } from "@/lib/sources/run";
+import { cronStall, deployEnv, formatOverdue } from "@/lib/job-health";
 import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
@@ -254,12 +255,11 @@ export default async function CommandCentre(props: PageProps<"/console">) {
   if (deadJobs?.length) needs.push({ label: `⚠ ${deadJobs.length} background jobs failed and need attention`, href: "#jobs", urgent: true });
   // A job that's never picked up never fails, so it never dead-letters into the
   // check above — this is the only signal that catches cron not running at all
-  // (e.g. CRON_SECRET unset), which the deadJobs check can't see.
-  const oldestDueAt = oldestOpenJob?.[0]?.due_at;
-  const STALE_JOB_MS = 15 * 60 * 1000;
-  if (oldestDueAt && now - Date.parse(oldestDueAt) > STALE_JOB_MS) {
-    const staleMinutes = Math.round((now - Date.parse(oldestDueAt)) / 60_000);
-    needs.push({ label: `⚠ Background jobs haven't run in over ${staleMinutes} minutes — check CRON_SECRET / cron config`, href: "#jobs", urgent: true });
+  // (e.g. CRON_SECRET unset), which the deadJobs check can't see. The
+  // threshold follows this environment's cron schedule (lib/job-health).
+  const stall = cronStall(oldestOpenJob?.[0]?.due_at, now, deployEnv());
+  if (stall) {
+    needs.push({ label: `⚠ Background jobs are overdue: one has waited over ${formatOverdue(stall.overdueMinutes)}, but cron runs ${stall.scheduleLabel}. Check CRON_SECRET / cron config`, href: "#jobs", urgent: true });
   }
 
   return (
