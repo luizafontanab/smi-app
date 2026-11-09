@@ -176,13 +176,8 @@ Bigin has no test mode).
 
 `supabase db push` applies every pending migration in one go; you can't push
 just one. Deploy the `staging` code at the same moment: old code against the new
-schema breaks member profiles, the directory and the CRM page. Nothing is
-pending, as far as this repo knows. Everything through `20261027000004` was
-pushed to `bvyxeujhecxulzwvpxfr` on 28 Oct, without the backup or pre-checks
-below; `20261028000001` and `20261029000001` followed on 4 Nov, and
-`20261105000001`–`04` (Bigin Website fallback; issue #43's per-channel social
-confirm, which marked every story and video already Live "Don't post") on
-5 Nov. Push from a checkout of `staging`: a push from an older branch only
+schema breaks member profiles, the directory and the CRM page. Push from a
+checkout of `staging`: a push from an older branch only
 sees that branch's migrations. The "failed to cache migrations catalog"
 warning at the end of a push comes after the migrations apply and is harmless.
 Confirm with `supabase migration list --linked`. From `20261020000005` on, nothing sends
