@@ -46,7 +46,10 @@ import {
 import { resolveCoordinates } from "@/lib/member-geocode";
 import { membershipTypeIdsFromForm, membershipTypesError, replaceMemberIndustries, replaceMemberMembershipTypes, replaceMemberServices } from "@/lib/member-services";
 import { recordRename } from "@/lib/redirects";
-import { activationBlocked, MEMBER_STATUSES, type MemberStatus } from "@/lib/membership";
+import { activationBlocked, MEMBER_STATUSES, membershipCancelState, requestCancellation, undoCancellation, type MemberStatus } from "@/lib/membership";
+import {
+  CONFIRM_CANCEL, CONFIRM_UNDO, INVOICE_BILLING_LINE, membershipFailureMessage, NOT_CANCELLABLE, NOT_PENDING,
+} from "./membership-messages";
 import { sanitizeRichText } from "@/lib/sanitize";
 import { siteUrl } from "@/lib/site-url";
 import { missingChecks, PROOF_KEYS } from "@/lib/newsletter-proof";
@@ -3062,6 +3065,77 @@ export async function setMemberStatus(formData: FormData) {
   await audit({ action: "member_status_changed", actorUserId: user.userId, actorRole: "admin", memberId: id, detail: { from: member.status, to: status } });
   revalidatePath("/console/members");
   revalidatePath("/console");
+}
+
+/* ---------- members: cancel a membership, and undo it (#90, #92) ---------- */
+
+/** The fields the cancel/undo gate reads (`membershipCancelState`). Not exported: "use server" file. */
+async function memberForRenewalChange(id: string) {
+  const { data } = await serviceDb().from("members")
+    .select("status, billing_mode, cancel_requested_at").eq("id", id).maybeSingle();
+  return data;
+}
+
+/** Every surface a cancel or undo changes. Not exported: "use server" file. */
+function revalidateRenewalChange(id: string) {
+  revalidatePath("/console/members");
+  revalidatePath(`/console/members/${id}`);
+  revalidatePath("/dashboard/settings/billing");
+}
+
+/**
+ * Cancel a member's membership on their behalf — GLOSSARY "Cancel a
+ * membership": the member asked SMI, an admin carries it out. Stops renewal
+ * at the end of the paid period (never now) through `requestCancellation`,
+ * which also stamps the pending cancel and emails the member. Each failure the
+ * module reports is shown in admin wording and changes nothing.
+ */
+export async function cancelMemberMembership(formData: FormData) {
+  const admin = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const member = await memberForRenewalChange(id);
+  if (!member) return;
+
+  if (formData.get("confirm") !== "1") return memberFail(id, CONFIRM_CANCEL);
+  const state = membershipCancelState(member);
+  if (state === "invoice") return memberFail(id, INVOICE_BILLING_LINE);
+  if (state === "none") return memberFail(id, NOT_CANCELLABLE);
+
+  const result = await requestCancellation(id);
+  if (!result.ok) return memberFail(id, membershipFailureMessage("cancel", result));
+  if (result.changed) {
+    await audit({ action: "membership_cancelled", actorUserId: admin.userId, actorRole: "admin", memberId: id });
+  }
+  revalidateRenewalChange(id);
+  redirect(`/console/members/${id}?cancelled=1`);
+}
+
+/**
+ * Undo a pending cancellation for a member who changed their mind (#92):
+ * `undoCancellation` tells Stripe to keep renewing, clears the pending cancel
+ * and emails the member that their membership will continue. Offered only
+ * while a cancel is pending; each failure is shown in admin wording and
+ * changes nothing — a period Stripe has already closed means the member must
+ * rejoin.
+ */
+export async function undoMemberCancellation(formData: FormData) {
+  const admin = await requireConsole();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const member = await memberForRenewalChange(id);
+  if (!member) return;
+
+  if (formData.get("confirm") !== "1") return memberFail(id, CONFIRM_UNDO);
+  if (membershipCancelState(member) !== "pending") return memberFail(id, NOT_PENDING);
+
+  const result = await undoCancellation(id);
+  if (!result.ok) return memberFail(id, membershipFailureMessage("undo", result));
+  if (result.changed) {
+    await audit({ action: "membership_cancel_undone", actorUserId: admin.userId, actorRole: "admin", memberId: id });
+  }
+  revalidateRenewalChange(id);
+  redirect(`/console/members/${id}?undone=1`);
 }
 
 /* ---------- members: archive and delete (fix list 72) ---------- */

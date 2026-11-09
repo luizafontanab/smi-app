@@ -656,15 +656,6 @@ export async function changeLoginEmail(formData: FormData) {
   redirect("/dashboard/settings/security?esent=1");
 }
 
-/** GAPS B1.5 — member-side subscription cancellation, requested from /dashboard/settings/billing. */
-export async function cancelMembership() {
-  const user = await requireMember();
-  const { requestCancellation } = await import("@/lib/membership");
-  const result = await requestCancellation(user.memberId);
-  revalidatePath("/dashboard/settings/billing");
-  redirect(result.ok ? "/dashboard/settings/billing?cancelled=1" : `/dashboard/settings/billing?cerror=${encodeURIComponent(result.error)}`);
-}
-
 export async function savePrefs(formData: FormData) {
   const user = await requireMember();
   await serviceDb().from("notification_prefs").upsert({

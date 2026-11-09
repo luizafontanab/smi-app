@@ -65,9 +65,9 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
 <p>Your logo, company name and industry in the Featured Members carousel on the homepage, plus higher visibility in Find a Member. The carousel shows three at a time and rotates through everyone booked, so each advertiser gets the same turn in the same space. There are eight slots.</p>
 <h2>Account and billing</h2>
 <h3>How do I update or cancel my membership?</h3>
-<p>Everything is self-service from your member area under Settings — update your details, change your password, view invoices, or cancel. Your page and stories stay live until the end of the period you've paid for.</p>
+<p>Everything is self-service from your member area under Settings — update your details, change your password or view invoices. To cancel, contact us. Your page and stories stay live until the end of the period you've paid for.</p>
 <h3>Where are my invoices?</h3>
-<p>In your member area, under Settings → Billing. You'll find every invoice there to download, along with your renewal date and the card on file. You can update your details or cancel from the same page.</p>
+<p>In your member area, under Settings → Billing. You'll find every invoice there to download, along with your renewal date and the card on file. You can update your details.</p>
 <h3>Who do I contact for anything else?</h3>
 <p>Use the <a href="/contact">Contact page</a> and we'll come back to you — usually the same day.</p>`,
   },
@@ -209,6 +209,8 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
    * Every operative clause below describes what the platform ACTUALLY does,
    * checked against the code:
    *   · £40/month — MEMBERSHIP_MONTHLY_PENNIES, src/lib/pricing.ts
+   *   · cancel by contacting us — members have no cancel button (#91, Jas
+   *     item 24); an admin cancels from the console member page (#90)
    *   · cancel runs to period end — src/lib/membership.ts: cancelling sets
    *     cancel_requested_at and leaves status 'active'; Stripe's
    *     subscription.deleted then sets 'lapsed'. memberBySlug() serves only
@@ -265,7 +267,7 @@ export const AUTHORED_STATIC_PAGES: { slug: string; title: string; body: string;
 <h2>Editorial discretion</h2>
 <p>Membership buys you access to the platform, not a guarantee of publication. We may decline a submission, ask you to change it, or unpublish something that turns out to be inaccurate. We will always tell you why.</p>
 <h2>Cancelling</h2>
-<p>You can cancel at any time from your member area. Cancelling stops the next payment; your membership, your company page and your ability to submit content all continue to the end of the period you have already paid for. After that your company page comes off the public site, and news we published about you remains in the archive.</p>
+<p>You can cancel at any time by contacting us. Cancelling stops the next payment; your membership, your company page and your ability to submit content all continue to the end of the period you have already paid for. After that your company page comes off the public site, and news we published about you remains in the archive.</p>
 <p>[SMI TO CONFIRM: whether a pro-rata refund is ever offered mid-period, and on what grounds. The platform does not issue one today.]</p>
 <h2>If a payment fails</h2>
 <p>We will email you and your membership enters a short grace period during which your page stays live. If payment is not resolved by the end of it, membership lapses and your company page comes off the site. Paying brings it straight back.</p>

@@ -70,6 +70,7 @@ export const NOTIFICATION_KINDS = [
   "account_created",
   "membership_lapsed",
   "membership_cancel_requested",
+  "membership_cancel_undone",
   "membership_cancelled",
   "stats_summary",
   "lead_alert",

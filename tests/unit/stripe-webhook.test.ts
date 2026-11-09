@@ -45,6 +45,7 @@ describe.skipIf(!KEY)("/api/stripe/webhook", () => {
       // Console notes (payment_taken) carry no email, only the member.
       await db.from("inbox_messages").delete().in("member_id", memberIds);
       await db.from("members").delete().in("id", memberIds);
+      for (const id of memberIds) await db.from("jobs").delete().eq("kind", "notify_member").eq("payload->>member_id", id);
     }
     memberIds.length = 0;
     memberEmails.length = 0;
@@ -169,6 +170,100 @@ describe.skipIf(!KEY)("/api/stripe/webhook", () => {
     expect(data?.cancel_requested_at).toBeNull();
     const { data: inbox } = await db.from("inbox_messages").select("kind, category").eq("member_id", memberId).single();
     expect(inbox).toMatchObject({ kind: "subscription_ended", category: "notification" });
+  });
+
+  // #93: a cancel or undo done in Stripe's own dashboard reaches the app as
+  // customer.subscription.updated, whose object IS the subscription.
+  async function subscribedMember(name: string, fields: { cancel_requested_at?: string | null } = {}) {
+    const memberId = await makeMember(name);
+    const subscriptionId = `sub_sync_${memberId}`;
+    await db.from("members").update({ stripe_subscription_id: subscriptionId, ...fields }).eq("id", memberId);
+    return { memberId, subscriptionId };
+  }
+  function subscriptionUpdated(subscriptionId: string, cancelAtPeriodEnd: boolean, memberId?: string) {
+    return JSON.stringify({
+      type: "customer.subscription.updated",
+      data: { object: { id: subscriptionId, object: "subscription", cancel_at_period_end: cancelAtPeriodEnd, metadata: memberId ? { member_id: memberId } : {} } },
+    });
+  }
+  async function queuedEmails(memberId: string) {
+    const { data } = await db.from("jobs").select("payload").eq("kind", "notify_member").eq("payload->>member_id", memberId);
+    return (data ?? []).map((j) => (j.payload as { kind?: string }).kind);
+  }
+  async function pendingCancel(memberId: string) {
+    const { data } = await db.from("members").select("status, cancel_requested_at").eq("id", memberId).single();
+    return data;
+  }
+
+  it("customer.subscription.updated with cancel_at_period_end stamps the pending cancel and queues the scheduled email", async () => {
+    const { memberId, subscriptionId } = await subscribedMember(`Stripe Cancel ${ts}`);
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const body = subscriptionUpdated(subscriptionId, true, memberId);
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+
+    const after = await pendingCancel(memberId);
+    expect(after?.status).toBe("active");
+    expect(after?.cancel_requested_at).not.toBeNull();
+    expect(await queuedEmails(memberId)).toEqual(["membership_cancel_requested"]);
+  });
+
+  it("customer.subscription.updated without cancel_at_period_end clears a pending cancel and queues the will-continue email", async () => {
+    const { memberId, subscriptionId } = await subscribedMember(`Stripe Undo ${ts}`, { cancel_requested_at: new Date().toISOString() });
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const body = subscriptionUpdated(subscriptionId, false, memberId);
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+
+    expect(await pendingCancel(memberId)).toEqual({ status: "active", cancel_requested_at: null });
+    expect(await queuedEmails(memberId)).toEqual(["membership_cancel_undone"]);
+  });
+
+  it("a repeated customer.subscription.updated changes nothing and queues no second email", async () => {
+    const { memberId, subscriptionId } = await subscribedMember(`Stripe Repeat ${ts}`);
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const body = subscriptionUpdated(subscriptionId, true, memberId);
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+    const stamped = (await pendingCancel(memberId))?.cancel_requested_at;
+    expect(stamped).not.toBeNull();
+
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+    expect((await pendingCancel(memberId))?.cancel_requested_at).toBe(stamped);
+    expect(await queuedEmails(memberId)).toEqual(["membership_cancel_requested"]);
+  });
+
+  it("Stripe's echo of a console cancel finds the row in sync and sends no second email", async () => {
+    const { memberId, subscriptionId } = await subscribedMember(`Stripe Echo ${ts}`);
+    const { requestCancellation } = await import("@/lib/membership");
+    expect(await requestCancellation(memberId)).toEqual({ ok: true, changed: true }); // stub mode: row only
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const body = subscriptionUpdated(subscriptionId, true, memberId);
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+
+    expect(await queuedEmails(memberId)).toEqual(["membership_cancel_requested"]);
+  });
+
+  // B1.6: the member's own id in the subscription metadata is not enough —
+  // only the subscription id this site stored counts.
+  it("customer.subscription.updated for a subscription that isn't the member's stored one changes nothing", async () => {
+    const { memberId } = await subscribedMember(`Stripe Other Sub ${ts}`);
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const body = subscriptionUpdated(`sub_not_ours_${ts}`, true, memberId);
+    const res = await POST(request(body, { "stripe-signature": sign(SECRET, body) }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, ignored: "unknown subscription" });
+
+    expect((await pendingCancel(memberId))?.cancel_requested_at).toBeNull();
+    expect(await queuedEmails(memberId)).toEqual([]);
+  });
+
+  it("a late customer.subscription.updated never re-stamps a membership that has already ended", async () => {
+    const { memberId, subscriptionId } = await subscribedMember(`Stripe Late ${ts}`);
+    await db.from("members").update({ status: "lapsed" }).eq("id", memberId);
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    const body = subscriptionUpdated(subscriptionId, true, memberId);
+    expect((await POST(request(body, { "stripe-signature": sign(SECRET, body) }))).status).toBe(200);
+
+    expect(await pendingCancel(memberId)).toEqual({ status: "lapsed", cancel_requested_at: null });
+    expect(await queuedEmails(memberId)).toEqual([]);
   });
 
   it("ignores an event with no member reference rather than throwing", async () => {

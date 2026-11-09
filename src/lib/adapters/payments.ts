@@ -23,7 +23,16 @@ export type CheckoutResult =
   | { kind: "comped"; months: number }  // valid promo code
   | { kind: "error"; message: string };
 
-export type CancelResult = { ok: true } | { ok: false; error: string };
+/**
+ * A change to a subscription's renewal (cancel-at-period-end, and the #92
+ * "keep renewing" call beside it). The failure
+ * carries a reason, so the membership module can tell "Stripe has already
+ * closed this subscription" (`period_ended`) from any other refusal; `error`
+ * is Stripe's own message, for an admin, never for a member.
+ */
+export type RenewalChangeResult =
+  | { ok: true }
+  | { ok: false; reason: "period_ended" | "stripe_rejected"; error: string };
 
 export interface Payments {
   /** Create a £40/mo subscription checkout; promo codes (managed at /console/promo-codes) apply here. */
@@ -36,7 +45,14 @@ export interface Payments {
    * subscription_id` — B1.6 ("existing Stripe subscriptions must never be
    * touched") means a cancel action can never derive/guess an id another way.
    */
-  cancelSubscription(subscriptionId: string): Promise<CancelResult>;
+  cancelSubscription(subscriptionId: string): Promise<RenewalChangeResult>;
+  /**
+   * Undo a scheduled cancel (#92): `cancel_at_period_end` back to false, so
+   * the subscription renews as normal. Same B1.6 rule — only ever the stored
+   * subscription id. A subscription Stripe has already closed can't be
+   * revived; that comes back as `period_ended`.
+   */
+  keepRenewing(subscriptionId: string): Promise<RenewalChangeResult>;
 }
 
 /**
@@ -73,8 +89,12 @@ class LocalStubPayments implements Payments {
     return { kind: "paid" }; // local/preview dev: card payment simulated as successful
   }
 
-  async cancelSubscription(): Promise<CancelResult> {
+  async cancelSubscription(): Promise<RenewalChangeResult> {
     return { ok: true }; // nothing real to cancel — the member row itself is updated by the caller
+  }
+
+  async keepRenewing(): Promise<RenewalChangeResult> {
+    return { ok: true }; // nothing real to resume — the caller clears the member row
   }
 }
 
@@ -186,21 +206,51 @@ class StripePayments implements Payments {
    * `customer.subscription.deleted` event fires at the period's real end
    * (see the webhook route) — this call only schedules it.
    */
-  async cancelSubscription(subscriptionId: string): Promise<CancelResult> {
+  async cancelSubscription(subscriptionId: string): Promise<RenewalChangeResult> {
+    return this.setCancelAtPeriodEnd(subscriptionId, true, "the cancellation");
+  }
+
+  /** The reverse of `cancelSubscription`: `cancel_at_period_end=false` on the same subscription (#92). */
+  async keepRenewing(subscriptionId: string): Promise<RenewalChangeResult> {
+    return this.setCancelAtPeriodEnd(subscriptionId, false, "the undo");
+  }
+
+  /** The one Stripe call behind both renewal changes; `what` names it in a refusal. */
+  private async setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean, what: string): Promise<RenewalChangeResult> {
     const res = await fetch(`${this.baseUrl}/v1/subscriptions/${subscriptionId}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.secretKey}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ cancel_at_period_end: "true" }),
+      body: new URLSearchParams({ cancel_at_period_end: String(cancel) }),
     });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      return { ok: false, error: `Stripe rejected the cancellation (${res.status}): ${detail.slice(0, 300)}` };
-    }
+    if (!res.ok) return subscriptionRefusal(res, what);
     return { ok: true };
   }
+}
+
+/**
+ * Stripe's answer to a refused subscription update, as a RenewalChangeResult. Shared
+ * by every renewal change (cancel, and keep-renewing from #92). Stripe's own
+ * `error.message` is passed through when the body is its usual JSON, trimmed
+ * to 300 characters as before; a subscription Stripe has already closed
+ * ("A canceled subscription can only update its cancellation_details and
+ * metadata.") becomes `period_ended`, since there is nothing left to change.
+ */
+async function subscriptionRefusal(res: Response, what: string): Promise<RenewalChangeResult> {
+  const body = await res.text().catch(() => "");
+  let message = body;
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown } };
+    if (typeof parsed.error?.message === "string") message = parsed.error.message;
+  } catch {
+    // not JSON — keep the raw text
+  }
+  const error = `Stripe rejected ${what} (${res.status}): ${message.slice(0, 300)}`;
+  return /canceled subscription/i.test(message)
+    ? { ok: false, reason: "period_ended", error }
+    : { ok: false, reason: "stripe_rejected", error };
 }
 
 /**

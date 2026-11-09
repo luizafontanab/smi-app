@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  cancelMembership, deleteStoryDraft, editEvent, previewStoryBody, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
+  deleteStoryDraft, editEvent, previewStoryBody, editMachine, editStory, editVideo, markAllNotificationsRead, markNotificationRead, memberUploadEventImage,
   memberUploadImage, memberUploadVideoImage, proposeOwnArtworkSwap, renewAdvertBooking, requestVisibility,
   resubmitAdvert, savePrefs, submitAdvert, submitEvent, submitMachine, submitProfileEdit, submitStory, submitVideo,
   markProspectFollowUp, unmarkProspect,
@@ -54,16 +54,6 @@ const { getLeadGenSource } = vi.hoisted(() => ({ getLeadGenSource: vi.fn() }));
 vi.mock("@/lib/adapters/leadgen", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getLeadGenSource,
-}));
-
-// cancelMembership loads @/lib/membership dynamically; keep the module's other
-// exports real so anything else in this graph (statuses, slugify) still works.
-const { requestCancellation } = vi.hoisted(() => ({
-  requestCancellation: vi.fn<(memberId: string) => Promise<{ ok: true } | { ok: false; error: string }>>(),
-}));
-vi.mock("@/lib/membership", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  requestCancellation,
 }));
 
 afterEach(() => {
@@ -527,23 +517,6 @@ describe("submitProfileEdit", () => {
     await expect(submitProfileEdit(form({ name: "Acme", address: "1 Old Rd" }))).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(geocodeAddress).not.toHaveBeenCalled();
-  });
-});
-
-describe("cancelMembership", () => {
-  it("requests cancellation for the signed-in member and confirms", async () => {
-    requestCancellation.mockResolvedValue({ ok: true });
-
-    await expect(cancelMembership()).rejects.toThrow("NEXT_REDIRECT:/dashboard/settings/billing?cancelled=1");
-
-    expect(requestCancellation).toHaveBeenCalledWith("mem1");
-    expect(revalidatePath).toHaveBeenCalledWith("/dashboard/settings/billing");
-  });
-
-  it("surfaces a failed cancellation via the cerror param", async () => {
-    requestCancellation.mockResolvedValue({ ok: false, error: "No active subscription on record — contact SMI to cancel." });
-
-    await expect(cancelMembership()).rejects.toThrow(/NEXT_REDIRECT:\/dashboard\/settings\/billing\?cerror=No%20active%20subscription/);
   });
 });
 
