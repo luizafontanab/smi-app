@@ -17,6 +17,7 @@ vi.mock("@/lib/adapters/crm", () => ({
   getCrmSync: () => ({ live: false }),
   firstImportDone: vi.fn(async () => false),
   readLastRun: vi.fn(async () => null),
+  NEWS_PAGE_LABEL: "News Page URL",
 }));
 vi.mock("@/lib/activity", () => ({ memberActivityTimeline: vi.fn(async () => []) }));
 vi.mock("@/lib/blocks/layouts", () => ({ getLayout: vi.fn(async () => ({ blocks: [] })) }));

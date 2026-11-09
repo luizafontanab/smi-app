@@ -16,6 +16,51 @@
 - In the story editor, a new "Company links at the end of the story" section lets you add companies that aren't members. Search for them in Bigin and pick one or several; each gets a line with its name, linking to its website. If Bigin has no website for a company, type one in. You can also add a company by hand.
 - Members editing their own story can't change or remove the company links you added.
 
+## 2026-11-06 — Companies already on the imported list
+- In the Companies box on the CRM page, a company with no News Page URL now shows as "Covered by imported list" when a page on the imported spreadsheet list is on the same website and isn't linked to any company yet. These companies are probably watched already. The new "Covered by imported list" filter lists just them.
+- Open such a company to see every imported page on its website, each with a "Use as News Page URL" button. The page's address becomes the company's News Page URL, saved in Bigin too, and that imported page is linked to the company. No second copy of it is added.
+- Nothing is linked unless you click the button.
+- Until the Bigin connection is given permission to change companies, the button is greyed out with "edit in Bigin for now". The label and the filter work already.
+
+## 2026-11-06 — Edit a company's News Page URL in CRM
+- In the Companies box on the CRM page, click a company's name and change its News Page URL there. The change is saved in Bigin too, so the next sync won't undo it.
+- The story crawler starts watching the new address straight away. Leave the field empty to watch the company's Website instead.
+- Until Bigin has accepted the change, the company shows "push pending". If Bigin can't be reached, the app keeps trying by itself.
+- The Website is shown but can only be changed in Bigin.
+- Until the Bigin connection is given permission to change companies, the field is greyed out with "edit in Bigin for now".
+- A company deleted in Bigin can't have its News Page URL changed: the field is greyed out and says why. Restore the company in Bigin and sync to edit it again.
+- After you save a News Page URL or a member, or use an imported page, you come back to the same list you were looking at: your search, filter and page stay as they were.
+
+## 2026-11-06 — Every Bigin field for a company
+- In the Companies box on the CRM page, click a company's name to see every field Bigin holds for it, your own custom fields included, under the same labels as in Bigin.
+- The app now finds the "News Page URL" field by its label in Bigin, so the story crawler reads the right field even if Bigin named it differently behind the scenes.
+- Until the Bigin connection is given permission to read Bigin's field list, only the name, Website and News Page URL are kept, and the box says so. Nothing else changes in the meantime.
+
+## 2026-11-06 — Choose a company's member by hand
+- In the CRM Companies box, click a company's name to open it, and choose its member yourself. Story drafts from that company's news page are then tagged with the member you chose.
+- Your choice takes the place of the automatic match (a linked contact, or the member's website), including when that match found more than one member and tagged nobody. It is kept through every Bigin sync.
+- Each company shows whether its member was "chosen by hand" or "matched automatically". "Use automatic match" clears your choice and goes back to the automatic match straight away.
+- The choice stays in the app only: Bigin has no member field, so nothing is sent to Bigin.
+
+## 2026-11-06 — Bigin's story sources move to the CRM page
+- The "From Bigin" panel has moved from Story sources to the Companies box on the CRM page. It still shows when Bigin last updated the story sources, any Bigin addresses to fix (not a web address, or listed by two companies), and the warning when no company has a News Page URL.
+- Story sources now has a one-line link to the CRM page in its place, and no "Sync from Bigin now" button: "Sync companies" on the CRM page does the same job.
+- On Story sources, the "Bigin · company" label on a source now opens that company on the CRM page. On the CRM page, a company with a story source has an "On Story Sources" link that opens just that source.
+- The "From Bigin" filter and labels on Story sources stay as they were.
+
+## 2026-11-06 — Companies deleted in Bigin
+- A company deleted in Bigin is no longer just dropped from view. The Companies box on the CRM page keeps it, marked "Deleted in Bigin" with the date it was found missing, and hides it unless you pick the new "Deleted in Bigin" filter.
+- Its story source stops being linked to the company. If the source came only from Bigin it is paused; if it is also on the imported spreadsheet list, it keeps running.
+- If the company reappears in Bigin, the next sync brings it back into the list and clears the mark.
+- A sync where Bigin stops part-way never marks a company deleted. Nothing is ever deleted, here or in Bigin.
+
+## 2026-11-06 — Companies on the CRM page
+- The CRM page has a new Companies box under Contacts. It lists every company in Bigin, members and non-members, including companies with no web address at all.
+- Each company shows its Website, its News Page URL, which of the two the story crawler watches ("News Page URL", "Website stand-in" or "none"), how many contacts are linked to it, and the member its stories are tagged with.
+- You can search by name, Website or News Page URL, page through 50 at a time, and filter to companies using their website or with no address.
+- The box has its own "Sync companies" button and "last synced" line, separate from the contacts sync. It works even when the story crawler is switched off; then it updates the company list only and leaves story sources alone.
+- The list is read-only for now: change a company's details in Bigin, then sync.
+
 ## 2026-11-06 — A second design option, Classic
 - There is now a second complete look for the public website, called Classic, to choose between alongside the current design. It follows SMI's existing website, sheetmetalindustries.com: a grey page with diagonal stripes, white panels, blue links and buttons, orange accents and League Spartan type throughout.
 - Classic is shown on its own preview address, so the two can be compared side by side. Nothing changes here: this site, the console and the member area look the same as before.

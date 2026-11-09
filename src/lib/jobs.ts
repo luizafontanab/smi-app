@@ -30,7 +30,7 @@ export type JobKind =
   | "social_links"           // payload: { story_id, post_ids, tries } — collects the live URLs of SMI's posts from Buffer
   | "notify_member"          // payload: { member_id, kind, ... }
   | "crm_sync"               // periodic Bigin poll
-  | "crm_push"               // payload: { contact_id, name_changed, re_opt_in } — retry of a failed write-through to Bigin
+  | "crm_push"               // payload: { contact_id, name_changed, re_opt_in } or { company_id } — retry of a failed write-through to Bigin
   | "rollup_daily"           // nightly analytics rollup + partition upkeep
   | "newsletter_send"        // payload: { issue_id }
   | "comp_expiry"            // daily sweep: expired promo comps → grace + console note
@@ -44,7 +44,7 @@ export type JobKind =
   | "log_retention"          // daily: error logs past 90 days; audit_events per purge_audit_events()
   | "upload_staging_sweep"   // hourly: removes direct uploads staged but never saved (lib/staged-upload)
   | "source_watch"           // hourly: checks the story sources due their daily read (lib/sources/check)
-  | "source_bigin_sync"      // daily: Bigin companies' News Page URLs → story sources (lib/sources/bigin)
+  | "source_bigin_sync"      // daily: the company sync — Bigin companies → crm_companies → story sources (lib/crm-companies/sync)
   | "social_followers";      // daily: Facebook/Instagram/YouTube follower counts for /console/social-reach (lib/adapters/social-followers)
 
 /**
@@ -490,11 +490,29 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       break;
     }
     case "crm_sync": {
+      // Company News Page URL pushes whose own retry died (issue #55) first:
+      // the contacts sync below throws on a failed contact push, and that
+      // mustn't hold the companies' sweep up. Their failures stay pending
+      // and are shown in CRM; the crm_push retry dead-letters on its own.
+      const { retryPendingCompanyPushes } = await import("./crm-companies/news-page");
+      try {
+        await retryPendingCompanyPushes();
+      } catch (e) {
+        logError({ source: "job", area: "job:crm_sync:company_pushes", error: e });
+      }
       const { getCrmSync } = await import("./adapters/crm");
       await getCrmSync().sync();
       break;
     }
     case "crm_push": {
+      // A company's News Page URL (issue #55): thrown while Bigin still
+      // refuses, so the queue retries it and in the end dead-letters it.
+      if (typeof payload.company_id === "string") {
+        const { pushCompanyNewsPage } = await import("./crm-companies/news-page");
+        const outcome = await pushCompanyNewsPage(payload.company_id, { queueRetry: false });
+        if (outcome === "pending") throw new Error(`crm_push: Bigin refused company ${payload.company_id}'s News Page URL; still pending`);
+        break;
+      }
       const { getCrmSync } = await import("./adapters/crm");
       const contactId = typeof payload.contact_id === "string" ? payload.contact_id : null;
       if (!contactId) throw new Error("crm_push: payload has no contact_id");
@@ -560,11 +578,21 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
       break;
     }
     case "source_bigin_sync": {
-      // Bigin companies' News Page URLs, merged into the source list. Bigin
-      // not connected is a skip, not a failure (syncBiginSources returns null).
+      // The company sync (issue #50): every Bigin company stored in
+      // crm_companies, then their News Page URLs merged into the source list.
+      // Kept behind the Story crawler flag and under its old name, so queued
+      // rows still run; "Sync companies" on CRM works with the flag off.
+      // Bigin not connected is a skip, not a failure (syncCompanies returns null).
+      // Whether the token may write companies is re-checked first, flag or
+      // no flag: it decides whether CRM offers News Page URL editing (#55).
+      // A failed check keeps the stored answer and doesn't fail the job.
+      {
+        const { checkCompanyWriteAccess } = await import("./crm-companies/news-page");
+        await checkCompanyWriteAccess().catch((e: unknown) => logError({ source: "job", area: "job:source_bigin_sync:write_access", error: e }));
+      }
       if (!(await storyCrawlerOn())) break;
-      const { syncBiginSources } = await import("./sources/bigin");
-      await syncBiginSources();
+      const { syncCompanies } = await import("./crm-companies/sync");
+      await syncCompanies();
       break;
     }
     case "social_followers": {

@@ -34,6 +34,7 @@ const ALLOWED: Record<string, string> = {
   "app/console/analytics/page.tsx#Apply": "GET filter",
   "app/console/dev/page.tsx#Apply": "GET filter",
   "app/console/crm/page.tsx#Search": "GET search",
+  "app/console/crm/CompaniesBox.tsx#Search": "GET search",
   "app/console/leads/page.tsx#Search": "GET search",
   // <noscript> fallbacks: only render with JavaScript off, where React (and so SubmitButton) never runs.
   "app/console/stories/StoryBoard.tsx#Move": "noscript fallback",

@@ -998,6 +998,59 @@ export type Database = {
           },
         ]
       }
+      crm_companies: {
+        Row: {
+          bigin_id: string
+          created_at: string
+          deleted_in_bigin_at: string | null
+          fields: Json
+          id: string
+          last_synced_at: string
+          member_override_id: string | null
+          name: string
+          news_page_pending_at: string | null
+          news_page_url: string | null
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          bigin_id: string
+          created_at?: string
+          deleted_in_bigin_at?: string | null
+          fields?: Json
+          id?: string
+          last_synced_at?: string
+          member_override_id?: string | null
+          name?: string
+          news_page_pending_at?: string | null
+          news_page_url?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          bigin_id?: string
+          created_at?: string
+          deleted_in_bigin_at?: string | null
+          fields?: Json
+          id?: string
+          last_synced_at?: string
+          member_override_id?: string | null
+          name?: string
+          news_page_pending_at?: string | null
+          news_page_url?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_companies_member_override_id_fkey"
+            columns: ["member_override_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dev_tasks: {
         Row: {
           assignee: string | null

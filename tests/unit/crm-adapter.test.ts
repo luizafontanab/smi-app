@@ -703,119 +703,175 @@ describe("searchCompanies", () => {
   });
 });
 
-describe("listCompanyNewsPages (story sources from Bigin)", () => {
+describe("listCompanies (CRM companies from Bigin)", () => {
   const accounts = (data: Record<string, unknown>[], info: Record<string, unknown> = { more_records: false }) => json({ data, info });
+  const FIELDS_URL = `${API}/settings/fields?module=Accounts`;
+  /** Today's token: no ZohoBigin.settings.fields.READ, so Bigin refuses the field list (Zoho's documented answer). */
+  const scopeMismatch = () => json({ code: "OAUTH_SCOPE_MISMATCH", details: {}, message: "invalid oauth scope to access this URL", status: "error" }, 401);
+  const fieldMeta = (...fields: Array<[api_name: string, display_label: string, data_type?: string]>) =>
+    json({ fields: fields.map(([api_name, display_label, data_type = "text"]) => ({ api_name, display_label, field_label: display_label, data_type })) });
+  const quiet = () => vi.spyOn(console, "warn").mockImplementation(() => {});
 
   it("the stub returns null — Bigin not connected, nothing to sync", async () => {
     unconnectedEnv();
-    expect(await getCrmSync().listCompanyNewsPages()).toBeNull();
+    expect(await getCrmSync().listCompanies()).toBeNull();
   });
 
-  it("pages through every company, names the field, and keeps only filled-in URLs", async () => {
+  it("pages through every company, names the fields, and keeps companies with no address too", async () => {
     liveEnv();
+    quiet();
     const fetchSpy = fetchRoutes((url) => {
+      if (url === FIELDS_URL) return scopeMismatch();
       if (!url.startsWith(`${API}/Accounts?`)) return undefined;
       return url.includes("page=1")
         ? accounts([
-            { id: "1", Account_Name: "Acme", News_Page_URL: " https://acme.test/news " },
+            { id: "1", Account_Name: "Acme", News_Page_URL: " https://acme.test/news ", Website: "https://acme.test" },
             { id: "2", Account_Name: "Blank", News_Page_URL: null },
-            { id: "3", Account_Name: "Empty", News_Page_URL: "  " },
+            { id: "3", Account_Name: "Empty", News_Page_URL: "  ", Website: " https://empty.test " },
           ], { more_records: true })
-        : accounts([{ id: "4", Account_Name: "Brightsteel", News_Page_URL: "brightsteel.test/blog" }]);
+        : accounts([{ id: "4", Account_Name: "Brightsteel", News_Page_URL: "brightsteel.test/blog" }, { Account_Name: "no id" }]);
     });
 
-    const result = await (await freshCrm()).getCrmSync().listCompanyNewsPages();
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
 
     expect(calls(fetchSpy)).toEqual([
+      `GET ${FIELDS_URL}`,
       `GET ${API}/Accounts?fields=Account_Name,News_Page_URL,Website&per_page=200&page=1`,
       `GET ${API}/Accounts?fields=Account_Name,News_Page_URL,Website&per_page=200&page=2`,
     ]);
-    expect(result).toEqual({
-      complete: true,
-      companies: [
-        { id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false },
-        { id: "4", name: "Brightsteel", url: "brightsteel.test/blog", fromWebsite: false },
-      ],
-    });
+    expect(result?.complete).toBe(true);
+    expect(result?.companies.map((c) => ({ id: c.id, name: c.name, newsPageUrl: c.newsPageUrl, website: c.website }))).toEqual([
+      { id: "1", name: "Acme", newsPageUrl: "https://acme.test/news", website: "https://acme.test" },
+      { id: "2", name: "Blank", newsPageUrl: null, website: null },
+      { id: "3", name: "Empty", newsPageUrl: null, website: "https://empty.test" },
+      { id: "4", name: "Brightsteel", newsPageUrl: "brightsteel.test/blog", website: null },
+    ]);
+    // the record as Bigin gave it, for the detail view later (#54)
+    expect(result?.companies[0].fields).toEqual({ id: "1", Account_Name: "Acme", News_Page_URL: " https://acme.test/news ", Website: "https://acme.test" });
   });
 
   it("follows page_token past the first 2,000 records", async () => {
     liveEnv();
+    quiet();
     const fetchSpy = fetchRoutes((url) => {
+      if (url === FIELDS_URL) return scopeMismatch();
       if (!url.startsWith(`${API}/Accounts?`)) return undefined;
       return url.includes("page_token=")
         ? accounts([{ id: "9", Account_Name: "Late", News_Page_URL: "https://late.test/" }])
         : accounts([], { more_records: true, next_page_token: "tok/2" });
     });
-    const result = await (await freshCrm()).getCrmSync().listCompanyNewsPages();
-    expect(calls(fetchSpy)[1]).toContain("page_token=tok%2F2");
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
+    expect(calls(fetchSpy)[2]).toContain("page_token=tok%2F2");
     expect(result?.companies.map((c) => c.id)).toEqual(["9"]);
+  });
+
+  it("an org with no companies at all reads as complete and empty (Bigin answers 204)", async () => {
+    liveEnv();
+    fetchRoutes((url) => (url === FIELDS_URL ? fieldMeta(["Account_Name", "Company Name"]) : url.startsWith(`${API}/Accounts?`) ? noContent() : undefined));
+    expect(await (await freshCrm()).getCrmSync().listCompanies()).toMatchObject({ complete: true, companies: [] });
   });
 
   it("a refused call part-way returns what was read, marked incomplete, instead of throwing", async () => {
     liveEnv();
+    quiet();
     fetchRoutes((url) => {
+      if (url === FIELDS_URL) return scopeMismatch();
       if (!url.startsWith(`${API}/Accounts?`)) return undefined;
       return url.includes("page=1")
         ? accounts([{ id: "1", Account_Name: "Acme", News_Page_URL: "https://acme.test/news" }], { more_records: true })
         : json({ code: "LIMIT_REACHED", message: "out of credits" }, 429);
     });
-    expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
-      complete: false,
-      companies: [{ id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false }],
-    });
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
+    expect(result?.complete).toBe(false);
+    expect(result?.companies.map((c) => c.id)).toEqual(["1"]);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ area: "crm:companies", context: { page: 1 } }));
   });
 
-  describe("Website fallback (5 Nov 2026)", () => {
-    it("uses the Website when News Page URL is blank, and marks it", async () => {
-      liveEnv();
-      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`)
-        ? accounts([
-            { id: "1", Account_Name: "Acme", News_Page_URL: "https://acme.test/news", Website: "https://acme.test" },
-            { id: "2", Account_Name: "Bright", News_Page_URL: null, Website: " https://bright.test " },
-            { id: "3", Account_Name: "Nothing", News_Page_URL: "", Website: null },
-          ])
-        : undefined);
-      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
-        complete: true,
-        companies: [
-          { id: "1", name: "Acme", url: "https://acme.test/news", fromWebsite: false },
-          { id: "2", name: "Bright", url: "https://bright.test", fromWebsite: true },
-        ],
-      });
+  it("asks for every field in Bigin's field list, 50 names a call, and merges the passes into one record per company", async () => {
+    liveEnv();
+    const custom = Array.from({ length: 60 }, (_, i) => [`Custom_${i}`, `Custom ${i}`] as [string, string]);
+    const fetchSpy = fetchRoutes((url) => {
+      if (url === FIELDS_URL) return fieldMeta(["Account_Name", "Company Name"], ["Website", "Website", "website"], ["News_Page", "News Page URL", "website"], ...custom);
+      if (!url.startsWith(`${API}/Accounts?`)) return undefined;
+      const asked = new URL(url).searchParams.get("fields")!.split(",");
+      return accounts([{ id: "1", ...Object.fromEntries(asked.map((f) => [f, f === "News_Page" ? "https://acme.test/news" : `${f}-value`])) }]);
     });
 
-    it("withholds every Website when no company has a News Page URL — most likely a misnamed field", async () => {
-      liveEnv();
-      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`)
-        ? accounts([
-            { id: "1", Account_Name: "Acme", Website: "https://acme.test" },
-            { id: "2", Account_Name: "Bright", Website: "https://bright.test" },
-          ])
-        : undefined);
-      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
-        complete: true, companies: [], websiteFallbackWithheld: true,
-      });
-    });
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
 
-    it("withholds them on a partial read too", async () => {
-      liveEnv();
-      fetchRoutes((url) => {
-        if (!url.startsWith(`${API}/Accounts?`)) return undefined;
-        return url.includes("page=1")
-          ? accounts([{ id: "1", Account_Name: "Acme", News_Page_URL: null, Website: "https://acme.test" }], { more_records: true })
-          : json({ code: "LIMIT_REACHED", message: "out of credits" }, 429);
-      });
-      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({
-        complete: false, companies: [], websiteFallbackWithheld: true,
-      });
-    });
+    const asked = calls(fetchSpy).filter((c) => c.includes("/Accounts?")).map((c) => new URL(c.slice(4)).searchParams.get("fields")!.split(","));
+    expect(asked.map((f) => f.length)).toEqual([50, 13]);
+    expect(asked[0].slice(0, 3)).toEqual(["Account_Name", "News_Page", "Website"]);
+    expect(result?.fieldList).toMatchObject({ read: "bigin", allFields: true, newsPageField: "News_Page", newsPageFieldFound: true });
+    expect(result?.companies).toHaveLength(1);
+    expect(result?.companies[0].newsPageUrl).toBe("https://acme.test/news");
+    expect(result?.companies[0].fields).toMatchObject({ Custom_0: "Custom_0-value", Custom_59: "Custom_59-value" });
+  });
 
-    it("an org with no addresses at all is just empty, not a warning", async () => {
-      liveEnv();
-      fetchRoutes((url) => url.startsWith(`${API}/Accounts?`) ? accounts([{ id: "1", Account_Name: "Acme" }]) : undefined);
-      expect(await (await freshCrm()).getCrmSync().listCompanyNewsPages()).toEqual({ complete: true, companies: [] });
+  it("with no field labelled News Page URL, reads the assumed API name if Bigin has it, and says the label wasn't found", async () => {
+    liveEnv();
+    fetchRoutes((url) => {
+      if (url === FIELDS_URL) return fieldMeta(["Account_Name", "Company Name"], ["Website", "Website"], ["News_Page_URL", "Press page"]);
+      if (url.startsWith(`${API}/Accounts?`)) return accounts([{ id: "1", Account_Name: "Acme", News_Page_URL: "https://acme.test/news" }]);
+      return undefined;
     });
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
+    expect(result?.fieldList).toMatchObject({ read: "bigin", newsPageField: "News_Page_URL", newsPageFieldFound: false });
+    expect(result?.companies[0].newsPageUrl).toBe("https://acme.test/news");
+  });
+
+  it("doesn't ask for a field Bigin's list says doesn't exist, so a missing News Page URL field can't get the read refused", async () => {
+    liveEnv();
+    const fetchSpy = fetchRoutes((url) => {
+      if (url === FIELDS_URL) return fieldMeta(["Account_Name", "Company Name"], ["Website", "Website"]);
+      if (url.startsWith(`${API}/Accounts?`)) return accounts([{ id: "1", Account_Name: "Acme", Website: "https://acme.test" }]);
+      return undefined;
+    });
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
+    expect(calls(fetchSpy).find((c) => c.includes("/Accounts?"))).toContain("fields=Account_Name,Website&");
+    expect(result?.companies[0]).toMatchObject({ newsPageUrl: null, website: "https://acme.test" });
+  });
+
+  it("a field list that fails for another reason falls back the same way, marked failed rather than refused", async () => {
+    liveEnv();
+    quiet();
+    fetchRoutes((url) => {
+      if (url === FIELDS_URL) return json({ code: "INTERNAL_ERROR", message: "boom", status: "error" }, 500);
+      if (url.startsWith(`${API}/Accounts?fields=Account_Name,News_Page_URL,Website&`)) return accounts([{ id: "1", Account_Name: "Acme" }]);
+      return undefined;
+    });
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
+    expect(result?.fieldList).toMatchObject({ read: "failed", allFields: false });
+    expect(result?.complete).toBe(true);
+  });
+
+  it("if Bigin refuses the every-field read outright, reads the known fields instead of stopping the sync", async () => {
+    liveEnv();
+    quiet();
+    fetchRoutes((url) => {
+      if (url === FIELDS_URL) return fieldMeta(["Account_Name", "Company Name"], ["Website", "Website"], ["News_Page_URL", "News Page URL"], ["Odd_Field", "Odd"]);
+      if (url.includes("Odd_Field")) return json({ code: "INVALID_DATA", message: "invalid field", status: "error" }, 400);
+      if (url.startsWith(`${API}/Accounts?fields=Account_Name,News_Page_URL,Website&`)) return accounts([{ id: "1", Account_Name: "Acme" }]);
+      return undefined;
+    });
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
+    expect(result?.complete).toBe(true);
+    expect(result?.companies.map((c) => c.id)).toEqual(["1"]);
+    expect(result?.fieldList).toMatchObject({ read: "bigin", allFields: false });
+  });
+
+  it("a later pass failing keeps the companies and the read complete, but not every field came back", async () => {
+    liveEnv();
+    const custom = Array.from({ length: 50 }, (_, i) => [`Custom_${i}`, `Custom ${i}`] as [string, string]);
+    fetchRoutes((url) => {
+      if (url === FIELDS_URL) return fieldMeta(["Account_Name", "Company Name"], ...custom);
+      if (!url.startsWith(`${API}/Accounts?`)) return undefined;
+      return url.includes("Account_Name") ? accounts([{ id: "1", Account_Name: "Acme" }]) : json({ code: "LIMIT_REACHED" }, 429);
+    });
+    const result = await (await freshCrm()).getCrmSync().listCompanies();
+    expect(result?.complete).toBe(true);
+    expect(result?.companies.map((c) => c.id)).toEqual(["1"]);
+    expect(result?.fieldList?.allFields).toBe(false);
   });
 });
 

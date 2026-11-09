@@ -5,7 +5,8 @@ import { serviceDb } from "@/lib/db/server";
 import { DELETE as deleteContact, GET as getContact, PUT as putContact } from "@/app/api/mock/bigin/bigin/v2/Contacts/[id]/route";
 import { GET as listContacts, POST as createContact } from "@/app/api/mock/bigin/bigin/v2/Contacts/route";
 import { GET as searchContacts } from "@/app/api/mock/bigin/bigin/v2/Contacts/search/route";
-import { GET as listAccounts } from "@/app/api/mock/bigin/bigin/v2/Accounts/route";
+import { GET as listAccounts, PUT as updateAccounts } from "@/app/api/mock/bigin/bigin/v2/Accounts/route";
+import { GET as listFields } from "@/app/api/mock/bigin/bigin/v2/settings/fields/route";
 import { org } from "@/app/api/mock/bigin/store";
 import { asDb, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -81,6 +82,26 @@ describe("guard", () => {
   });
 });
 
+describe("GET /settings/fields?module=Accounts", () => {
+  it("lists the Companies fields with their labels", async () => {
+    const res = await listFields(req(`${API}/settings/fields?module=Accounts`));
+    expect(res.status).toBe(200);
+    expect((await res.json()).fields).toContainEqual(expect.objectContaining({ api_name: "News_Page_URL", display_label: "News Page URL", custom_field: true }));
+  });
+
+  it("answers OAUTH_SCOPE_MISMATCH when the org is set to refuse it, as Zoho does for a token without the scope", async () => {
+    org().refuseFieldList = true;
+    const res = await listFields(req(`${API}/settings/fields?module=Accounts`));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "OAUTH_SCOPE_MISMATCH", status: "error" });
+  });
+
+  it("needs a module, and is guarded like every other mock route", async () => {
+    expect((await listFields(req(`${API}/settings/fields`))).status).toBe(400);
+    expect((await listFields(req(`${API}/settings/fields?module=Accounts`, { headers: { authorization: "Zoho-oauthtoken anything" } }))).status).toBe(401);
+  });
+});
+
 describe("GET /Accounts (story sources from Bigin)", () => {
   it("lists companies with only the named fields, News Page URL included", async () => {
     const res = await listAccounts(req(`${API}/Accounts?fields=Account_Name,News_Page_URL&per_page=200&page=1`));
@@ -94,6 +115,31 @@ describe("GET /Accounts (story sources from Bigin)", () => {
   it("is guarded like every other mock route", async () => {
     const res = await listAccounts(req(`${API}/Accounts?fields=Account_Name`, { headers: { authorization: "Zoho-oauthtoken anything" } }));
     expect(res.status).toBe(401);
+  });
+});
+
+describe("PUT /Accounts (a company's News Page URL, issue #55)", () => {
+  const ACME = "9100000000001";
+
+  it("updates the named field and answers per record", async () => {
+    const res = await updateAccounts(req(`${API}/Accounts`, { method: "PUT", body: { data: [{ id: ACME, News_Page_URL: "https://acme.test/press" }], trigger: [] } }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).data[0]).toMatchObject({ code: "SUCCESS", details: { id: ACME }, status: "success" });
+    expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme.test/press");
+  });
+
+  it("refuses a token without the Companies update scope with OAUTH_SCOPE_MISMATCH", async () => {
+    org().scopes.delete("ZohoBigin.modules.accounts.UPDATE");
+    const res = await updateAccounts(req(`${API}/Accounts`, { method: "PUT", body: { data: [{ id: ACME, News_Page_URL: null }] } }));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "OAUTH_SCOPE_MISMATCH", status: "error" });
+    expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme-fabrication.test/news/");
+  });
+
+  it("an unknown company id is INVALID_DATA, per record", async () => {
+    const res = await updateAccounts(req(`${API}/Accounts`, { method: "PUT", body: { data: [{ id: "9100000000999", News_Page_URL: null }] } }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).data[0]).toMatchObject({ code: "INVALID_DATA" });
   });
 });
 
@@ -151,6 +197,8 @@ describe("the adapter against the mock", () => {
       const r = new NextRequest(url, init as ConstructorParameters<typeof NextRequest>[1]);
       const path = new URL(url).pathname.replace("/api/mock/bigin/bigin/v2", "");
       if (path === "/Contacts/search") return searchContacts(r);
+      if (path === "/Accounts") return init?.method === "PUT" ? updateAccounts(r) : listAccounts(r);
+      if (path === "/settings/fields") return listFields(r);
       if (path === "/Contacts") return init?.method === "POST" ? createContact(r) : listContacts(r);
       const id = /^\/Contacts\/(\d+)$/.exec(path)?.[1];
       if (id) {
@@ -160,6 +208,82 @@ describe("the adapter against the mock", () => {
       throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
     });
   }
+
+  it("lists every company with the company sync's fields, the one with no address included", async () => {
+    vi.stubEnv("BIGIN_CLIENT_ID", "mock-id");
+    vi.stubEnv("BIGIN_CLIENT_SECRET", "mock-secret");
+    vi.stubEnv("BIGIN_REFRESH_TOKEN", "mock-refresh");
+    wireFetchToMock();
+
+    vi.resetModules(); // the adapter caches its token at module scope
+    const { getCrmSync } = await import("@/lib/adapters/crm");
+    const read = await getCrmSync().listCompanies();
+
+    expect(read?.complete).toBe(true);
+    expect(read?.companies.map((c) => ({ id: c.id, name: c.name, newsPageUrl: c.newsPageUrl, website: c.website }))).toEqual([
+      { id: "9100000000001", name: "Acme Fabrication Ltd", newsPageUrl: "https://acme-fabrication.test/news/", website: "https://acme-fabrication.test" },
+      { id: "9100000000002", name: "Brightsteel Engineering", newsPageUrl: "https://brightsteel.test/blog", website: null },
+      { id: "9100000000003", name: "Northern Laser Cutting", newsPageUrl: null, website: "https://northern-laser.test" },
+      { id: "9100000000004", name: "Fenland Tooling", newsPageUrl: null, website: null },
+    ]);
+  });
+
+  /** Connected to the mock, with a fresh module so no token is cached from another test. */
+  async function mockCrm() {
+    vi.stubEnv("BIGIN_CLIENT_ID", "mock-id");
+    vi.stubEnv("BIGIN_CLIENT_SECRET", "mock-secret");
+    vi.stubEnv("BIGIN_REFRESH_TOKEN", "mock-refresh");
+    const fetchSpy = wireFetchToMock();
+    vi.resetModules();
+    const { getCrmSync } = await import("@/lib/adapters/crm");
+    return { crm: getCrmSync(), fetchSpy };
+  }
+
+  it("reads the Companies field list and keeps every field of every company, custom ones included", async () => {
+    const { crm } = await mockCrm();
+    const read = await crm.listCompanies();
+
+    expect(read?.fieldList).toMatchObject({ read: "bigin", allFields: true, newsPageField: "News_Page_URL", newsPageFieldFound: true });
+    expect(read?.fieldList?.fields).toContainEqual({ apiName: "Machine_Brands", label: "Machine Brands" });
+    expect(read?.fieldList?.fields).toContainEqual({ apiName: "News_Page_URL", label: "News Page URL" });
+    const acme = read?.companies.find((c) => c.id === "9100000000001");
+    expect(acme?.fields).toMatchObject({
+      Account_Name: "Acme Fabrication Ltd",
+      Phone: "01234 567890",
+      Machine_Brands: "Trumpf, Amada",
+      Owner: { name: "Jas", id: "9000000000001" },
+    });
+  });
+
+  it("finds the News Page URL field by its label, whatever Bigin named it", async () => {
+    const o = org();
+    o.accountFields.find((f) => f.api_name === "News_Page_URL")!.api_name = "News_Page";
+    for (const a of o.accounts) {
+      a.News_Page = a.News_Page_URL;
+      delete a.News_Page_URL;
+    }
+    const { crm } = await mockCrm();
+    const read = await crm.listCompanies();
+
+    expect(read?.fieldList).toMatchObject({ newsPageField: "News_Page", newsPageFieldFound: true });
+    expect(read?.companies.find((c) => c.id === "9100000000002")?.newsPageUrl).toBe("https://brightsteel.test/blog");
+  });
+
+  it("falls back to the known fields when the token may not read the field list, and still reads every company", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    org().refuseFieldList = true; // a token without ZohoBigin.settings.fields.READ
+    const { crm, fetchSpy } = await mockCrm();
+    const read = await crm.listCompanies();
+
+    expect(read?.fieldList).toMatchObject({ read: "refused", allFields: false, newsPageField: "News_Page_URL" });
+    expect(read?.complete).toBe(true);
+    expect(read?.companies.map((c) => c.newsPageUrl)).toEqual(["https://acme-fabrication.test/news/", "https://brightsteel.test/blog", null, null]);
+    expect(read?.companies[0].fields).toEqual({
+      id: "9100000000001", Account_Name: "Acme Fabrication Ltd", News_Page_URL: "https://acme-fabrication.test/news/", Website: "https://acme-fabrication.test",
+    });
+    const listCall = fetchSpy.mock.calls.map(([u]) => String(u)).find((u) => u.includes("/Accounts?"));
+    expect(listCall).toContain("fields=Account_Name,News_Page_URL,Website&");
+  });
 
   it("repairs a link to a contact deleted in Bigin: unlinks, recreates, links the new record", async () => {
     vi.stubEnv("BIGIN_CLIENT_ID", "mock-id");
@@ -201,5 +325,87 @@ describe("the adapter against the mock", () => {
     ]);
     // every call carried the mock key — the guard let them all through
     expect(fetchSpy.mock.calls.filter(([u]) => !String(u).includes("/oauth/")).every(([, i]) => (i?.headers as Record<string, string>)[MOCK_KEY_HEADER])).toBe(true);
+  });
+
+  describe("writing a company's News Page URL", () => {
+    const ACME = "9100000000001";
+    async function adapter() {
+      vi.stubEnv("BIGIN_CLIENT_ID", "mock-id");
+      vi.stubEnv("BIGIN_CLIENT_SECRET", "mock-secret");
+      vi.stubEnv("BIGIN_REFRESH_TOKEN", "mock-refresh");
+      wireFetchToMock();
+      vi.resetModules(); // the adapter caches its token at module scope
+      return (await import("@/lib/adapters/crm")).getCrmSync();
+    }
+
+    it("writes the new address to Bigin, and a cleared one as empty", async () => {
+      const crm = await adapter();
+      await crm.updateCompanyNewsPage(ACME, "https://acme.test/press");
+      expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme.test/press");
+      await crm.updateCompanyNewsPage(ACME, null);
+      expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBeNull();
+    });
+
+    it("a refused write throws a scope refusal the caller can recognise", async () => {
+      org().scopes.delete("ZohoBigin.modules.accounts.UPDATE");
+      const crm = await adapter();
+      const { isScopeRefusal } = await import("@/lib/adapters/crm");
+      const err = await crm.updateCompanyNewsPage(ACME, "https://acme.test/press").catch((e: unknown) => e);
+      expect(isScopeRefusal(err)).toBe(true);
+      expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme-fabrication.test/news/");
+    });
+
+    it("a refused write, through the save, leaves the push pending and queues a crm_push retry", async () => {
+      org().scopes.delete("ZohoBigin.modules.accounts.UPDATE");
+      const STAMP = "2026-11-06T10:00:00.000Z";
+      const companyUpdates: unknown[] = [];
+      vi.mocked(serviceDb).mockReturnValue(asDb(mockDb({
+        from: fromByTable({
+          crm_companies: () => {
+            const b = queryBuilder(dbOk({
+              bigin_id: ACME, name: "Acme Fabrication Ltd", website: "https://acme-fabrication.test",
+              news_page_url: "https://acme.test/press", news_page_pending_at: STAMP, deleted_in_bigin_at: null,
+            }));
+            b.update = vi.fn((patch: unknown) => (companyUpdates.push(patch), b));
+            return b;
+          },
+          settings: () => {
+            // the stored write check says yes (the scope was granted, then taken away in Bigin)
+            const b: ReturnType<typeof queryBuilder> = queryBuilder(() => {
+              const key = (b.eq as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[0] === "key")?.[1];
+              return dbOk(key === "crm_companies_write" ? { value: { allowed: true, at: "2026-11-05T00:00:00Z" } } : null);
+            });
+            return b;
+          },
+        }),
+      })));
+      const crm = await adapter();
+      const enqueue = vi.fn(async () => {});
+      vi.doMock("@/lib/jobs", () => ({ enqueue }));
+      vi.doMock("@/lib/log", () => ({ logError: vi.fn() }));
+      try {
+        const { setCompanyNewsPage } = await import("@/lib/crm-companies/news-page");
+        const outcome = await setCompanyNewsPage({ id: "11111111-1111-4111-8111-111111111111" }, "https://acme.test/press", {
+          crm, now: () => new Date(STAMP), deriveSources: false,
+        });
+
+        expect(outcome).toBe("pending");
+        // saved and marked pending, and the mark never cleared
+        expect(companyUpdates).toEqual([{ news_page_url: "https://acme.test/press", news_page_pending_at: STAMP, updated_at: STAMP }]);
+        expect(enqueue).toHaveBeenCalledWith("crm_push", { company_id: ACME }, expect.any(Date));
+        expect(org().accounts.find((a) => a.id === ACME)?.News_Page_URL).toBe("https://acme-fabrication.test/news/");
+      } finally {
+        vi.doUnmock("@/lib/jobs");
+        vi.doUnmock("@/lib/log");
+      }
+    });
+
+    it("checks whether the token may write companies without changing any", async () => {
+      const crm = await adapter();
+      expect(await crm.canWriteCompanies()).toBe(true);
+      org().scopes.delete("ZohoBigin.modules.accounts.UPDATE");
+      expect(await crm.canWriteCompanies()).toBe(false);
+      expect(org().accounts.map((a) => a.News_Page_URL)).toEqual(["https://acme-fabrication.test/news/", "https://brightsteel.test/blog", null, null]);
+    });
   });
 });
