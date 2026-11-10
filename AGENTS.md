@@ -8,6 +8,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Branches
+
+`staging` is the base branch: branch from it, and merge or open PRs into it. Never work on or push to `main`. Merging and pushing are separate steps; push only when asked.
+
 ## Known gaps
 
 `docs/GAPS.md` is the standing audit of Phase 1 against `../requirements/USE-CASES.md`. Every item is numbered (A1.1, B2.1, C3 …) so it can be referenced directly. Check it before starting work in an area, and tick items off as they land.

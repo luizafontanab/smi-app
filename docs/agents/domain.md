@@ -10,6 +10,8 @@ How the engineering skills should consume this repo's domain documentation when 
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
 
+Those skills (and `/retro`) are installed per machine, not in this repo, so a cloud session doesn't have them. There, do the same by hand: ask one decision at a time, then write resolved terms to `GLOSSARY.md` and decisions to a new numbered file in `docs/adr/`, in the existing format.
+
 ## File structure
 
 Single-context repo (most repos):

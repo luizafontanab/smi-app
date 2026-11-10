@@ -2,6 +2,8 @@
 
 Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
+**Cloud sessions** (claude.ai/code, the mobile app) can't use `gh` except for search. There, use the GitHub MCP tools instead: `issue_read`, `issue_write` (labels, close), `add_issue_comment`, `list_pull_requests`. The steps below are the same; only the tool changes.
+
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
@@ -20,7 +22,7 @@ Several sessions work this repo at once on a shared tree, so a ticket is claimed
 2. **Claim.** Add the label and drop `ready-for-agent`/`ready-for-human`, then say where the work is happening:
    `gh issue edit <n> --add-label in-progress --remove-label ready-for-agent`
    `gh issue comment <n> --body "Started on branch <branch>."`
-3. **Release.** The label stays on until the issue closes. Once the PR merges into `staging`, close it yourself: `gh issue close <n> --comment "Done in #<pr>."`. If you abandon the work instead, remove `in-progress`, restore the ready label, and comment why.
+3. **Release.** The label stays on until the issue closes. Once the work reaches `staging`, close it yourself: `gh issue close <n> --comment "Done in #<pr>."`. That includes a branch merged straight into `staging` with no PR; name the merge commit instead. Nothing else closes it: #12 stayed open with `in-progress` after its fix was merged. If you abandon the work instead, remove `in-progress`, restore the ready label, and comment why.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
