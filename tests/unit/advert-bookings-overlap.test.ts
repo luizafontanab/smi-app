@@ -14,7 +14,7 @@ const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
 const KEY = process.env.SUPABASE_SECRET_KEY;
 
 describe.skipIf(!KEY)("advert_bookings_no_overlap", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   let memberId = "";
   let advertId = "";
 

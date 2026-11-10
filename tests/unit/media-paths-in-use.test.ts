@@ -11,7 +11,7 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const KEY = process.env.SUPABASE_SECRET_KEY;
 
 describe.skipIf(!KEY)("media_paths_in_use (Postgres)", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const tag = `mpiu${Date.now().toString(36)}`;
   const storyIds: string[] = [];
   const pageSlug = `${tag}-page`;

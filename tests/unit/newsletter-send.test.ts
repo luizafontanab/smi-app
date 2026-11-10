@@ -18,7 +18,7 @@ const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:56321";
 const KEY = process.env.SUPABASE_SECRET_KEY;
 
 describe.skipIf(!KEY)("newsletter_send idempotency", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const savedEnv: Record<string, string | undefined> = {};
   const ENV_KEYS = ["RESEND_API_KEY", "RESEND_SEGMENT_ID", "EMAIL_FROM"] as const;
   let issueId = "";

@@ -18,8 +18,8 @@ const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const JOINS = ["member_industries", "member_services", "member_membership_types"] as const;
 
 describe.skipIf(!ANON_KEY || !SECRET_KEY)("member taxonomy links follow member visibility (migration 20261016000031)", () => {
-  const service = createClient(URL_, SECRET_KEY!, { auth: { persistSession: false } });
-  const anon = createClient(URL_, ANON_KEY!, { auth: { persistSession: false } });
+  const service = createClient(URL_, SECRET_KEY ?? "skipped", { auth: { persistSession: false } });
+  const anon = createClient(URL_, ANON_KEY ?? "skipped", { auth: { persistSession: false } });
   let memberId = "";
 
   /** Which join tables anon can see this member's link in. */

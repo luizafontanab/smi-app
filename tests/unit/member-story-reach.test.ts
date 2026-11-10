@@ -38,7 +38,7 @@ const KEY = process.env.SUPABASE_SECRET_KEY;
 
 // The rule itself, against Postgres (migration 20261016000022).
 describe.skipIf(!KEY)("member_story_view_count (Postgres)", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const tag = `reach-${Date.now()}`;
   const ids: { members: string[]; stories: string[] } = { members: [], stories: [] };
 

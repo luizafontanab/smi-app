@@ -59,7 +59,7 @@ const KEY = process.env.SUPABASE_SECRET_KEY;
 // What the helper exists for, against the real PostgREST: a range beyond the
 // last row is an error (PGRST103), not an empty page.
 describe.skipIf(!KEY)("PostgREST past-the-end ranges (local stack)", () => {
-  const db = createClient<Database>(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient<Database>(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const build = (from: number, to: number) =>
     db.from("stories").select("id", { count: "exact" }).order("id").range(from, to);
 

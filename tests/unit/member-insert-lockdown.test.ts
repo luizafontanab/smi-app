@@ -13,7 +13,7 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
 describe.skipIf(!ANON_KEY || !SECRET_KEY)("member insert lockdown (migration 20261016000060)", () => {
-  const service = createClient(URL_, SECRET_KEY!, { auth: { persistSession: false } });
+  const service = createClient(URL_, SECRET_KEY ?? "skipped", { auth: { persistSession: false } });
   const tag = `ins-${Date.now()}`;
   const email = `${tag}@test.local`;
   const password = `pw-${tag}-Aa1!`;

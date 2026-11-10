@@ -30,6 +30,9 @@ describe("db client env guards", () => {
   });
 
   it("names NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY when only the key is missing", async () => {
+    // Set the URL here rather than rely on .env.local, or a checkout without
+    // one fails on the URL check first.
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:56321");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", undefined);
     const { publicDb } = await freshDbServer();
 

@@ -35,7 +35,7 @@ function signedHeaders(body: string, opts?: { id?: string; timestamp?: string })
 }
 
 describe.skipIf(!KEY)("/api/webhooks/resend", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const savedSecret = process.env.RESEND_WEBHOOK_SECRET;
   const emails: string[] = [];
 

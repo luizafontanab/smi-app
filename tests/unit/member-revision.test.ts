@@ -112,7 +112,7 @@ const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 // Migration 20261016000011: a signed-in member can't write a revision straight
 // to PostgREST any more — only dashboard submitProfileEdit, via the service role.
 describe.skipIf(!ANON_KEY || !SECRET_KEY)("member_revisions writes (local stack)", () => {
-  const admin = createClient<Database>(URL_, SECRET_KEY!, { auth: { persistSession: false } });
+  const admin = createClient<Database>(URL_, SECRET_KEY ?? "skipped", { auth: { persistSession: false } });
   const tag = Date.now().toString(36);
   const email = `rev-rls-${tag}@smi.test`;
   const password = `pw-${tag}-local`;

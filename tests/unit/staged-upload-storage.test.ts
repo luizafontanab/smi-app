@@ -24,7 +24,7 @@ async function putStaged(url: string, file: File): Promise<Response> {
 }
 
 describe.skipIf(!KEY)("direct uploads (Supabase Storage)", () => {
-  const admin = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const admin = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const owner = memberUploads(randomUUID());
   const leftovers: string[] = [];
 

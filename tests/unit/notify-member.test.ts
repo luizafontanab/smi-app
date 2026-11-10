@@ -15,7 +15,7 @@ const KEY = process.env.SUPABASE_SECRET_KEY;
 const MAILPIT = process.env.MAILPIT_URL ?? "http://127.0.0.1:56324";
 
 describe.skipIf(!KEY)("notify_member", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const email = `notify-test-${Date.now()}@test.local`;
   let memberId = "";
   const created: string[] = [];

@@ -70,7 +70,7 @@ describe("activation gate (A17)", () => {
 });
 
 describe.skipIf(!KEY)("join funnel", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const email = `join-test-${ts}@test.local`;
 
   it("provisionMember creates auth user + draft member + profile + prefs with contact_email", async () => {

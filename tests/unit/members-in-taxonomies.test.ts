@@ -20,8 +20,8 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
 describe.skipIf(!ANON_KEY || !SECRET_KEY)("members_in_taxonomies", () => {
-  const admin = createClient<Database>(URL_, SECRET_KEY!, { auth: { persistSession: false } });
-  const anon = createClient<Database>(URL_, ANON_KEY!, { auth: { persistSession: false } });
+  const admin = createClient<Database>(URL_, SECRET_KEY ?? "skipped", { auth: { persistSession: false } });
+  const anon = createClient<Database>(URL_, ANON_KEY ?? "skipped", { auth: { persistSession: false } });
   const tag = `mit-${Date.now().toString(36)}`;
   const slug = (s: string) => `${tag}-${s}`;
   const ids = { members: [] as string[], industries: [] as number[], services: [] as number[], types: [] as number[] };

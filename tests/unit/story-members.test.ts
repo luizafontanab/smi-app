@@ -58,7 +58,7 @@ const KEY = process.env.SUPABASE_SECRET_KEY;
 // The guarantee the unit tests above can't show: a failed insert rolls the
 // delete back. Against the local stack.
 describe.skipIf(!KEY)("replace_story_members (Postgres)", () => {
-  const real = createClient<Database>(URL_, KEY!, { auth: { persistSession: false } });
+  const real = createClient<Database>(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const tag = Date.now().toString(36);
   let storyId = "";
   let memberId = "";

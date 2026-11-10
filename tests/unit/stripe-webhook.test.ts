@@ -26,7 +26,7 @@ function request(body: string, headers: Record<string, string>) {
 }
 
 describe.skipIf(!KEY)("/api/stripe/webhook", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const savedSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const ts = Date.now();
   const memberIds: string[] = [];

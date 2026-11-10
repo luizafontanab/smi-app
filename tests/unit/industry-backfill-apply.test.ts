@@ -24,7 +24,7 @@ const KEY = process.env.SUPABASE_SECRET_KEY;
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 describe.skipIf(!KEY)("apply_industry_backfill (migration 20261016000030)", () => {
-  const db = createClient(URL_, KEY!, { auth: { persistSession: false } });
+  const db = createClient(URL_, KEY ?? "skipped", { auth: { persistSession: false } });
   const EMPTY = { links: [], members: [], stories: [], videos: [], events: [] };
   let memberId = "";
   let industryId = 0;
