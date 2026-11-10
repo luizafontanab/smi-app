@@ -161,6 +161,12 @@ _Avoid_: scrape, crawl, scan
 A new article that a source check found, waiting for an admin to start a story from it or dismiss it.
 _Avoid_: lead (that is a member's enquiry), hit, find
 
+## Membership
+
+**Membership checkout**:
+The Stripe card payment a member opens from "Pay £40/month" to start their membership subscription. A member has at most one that can be paid at a time; opening it again returns the same one.
+_Avoid_: checkout session (Stripe's object, not the domain term), payment link
+
 ## Console
 
 **Command Centre**:
