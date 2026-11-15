@@ -22,7 +22,7 @@ describe("consoleNotificationHref", () => {
 
   it("sends every membership-lifecycle notification to that member's record", () => {
     // page_edit_submitted: a live page's edit is approved on that record too (GAPS A1.12)
-    for (const kind of ["signup_started", "payment_taken", "page_submitted", "page_edit_submitted", "payment_failed", "subscription_ended", "comp_expired", "membership_lapsed"]) {
+    for (const kind of ["signup_started", "payment_taken", "page_submitted", "page_edit_submitted", "payment_failed", "subscription_ended", "comp_expired", "membership_lapsed", "duplicate_subscription"]) {
       expect(consoleNotificationHref(kind, { member_id: "mem1" }), kind).toBe("/console/members/mem1");
     }
   });

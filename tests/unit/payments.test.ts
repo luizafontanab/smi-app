@@ -212,15 +212,20 @@ describe("StripePayments", () => {
     it("creates an embedded_page subscription session on the pinned API version", async () => {
       embeddedEnv();
       const fetchMock = sessionReply();
+      vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
 
       const result = await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme" });
 
-      expect(result).toEqual({ kind: "embedded", clientSecret: "cs_1_secret_x" });
+      // The id and expiry come back so the member row can remember the session (#5).
+      expect(result).toEqual({
+        kind: "embedded", clientSecret: "cs_1_secret_x", sessionId: "cs_1",
+        expiresAt: new Date((Math.floor(1_800_000_000_000 / 60_000) + 60) * 60_000).toISOString(),
+      });
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe("https://api.stripe.com/v1/checkout/sessions");
       const headers = init?.headers as Record<string, string>;
       expect(headers["Stripe-Version"]).toBe("2026-03-25.dahlia");
-      expect(headers["Idempotency-Key"]).toMatch(/^membership-checkout-m1-\d+$/);
+      expect(headers["Idempotency-Key"]).toMatch(/^membership-checkout-m1-first-\d+$/);
       const body = new URLSearchParams(String(init?.body));
       expect(body.get("ui_mode")).toBe("embedded_page");
       expect(body.get("mode")).toBe("subscription");
@@ -247,6 +252,15 @@ describe("StripePayments", () => {
       expect(String(fetchMock.mock.calls[0][1]?.body)).toBe(String(fetchMock.mock.calls[1][1]?.body));
     });
 
+    it("keys a replacement on the session it replaces (#5)", async () => {
+      embeddedEnv();
+      const fetchMock = sessionReply();
+
+      await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme", replacesSessionId: "cs_old" });
+
+      expect((fetchMock.mock.calls[0][1]?.headers as Record<string, string>)["Idempotency-Key"]).toMatch(/^membership-checkout-m1-cs_old-\d+$/);
+    });
+
     it("falls back to the hosted redirect on a Preview running the mocks", async () => {
       embeddedEnv();
       vi.stubEnv("MOCK_INTEGRATIONS", "1");
@@ -259,6 +273,15 @@ describe("StripePayments", () => {
 
       expect(result.kind).toBe("redirect");
       expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).has("ui_mode")).toBe(false);
+    });
+
+    it("reports a 200 with no session id as an error", async () => {
+      embeddedEnv();
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ client_secret: "cs_1_secret_x" }), { status: 200 }));
+
+      const result = await getPayments().createCheckout({ memberId: "m1", email: "a@b.com", companyName: "Acme" });
+
+      expect(result).toEqual({ kind: "error", message: "Stripe did not return a checkout session." });
     });
 
     it("reports a 200 with no client secret as an error", async () => {

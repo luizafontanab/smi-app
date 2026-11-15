@@ -44,6 +44,9 @@ export const INBOX_NOTIFICATION_KINDS = [
   "artwork_submitted",
   // A live page's edit (member_revisions) — GAPS A1.12, 20260928000005.
   "page_edit_submitted",
+  // A second membership subscription got through for a member who already
+  // had one (#5, ADR 0003) — 20261115000001.
+  "duplicate_subscription",
 ] as const;
 
 export type InboxMessageKind = (typeof INBOX_MESSAGE_KINDS)[number];
@@ -86,6 +89,7 @@ const LABELS: Record<InboxKind, string> = {
   advert_submitted: "Advert submitted",
   artwork_submitted: "Artwork swap",
   page_edit_submitted: "Page edit",
+  duplicate_subscription: "Duplicate subscription",
 };
 
 export function inboxKindLabel(kind: string): string {
@@ -141,6 +145,7 @@ export function consoleNotificationHref(kind: string, payload: InboxPayload = {}
     case "subscription_ended":
     case "comp_expired":
     case "membership_lapsed":
+    case "duplicate_subscription":
       return member;
 
     case "story_submitted": {
