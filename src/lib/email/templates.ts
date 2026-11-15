@@ -28,7 +28,9 @@ import {
   type ShellAudience,
   type TemplateDefault,
   ctaMarkup,
+  para,
   shellFooter,
+  smallPrint,
 } from "./defaults";
 import {
   collapseBlankLines,
@@ -644,30 +646,39 @@ export function validateEmailTemplate(kind: string, fields: Record<string, strin
  * link opens a page with a confirm button, and the signature in it is what
  * the confirmation checks.
  *
- * Deliberately not an editable template and not in the member shell: it goes
- * to newsletter readers who usually have no member account (the shell's footer
- * says they do), and its wording is part of a security flow — the link must
- * always be there, and the copy must never invite anyone to forward it.
+ * Deliberately not an editable template: its wording is part of a security
+ * flow — the link must always be there, and the copy must never invite anyone
+ * to forward it. It renders inside the *shipped* member shell, never an edited
+ * one, so it looks like every other SMI email (#104: it used to build its own
+ * plainer HTML with no header or footer) while no edit to the wrapper can
+ * drop the button. Its footer says why the reader has it; most have no member
+ * account, so it is not the member line.
  */
 export function renderUnsubscribeConfirmation(vars: { link: string; validForHours: number }): RenderedEmail {
   const subject = "Confirm you want to stop the SMI newsletter";
   const hours = `${vars.validForHours} hours`;
+  const asked = "Someone — hopefully you — asked us to stop sending the Sheet Metal Industries newsletter to this address.";
+  const ignore = "If you didn't ask, ignore this email: nothing changes unless that button is pressed. Please don't forward it — anyone with the link can unsubscribe this address.";
+  const base = siteUrl();
+  const footer = shellFooter("unsubscribe", escapeHtml(base));
+
   const text = [
-    "Someone — hopefully you — asked us to stop sending the Sheet Metal Industries newsletter to this address.",
+    asked,
     `To confirm, open this link and press the button on the page (it works for ${hours}):`,
     vars.link,
-    "If you didn't ask, ignore this email: nothing changes unless that button is pressed. Please don't forward it — anyone with the link can unsubscribe this address.",
+    ignore,
+    footer.text,
   ].join("\n\n");
-  const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject)}</title></head>
-<body style="margin:0;padding:24px 12px;background:#f4f5f6;font-family:Helvetica,Arial,sans-serif;color:#111418;">
-  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:6px;padding:28px;">
-    <h1 style="margin:0 0 18px;font-size:21px;line-height:1.3;">${escapeHtml(subject)}</h1>
-    <p style="font-size:16px;line-height:1.5;">Someone — hopefully you — asked us to stop sending the Sheet Metal Industries newsletter to this address.</p>
-    <p style="font-size:16px;line-height:1.5;">To confirm, open the link and press the button on the page. It works for ${escapeHtml(hours)}.</p>
-    ${ctaMarkup("Confirm unsubscribe", vars.link, escapeHtml)}
-    <p style="font-size:13px;line-height:1.5;color:#4b5563;">If you didn't ask, ignore this email: nothing changes unless that button is pressed. Please don't forward it — anyone with the link can unsubscribe this address.</p>
-  </div>
-</body></html>`;
+  const html = interpolate(
+    resolveTemplate(SHELL_KIND, undefined).bodyHtml,
+    {
+      subject,
+      body: para(escapeHtml(asked)) + para(escapeHtml(`To confirm, open the link and press the button on the page. It works for ${hours}.`)),
+      cta: ctaMarkup("Confirm unsubscribe", vars.link, escapeHtml) + smallPrint(escapeHtml(ignore)),
+      base,
+      footer: footer.html,
+    },
+    { escape: true, raw: ["body", "cta", "footer"] },
+  );
   return { subject, text, html };
 }
