@@ -75,8 +75,11 @@ const BRAND = "#ff8200";
 const CHROME = "#0b0d10";
 const LINE = "#e4e6e9";
 
-/** Who a shell email is going to: a member, or someone who only wrote in (an inbox reply). */
-export type ShellAudience = "member" | "contact";
+/**
+ * Who a shell email is going to: a member, someone who only wrote in (an inbox
+ * reply), or whoever typed an address into /unsubscribe (#104).
+ */
+export type ShellAudience = "member" | "contact" | "unsubscribe";
 
 /**
  * The shell's `{{footer}}`, for each audience (GAPS B3.4). For the html, the
@@ -85,6 +88,10 @@ export type ShellAudience = "member" | "contact";
 export function shellFooter(audience: ShellAudience, base: string): { html: string; text: string } {
   if (audience === "contact") {
     const line = "You're receiving this because you contacted Sheet Metal Industries.";
+    return { html: line, text: line };
+  }
+  if (audience === "unsubscribe") {
+    const line = "You're receiving this because this address was entered on the Sheet Metal Industries unsubscribe page.";
     return { html: line, text: line };
   }
   const line = "You're receiving this because you have a Sheet Metal Industries member account.";
@@ -104,8 +111,12 @@ export function shellFooter(audience: ShellAudience, base: string): { html: stri
  * losing the inline styles breaks nothing a test can see and everything an
  * inbox can.
  */
-const para = (text: string) =>
+export const para = (text: string) =>
   `<p style="margin:0 0 16px;font-size:16px;line-height:1.55;color:${INK};">${text}</p>`;
+
+/** A secondary line in a shell email's body: smaller, in graphite, as the footer is. */
+export const smallPrint = (text: string) =>
+  `<p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:${GRAPHITE};">${text}</p>`;
 
 /**
  * The button's words when an email has no more specific destination — and the
@@ -198,7 +209,7 @@ const ADMIN_DEFAULTS: Record<AdminEmailKind, TemplateDefault> = {
       {
         token: "lines",
         description: "The breakdown, one queue per line. Only queues with something in them appear.",
-        sample: "  3 — Stories awaiting approval\n  2 — Advert bookings awaiting approval",
+        sample: "3 — Stories awaiting approval\n2 — Advert bookings awaiting approval",
         raw: true,
       },
       { token: "console_url", description: "A link straight into the console.", sample: "https://sheetmetalindustries.com/console", raw: true },
@@ -648,8 +659,12 @@ export const EMAIL_DEFAULTS: Record<EmailDefaultKey, TemplateDefault> = {
     subject: "",
     // Table-based with inline styles — the only layout Outlook and the desktop
     // clients render predictably. Deliberately plain: one accent bar, one CTA.
+    // Light-only, like the newsletter's wrapper (#104), so clients that honour
+    // color-scheme don't recolour the orange-on-ink pairings the contrast
+    // rules above depend on.
     bodyHtml: `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">
 <title>{{subject}}</title></head>
 <body style="margin:0;padding:0;background:#f4f5f6;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f6;padding:24px 12px;">

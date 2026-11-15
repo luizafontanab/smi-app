@@ -217,4 +217,17 @@ describe("renderUnsubscribeConfirmation", () => {
     expect(mail.html).not.toContain("<y>");
     expect(mail.text).toMatch(/72 hours/);
   });
+
+  // #104: it used to build its own plainer HTML, with no header, brand font or footer.
+  it("wears the member shell's branding, with a footer for whoever typed the address in", () => {
+    const mail = renderUnsubscribeConfirmation({ link: "https://smi.example/unsubscribe?t=x", validForHours: 24 });
+    expect(mail.html).toContain("League Spartan");
+    expect(mail.html).toMatch(/Sheet Metal <span style="color:#ff8200;">Industries<\/span>/);
+    expect(mail.html).toContain("Confirm unsubscribe");
+    expect(mail.html).toContain("entered on the Sheet Metal Industries unsubscribe page");
+    expect(mail.text).toContain("entered on the Sheet Metal Industries unsubscribe page");
+    // Most readers have no account, so never the member footer.
+    expect(mail.html).not.toContain("member account");
+    expect(mail.text).not.toContain("member account");
+  });
 });

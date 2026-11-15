@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-15 — Emails look the same throughout
+- The email someone gets after asking to unsubscribe from the newsletter now looks like every other SMI email, with the same header, font and footer.
+- Your daily digest lines up its list of queues; the first line used to sit out of line with the rest.
+
 ## 2026-11-09 — Visits are counted again on staging
 - Fixed staging not recording page views, story views and advert views and clicks since early November. Visits from then until this fix can't be recovered, so November's figures on staging will be low.
 - The site now repairs this by itself: if a month's visit records can't be stored, the nightly background job fixes it on its next run.

@@ -437,7 +437,7 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
 
       const total = lines.reduce((sum, [, count]) => sum + count, 0) + social.length;
       const socialLines = social.length
-        ? ["", "  Social posts waiting for confirmation:",
+        ? ["", "Social posts waiting for confirmation:",
           ...social.map((w) => `  “${w.title}”: ${waitingSummary(w.waiting, w.total)} — ${siteUrl()}${w.href}`)]
         : [];
       const [{ getEmailSender }, { renderAdminEmail }, { loadEmailTemplates }] = await Promise.all([
@@ -453,7 +453,9 @@ async function runJob(kind: JobKind, payload: Record<string, unknown>, jobId: st
         {
           total: String(total),
           total_s: total === 1 ? "" : "s",
-          lines: [...lines.map(([label, count]) => `  ${count} — ${label}`), ...socialLines].join("\n").replace(/^\n/, ""),
+          // No leading indent: the renderer trims each paragraph, so only the
+          // first line lost it and the list came out ragged (#104).
+          lines: [...lines.map(([label, count]) => `${count} — ${label}`), ...socialLines].join("\n").replace(/^\n/, ""),
           console_url: `${siteUrl()}/console`,
         },
         await loadEmailTemplates(),

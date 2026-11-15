@@ -1051,6 +1051,10 @@ describe("runJob kinds", () => {
       subject: "SMI — 3 items waiting for you",
       text: expect.stringContaining("2 — Stories ready to review"),
     }));
+    // #104: every queue line lines up. The first used to lose its indent to
+    // the renderer's paragraph trim while the rest kept theirs.
+    const { text } = (send.mock.calls as unknown as [{ text: string }][])[0][0];
+    expect(text).toContain("2 — Stories ready to review\n1 — Visibility requests to answer");
   });
 
   it("admin_digest — lists each Live item whose post time passed with a channel still unconfirmed, once, with its link", async () => {
