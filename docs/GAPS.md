@@ -67,14 +67,14 @@ Already done from this call, so no item: Industries pre-filter (gap 19; `industr
 
 Several closed B items were written against documented APIs and **have never run against a live account**. Confirm each on its first real use:
 
-- Stripe checkout, subscriptions, cancel and undo-cancel (B1.1, B1.5)
+- Stripe checkout, subscriptions, cancel and undo-cancel, and reusing or expiring an open membership checkout (B1.1, B1.5, B1.8)
 - Buffer GraphQL enums (B4.4)
 - Resend Broadcasts/Contacts (B5.1) and its webhook fields (A5.4)
 - Bigin push, pull, opt-out and webhook (B6.4–B6.8)
 
 ### B1 · Stripe (payments)
 
-- **B1.8 — Two open checkout sessions can mean two subscriptions.** Moved to [#5](https://github.com/luizafontanab/smi-app/issues/5) on 3 Nov 2026.
+**Closed:** B1.8 two open checkout sessions could mean two subscriptions ([#5](https://github.com/luizafontanab/smi-app/issues/5), ADR 0003, 15 Nov). The open membership checkout is remembered on the member (migration 20261115000001) and reused by `openMembershipCheckout` (`src/lib/membership-checkout.ts`). A nearly expired or unusable one is expired at Stripe before it's replaced, the store is a compare-and-swap (the loser of a race expires its own session), and a promo code expires it. Backstop: `recordMembershipCheckout` writes `stripe_subscription_id` only where none is stored, so a second subscription that still gets through is recorded as an SMI-JOIN invoice and raises a `duplicate_subscription` console note for Jas to cancel and refund by hand. The cost: every pay press now reads the stored session back from Stripe first, and nothing undoes a duplicate automatically. *(Branch `claude/laughing-ptolemy-bwzedl`.)*
 
 ### B2 · GeoIP — MaxMind / GeoLite2
 

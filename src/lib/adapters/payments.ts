@@ -15,9 +15,23 @@ import { mockBaseUrl } from "./mock-base-url";
 /** Marks a Checkout Session as the £40 membership, so the pay page's return check can tell it from an advert's. */
 export const MEMBERSHIP_CHECKOUT_KIND = "membership";
 
-export type CheckoutRequest = { memberId: string; email: string; companyName: string; promoCode?: string };
+export type CheckoutRequest = {
+  memberId: string;
+  email: string;
+  companyName: string;
+  promoCode?: string;
+  /**
+   * The member's stored membership checkout this one replaces (expired or
+   * unusable), or null for their first (#5). Part of the embedded session's
+   * Idempotency-Key, so two tabs replacing the same state send the same key
+   * and get one session between them.
+   */
+  replacesSessionId?: string | null;
+};
 export type CheckoutResult =
-  | { kind: "embedded"; clientSecret: string } // Stripe's embedded Checkout, mounted in a modal (B1.7)
+  // Stripe's embedded Checkout, mounted in a modal (B1.7). The id and expiry
+  // are what the member row remembers so a second tab reuses it (#5).
+  | { kind: "embedded"; clientSecret: string; sessionId: string; expiresAt: string }
   | { kind: "redirect"; url: string }   // Stripe-hosted page: Preview mocks, or no publishable key
   | { kind: "paid" }                    // payment settled (stub simulates success)
   | { kind: "comped"; months: number }  // valid promo code
@@ -155,8 +169,10 @@ class StripePayments implements Payments {
    * page mounts in a modal. Follows createInvoiceCheckout (advert-checkout.ts):
    * the API version is pinned because `ui_mode: "embedded_page"` needs it and
    * must match the Stripe.js the page loads, and an Idempotency-Key means a
-   * double click, or a modal closed and reopened within the minute, gets the
-   * same session back rather than a second one the member could also pay.
+   * double click within the minute gets the same session back. Keeping a
+   * member to one payable session beyond that minute is the caller's job:
+   * openMembershipCheckout (src/lib/membership-checkout.ts) stores this
+   * session on the member and reuses it (#5).
    * Always the real API: Stripe.js can't run against the Preview mocks, which
    * keep the hosted redirect above (getPayments).
    */
@@ -164,6 +180,7 @@ class StripePayments implements Payments {
     // One clock reading for the key and expires_at: Stripe rejects a reused
     // key whose parameters differ.
     const minute = Math.floor(Date.now() / 60_000);
+    const expiresAt = (minute + 60) * 60;
     const body = new URLSearchParams({
       mode: "subscription",
       ui_mode: "embedded_page",
@@ -178,7 +195,7 @@ class StripePayments implements Payments {
       // Stripe fills in {CHECKOUT_SESSION_ID}; the pay page reads it back.
       return_url: returnUrl,
       // An hour, not Stripe's default 24: fewer stale sessions left payable.
-      expires_at: String((minute + 60) * 60),
+      expires_at: String(expiresAt),
     });
     const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",
@@ -186,7 +203,9 @@ class StripePayments implements Payments {
         Authorization: `Bearer ${this.secretKey}`,
         "Content-Type": "application/x-www-form-urlencoded",
         "Stripe-Version": STRIPE_API_VERSION,
-        "Idempotency-Key": `membership-checkout-${req.memberId}-${minute}`,
+        // As createInvoiceCheckout: keyed on the session this replaces, so
+        // requests made from the same stored state are the same request.
+        "Idempotency-Key": `membership-checkout-${req.memberId}-${req.replacesSessionId ?? "first"}-${minute}`,
       },
       body,
     });
@@ -194,9 +213,14 @@ class StripePayments implements Payments {
       const detail = await res.text().catch(() => "");
       return { kind: "error", message: `Stripe rejected the checkout (${res.status}): ${detail.slice(0, 300)}` };
     }
-    const session = (await res.json()) as { client_secret?: string };
-    if (!session.client_secret) return { kind: "error", message: "Stripe did not return a checkout session." };
-    return { kind: "embedded", clientSecret: session.client_secret };
+    const session = (await res.json()) as { id?: string; client_secret?: string };
+    if (!session.client_secret || !session.id) return { kind: "error", message: "Stripe did not return a checkout session." };
+    return {
+      kind: "embedded",
+      clientSecret: session.client_secret,
+      sessionId: session.id,
+      expiresAt: new Date(expiresAt * 1000).toISOString(),
+    };
   }
 
   /**

@@ -1865,6 +1865,8 @@ export type Database = {
           lat: number | null
           lng: number | null
           logo_path: string | null
+          membership_checkout_expires_at: string | null
+          membership_checkout_session_id: string | null
           name: string
           onboarding_seen: boolean
           paid_at: string | null
@@ -1898,6 +1900,8 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           logo_path?: string | null
+          membership_checkout_expires_at?: string | null
+          membership_checkout_session_id?: string | null
           name: string
           onboarding_seen?: boolean
           paid_at?: string | null
@@ -1931,6 +1935,8 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           logo_path?: string | null
+          membership_checkout_expires_at?: string | null
+          membership_checkout_session_id?: string | null
           name?: string
           onboarding_seen?: boolean
           paid_at?: string | null

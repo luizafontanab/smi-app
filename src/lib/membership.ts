@@ -217,6 +217,9 @@ export async function applyPaymentResult(memberId: string, result: CheckoutResul
   return false;
 }
 
+/** Stripe subscription ids — checked before one goes into a PostgREST filter. */
+const SUBSCRIPTION_ID_RE = /^sub_[A-Za-z0-9_]+$/;
+
 /**
  * A completed Stripe membership Checkout Session, recorded once (GAPS B1.7).
  * Both the webhook and the pay page's return fast path call this; whichever
@@ -227,21 +230,57 @@ export async function applyPaymentResult(memberId: string, result: CheckoutResul
  * note used to be sent only by the simulated and promo paths, so a real card
  * payment arrived in silence; it goes only when this call did the recording,
  * so a Stripe retry can't send it twice.
+ *
+ * A second subscription for a member who already has one (#5, ADR 0003) is
+ * flagged, not undone. The subscription id is written with a compare-and-swap
+ * (only where none is stored, or it's this one), so the first subscription
+ * stays the one SMI tracks. The payment is still recorded as an SMI-JOIN
+ * invoice, because the money was taken. Jas gets a `duplicate_subscription`
+ * note instead of `payment_taken`, telling her to cancel and refund it in
+ * Stripe and void the invoice. Nothing here calls Stripe.
  */
 export async function recordMembershipCheckout(
   memberId: string,
   checkout: { sessionId: string | null; subscriptionId?: string | null; customerId?: string | null },
 ): Promise<boolean> {
+  const db = serviceDb();
   const sessionId = checkout.sessionId?.startsWith("cs_") ? checkout.sessionId : undefined;
-  const recorded = await applyPaymentResult(memberId, { kind: "paid" }, sessionId ? { sessionId } : {});
-  const { subscriptionId, customerId } = checkout;
-  if (subscriptionId || customerId) {
-    await serviceDb().from("members").update({
-      ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
+  const subscriptionId = checkout.subscriptionId && SUBSCRIPTION_ID_RE.test(checkout.subscriptionId) ? checkout.subscriptionId : null;
+  const { customerId } = checkout;
+
+  // Claimed before the payment is recorded, so a failure here throws while a
+  // retry can still redo everything.
+  let duplicate = false;
+  if (subscriptionId) {
+    const { data: claimed, error } = await db.from("members").update({
+      stripe_subscription_id: subscriptionId,
       ...(customerId ? { stripe_customer_id: customerId } : {}),
-    }).eq("id", memberId);
+    })
+      .eq("id", memberId)
+      .or(`stripe_subscription_id.is.null,stripe_subscription_id.eq.${subscriptionId}`)
+      .select("id");
+    if (error) throw new Error(`recordMembershipCheckout: subscription ${subscriptionId} for member ${memberId} was not stored: ${error.message}`);
+    duplicate = !claimed?.length;
+  } else if (customerId) {
+    await db.from("members").update({ stripe_customer_id: customerId }).eq("id", memberId);
   }
-  if (recorded) {
+
+  const recorded = await applyPaymentResult(memberId, { kind: "paid" }, sessionId ? { sessionId } : {});
+  if (!recorded) return false;
+
+  if (duplicate) {
+    const { data: invoice } = sessionId
+      ? await db.from("invoices").select("number").eq("stripe_session_id", sessionId).maybeSingle()
+      : { data: null };
+    const invoiceRef = invoice?.number ? `invoice ${invoice.number}` : "this payment's SMI-JOIN invoice";
+    await notifyConsole({
+      kind: "duplicate_subscription",
+      memberId,
+      payload: { member_id: memberId },
+      message: `Paid for a second £40/month subscription (${subscriptionId}) while already subscribed. SMI still tracks the first one. `
+        + `Cancel ${subscriptionId} and refund its payment in Stripe, then void ${invoiceRef}.`,
+    });
+  } else {
     await notifyConsole({
       kind: "payment_taken",
       memberId,
@@ -249,7 +288,7 @@ export async function recordMembershipCheckout(
       message: "Paid £40/month by card. Next step: build their page.",
     });
   }
-  return recorded;
+  return true;
 }
 
 /**

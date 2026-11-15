@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyPaymentResult, provisionMember } from "@/lib/membership";
+import { applyPaymentResult, provisionMember, recordMembershipCheckout } from "@/lib/membership";
 import { serviceDb } from "@/lib/db/server";
 import { asDb, dbError, dbOk, fromByTable, mockDb, queryBuilder } from "../stubs/supabase";
 import { resetDbServerMocks } from "../stubs/db-server";
@@ -12,11 +12,13 @@ import { resetDbServerMocks } from "../stubs/db-server";
  */
 vi.mock("@/lib/db/server", () => import("../stubs/db-server"));
 
-const { enqueue, generateAndStoreInvoicePdf } = vi.hoisted(() => ({
+const { enqueue, generateAndStoreInvoicePdf, notifyConsole } = vi.hoisted(() => ({
   enqueue: vi.fn(async () => {}),
   generateAndStoreInvoicePdf: vi.fn(async () => "m1/SMI-JOIN-X.pdf"),
+  notifyConsole: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/jobs", () => ({ enqueue }));
+vi.mock("@/lib/notify-admin", () => ({ notifyConsole }));
 vi.mock("@/lib/invoice-pdf", () => ({ generateAndStoreInvoicePdf }));
 vi.mock("@/lib/adapters/payments", () => ({ paymentsAreLive: () => true }));
 
@@ -24,6 +26,7 @@ afterEach(() => {
   resetDbServerMocks();
   enqueue.mockClear();
   generateAndStoreInvoicePdf.mockClear();
+  notifyConsole.mockClear();
 });
 
 function db(invoices: ReturnType<typeof queryBuilder>, members = queryBuilder(dbOk({ name: "Acme" }))) {
@@ -89,6 +92,88 @@ describe("applyPaymentResult — a Stripe card payment", () => {
     expect(members.update).toHaveBeenCalledWith({ paid_at: expect.any(String) });
     expect(invoices.insert).toHaveBeenCalledWith(expect.objectContaining({ status: "paid", pdf_path: "m1/SMI-JOIN-X.pdf" }));
     expect(invoices.insert).toHaveBeenCalledWith(expect.not.objectContaining({ stripe_session_id: expect.anything() }));
+  });
+});
+
+/**
+ * #5, ADR 0003: the subscription id is a compare-and-swap (only where none is
+ * stored, or it's this one). Zero rows back means the member already has a
+ * different subscription. The fake doesn't filter, so each test sets what
+ * the swap returns: `[{ id }]` for claimed, `[]` for a duplicate.
+ */
+describe("recordMembershipCheckout", () => {
+  const claimed = () => queryBuilder(dbOk([{ id: "m1" }]));
+  const alreadySubscribed = () => queryBuilder(dbOk([]));
+  const recordedInvoice = () => queryBuilder(dbOk({ id: "inv1", number: "SMI-JOIN-2026-0007" }));
+  const CHECKOUT = { sessionId: "cs_join_2", subscriptionId: "sub_2", customerId: "cus_2" };
+
+  it("first payment: stores the subscription and customer, records the invoice, tells Jas it's paid", async () => {
+    const { members, invoices } = db(recordedInvoice(), claimed());
+
+    await expect(recordMembershipCheckout("m1", CHECKOUT)).resolves.toBe(true);
+
+    expect(members.update).toHaveBeenCalledWith({ stripe_subscription_id: "sub_2", stripe_customer_id: "cus_2" });
+    expect(members.or).toHaveBeenCalledWith("stripe_subscription_id.is.null,stripe_subscription_id.eq.sub_2");
+    expect(invoices.insert).toHaveBeenCalledWith(expect.objectContaining({ stripe_session_id: "cs_join_2", status: "paid" }));
+    expect(notifyConsole).toHaveBeenCalledTimes(1);
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({ kind: "payment_taken", memberId: "m1" }));
+  });
+
+  it("a same-subscription retry announces nothing a second time", async () => {
+    db(queryBuilder(sessionTaken()), claimed());
+
+    await expect(recordMembershipCheckout("m1", CHECKOUT)).resolves.toBe(false);
+
+    expect(notifyConsole).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("a second subscription keeps the first tracked, records the payment, and alerts Jas instead of payment_taken", async () => {
+    const { members, invoices } = db(recordedInvoice(), alreadySubscribed());
+
+    await expect(recordMembershipCheckout("m1", CHECKOUT)).resolves.toBe(true);
+
+    // The only subscription write is the guarded swap, which matched no row.
+    expect(members.update).toHaveBeenCalledTimes(2);
+    expect(members.update).toHaveBeenCalledWith({ stripe_subscription_id: "sub_2", stripe_customer_id: "cus_2" });
+    expect(members.update).toHaveBeenCalledWith({ paid_at: expect.any(String) });
+    expect(members.or).toHaveBeenCalledWith("stripe_subscription_id.is.null,stripe_subscription_id.eq.sub_2");
+    // The £40 was taken, so the books record it.
+    expect(invoices.insert).toHaveBeenCalledWith(expect.objectContaining({ stripe_session_id: "cs_join_2", status: "paid", amount_pennies: 4000 }));
+    expect(notifyConsole).toHaveBeenCalledTimes(1);
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "duplicate_subscription",
+      memberId: "m1",
+      payload: { member_id: "m1" },
+      message: expect.stringMatching(/sub_2[\s\S]*refund[\s\S]*void invoice SMI-JOIN-2026-0007/),
+    }));
+    expect(notifyConsole).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "payment_taken" }));
+  });
+
+  it("a Stripe retry of the duplicate's event doesn't alert twice", async () => {
+    db(queryBuilder(sessionTaken()), alreadySubscribed());
+
+    await expect(recordMembershipCheckout("m1", CHECKOUT)).resolves.toBe(false);
+
+    expect(notifyConsole).not.toHaveBeenCalled();
+  });
+
+  it("throws before recording when the subscription can't be stored, so the retry redoes it all", async () => {
+    const { invoices } = db(recordedInvoice(), queryBuilder(dbError("members locked")));
+
+    await expect(recordMembershipCheckout("m1", CHECKOUT)).rejects.toThrow(/members locked/);
+
+    expect(invoices.insert).not.toHaveBeenCalled();
+    expect(notifyConsole).not.toHaveBeenCalled();
+  });
+
+  it("with no subscription (the hosted redirect without one) records the payment as before", async () => {
+    const { members } = db(recordedInvoice(), claimed());
+
+    await expect(recordMembershipCheckout("m1", { sessionId: "cs_join_3", subscriptionId: null, customerId: null })).resolves.toBe(true);
+
+    expect(members.or).not.toHaveBeenCalled();
+    expect(notifyConsole).toHaveBeenCalledWith(expect.objectContaining({ kind: "payment_taken" }));
   });
 });
 

@@ -10,6 +10,10 @@
   anything else fails `pnpm check` (tests/unit/release-notes.test.ts).
 -->
 
+## 2026-11-15 — A member can't be charged twice for joining
+- A member who opens the payment form in two tabs now gets the same payment form in both, so they can't pay for two £40/month memberships. Using a promo code closes any payment form they left open.
+- If a second membership payment still gets through, you'll get a "Duplicate subscription" notification naming the member, the extra subscription and its invoice. Cancel that subscription and refund the payment in Stripe, then void the invoice. SMI keeps tracking the member's first subscription and doesn't cancel or refund anything on its own.
+
 ## 2026-11-09 — Visits are counted again on staging
 - Fixed staging not recording page views, story views and advert views and clicks since early November. Visits from then until this fix can't be recovered, so November's figures on staging will be low.
 - The site now repairs this by itself: if a month's visit records can't be stored, the nightly background job fixes it on its next run.
